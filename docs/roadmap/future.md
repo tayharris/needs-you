@@ -51,3 +51,22 @@ Open: is this a hub feature, or just "run one hub per person, and senders post t
 - A help menu item in the pill's right-click menu linking to the guides (the site's docs once hosted).
 - Empty states with one action ("No machines yet. Invite one").
 - A **diagnostics** pane: hub reachable, token role, peers and outbox depth (from `/v1/health` with a token), last poll, and a "copy diagnostics" button that never includes tokens. Mirrors `needs-you doctor` ([ai-first.md](ai-first.md)).
+
+## Jump to the agent's terminal from a card
+
+Today an Orca card's body says `orca terminal switch [--environment <name>] --terminal <handle>`, and you copy it into a terminal. The goal: click the card's **Terminal** button and Orca shows that terminal. Later: the same for Claude sessions in Terminal.app or iTerm on the Mac.
+
+**Never run commands from item data.** A sender only holds a token, and anything the app executes from an item is remote code execution on the Mac. So the app gets one fixed action with validated arguments:
+
+- **Data:** a link the app handles itself: `needsyou://orca/terminal?handle=term_<uuid>&environment=<name>`. The hook and the Orca prompt block add it next to the body line (the body stays, for people without the app). `needsyou` joins the scheme allow-list in the hub and `LinkPolicy.swift` together (hard rule 7), for this path only.
+- **Validation in the app:** `handle` must match `^term_[0-9a-f-]{8,64}$`. `environment` is optional and must be one of the names `orca environment list --json` returns on this Mac (cached). Anything else does nothing.
+- **Action:** run `orca` from a fixed path list (`/usr/local/bin/orca`, `/opt/homebrew/bin/orca`, the app bundle's CLI), with an argv list (no shell): `terminal switch --terminal <handle> [--environment <name>]`, with a 5 s timeout. On failure, copy the command to the clipboard and say so on the card.
+- **Hard rule 2:** the panel stays non-activating. NeedsYou never activates. Orca bringing itself forward is Orca's business; if `switch` doesn't raise the window, also run `open -b <Orca's bundle id>` (that activates Orca, not NeedsYou).
+- **Impact if abused:** a sender can switch which Orca tab is shown, and nothing else.
+
+Spike steps:
+
+1. By hand, with Orca running: does `orca terminal switch` raise the Orca window, or only change the tab? Does it work for a paired server's terminal with `--environment`?
+2. `LinkPolicy`: route `needsyou://orca/terminal` to a new `OrcaJump` in `NeedsYouCore` (pure validation, unit tested) and an executor in the app target.
+3. The hook and the Orca block add the link when `$ORCA_TERMINAL_HANDLE` is set. Update `tests/test_orca.py` and the README/installer block together.
+4. Phase 2, local terminals: the hook records `TERM_PROGRAM` and `ITERM_SESSION_ID`, or the tty. iTerm can select a session by id, and Terminal.app a tab by tty, through AppleScript. That needs a one-time Automation permission prompt for NeedsYou, so it's opt-in in Settings, and the request comes from a Settings click (never from the panel).
