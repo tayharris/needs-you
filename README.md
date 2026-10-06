@@ -6,6 +6,16 @@ needs-you is AI-first. It gives AI agents the tools to set themselves up (hand a
 
 Private for now; open source later (license to be decided). Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/).
 
+**Status: private preview (0.1.x).** The Mac app is ad-hoc signed, not notarized, so macOS asks you to approve it once. No license yet.
+
+## Install from a release
+
+1. From the repository's **Releases** page, download `NeedsYou-X.Y.Z-macos.zip` (and `SHA256SUMS` to check it: `shasum -a 256 -c SHA256SUMS`).
+2. Unzip, drag `NeedsYou.app` to `/Applications`, open it. macOS blocks the first launch: **System Settings → Privacy & Security → Open Anyway** (on macOS 14 and earlier, right-click → **Open**). Each release's notes have the full steps, including the firewall prompt and managed Macs.
+3. The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools. If Settings says Python 3 isn't available, run `xcode-select --install`, then reopen the app.
+
+Then follow the three steps below. To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
+
 ## How it works, in three steps
 
 1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting, and it runs its own hub (a tiny HTTP + SQLite service). Nothing else to set up.
@@ -47,6 +57,8 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 | [Orca](docs/guides/orca.md) | Orca agents and automations, on one or many servers |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
+
+Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 
 Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md](docs/API.md) (the HTTP API), [PLAN.md](docs/PLAN.md) (design history).
 

@@ -19,7 +19,7 @@ final class LinkPolicyTests: XCTestCase {
     func testAllowedSchemesOpen() {
         let allowed = [
             "https://acme.atlassian.net/browse/ACME-4170",
-            "HTTPS://github.com/acme/acme-backend/pull/2137",
+            "HTTPS://github.com/acme/acme-api/pull/2137",
             "orca://skills/share/abc123",
             "slack://channel?team=T0&id=C0",
             "vscode://file/home/dev/x.py",
