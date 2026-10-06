@@ -80,7 +80,12 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
 - **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, and the short session id. In Orca, instead: the worktree path (from `$ORCA_WORKTREE_ID`) and the command that jumps to the terminal, `orca terminal switch --terminal <handle>` (plus `--environment <name>` when `NEEDS_YOU_ORCA_ENVIRONMENT` is set). No prompt text, transcript or tool input is sent.
 - **Source:** `--agent claude-code --project <project>`; the CLI adds the host.
 
-The resolve side keeps a marker file per session in `~/.local/state/needs-you/claude-hooks/`, so `Stop` and `PostToolUse` (which fire constantly) cost a file check and no network call unless there is something to resolve. A gated-off event costs about 5 ms of bash and never starts Python.
+The resolve side keeps a marker file per session in `~/.local/state/needs-you/claude-hooks/`, so `Stop` and `PostToolUse` (which fire constantly) cost a file check and no network call unless there is something to resolve.
+
+A killed session (closed terminal, `kill`, reboot, OOM) never sends `SessionEnd`, so two things clean up after it:
+
+- **Lease:** the marker records the key, the Claude process id and its start time. `needs-you flush`, which the installer schedules every 5 minutes, resolves the card once that process is gone or its pid belongs to a newer process. Markers written by older hooks have no lease and are left alone.
+- **Expiry:** each card expires 48 hours after its last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`), for a machine that never comes back to run the flush. A gated-off event costs about 5 ms of bash and never starts Python.
 
 ### Settings
 
@@ -92,6 +97,7 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | `NEEDS_YOU_AGENT_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | `work` or `personal` |
 | `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
 | `NEEDS_YOU_AGENT_LINK` | unset | One link, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. |
+| `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | A card expires this many hours after its last post; `0` never expires |
 | `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
 | `NEEDS_YOU_HOOK_LOG` | unset | Append one debug line per call to this file |

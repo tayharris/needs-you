@@ -8,7 +8,8 @@
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
   needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
   needs-you resolve (--key KEY | --id ID)
-  needs-you flush                                    send anything queued in the outbox
+  needs-you flush                                    send anything queued in the outbox, and
+                                                     resolve Claude Code cards whose session ended
   needs-you health                                   check each configured hub and the token
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
@@ -305,6 +306,81 @@ def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
     return sent, dropped, len(pending())
 
 
+# ---------------------------------------------------------------------------
+# Claude Code hook leases
+# ---------------------------------------------------------------------------
+
+def leases_dir() -> str:
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(base, "needs-you", "claude-hooks")
+
+
+def _read_lease(path: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                k, sep, v = line.rstrip("\n").partition("=")
+                if sep:
+                    out[k] = v
+    except (OSError, UnicodeDecodeError):
+        pass
+    return out
+
+
+def _process_start(pid: int) -> Optional[str]:
+    """The process's start time as `ps -o lstart=` prints it (the hook records the
+    same), "" if there is no such process, None if we can't tell."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return ""
+    except PermissionError:
+        pass  # alive, owned by someone else
+    except OSError:
+        return None
+    import subprocess
+    try:
+        r = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=5,
+                           env=dict(os.environ, LC_ALL="C"))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return " ".join(r.stdout.split())
+
+
+def reap_leases(cfg: Config, verbose: bool = False) -> int:
+    """Resolve the card of every hook lease whose Claude process is gone (or whose pid
+    now belongs to a newer process). The hook writes one marker per session:
+    key=, pid=, start=. Markers without a pid (older hooks) are left alone."""
+    d = leases_dir()
+    try:
+        names = sorted(n for n in os.listdir(d) if not n.startswith("."))
+    except OSError:
+        return 0
+    reaped = 0
+    for name in names:
+        path = os.path.join(d, name)
+        lease = _read_lease(path)
+        key, pid, start = lease.get("key", ""), lease.get("pid", ""), lease.get("start", "")
+        if not key.startswith("agent:") or not pid.isdigit() or not start:
+            continue
+        now_start = _process_start(int(pid))
+        if now_start is None or now_start == " ".join(start.split()):
+            continue  # alive, or unknown: leave it
+        if _read_lease(path) != lease:
+            continue  # the hook just re-posted from a new session
+        try:
+            os.remove(path)
+        except OSError:
+            continue
+        deliver(cfg, "POST", "/v1/items/resolve", {"key": key}, True, False)
+        reaped += 1
+        if verbose:
+            warn("session %s ended; resolved %s" % (pid, key))
+    return reaped
+
+
 def _move_failed(path: str) -> None:
     d = os.path.join(os.path.dirname(path), "failed")
     os.makedirs(d, mode=0o700, exist_ok=True)
@@ -442,8 +518,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
 
     if args.cmd == "flush":
+        reaped = reap_leases(cfg, verbose=not args.quiet)
         if not args.quiet:
-            print("sent %d, dropped %d, %d still queued" % (sent, dropped, remaining))
+            print("sent %d, dropped %d, %d still queued" % (sent, dropped, remaining)
+                  + (", resolved %d from ended sessions" % reaped if reaped else ""))
         return 0
     if args.cmd == "health":
         return health(cfg, remaining)

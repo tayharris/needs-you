@@ -1,6 +1,6 @@
 # Stale items: a safety net for senders that don't resolve
 
-Status: research and a proposal. Nothing here is built.
+Status: A, B and C are built (see the Claude Code integration README and the Orca prompt block). D is not.
 
 The contract is that the sender resolves what it posted, so a card you never saw and that got handled disappears without you ever seeing it. That works when the sender is alive to resolve. This page covers the cases where it isn't, and what to add.
 
