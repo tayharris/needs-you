@@ -1,205 +1,226 @@
-# Running a needs-you hub
+# Server hubs (optional)
 
-The hub is one Python file (`hub/needs_you_hub.py`) using only the standard library and
-SQLite. Nothing is installed besides the files themselves: it runs on the stock `python3` of
-Ubuntu 22.04+ / Debian 12+ (and macOS `/usr/bin/python3` 3.9 for development). The wire
-contract is in `API.md`.
+The Mac app runs its own hub, which is all most setups need. Add always-on server hubs when:
 
-## Requirements
+- you want items to land somewhere while the Mac sleeps (otherwise they wait in each sender's outbox until it wakes), or
+- you run many servers, or senders that can't wait (CI with short-lived runners).
 
-- Linux with systemd, `/usr/bin/python3` 3.9 or newer (with the built-in `sqlite3` module).
-- Tailscale, logged in to your tailnet. The hub listens **only** on its tailnet IP.
-- Always on. Run 2–3 hubs on different machines if you want it to survive one going down.
+A hub is one Python file (`hub/needs_you_hub.py`, standard library and SQLite only) on stock
+`python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Hubs replicate every write to each other,
+so a sender, the Mac or an invite link can use any of them. The wire contract is in
+[API.md](API.md).
 
-## Install one hub
+## Two hubs in 10 minutes
+
+You need two always-on Linux machines with systemd and Tailscale (MagicDNS on), called
+`hub-a` and `hub-b` below, and this repo cloned on each. Everything installs under your home
+directory; no root except one `loginctl` command.
+
+**1. Hub A, with a new peer secret:**
 
 ```bash
 git clone <this repo> ~/needs-you && cd ~/needs-you
-sudo ./scripts/install-hub.sh
+./scripts/install-hub.sh --user --peer http://hub-b.example.ts.net:8765 --generate-peer-secret
 ```
 
-`install-hub.sh` options:
+It prints the peer secret once. Save it to a file on hub B (over the tailnet, e.g.
+`ssh hub-b 'umask 077; cat > ~/ny-secret'`, then paste), and keep it out of git and chat logs.
 
-| Option | Default | Meaning |
-|---|---|---|
-| `--bind ADDR` | `tailscale ip -4` | Address to listen on. `0.0.0.0`/`::` are refused. |
-| `--port N` | `8765` | TCP port. |
-| `--hub-id ID` | `hostname -s` | This hub's unique name (letters, digits, `.`, `_`, `-`). Must differ on every hub. |
-| `--peer URL` | none | Another hub, e.g. `http://linux-box.example.ts.net:8765`. Repeat for each peer. |
-| `--peer-secret S` | generated | Shared replication secret, identical on every hub. |
-| `--peer-secret-file F` | | Read the secret from a file (keeps it out of shell history and `ps`). |
-| `--reconfigure` | off | Rewrite `/etc/needs-you/hub.json` even if it exists (keeps the existing secret unless you pass one). |
-| `--no-start` | off | Install but don't enable/start the service. |
+**2. Hub B, with A as its peer and the same secret:**
 
-What it sets up:
+```bash
+git clone <this repo> ~/needs-you && cd ~/needs-you
+./scripts/install-hub.sh --user --peer http://hub-a.example.ts.net:8765 \
+  --peer-secret-file ~/ny-secret --no-invite
+rm ~/ny-secret
+```
+
+**3. Linger.** If the installer says lingering is off, run the command it prints on each hub,
+so the hub keeps running after you log out and starts at boot:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+**4. The first invite.** Hub A printed an owner invite (`needsyou://connect?...`). Open it on
+the Mac and NeedsYou.app adds the hub. Then make a link for your servers on either hub:
+
+```bash
+needs-you-admin invite create my-servers --role sender --uses 5 --ttl 72
+```
+
+It prints the join URL, the one-liner, and a prompt to paste to an agent. Each machine that
+redeems the link gets its own token and is told about both hubs (`NEEDS_YOU_URLS`), so it
+fails over between them.
+
+**5. Check replication:**
+
+```bash
+curl -s http://hub-b.example.ts.net:8765/v1/health        # stats, no token needed
+needs-you-admin token list                                   # on hub B: tokens made on A show up
+```
+
+With a token, `/v1/health` also lists each peer's `outbox_pending`, `last_push_ok`,
+`last_pull_ok` and `last_error`. A healthy pair has `outbox_pending` 0 and a recent
+`last_pull_ok`.
+
+### With the Mac's own hub
+
+To make server hubs and the Mac's hub one mesh, give all of them the same peer secret and list
+each other as peers (servers use `--peer http://my-mac.example.ts.net:8765`; on the Mac, see
+[mac/README.md](../mac/README.md) for how the app passes peers and the secret to its hub). The Mac's `this-mac` owner token then replicates
+to the servers, so the app can read from them while its own hub restarts. Without peering, the
+Mac simply connects to each server hub as a client through an owner invite.
+
+## What `install-hub.sh --user` sets up
 
 | Path | What |
 |---|---|
-| `/opt/needs-you/hub/` | `needs_you_hub.py`, `needs_you_admin.py` |
-| `/etc/needs-you/hub.json` | Config, mode 640 `root:needs-you` (holds the peer secret) |
-| `/var/lib/needs-you/hub.db` | SQLite database (WAL), owned by `needs-you`, mode 600 |
-| `/etc/systemd/system/needs-you-hub.service` | The unit (from `deploy/needs-you-hub.service`) |
-| `/usr/local/bin/needs-you-admin` | Wrapper that runs the admin tool as the `needs-you` user |
+| `~/.local/share/needs-you/` | The code: `hub/`, `cli/` and the Claude Code files the hub serves at `/dl/` |
+| `~/.config/needs-you/hub.json` | Config, mode 600 (holds the peer secret) |
+| `~/.local/state/needs-you/hub.db` | SQLite database (WAL, incremental auto-vacuum) |
+| `~/.config/systemd/user/needs-you-hub.service` | `systemctl --user` unit, `Restart=always` |
+| `~/.local/bin/needs-you-admin` | The admin tool, preset to this config |
 
-The service runs as the unprivileged system user `needs-you` with `Restart=always` and
-systemd sandboxing (read-only system, no home access, no capabilities, syscall filter, only
-`/var/lib/needs-you` writable). Re-running the installer upgrades the code and unit in place
-and never touches the database.
+Options:
 
-Check it:
+| Option | Default | Meaning |
+|---|---|---|
+| `--user` | system install | Install for the current user (recommended). |
+| `--bind ADDR` | `127.0.0.1` + `tailscale ip -4` | Listen addresses, repeatable or comma-separated. `0.0.0.0`/`::` are refused. |
+| `--port N` | `8765` | TCP port. |
+| `--hub-id ID` | `hostname -s` | Unique per hub (letters, digits, `.`, `_`, `-`). |
+| `--public-url URL` | `http://<MagicDNS name>:PORT` | How others reach this hub. Used in invite links and `hub_urls`. |
+| `--peer URL` | none | Another hub's public URL. Repeatable; replaces the peer list. |
+| `--peer-secret-file F` | | The shared replication secret, from a file. |
+| `--peer-secret S` | | The same, inline (visible in `ps`; prefer the file). |
+| `--generate-peer-secret` | | Make a new secret and print it once. |
+| `--reconfigure` | off | Rebuild the config from defaults + flags (keeps the secret). |
+| `--no-start` | off | Install files and config only. |
+| `--no-invite` | off | Don't print the first owner invite. |
+
+Re-running upgrades in place: the code and unit are replaced, the config is kept with only the
+flags you passed applied to it, the database is untouched, and the service restarts. The owner
+invite is printed only when the config is first created.
+
+Logs go to the journal only (`journalctl --user -u needs-you-hub -f`); the hub writes no log
+files.
+
+## System-wide install (alternative)
 
 ```bash
-systemctl status needs-you-hub
-journalctl -u needs-you-hub -f
-curl -s http://$(tailscale ip -4):8765/v1/health
+sudo ./scripts/install-hub.sh --peer http://hub-b.example.ts.net:8765 --generate-peer-secret
 ```
+
+Same options without `--user`. It creates a `needs-you` system user and uses
+`/opt/needs-you` (code), `/etc/needs-you/hub.json` (config, 640 `root:needs-you`),
+`/var/lib/needs-you/hub.db`, the sandboxed unit `/etc/systemd/system/needs-you-hub.service`
+(read-only system, no home access, no capabilities, syscall filter), and the wrapper
+`/usr/local/bin/needs-you-admin`, which runs the admin tool as `needs-you`. Logs:
+`journalctl -u needs-you-hub`.
+
+## Config reference
+
+`hub.json` is plain JSON (see `deploy/hub.example.json`). Every key can also be set by a flag
+on `needs_you_hub.py`, so no file is required: the named flags below, or
+`--set KEY=VALUE` for anything else (VALUE is parsed as JSON when it can be).
+
+| Key | Flag | Default | Meaning |
+|---|---|---|---|
+| `bind` | `--bind` (repeatable, or commas) | `127.0.0.1` | Listen addresses. `0.0.0.0`/`::` need `allow_any_interface`. |
+| `port` | `--port` | 8765 | |
+| `public_url` | `--public-url` | first bind address | The URL others use. Put the MagicDNS name here. |
+| `db` | `--db` | `needs-you-hub.db` | SQLite path. |
+| `hub_id` | `--hub-id` | short hostname | Unique per hub; LWW tie-break and self-peer detection. |
+| `peers` | `--peer` (repeatable) | `[]` | Peer public URLs: used for replication and handed to senders as `hub_urls`. |
+| `peer_secret` / `peer_secret_file` | `--peer-secret-file` | | Required (16+ chars) when `peers` is set. Also `$NEEDS_YOU_PEER_SECRET`. |
+| `owner_token_file` | `--owner-token-file` | | On start, make sure an owner token with the secret in this file exists (the Mac app uses this). |
+| `owner_token_name` | `--owner-token-name` | `this-mac` | Its name. A changed secret replaces the old one. |
+| `parent_pid` | `--parent-pid` | | Exit cleanly when that process is gone (checked every 2 s). |
+| `install_dir` | `--install-dir` | the directory above `hub/` | Where `/dl/` files are read from (`cli/`, `integrations/claude-code/`). |
+| `retention_days` | `--retention-days` | 7 | Closed and expired items older than this are deleted. 0 keeps them forever. |
+| `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
+| `allow_any_interface` | `--allow-any-interface` | false | Allow `0.0.0.0` / `::`. |
+| `quiet` | `--quiet` | false | No access log. |
+| `access_log` | | true | One stderr line per request. |
+| `max_open_per_token` | | 60 | Volume guard. |
+| `default_expiry_hours` | | 24 | Expiry for `done`/`info` items without `expires_at`. |
+| `maintenance_seconds` | | 600 | Purge + WAL checkpoint + incremental vacuum interval. |
+| `vacuum_hours` | | 24 | How often a full `VACUUM` may run (only when over 25% is free). |
+| `redeem_fail_limit` / `redeem_fail_window_seconds` | | 10 / 600 | Failed invite redeems per client IP before `429`. |
+| `anti_entropy_seconds` | | 60 | How often each peer is pulled. |
+| `outbox_poll_seconds` | | 2 | Outbox check interval without a wake-up. |
+| `retry_base_seconds` / `retry_max_seconds` | | 1 / 300 | Push backoff. |
+| `peer_timeout_seconds` | | 5 | Per request to a peer. |
+
+Restart after editing: `systemctl --user restart needs-you-hub` (or `sudo systemctl restart
+needs-you-hub`).
 
 ### Use the MagicDNS name, not the IP
 
-Everything that talks to a hub (the `needs-you` CLI, the Mac app, `curl`, and peer hubs)
-should use the hub's **MagicDNS name over plain http**:
+Everything that talks to a hub uses its `public_url`, a MagicDNS name over plain http such as
+`http://hub-a.example.ts.net:8765`, not `http://100.x.y.z:8765`. The Mac app only allows plain
+http to `*.ts.net` and local names, and the name survives the tailnet IP changing. Traffic is
+still encrypted by WireGuard. The IP belongs only in `bind`.
 
-```
-http://hub-d.example.ts.net:8765
-```
-
-not `http://100.x.y.z:8765`. The Mac app only allows plain-http connections to `*.ts.net`
-and local names (App Transport Security), so a raw `100.x` URL won't work there. MagicDNS
-names also survive a hub's tailnet IP changing. Traffic is still encrypted by WireGuard
-inside the tailnet. The hub itself must *bind* to an IP; that's the only place the IP goes.
-
-## Config reference (`/etc/needs-you/hub.json`)
-
-See `deploy/hub.example.json`.
-
-| Key | Default | Meaning |
-|---|---|---|
-| `bind` | **required** | Listen address (tailnet IP). `0.0.0.0`, `::` and empty are refused unless `allow_any_interface` is true / `--allow-any-interface` is passed. |
-| `port` | 8765 | |
-| `db` | `needs-you-hub.db` | SQLite path. The installer uses `/var/lib/needs-you/hub.db`. |
-| `hub_id` | short hostname | Unique per hub. Used as the LWW tie-break and to detect self-peering. |
-| `freebind` | false | Linux: set `IP_FREEBIND` so the hub can start before tailscaled has the IP up. The installer sets it to true. |
-| `peers` | `[]` | Peer hub base URLs (MagicDNS names). Don't list the hub itself (harmless if you do: it's detected and skipped). |
-| `peer_secret` | | Required (≥ 16 chars) when `peers` is non-empty. Also read from `peer_secret_file` or `$NEEDS_YOU_PEER_SECRET`. |
-| `max_open_per_token` | 60 | Volume guard. |
-| `default_expiry_hours` | 24 | Expiry for `done`/`info` items without `expires_at`. |
-| `anti_entropy_seconds` | 60 | How often each peer is pulled. |
-| `outbox_poll_seconds` | 2 | How often the outbox is checked without a wake-up (picks up admin-tool changes). |
-| `retry_base_seconds` / `retry_max_seconds` | 1 / 300 | Push backoff. |
-| `peer_timeout_seconds` | 5 | Per request to a peer. |
-| `access_log` | true | One stderr line per request (goes to the journal). |
-
-Command-line flags `--bind`, `--port`, `--db`, `--hub-id` and `--allow-any-interface`
-override the file. Restart after editing: `sudo systemctl restart needs-you-hub`.
-
-## Tokens
+## Invites and tokens
 
 ```bash
-needs-you-admin token add mac --role reader          # the Mac app: read and patch only
-needs-you-admin token add devbox              # a sender (default role)
-needs-you-admin token add ci-hub-b --role sender
-needs-you-admin token list                           # name, role, active/revoked, open items
-needs-you-admin token revoke devbox           # by name or id
+needs-you-admin invite create my-server --role sender --uses 3 --ttl 72   # servers and agents
+needs-you-admin invite create mac --role owner                            # a Mac app
+needs-you-admin invite list            # live invites: uses left, expiry
+needs-you-admin invite revoke my-server
+needs-you-admin token list             # name, role, state, open items
+needs-you-admin token revoke my-server-build-1
+needs-you-admin token add ci-myrepo --role sender                          # a bare token, printed once
 ```
 
-`add` prints the token **once**; only its sha256 is stored. Give each machine (and each
-project with its own CI) its own sender token, so one can be revoked alone. Without the
-wrapper, the same thing is
-`sudo -u needs-you python3 /opt/needs-you/hub/needs_you_admin.py token add <name> --role sender|reader`
-(it reads `/etc/needs-you/hub.json` by default; `--config` / `--db` override).
+Roles: `sender` posts and resolves; `reader` reads, resolves and dismisses; `owner` is a reader
+that can also create invites (the Mac app). Codes and tokens are stored as sha256 hashes and
+printed once. Revoking an invite doesn't revoke tokens it already minted.
 
-The admin tool writes straight to the database, which is safe while the hub runs (SQLite WAL).
-With peers configured, the change is queued in the outbox and the running hub replicates it,
-so a token added on any hub works on all of them within a few seconds.
+The admin tool writes straight to the database (safe while the hub runs, thanks to WAL) and
+queues the change for replication, so an invite or token made on one hub works on all of
+them within seconds. A link from one hub can be redeemed on any; see
+[API.md](API.md#invite-replication) for the small double-spend window.
 
-## Multi-hub setup (2–3 machines)
+## Housekeeping
 
-Each hub keeps a full copy. Writes to any hub are pushed to the others; each hub also pulls
-from the others every minute, so one that was down catches up when it returns. Senders and
-the Mac list several hubs and use the first that answers.
-
-1. **First hub** (say `hub-d`): install without peers to get a generated secret, or pick one:
-
-   ```bash
-   python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > /tmp/ny-secret   # once
-   sudo ./scripts/install-hub.sh --peer-secret-file /tmp/ny-secret \
-     --peer http://linux-box.example.ts.net:8765 \
-     --peer http://hub-b.example.ts.net:8765
-   ```
-
-2. **Copy the secret** to the other machines (scp over the tailnet, then delete it from /tmp)
-   and install each with the *other* hubs as peers:
-
-   ```bash
-   # on linux-box
-   sudo ./scripts/install-hub.sh --peer-secret-file /tmp/ny-secret \
-     --peer http://hub-d.example.ts.net:8765 \
-     --peer http://hub-b.example.ts.net:8765
-   # on hub-b
-   sudo ./scripts/install-hub.sh --peer-secret-file /tmp/ny-secret \
-     --peer http://hub-d.example.ts.net:8765 \
-     --peer http://linux-box.example.ts.net:8765
-   ```
-
-   If a hub is already installed, add `--reconfigure` to rewrite its peer list.
-
-3. **Mint tokens on any one hub.** They replicate:
-
-   ```bash
-   needs-you-admin token add mac --role reader
-   ```
-
-4. **Check replication** with a token from step 3 on each hub:
-
-   ```bash
-   curl -s -H "Authorization: Bearer $TOKEN" http://linux-box.example.ts.net:8765/v1/health
-   ```
-
-   `peers[]` shows each peer's `outbox_pending`, `last_push_ok`, `last_pull_ok` and
-   `last_error`. A healthy mesh has `outbox_pending` 0 and recent `last_pull_ok` everywhere.
-
-5. **Point clients at all hubs**, in the same order everywhere (so a sender's add and later
-   resolve normally land on the same hub):
-
-   ```
-   # ~/.config/needs-you/env on each sending machine
-   NEEDS_YOU_URLS=http://hub-d.example.ts.net:8765,http://linux-box.example.ts.net:8765,http://hub-b.example.ts.net:8765
-   NEEDS_YOU_TOKEN=<this machine's sender token>
-   ```
-
-   Give the Mac app the same hubs in the same order (it fails over to the next one).
-
-Optional Tailscale ACL: tag hubs `tag:needs-you` and allow `tcp:8765` to them only from your
-devices and tagged servers. Hubs need to reach each other on that port too.
-
-### How conflicts resolve (short version)
-
-- Per item id, the version with the later `updated_at` wins (ties: higher `hub_id`). Keep hub
-  clocks on NTP (systemd-timesyncd is enough).
-- If two hubs both create an item for the same key before hearing of each other, the item with
-  the lower id survives with the freshest content, and the other is closed as resolved with
-  `superseded_by`. Details are in `API.md`.
+The hub keeps itself small: closed items are deleted after `retention_days` (7), stale peer
+outbox rows after 7 days, dead invites after a day, with a WAL checkpoint and incremental
+vacuum every 10 minutes and a full `VACUUM` at most daily. Replicated records older than the
+cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` shows
+`db_bytes`, item counts and outbox depth.
 
 ## Operations
 
-- **Backup:** `sqlite3 /var/lib/needs-you/hub.db ".backup /path/hub-$(date +%F).db"` (or just
-  rely on the other hubs: a fresh hub with an empty DB pulls everything from its peers).
-- **Replacing a hub's disk / DB:** delete the DB and restart. Its new `epoch` tells peers to
-  re-pull from it from the start, and it pulls everything from them.
-- **Removing a peer:** take it out of `peers` on the others and restart them; queued outbox rows
-  for peers no longer configured are dropped at start-up.
-- **Moving a hub:** change its MagicDNS target, or update `NEEDS_YOU_URLS` on senders and the
-  Mac app.
-- **Upgrading:** `git pull && sudo ./scripts/install-hub.sh`.
-- **Logs:** `journalctl -u needs-you-hub`. Each request is one line; replication errors show up
-  in `/v1/health` `peers[].last_error`.
+- **Upgrade:** `cd ~/needs-you && git pull && ./scripts/install-hub.sh --user` (or `sudo
+  ./scripts/install-hub.sh`). Senders update their CLI with `needs-you self-update`.
+- **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`
+  (safe while running), or `python3 -c "import sqlite3; s=sqlite3.connect('$HOME/.local/state/needs-you/hub.db'); s.backup(sqlite3.connect('$HOME/hub-backup.db'))"`
+  where the `sqlite3` CLI isn't installed. With two or more hubs, each is a live backup of the
+  others.
+- **A hub dies:** senders and the Mac fail over to the other hubs on their own. To replace it,
+  install a fresh hub with the same `--public-url` and peers (or a new name, then update the
+  peers on the others). An empty database pulls everything from its peers; its new `epoch`
+  makes the peers re-pull from it from the start. Tokens and invites come back with the rest.
+- **A hub was off for longer than `retention_days`:** stop it, delete its `hub.db*` files, and
+  start it empty, so it can't push stale open versions of items the others resolved and purged.
+- **Removing a peer:** take it out of `peers` on the others (`install-hub.sh --user --peer ...`
+  with the remaining ones) and restart; queued rows for it are dropped at start-up.
+- **Moving a hub:** keep the MagicDNS name, or update `peers` on the other hubs. Senders pick up
+  new URLs when they re-run an invite with `--force`, or by editing `NEEDS_YOU_URLS`.
+- **Clocks:** keep hubs on NTP (systemd-timesyncd is enough); replication is last-writer-wins
+  on timestamps.
+- **ACL (optional):** tag hubs `tag:needs-you` and allow `tcp:8765` to them only from your
+  devices and tagged servers. Hubs must reach each other on that port too.
 
 ## Development
 
 ```bash
-python3 hub/needs_you_admin.py --db /tmp/ny.db token add me --role sender
-python3 hub/needs_you_hub.py --bind 127.0.0.1 --port 8765 --db /tmp/ny.db
-python3 -m unittest discover -s tests          # also run it with /usr/bin/python3 (3.9) on macOS
+python3 hub/needs_you_hub.py --db /tmp/ny.db --owner-token-file <(echo dev-owner-token-123456)
+python3 hub/needs_you_admin.py --db /tmp/ny.db invite create me
+/usr/bin/python3 -m unittest discover -s tests    # also with macOS /usr/bin/python3 (3.9)
 ```
 
 Code must stay Python 3.9-compatible and standard-library only: `from __future__ import

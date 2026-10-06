@@ -10,14 +10,16 @@ Build, install and signing details live with the code: **[mac/README.md](../../m
 2. Move it to `/Applications` and open it. If macOS blocks an unsigned build, right-click → **Open** once. On a managed work Mac, endpoint security (e.g. SentinelOne) may flag ad-hoc signed builds; ask IT or use a build signed with a Developer ID.
 3. Optional: **System Settings → General → Login Items** → add NeedsYou so it starts at login.
 
-## First-run settings
+## Its own hub
 
-| Setting | What to enter |
-|---|---|
-| Hub URLs | Your hubs in failover order, e.g. `http://hub-a.<tailnet>.ts.net:8765, http://hub-b.<tailnet>.ts.net:8765`. The app polls the first that answers. |
-| Token | The Mac's **read/patch** token (it can read, resolve and dismiss, but not create items). Stored in the Keychain. |
+The app runs a hub itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address when you allow servers to connect. It provisions its own `owner` token, so there's nothing to configure. The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
 
-The Mac must be on the tailnet (Tailscale running) to reach the hubs. When it's asleep or off the tailnet, nothing is lost: senders write to the hubs, and the app catches up when it reconnects.
+- **Invite a machine** makes an invite link plus a prompt to paste into an agent ([add-a-sender.md](add-a-sender.md)).
+- **Server hubs (optional):** open a `needsyou://connect?hub=...&code=...` link from a server hub's owner invite, and the app adds that hub (its token goes in the Keychain) and fails over between hubs.
+
+While the Mac sleeps its hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on [server hubs](../HUB.md) avoid the wait.
+
+The exact settings and how the app passes options to its hub are in [mac/README.md](../../mac/README.md).
 
 ## Using it
 

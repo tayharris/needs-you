@@ -5,7 +5,7 @@ Two independent pieces. Use either or both, in any repo or VM, with or without O
 | Piece | What it does | Install |
 |---|---|---|
 | **Hooks** | When a Claude Code session stops to ask for permission or sits waiting for input, a `needs` item appears on your Mac. It's resolved automatically as soon as the session moves again. | `./install-hooks.sh` |
-| **Skill** | Teaches the agent when and how to post a specific blocker ("choose A or B for ACME-4170") and to resolve it afterwards. | copy `skill/needs-you` to `~/.claude/skills/` |
+| **Skill** | Teaches the agent when and how to post a specific blocker ("choose A or B for ACME-123") and to resolve it afterwards. | copy `skill/needs-you` to `~/.claude/skills/` |
 
 Both call the `needs-you` CLI, so set the machine up as a sender first: [`scripts/setup-sender.sh`](../../scripts/setup-sender.sh) ([guide](../../docs/guides/add-a-sender.md)).
 

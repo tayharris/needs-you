@@ -1,92 +1,81 @@
 # needs-you
 
-One inbox for **"you have to do something"**, fed by every VM, project, agent and CI job you own, and shown on your Mac as a small floating panel that all but disappears when nothing is waiting.
+## Goal
 
-Automations and agents get blocked on people all the time: a decision, an approval, access they don't have. Usually that ends up in a log file or a ticket comment nobody is watching. With needs-you, anything on your tailnet can post "I need you for X" with one command, re-posting the same problem updates it instead of stacking duplicates, and the sender clears it once it's handled.
+needs-you is AI-first. It gives AI agents the tools to set themselves up (hand an agent an invite link and it installs and configures itself) and to alert a person only when they actually need that person, routed to where they act: a deep link to the ticket, the PR or the Orca worktree. Humans stay in the loop without watching terminals.
 
-- **Hubs:** a tiny HTTP + SQLite service on 2–3 always-on machines that replicate to each other. Python 3 standard library only, so there's nothing to install.
-- **Senders:** the `needs-you` CLI (one Python file, with an offline outbox and hub failover) or plain `curl`. Ready-made integrations for Claude Code, Orca, GitHub Actions, cron and systemd.
-- **Mac app:** `NeedsYou.app`, a floating panel that shows on every Space and display, including over full-screen apps. It shows the count, cards with links, snooze, work and personal hours, and a start-of-day summary.
-- **Tailscale only:** hubs listen on their tailnet address, never on a public port.
+Private for now; open source later (license to be decided). Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/).
+
+## How it works, in three steps
+
+1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting, and it runs its own hub (a tiny HTTP + SQLite service). Nothing else to set up.
+2. **Connect Claude Code on the Mac.** Click **Invite a machine**, copy the agent prompt, and paste it into Claude Code: *"Set up needs-you alerts on this machine: read &lt;link&gt; and follow it."* The agent reads the link, installs the `needs-you` CLI, and from then on posts when it's blocked on you.
+3. **Connect servers over Tailscale.** Same thing on any VM, devbox or CI runner: paste the prompt into its agent, or run the one-liner the link gives you. One link can set up several machines; each gets its own revocable token.
 
 ```
- senders                                  hubs (always on)                  Mac
- ───────                                  ────────────────                  ───
- VMs, cron, systemd ─┐
- Claude Code hooks ──┤  needs-you CLI     ┌──────────┐   replicate   ┌──────────┐
- Orca automations ───┼─ (fails over, ───► │  hub-a   │ ◄───────────► │  hub-b   │
- GitHub Actions ─────┘   queues offline)  │ HTTP +   │               │ HTTP +   │
-                        or curl           │ SQLite   │               │ SQLite   │
-                                          └────▲─────┘               └────▲─────┘
-                                               └──── polls / SSE, ────────┘
-                                                     fails over
-                                                         │
-                                                  NeedsYou.app (pull only)
+ agents, CI, cron          needs-you CLI                 your Mac
+ on servers or the Mac ──► (fails over, queues  ──────►  NeedsYou.app
+                            while the Mac sleeps)        └─ its own hub (HTTP + SQLite)
+                                                             ▲
+                         optional: always-on server hubs ────┘ replicate
 ```
 
-The Mac only pulls. It can sleep, travel and drop off VPN; senders keep writing to the hubs and the app catches up when it's back.
+Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md) that replicate with the Mac.
 
-## Get started
-
-**[Quickstart](docs/guides/quickstart.md)**: two hubs, the Mac app, a first sender and Claude Code alerts, in about 15 minutes.
-
-| Guide | For |
-|---|---|
-| [Quickstart](docs/guides/quickstart.md) | End-to-end setup |
-| [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
-| [Hub](docs/HUB.md) | Running and peering hubs, minting tokens |
-| [Add a sender](docs/guides/add-a-sender.md) | A new VM, project or CI repo |
-| [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting", plus a skill, in any repo |
-| [Orca](docs/guides/orca.md) | Orca agent sessions and automations |
-| [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
-
-Reference:
-
-- [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md): the sender contract (when to post, keys, CLI and curl, rules). Give this to anything that should send alerts.
-- [docs/API.md](docs/API.md): the HTTP API.
-- [docs/PLAN.md](docs/PLAN.md): design decisions and build order.
+**[Quickstart](docs/guides/quickstart.md)** walks through all of it.
 
 ## Sending, in one minute
 
 ```bash
-./scripts/setup-sender.sh        # installs the CLI, saves hub URLs + token, checks health
+needs-you add --key "work:ACME-123:deploy-approval" --priority urgent \
+  --title "ACME-123: approve the prod deploy" --body "Staging is green; the PR has the diff." \
+  --link "PR=https://github.com/example/app/pull/42"
 
-needs-you add --key "personal:hub-b:backup-failed" --context personal --priority urgent \
-  --title "hub-b nightly backup failed" --body "restic exit 1 at 03:00. Disk 97% full." \
-  --link "Logs=https://hub-b.example.ts.net/logs"
-
-needs-you resolve --key "personal:hub-b:backup-failed"     # once it's fixed
+needs-you resolve --key "work:ACME-123:deploy-approval"     # once it's handled
 ```
+
+Re-posting the same key updates the item instead of stacking duplicates, and the sender clears it once it's handled. The rules agents follow are in [AGENT-GUIDE.md](docs/AGENT-GUIDE.md).
+
+## Guides
+
+| Guide | For |
+|---|---|
+| [Quickstart](docs/guides/quickstart.md) | The Mac app, local Claude Code, servers |
+| [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
+| [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
+| [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting", plus a skill |
+| [Orca](docs/guides/orca.md) | Orca agents and automations, on one or many servers |
+| [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
+| [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
+
+Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md](docs/API.md) (the HTTP API), [PLAN.md](docs/PLAN.md) (design history).
+
+## Config
+
+- **Hubs** are configured by a JSON text file (Python's standard library reads it; no YAML dependency) or entirely by command-line flags, plus the admin CLI `needs_you_admin.py` for tokens and invites.
+- **The Mac app** holds its own list of hubs and runs its own hub; you never edit a file on the Mac.
+- **Senders** keep `~/.config/needs-you/env` (hub URLs and a token), written for them by the invite installer.
+- **No hub web UI, by design.** The `/join/<code>` pages (Markdown for agents, plus an install script) are the only browser-friendly surface.
+- **Network:** Tailscale is recommended (hubs listen on loopback and the tailnet IP, never on all interfaces), but any `https` URL works. Plain `http` is only for tailnet names and local addresses.
+
+## Requirements
+
+- Mac: macOS with `/usr/bin/python3` (the Command Line Tools). Tailscale if servers should reach it.
+- Senders and server hubs: `bash`, `curl` and `python3` 3.9+, stock on macOS and Ubuntu 22.04+. No pip, no brew, no build step.
 
 ## Repo layout
 
 ```
 needs-you/
-├── hub/                    needs_you_hub.py (+ admin tool): HTTP + SQLite, peer replication
-├── cli/                    needs-you: the sender CLI, one Python 3 file
-├── mac/                    NeedsYou.app (Swift/SwiftUI, NSPanel)
-├── scripts/
-│   ├── install-hub.sh      set up a hub under systemd
-│   └── setup-sender.sh     set up a sender machine
-├── integrations/
-│   ├── claude-code/        hooks, install-hooks.sh, and a skill
-│   ├── orca/               prompt blocks for Orca automations
-│   └── ci/                 GitHub Actions, cron and systemd examples
-├── deploy/                 service files for the hub
-└── docs/
-    ├── guides/             task-oriented guides (start here)
-    ├── AGENT-GUIDE.md      sender contract
-    ├── API.md              HTTP API
-    ├── HUB.md              hub operations
-    └── PLAN.md             design
+├── hub/            needs_you_hub.py, needs_you_admin.py, join-install.sh (the invite installer)
+├── cli/            needs-you: the sender CLI, one Python file
+├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
+├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
+├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd)
+├── deploy/         systemd units and an example hub config
+└── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, PLAN.md, roadmap/, adr/
 ```
 
-## Requirements
+## Future
 
-- A Tailscale tailnet.
-- Hubs and senders: `python3` 3.9+ and `curl` (stock on Ubuntu and macOS). Nothing else.
-- Mac: macOS with Tailscale running. Building the app needs Xcode or the Swift toolchain; see [mac/README.md](mac/README.md).
-
-## Rules of thumb for senders
-
-Post only when you're blocked on a person, when something they're waiting on finished (`done`), or when something broke that they need to know today. Use stable keys, put the action in the title, link to where they act, resolve what you post, and never send secrets. The full list is in [AGENT-GUIDE.md](docs/AGENT-GUIDE.md#rules).
+- **GitHub org webhooks** (for example, alerts for every repo in a GitHub org): today, use the Tailscale GitHub Action to join the tailnet from a workflow and post with the CLI ([integrations/ci](integrations/ci/README.md)). Later, possibly Tailscale Funnel exposing only a narrow `/hooks` path on one hub.

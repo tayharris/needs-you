@@ -1,6 +1,5 @@
 [Unit]
 Description=needs-you hub (user service)
-Documentation=https://github.com/tayharris/needs-you/blob/main/docs/HUB.md
 # A user unit can't order itself after tailscaled (a system unit). "freebind": true in the
 # config lets the hub bind the tailnet IP before tailscaled has it; Restart=always covers the rest.
 

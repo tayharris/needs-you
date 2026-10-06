@@ -5,7 +5,7 @@ import unittest
 from support import hubmod
 
 ApiError = hubmod.ApiError
-OK = {"key": "acme:ACME-1:x", "title": "Decide the thing"}
+OK = {"key": "work:ACME-1:x", "title": "Decide the thing"}
 
 
 def with_(**kw):

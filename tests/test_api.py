@@ -82,7 +82,7 @@ class Roles(ApiTestCase):
 
 class Upsert(ApiTestCase):
     def test_create_then_dedupe(self):
-        s1, a = self.post({"key": "acme:ACME-1:x", "title": "Decide", "body": "b",
+        s1, a = self.post({"key": "work:ACME-1:x", "title": "Decide", "body": "b",
                            "links": [{"label": "Jira", "url": "https://j/ACME-1"}],
                            "source": {"agent": "orca:redo"}})
         self.assertEqual(s1, 201)
@@ -95,7 +95,7 @@ class Upsert(ApiTestCase):
 
         # the same content an hour later: same id, updated_at moves, content_updated_at doesn't
         self.clock.advance(3600)
-        s2, b = self.post({"key": "acme:ACME-1:x", "title": "Decide", "body": "b"})
+        s2, b = self.post({"key": "work:ACME-1:x", "title": "Decide", "body": "b"})
         self.assertEqual(s2, 200)
         self.assertEqual(b["id"], a["id"])
         self.assertFalse(b["created"])
@@ -108,7 +108,7 @@ class Upsert(ApiTestCase):
             with self.subTest(field):
                 self.clock.advance(60)
                 prev = self.list()[1]["items"][0]
-                payload = {"key": "acme:ACME-1:x", "title": prev["title"], "body": prev["body"],
+                payload = {"key": "work:ACME-1:x", "title": prev["title"], "body": prev["body"],
                            "priority": prev["priority"]}
                 payload[field] = value  # change exactly one visible field
                 _, c = self.post(payload)
@@ -119,7 +119,7 @@ class Upsert(ApiTestCase):
         # links/source changes alone don't count as a visible change
         self.clock.advance(60)
         cur = self.list()[1]["items"][0]
-        _, d = self.post({"key": "acme:ACME-1:x", "title": cur["title"], "body": cur["body"],
+        _, d = self.post({"key": "work:ACME-1:x", "title": cur["title"], "body": cur["body"],
                           "priority": cur["priority"], "links": [{"label": "PR", "url": "https://pr"}]})
         self.assertFalse(d["changed"])
         self.assertEqual(d["links"], [{"label": "PR", "url": "https://pr"}])

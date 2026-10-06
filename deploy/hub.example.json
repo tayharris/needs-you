@@ -1,14 +1,16 @@
 {
-  "bind": "100.101.102.103",
+  "bind": ["127.0.0.1", "100.101.102.103"],
   "port": 8765,
+  "public_url": "http://hub-a.example.ts.net:8765",
   "db": "/var/lib/needs-you/hub.db",
-  "hub_id": "hub-d",
+  "hub_id": "hub-a",
   "freebind": true,
   "peers": [
-    "http://linux-box.example.ts.net:8765",
-    "http://hub-b.example.ts.net:8765"
+    "http://hub-b.example.ts.net:8765",
+    "http://my-mac.example.ts.net:8765"
   ],
   "peer_secret": "REPLACE-with-the-same-long-random-secret-on-every-hub",
+  "retention_days": 7,
   "max_open_per_token": 60,
   "default_expiry_hours": 24,
   "anti_entropy_seconds": 60,

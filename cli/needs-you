@@ -391,7 +391,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     def item_parser(name: str, help_: str) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help_)
-        sp.add_argument("--key", required=True, help="stable dedupe key, e.g. acme:ACME-4170:redo-blocked")
+        sp.add_argument("--key", required=True, help="stable dedupe key, e.g. work:ACME-123:redo-blocked")
         sp.add_argument("--title", required=True, help="the action needed, <= 100 chars")
         sp.add_argument("--body", help="markdown, <= 2000 chars")
         sp.add_argument("--body-file", help="read the body from a file ('-' for stdin)")

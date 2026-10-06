@@ -154,7 +154,7 @@ fi
 
 # ---------------------------------------------------------------- checks
 if [ "$ROLE" != "sender" ]; then
-  say "This invite ($INVITE_NAME) is a $ROLE invite, for the Mac app, not for a server."
+  say "This invite ($INVITE_NAME, role $ROLE) is for the Mac app, not for a server."
   say "On the Mac, open:"
   say "  $MAC_URL"
   exit 1

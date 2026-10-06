@@ -40,11 +40,11 @@ class CliTestCase(HubTestCase):
 
 class Outbox(CliTestCase):
     def test_hub_down_queues_and_exits_zero_then_flushes(self):
-        r = self.run_cli("add", "--key", "acme:ACME-1:x", "--title", "Decide", "--link",
+        r = self.run_cli("add", "--key", "work:ACME-1:x", "--title", "Decide", "--link",
                          "Jira=https://j/ACME-1?a=b", "--agent", "orca:redo", urls=[self.dead])
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("queued", r.stderr)
-        r = self.run_cli("resolve", "--key", "acme:ACME-1:x", urls=[self.dead])
+        r = self.run_cli("resolve", "--key", "work:ACME-1:x", urls=[self.dead])
         self.assertEqual(r.returncode, 0, r.stderr)
         r = self.run_cli("done", "--key", "run", "--title", "Finished", urls=[self.dead])
         self.assertEqual(r.returncode, 0)
@@ -63,7 +63,7 @@ class Outbox(CliTestCase):
         self.assertIn("sent 3", r.stdout)
         self.assertEqual(self.queued(), [])
         items = {i["key"]: i for i in self.items(hub, reader)}
-        self.assertEqual(items["acme:ACME-1:x"]["status"], "resolved")  # order preserved
+        self.assertEqual(items["work:ACME-1:x"]["status"], "resolved")  # order preserved
         self.assertEqual(items["run"]["kind"], "done")
         self.assertIsNotNone(items["run"]["expires_at"])
 

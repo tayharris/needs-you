@@ -8,7 +8,7 @@
 */10 * * * *  /home/me/.local/bin/needs-you flush >/dev/null 2>&1
 
 # Run the nightly backup; alert on failure, clear the alert on the next success.
-0 3 * * *  /home/me/needs-you/integrations/ci/run-or-alert.sh --key personal:hub-b:backup --context personal --priority urgent --title "hub-b nightly backup failed" --link "Logs=https://hub-b.example.ts.net/logs" -- /usr/local/bin/backup.sh >>/var/log/backup.log 2>&1
+0 3 * * *  /home/me/needs-you/integrations/ci/run-or-alert.sh --key personal:my-server:backup --context personal --priority urgent --title "my-server nightly backup failed" --link "Logs=https://my-server.example.ts.net/logs" -- /usr/local/bin/backup.sh >>/var/log/backup.log 2>&1
 
 # Weekly FYI when a long job finishes (kind done: shows under Recent, expires in 24 h).
 0 6 * * 1  /usr/local/bin/reindex.sh >/dev/null 2>&1 && /home/me/.local/bin/needs-you done --key personal:search:reindex --title "Weekly reindex finished"

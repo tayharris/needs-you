@@ -2,9 +2,9 @@
 # run-or-alert.sh: run a command; if it fails, post a needs-you item; if it
 # succeeds, resolve that item. For cron jobs, systemd timers and scripts.
 #
-#   run-or-alert.sh --key personal:hub-b:backup --title "hub-b backup failed" \
+#   run-or-alert.sh --key personal:my-server:backup --title "my-server backup failed" \
 #     [--context personal] [--priority urgent] [--link "Logs=https://..."] \
-#     [--agent cron:backup] [--project hub-b] -- /usr/local/bin/backup.sh --nightly
+#     [--agent cron:backup] [--project my-server] -- /usr/local/bin/backup.sh --nightly
 #
 # Exits with the command's own exit code, so cron/systemd still see failures.
 # The item body says which command failed and its exit code; it never includes
