@@ -7,7 +7,7 @@ Two pieces, for any repo or VM, with or without Orca:
 
 Quickest: an invite link installs both. Paste the link's agent prompt into Claude Code, or run `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill` ([add-a-sender.md](add-a-sender.md)). The rest of this page is the manual route and the reference.
 
-Prerequisite for the manual route: the machine is a sender (an invite link, or `./scripts/setup-sender.sh`), so `needs-you` works in a shell there.
+Prerequisite for the manual route: the machine is a sender (an invite link, or `./scripts/setup-sender.sh`), so `needs-you` works in a shell there. The commands below run from a checkout of this repo.
 
 Full reference: [integrations/claude-code/README.md](../../integrations/claude-code/README.md).
 
@@ -58,7 +58,7 @@ The body holds Claude's notification text, the directory and host. No prompts, t
 Set in the environment or in `~/.config/needs-you/env`:
 
 ```bash
-NEEDS_YOU_AGENT_CONTEXT=personal      # default work
+NEEDS_YOU_AGENT_CONTEXT=personal      # default: NEEDS_YOU_DEFAULT_CONTEXT, else work
 NEEDS_YOU_AGENT_PRIORITY=low          # default normal
 NEEDS_YOU_AGENT_LINK='Orca=orca://terminal/{handle}'   # one link; orca:// format is unverified
 ```
@@ -83,7 +83,7 @@ needs-you: use key prefix `acme:` and context `work` for this repo.
 ```bash
 echo '{"session_id":"test-1","cwd":"'"$PWD"'","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.claude/hooks/needs-you-hook.sh notify
-# card appears; then:
+# a work-context card appears (prefix NEEDS_YOU_AGENT_CONTEXT=personal for personal); then:
 echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.claude/hooks/needs-you-hook.sh resolve
 ```
 

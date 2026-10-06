@@ -1,6 +1,6 @@
 # Quickstart
 
-Four steps; only the first is required. Every step can be re-run safely.
+Four steps; only the first is required. Every step can be re-run safely, as long as the invite link still has a use left and hasn't expired (a used-up link returns 404).
 
 ```
  Claude Code / Orca on the Mac ──► 127.0.0.1 ──┐
@@ -18,21 +18,29 @@ A faint pill appears in a corner of the screen. That's the idle state.
 
 ## 2. Local Claude Code (2 minutes)
 
-In the app, click **Invite a machine**. It shows an invite link and a ready-to-paste prompt:
+Make an invite: right-click the pill → **Settings…**, then in the **Invite a machine** section enter a machine name, keep the role **Sender**, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and two copy buttons, **Agent prompt** and **Shell one-liner**. The agent prompt reads:
 
 ```
-Set up needs-you alerts on this machine: read http://127.0.0.1:8765/join/nyi_... and follow it.
+Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it.
 ```
 
-Paste that into Claude Code on the Mac. The agent reads the page, picks the options that fit (Claude Code hooks, the skill, Orca snippets), and runs the one-line installer. It installs the `needs-you` CLI in `~/.local/bin`, saves a token of its own in `~/.config/needs-you/env`, and posts a test `info` card, which shows under **Recent** in the panel.
+The link uses the Mac's MagicDNS name while Tailscale is running, and `http://127.0.0.1:8765` when it isn't. Either works for an agent on the Mac itself.
 
-To do it yourself instead:
+Paste that into Claude Code on the Mac. The agent reads the page, picks the options that fit (Claude Code hooks, the skill, Orca snippets), and runs the one-line installer. It installs the `needs-you` CLI in `~/.local/bin`, saves a token of its own in `~/.config/needs-you/env`, and posts a test `info` card (`setup:<host>:test`), which shows under **Recent** in the panel.
+
+To do it yourself instead, paste the **Shell one-liner** and add the options you want:
 
 ```bash
-curl -fsSL http://127.0.0.1:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill
+curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill
 ```
 
-Try a real item:
+The installer prints a `Note:` if `~/.local/bin` isn't on your `PATH` (it isn't by default on macOS). Add it before going on, or `needs-you` below is "command not found":
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
+```
+
+Try a real item. It appears in the panel, then goes away when you resolve it:
 
 ```bash
 needs-you add --key "personal:test:hello" --context personal --title "Say hi back"
@@ -41,9 +49,11 @@ needs-you resolve --key "personal:test:hello"
 
 The hooks stay quiet until opted in (`NEEDS_YOU_AGENT_ALERTS=1`, or any session Orca starts); see [claude-code.md](claude-code.md).
 
+**On the Mac itself,** the installer saves the hub's MagicDNS name in `~/.config/needs-you/env`, so local agents queue instead of posting whenever Tailscale is down. To avoid that, put the loopback address first: `NEEDS_YOU_URLS=http://127.0.0.1:8765,http://my-mac.example.ts.net:8765` (and `NEEDS_YOU_URL=http://127.0.0.1:8765`). The same token works on both.
+
 ## 3. Servers over Tailscale (2 minutes each)
 
-Install [Tailscale](https://tailscale.com) on the Mac and the servers, with MagicDNS on. In the app, turn on tailnet access (so the hub also listens on the Mac's tailnet address), then create an invite with **uses** set to the number of servers. The link now uses the Mac's MagicDNS name, for example `http://my-mac.example.ts.net:8765/join/nyi_...`.
+Install [Tailscale](https://tailscale.com) on the Mac and the servers, with MagicDNS on. There's no switch in the app: while Tailscale is up, its hub also listens on the Mac's tailnet address, and **Settings… → This Mac** shows the URL servers use. Create an invite with **Uses** set to the number of servers. The link uses the Mac's MagicDNS name, for example `http://my-mac.example.ts.net:8765/join/nyi_...`.
 
 On each server, paste the agent prompt into its agent, or run:
 
@@ -51,7 +61,7 @@ On each server, paste the agent prompt into its agent, or run:
 curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes
 ```
 
-Each server gets its own token (named `<invite name>-<hostname>`), so you can revoke one without touching the others.
+Each server gets its own token (named `<invite name>-<hostname>`), so you can revoke one without touching the others ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)).
 
 > **macOS firewall:** the first time a server connects, macOS may ask whether `python3` may accept incoming connections. Allow it; that's the app's hub.
 

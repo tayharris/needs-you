@@ -7,7 +7,7 @@ Two independent pieces. Use either or both, in any repo or VM, with or without O
 | **Hooks** | When a Claude Code session stops to ask for permission or sits waiting for input, a `needs` item appears on your Mac. It's resolved automatically as soon as the session moves again. | `./install-hooks.sh` |
 | **Skill** | Teaches the agent when and how to post a specific blocker ("choose A or B for ACME-123") and to resolve it afterwards. | copy `skill/needs-you` to `~/.claude/skills/` |
 
-Both call the `needs-you` CLI, so set the machine up as a sender first: [`scripts/setup-sender.sh`](../../scripts/setup-sender.sh) ([guide](../../docs/guides/add-a-sender.md)).
+Both call the `needs-you` CLI, so set the machine up as a sender first: an invite link from the Mac app (its installer can add the hooks and the skill too, with `--claude-hooks user --skill`), or [`scripts/setup-sender.sh`](../../scripts/setup-sender.sh) ([guide](../../docs/guides/add-a-sender.md)).
 
 ## Files
 
@@ -89,7 +89,7 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | Variable | Default | Meaning |
 |---|---|---|
 | `NEEDS_YOU_AGENT_ALERTS` | unset | `1` opts in, `0` opts out (see above) |
-| `NEEDS_YOU_AGENT_CONTEXT` | `work` | `work` or `personal` |
+| `NEEDS_YOU_AGENT_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | `work` or `personal` |
 | `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
 | `NEEDS_YOU_AGENT_LINK` | unset | One link, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
@@ -114,8 +114,6 @@ NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'
 ### Doing it by hand
 
 `hooks.json` is the exact block the installer merges, with user-level paths. To install manually: copy `needs-you-hook.sh` to `~/.claude/hooks/`, `chmod +x` it, and merge the `hooks` object into `~/.claude/settings.json`, appending to any event arrays you already have.
-
-The one-line hooks in `docs/AGENT-GUIDE.md` work too. They're Orca-only and don't build titles from the hook input.
 
 ### Troubleshooting
 

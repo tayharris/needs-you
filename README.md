@@ -9,7 +9,7 @@ Private for now; open source later (license to be decided). Roadmap: [docs/roadm
 ## How it works, in three steps
 
 1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting, and it runs its own hub (a tiny HTTP + SQLite service). Nothing else to set up.
-2. **Connect Claude Code on the Mac.** Click **Invite a machine**, copy the agent prompt, and paste it into Claude Code: *"Set up needs-you alerts on this machine: read &lt;link&gt; and follow it."* The agent reads the link, installs the `needs-you` CLI, and from then on posts when it's blocked on you.
+2. **Connect Claude Code on the Mac.** Right-click the pill → **Settings…** → **Invite a machine** → **Create invite**, copy the **Agent prompt**, and paste it into Claude Code: *"Set up needs-you alerts on this machine: read &lt;link&gt; and follow it."* The agent reads the link, installs the `needs-you` CLI, and from then on posts when it's blocked on you.
 3. **Connect servers over Tailscale.** Same thing on any VM, devbox or CI runner: paste the prompt into its agent, or run the one-liner the link gives you. One link can set up several machines; each gets its own revocable token.
 
 ```

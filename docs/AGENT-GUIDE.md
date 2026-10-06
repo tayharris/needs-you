@@ -20,8 +20,8 @@ posted under the same key.
 
 ## Setup on a machine (once)
 
-The normal way is an **invite link** from the person (the Mac app's "Invite a machine", or
-`needs_you_admin.py invite create` on a server hub). It looks like
+The normal way is an **invite link** from the person (the Mac app's Settings → "Invite a machine",
+or `needs-you-admin invite create` on a server hub). It looks like
 `http://my-mac.example.ts.net:8765/join/nyi_...`. If you are an agent and were given one:
 
 1. Read the link. It's Markdown written for you: the install line, the options and these rules.
@@ -34,7 +34,12 @@ The normal way is an **invite link** from the person (the Mac app's "Invite a ma
    curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]
    ```
 
-4. Report the health check output. Never print the token.
+4. Report the health check output (a line like
+   `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token. If `~/.local/bin` isn't on `PATH`, the installer says so; call
+   `~/.local/bin/needs-you` by its full path until it is. If the output is only
+   `curl: (22) ... 404`, the link is used up or expired: ask the person for a new one.
+5. If you installed the hooks, say that they stay quiet until opted in
+   (`NEEDS_YOU_AGENT_ALERTS=1`, or a session Orca starts).
 
 The installer puts the `needs-you` CLI in `~/.local/bin`, redeems the invite for a token of
 this machine's own, and writes `~/.config/needs-you/env` (mode 600):
@@ -145,8 +150,10 @@ set by Orca). Details: [integrations/claude-code](../integrations/claude-code/RE
 
 ## Networking
 
-- Hubs listen on loopback and their tailnet IP, never on 0.0.0.0. On the Mac, local agents use
-  `http://127.0.0.1:8765`; other machines use the Mac's MagicDNS name.
+- Hubs listen on loopback and their tailnet IP, never on 0.0.0.0. On the Mac, local agents can
+  always use `http://127.0.0.1:8765`; other machines use the Mac's MagicDNS name. The invite
+  installer writes the MagicDNS name even on the Mac, so put `http://127.0.0.1:8765` first in
+  `NEEDS_YOU_URLS` there if local agents shouldn't depend on Tailscale (the token works on both).
 - Use MagicDNS names (`<host>.example.ts.net`), not raw `100.x` IPs.
 - The Mac hub is offline while the Mac sleeps. Items queue on each sender and arrive within
   about 5 minutes of it waking; always-on server hubs ([HUB.md](HUB.md)) avoid the wait.

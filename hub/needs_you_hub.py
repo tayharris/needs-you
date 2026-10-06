@@ -2144,13 +2144,24 @@ asleep or unreachable get delivered, checks health, and posts a test `info` item
 | `--orca` | This machine runs Orca automations: write the prompt snippet for them to `~/.config/needs-you/orca-snippet.md` and print it. |
 | `--context work\\|personal` | Default context for items from this machine (the CLI's `--context` still wins). |
 | `--host NAME` | Name for this machine (default: short hostname). |
+| `--hub URL` | Download and redeem from another URL for this same hub, e.g. `http://127.0.0.1:8765` on the hub's own Mac when the name above doesn't resolve. |
 | `--no-schedule` | Don't add the 5-minute flush. |
 | `--force` | Redeem again and replace an existing token. Without it, a machine that's already set up keeps its token. |
-| `--uninstall` | Remove the CLI, its config, the flush schedule and the skill. |
+| `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Needs this link to still be live. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude` and
 `orca` on PATH), say which ones you chose, run the one line, and report the output of the
-health check. Never print the token. Re-running is safe.
+health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
+
+- If the installer notes that `~/.local/bin` is not on PATH, call `~/.local/bin/needs-you`
+  by its full path, and tell the user the line to add to their shell profile.
+- If you added `--claude-hooks`, tell the user the hooks stay quiet until opted in:
+  `NEEDS_YOU_AGENT_ALERTS=1` in the environment or in `~/.config/needs-you/env` (sessions
+  started by Orca are opted in already).
+- If the only output is `curl: (22) ... 404`, this link was used up or expired after you read
+  it. Stop and ask for a new one.
+- Re-running on a machine that's already set up is safe and keeps its token, while the link
+  is still live. `needs-you self-update` updates the CLI later without a link.
 
 ## Posting rules (short version)
 
