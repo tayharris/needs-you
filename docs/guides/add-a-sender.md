@@ -4,11 +4,11 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 
 ## With an invite link (recommended)
 
-1. **Make a link.** In the Mac app, **Invite a machine** (set **uses** to the number of machines). On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
+1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Invite a machine**, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
    - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes`,
    - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it."*
-2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself that's `127.0.0.1`; elsewhere it must be on the tailnet.
+2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve); elsewhere it must be on the tailnet.
 3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**).
 
 The join URL is safe to open in a browser first: it's Markdown that explains what will happen. Opening it doesn't spend a use.
@@ -35,12 +35,14 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--orca` | Write the Orca automation snippet to `~/.config/needs-you/orca-snippet.md` and print it. See [orca.md](orca.md). |
 | `--context work\|personal` | Default context for this machine's items. |
 | `--host NAME` | This machine's name (default: short hostname). |
-| `--hub URL` | Use a different URL for the same hub (e.g. its IP while DNS is broken). |
+| `--hub URL` | Download and redeem from a different URL for the same hub (e.g. its IP while DNS is broken). Only for the install itself: the env file still gets the hub's advertised URLs, so edit `NEEDS_YOU_URLS` afterwards if you need the other address. |
 | `--no-schedule` | Don't add the 5-minute flush. |
 | `--force` | Redeem again and replace an existing token (needs a link with a use left). |
-| `--uninstall` | Remove the CLI, the config, the flush schedule, the skill and (if installed) the user-level hooks. |
+| `--uninstall` | Remove the CLI, the config, the flush schedule, the skill and (if installed) the user-level hooks. Needs a live link. |
 
-Re-running with an already-configured machine updates the CLI and the schedule and keeps the token.
+Re-running with an already-configured machine updates the CLI and the schedule and keeps the token. It doesn't spend a use, but the link must still be live: once its last use is spent or it expires, the one-liner returns 404. Keep `uses` above the number of machines if you plan to re-run it from provisioning scripts.
+
+`--help` prints nothing when the script is piped into bash; the options are in the table above and on the join page.
 
 Notes:
 
@@ -95,11 +97,29 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
 
 ## Removing a sender
 
-Revoke its token: in the Mac app, or `needs-you-admin token revoke <name>` on a hub. Then on the machine, either run an invite's installer with `--uninstall`, or:
+1. **Revoke its token.** On a server hub: `needs-you-admin token revoke <name>`. On the Mac's own hub there's no button for this yet; run the admin tool bundled in the app against its database (safe while the app runs):
 
-```bash
-crontab -l | grep -v needs-you-flush | crontab -                          # Linux
-launchctl bootout gui/$(id -u)/io.needs-you.flush; rm ~/Library/LaunchAgents/io.needs-you.flush.plist   # macOS
-rm -r ~/.config/needs-you/env ~/.local/bin/needs-you ~/.local/state/needs-you ~/.claude/skills/needs-you
-integrations/claude-code/install-hooks.sh --uninstall                     # if the hooks were installed
-```
+   ```bash
+   ADMIN=/Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py
+   DB="$HOME/Library/Application Support/NeedsYou/hub.db"
+   /usr/bin/python3 "$ADMIN" --db "$DB" token list
+   /usr/bin/python3 "$ADMIN" --db "$DB" token revoke <name>      # e.g. orca-build-2
+   ```
+
+   `invite list --all` and `invite revoke <name>` work the same way for links.
+
+2. **Clean up the machine.** Either run a live invite's installer with `--uninstall`, or by hand. First the Claude Code hooks, if they were installed: `integrations/claude-code/install-hooks.sh --uninstall` from a checkout of this repo, or without one:
+
+   ```bash
+   . ~/.config/needs-you/env; d=$(mktemp -d)
+   for f in install-hooks.sh needs-you-hook.sh hooks.json; do curl -fsS "$NEEDS_YOU_URL/dl/$f" -o "$d/$f"; done
+   bash "$d/install-hooks.sh" --uninstall; rm -rf "$d"
+   ```
+
+   Then the rest:
+
+   ```bash
+   crontab -l | grep -v needs-you-flush | crontab -                          # Linux
+   launchctl bootout gui/$(id -u)/io.needs-you.flush; rm -f ~/Library/LaunchAgents/io.needs-you.flush.plist   # macOS
+   rm -rf ~/.config/needs-you ~/.local/bin/needs-you ~/.local/state/needs-you ~/.claude/skills/needs-you
+   ```

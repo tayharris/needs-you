@@ -12,6 +12,7 @@ for u in $(echo "$NEEDS_YOU_URLS" | tr ',' ' '); do
 done
 ls ~/.local/state/needs-you/outbox/ 2>/dev/null   # queued items that haven't reached a hub
 tailscale status | head                          # is this machine on the tailnet?
+# macOS with the Tailscale app: /Applications/Tailscale.app/Contents/MacOS/Tailscale status
 ```
 
 ## A sender can't reach the hub
@@ -24,8 +25,8 @@ tailscale status | head                          # is this machine on the tailne
 | Works by IP, not by name | DNS | Use the full MagicDNS name, `<hub>.<tailnet>.ts.net` |
 | `HTTP 401` / `403` | Wrong, revoked, or Mac-only token | Get a new invite link and re-run its installer with `--force` |
 | Times out only while the Mac sleeps | The Mac's own hub is asleep | Expected: items queue and the 5-minute flush sends them after it wakes. Add a [server hub](../HUB.md) to avoid the wait. |
-| Times out from servers, works on the Mac | The hub listens only on `127.0.0.1`, or the macOS firewall blocks it | Turn on tailnet access in the app; allow `python3` in System Settings → Network → Firewall |
-| `HTTP 422` / `400` | Validation: title > 100 chars, body > 2,000, > 6 links, a link scheme not on the allow-list, a bad `context`/`kind`/`priority` | Fix the item; the response body says which field |
+| Times out from servers, works on the Mac | Tailscale is down on the Mac (the app's hub then listens only on `127.0.0.1`), or the macOS firewall blocks it | Bring Tailscale up on the Mac; the hub picks up the tailnet address by itself (Settings… → This Mac shows the URL). Allow `python3` in System Settings → Network → Firewall |
+| `HTTP 400` | Validation: title > 100 chars, body > 2,000, > 6 links, a link scheme not on the allow-list, a bad `context`/`kind`/`priority` | Fix the item; the response body says which field |
 | `HTTP 429` or "too many open items" | The sender has 60 open items: something is looping | Stop the loop; resolve the stale keys |
 
 The CLI never fails your job because of the hub. It queues to `~/.local/state/needs-you/outbox/` and sends on the next call or `needs-you flush` (the invite installer schedules one every 5 minutes). Items sitting in the outbox mean no hub has accepted them yet. The outbox keeps at most 500 requests and 7 days; older ones are dropped with a warning.
@@ -37,6 +38,8 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 | `curl: (22) ... 404` from the one-liner (and bash "succeeds" with no output) | The link is used up, expired or revoked | Make a new link |
 | `HTTP 429` / "too many failed invite attempts" | 10 failed tries from this IP in 10 minutes | Wait 10 minutes; check the link was pasted whole |
 | "This invite (..., role owner) is for the Mac app" | An owner/reader link was used on a server | Open the `needsyou://` link on the Mac; make a `sender` link for servers |
+| Re-running the one-liner (or `--uninstall`) returns 404 on a machine that's already set up | The link's last use was spent, or it expired. Re-runs need a live link even though they don't spend a use | Update the CLI with `needs-you self-update`; remove by hand ([add-a-sender.md](add-a-sender.md#removing-a-sender)); or make a new link |
+| `--help` prints nothing | The script was piped into bash, so it can't read its own header | The options are on the join page and in [add-a-sender.md](add-a-sender.md#options) |
 | "kept the existing token" | The machine was already set up | Expected. `--force` redeems again and replaces the token |
 | Installer says no hub answered | The hub is asleep or unreachable right now | The setup still completed; the test item is queued |
 
@@ -45,7 +48,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 - **`needs-you: command not found` after setup:** `~/.local/bin` isn't on your `PATH`. Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile. Hooks and cron don't read your profile; they find the CLI at `~/.local/bin/needs-you` directly (or set `NEEDS_YOU_BIN`).
 - **"no terminal available; continuing as --non-interactive":** you ran it without a TTY (e.g. over `ssh host cmd`). Use `ssh -t`, or pass `--url` and `--token-stdin`.
 - **"does not look like the needs-you CLI":** the `--install-cli` URL returned an HTML page (login wall, 404). Use the raw file URL.
-- **Health ok, but the test item is refused (401):** the token isn't valid on that hub. Tokens are added to every hub by the admin tool; check the hubs are peered and the token exists on each.
+- **Health ok, but the test item is refused (401):** the token isn't valid on that hub. Tokens replicate between peered hubs; check the hubs are peered and the token exists on each (`needs-you-admin token list`).
 
 ## Items post, but nothing shows on the Mac
 
@@ -74,7 +77,7 @@ echo '{"session_id":"t1","cwd":"'"$PWD"'","notification_type":"idle_prompt","mes
 | Log says | Meaning |
 |---|---|
 | nothing at all | Not opted in. Set `NEEDS_YOU_AGENT_ALERTS=1`, or run inside Orca. Check it isn't `0` in `~/.config/needs-you/env`. |
-| `needs-you CLI not found` | Install it (`setup-sender.sh --install-cli`) or set `NEEDS_YOU_BIN`. |
+| `needs-you CLI not found` | Install it (an invite link, or `setup-sender.sh --install-cli`) or set `NEEDS_YOU_BIN`. |
 | `notify agent:... -> 0` | Posted (or queued). Check the hub and the Mac as above. |
 | `notify agent:... -> 1` | The CLI failed. Run the same `needs-you add` by hand to see the error. |
 
