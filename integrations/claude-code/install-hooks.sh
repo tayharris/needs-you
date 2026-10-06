@@ -16,7 +16,6 @@
 
 set -euo pipefail
 
-PROG=$(basename "$0")
 HERE=$(cd "$(dirname "$0")" && pwd)
 HOOK_SRC="$HERE/needs-you-hook.sh"
 SNIPPET="$HERE/hooks.json"
@@ -71,6 +70,8 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required"
 # The command string written into settings.json. User level uses $HOME so the
 # same settings work on every machine; project level uses $CLAUDE_PROJECT_DIR
 # so a committed .claude/settings.json works for everyone who clones the repo.
+# The $VARS are literal on purpose: Claude Code's shell expands them later.
+# shellcheck disable=SC2016
 case "$SCOPE" in
   user)
     SETTINGS="$HOME/.claude/settings.json"

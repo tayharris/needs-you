@@ -234,6 +234,7 @@ if [ "$CLI_MODE" = "repo" ]; then
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *) warn "$BIN_DIR is not on your PATH. Add this to your shell profile:"
+       # shellcheck disable=SC2016  # literal $PATH: it's text for the user to paste
        printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" >&2 ;;
   esac
 fi
