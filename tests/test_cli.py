@@ -75,8 +75,11 @@ class Outbox(CliTestCase):
         r = self.run_cli("add", "--key", "b", "--title", "direct", urls=[hub.url], token=sender)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.queued(), [])
-        items = self.items(hub, reader, "open")
-        self.assertEqual([i["key"] for i in items], ["a", "b"])
+        items = {i["key"]: i for i in self.items(hub, reader, "open")}
+        self.assertEqual(sorted(items), ["a", "b"])
+        # The queued one went first. Ids made in the same millisecond can sort either
+        # way, so compare timestamps, not list order.
+        self.assertLessEqual(items["a"]["created_at"], items["b"]["created_at"])
 
     def test_rejected_queued_entry_moves_to_failed(self):
         self.run_cli("add", "--key", "a", "--title", "x" * 150, urls=[self.dead])
