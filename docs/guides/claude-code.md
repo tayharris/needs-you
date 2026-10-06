@@ -60,7 +60,8 @@ Set in the environment or in `~/.config/needs-you/env`:
 ```bash
 NEEDS_YOU_AGENT_CONTEXT=personal      # default: NEEDS_YOU_DEFAULT_CONTEXT, else work
 NEEDS_YOU_AGENT_PRIORITY=low          # default normal
-NEEDS_YOU_AGENT_LINK='Orca=orca://terminal/{handle}'   # one link; orca:// format is unverified
+NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'     # one link, placeholders {handle} {session} {cwd} {host}
+NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'                # paired Orca server: its name in the Mac's Orca
 ```
 
 ## The skill

@@ -32,17 +32,34 @@ Check from an Orca terminal on each server: `command -v needs-you` (if it's miss
 
 ## Agent sessions
 
-With the hooks installed, nothing else is needed. Cards are keyed `agent:<host>:<terminal handle>`, so agents on different servers never collide. To link back to the terminal:
+With the hooks installed, nothing else is needed. Cards are keyed `agent:<host>:<terminal handle>`, so agents on different servers never collide.
 
-```bash
-echo "NEEDS_YOU_AGENT_LINK='Orca=orca://terminal/{handle}'" >> ~/.config/needs-you/env
+Orca has no deep link to a terminal or a worktree (1.4.220 opens only `orca://skills/share/<id>`), so the card names the worktree and gives the command that jumps to the terminal. Run it in a terminal on the Mac where the Orca app is open:
+
+```text
+Orca worktree: `/home/me/orca/workspaces/my-repo/ACME-123`
+Jump to its terminal: `orca terminal switch --environment 'My Devbox' --terminal term_6f1c...`
 ```
 
-> The `orca://` deep-link format is **unverified**. Test one with `open 'orca://...'` on the Mac before relying on it, and drop the link if it doesn't open anything.
+On a paired Orca server, the Mac's Orca only finds the terminal with `--environment <name>`, and the server can't know the name the Mac gave it. Tell it once (the name is the one `orca environment list` shows on the Mac):
+
+```bash
+echo "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'" >> ~/.config/needs-you/env
+```
+
+Agents on the Mac's own Orca need nothing; the command has no `--environment`.
 
 ## Automations: add the prompt block
 
-Automations are agent prompts on a schedule, so the change is text: paste the block from `--orca` into each automation prompt (or the template they're rendered from). [integrations/orca/README.md](../../integrations/orca/README.md) has per-automation versions:
+Automations are agent prompts on a schedule, so the change is text: paste the block from `--orca` into each automation prompt (or the template they're rendered from). It posts with stable keys (`work:<TICKET>:<reason>`), links the Jira ticket, the PR and the branch, names the worktree and the `orca terminal switch` command in the body, and resolves the same key once it's handled. To add it to an automation you already have:
+
+```bash
+orca automations list
+orca automations show <id>        # copy the current prompt
+orca automations edit <id> --prompt "$(cat current-prompt.md ~/.config/needs-you/orca-snippet.md)"
+```
+
+[integrations/orca/README.md](../../integrations/orca/README.md) has the block and per-automation versions:
 
 - a **ticket fixer** (e.g. an hourly "Redo" fixer): one item per blocked ticket, resolved when the ticket moves, plus a `done` summary,
 - a **worktree cleanup**: one item per branch it won't delete, with a state-file reconcile so earlier items get resolved,

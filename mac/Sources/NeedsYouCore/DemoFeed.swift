@@ -95,7 +95,7 @@ public actor DemoFeed: ItemFeed {
         Template(key: "acme:devbox:memory", context: .work, kind: .needs, priority: .urgent,
                  title: "devbox swap at 92%: approve killing idle sessions",
                  body: "Reaper found 7 idle `claude` sessions holding 11 GB.",
-                 links: [ItemLink(label: "Orca", url: "orca://worktree/devbox")],
+                 links: [],
                  host: "devbox", agent: "orca:idle-reaper"),
         Template(key: "personal:blog:cert", context: .personal, kind: .needs, priority: .low,
                  title: "blog TLS cert expires in 6 days",
@@ -116,11 +116,11 @@ public actor DemoFeed: ItemFeed {
                 id: "01DEMO00000000000000000001", key: "acme:ACME-4170:push-decision", context: .work,
                 kind: .needs, priority: .normal,
                 title: "ACME-4170: push blocked on the migration fork",
-                body: "Choose one: **merge migration** or *one-time hook bypass*.\nQuestion is in Jira comment `74511`.\n- merge keeps history clean\n- bypass is faster",
+                body: "Choose one: **merge migration** or *one-time hook bypass*.\nQuestion is in Jira comment `74511`.\n- merge keeps history clean\n- bypass is faster\n\nOrca worktree: `~/orca/workspaces/acme-backend/ACME-4170`\nJump to its terminal: `orca terminal switch --environment devbox --terminal term_4170demo`",
                 links: [
                     ItemLink(label: "Jira", url: "https://acme.atlassian.net/browse/ACME-4170"),
                     ItemLink(label: "PR #2137", url: "https://github.com/acme/acme-backend/pull/2137"),
-                    ItemLink(label: "Orca", url: "orca://worktree/acme-backend/ACME-4170"),
+                    ItemLink(label: "Branch", url: "https://github.com/acme/acme-backend/tree/tay/ACME-4170-migration-fork"),
                 ],
                 source: ItemSource(host: "devbox", agent: "orca:redo-fixer", project: "acme-backend"),
                 createdAt: ago(130)

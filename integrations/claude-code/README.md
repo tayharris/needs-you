@@ -77,7 +77,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
 
 - **Key:** `agent:<short-hostname>:<id>`, where `<id>` is `$ORCA_TERMINAL_HANDLE` if set, else the Claude `session_id`. Characters outside `A-Za-z0-9._-` become `_`. Re-posting the same key updates the item, so a session that asks five times shows one card.
 - **Title:** what's needed plus the project, e.g. `Claude needs permission: my-repo` or `Claude is waiting for you: my-repo`. The project is the basename of `$CLAUDE_PROJECT_DIR` (else `cwd`).
-- **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, and the Orca terminal or short session id. No prompt text, transcript or tool input is sent.
+- **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, and the short session id. In Orca, instead: the worktree path (from `$ORCA_WORKTREE_ID`) and the command that jumps to the terminal, `orca terminal switch --terminal <handle>` (plus `--environment <name>` when `NEEDS_YOU_ORCA_ENVIRONMENT` is set). No prompt text, transcript or tool input is sent.
 - **Source:** `--agent claude-code --project <project>`; the CLI adds the host.
 
 The resolve side keeps a marker file per session in `~/.local/state/needs-you/claude-hooks/`, so `Stop` and `PostToolUse` (which fire constantly) cost a file check and no network call unless there is something to resolve. A gated-off event costs about 5 ms of bash and never starts Python.
@@ -92,14 +92,15 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | `NEEDS_YOU_AGENT_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | `work` or `personal` |
 | `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
 | `NEEDS_YOU_AGENT_LINK` | unset | One link, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. |
+| `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
 | `NEEDS_YOU_HOOK_LOG` | unset | Append one debug line per call to this file |
 
 Link examples:
 
 ```bash
-# Orca terminal deep link. UNVERIFIED: check the format against your Orca version.
-NEEDS_YOU_AGENT_LINK='Orca=orca://terminal/{handle}'
+# Orca has no terminal or worktree deep link (1.4.220); the card body carries
+# the `orca terminal switch` command instead.
 
 # Open the folder in VS Code or Cursor on the Mac (only useful if the path exists there)
 NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'

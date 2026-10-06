@@ -93,4 +93,5 @@ Other checks:
 
 - `needs-you` must be on the `PATH` that Orca's agent terminals get. From an Orca terminal: `command -v needs-you`.
 - An automation that stopped posting after a template re-render: the block was added to the live prompt, not the template.
-- Deep links that open nothing: the `orca://` format is unverified. Remove the link (or the `NEEDS_YOU_AGENT_LINK` setting).
+- An `orca://terminal/...` or `orca://worktree/...` link that opens nothing: Orca has no such links (1.4.220 opens only `orca://skills/share/<id>`). Remove it from the automation prompt or `NEEDS_YOU_AGENT_LINK`; the card body's `orca terminal switch` command is the way back to the terminal.
+- `orca terminal switch` says the terminal isn't found: the agent runs on a paired Orca server. Set `NEEDS_YOU_ORCA_ENVIRONMENT` in `~/.config/needs-you/env` on that server to the name `orca environment list` shows on the Mac.
