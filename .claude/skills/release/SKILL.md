@@ -20,7 +20,7 @@ The roadmap moves all three to one `VERSION` file at the repo root. Until then, 
 ## Steps
 
 1. **Clean tree on `main`**, up to date: `git status` clean, `git pull --ff-only` (in the main clone, not a worktree on another branch).
-2. **Bump** `VERSION` in `hub/needs_you_hub.py` and `cli/needs-you`; commit `release: vX.Y.Z` with the commit trailer.
+2. **Bump** `VERSION` in `hub/needs_you_hub.py` and `cli/needs-you`; commit `release: vX.Y.Z`.
 3. **Test:** run the `test-all` and `smoke-e2e` skills. Stop on any failure.
 4. **Build into a temp dir** (not the repo):
 
