@@ -47,7 +47,7 @@ final class LocalHubTests: XCTestCase {
         LocalHubPlan(script: "/App/Contents/Resources/hub/needs_you_hub.py",
                      dbPath: "/Users/u/Library/Application Support/NeedsYou/hub.db",
                      ownerTokenPath: "/Users/u/Library/Application Support/NeedsYou/owner.token",
-                     hubID: "mac-a", tailnetIP: ip, magicDNSName: dns, parentPID: 4242)
+                     hubID: "devbox", tailnetIP: ip, magicDNSName: dns, parentPID: 4242)
     }
 
     func testCommandLine() {
@@ -58,7 +58,7 @@ final class LocalHubTests: XCTestCase {
             "--bind", "127.0.0.1", "--bind", "100.64.0.9",
             "--port", "8765",
             "--db", "/Users/u/Library/Application Support/NeedsYou/hub.db",
-            "--hub-id", "mac-a",
+            "--hub-id", "devbox",
             "--public-url", "http://mac.tail1.ts.net:8765",
             "--owner-token-file", "/Users/u/Library/Application Support/NeedsYou/owner.token",
             "--parent-pid", "4242",
@@ -82,8 +82,8 @@ final class LocalHubTests: XCTestCase {
     }
 
     func testHubIDAndLocalURL() {
-        XCTAssertEqual(LocalHub.hubID(fromHostName: "Taylors-MacBook-Pro.local"), "taylors-macbook-pro")
-        XCTAssertEqual(LocalHub.hubID(fromHostName: "Taylor's Mac"), "taylor-s-mac")
+        XCTAssertEqual(LocalHub.hubID(fromHostName: "Sams-MacBook-Pro.local"), "sams-macbook-pro")
+        XCTAssertEqual(LocalHub.hubID(fromHostName: "Sam's Mac"), "sam-s-mac")
         XCTAssertEqual(LocalHub.hubID(fromHostName: ""), "mac")
         XCTAssertTrue(LocalHub.isLocal(URL(string: "http://127.0.0.1:8765")!))
         XCTAssertTrue(LocalHub.isLocal(URL(string: "http://localhost:8765/")!))
@@ -92,8 +92,8 @@ final class LocalHubTests: XCTestCase {
     }
 
     func testTailscaleStatusParsing() {
-        let json = #"{"Version":"1.76","Self":{"DNSName":"mac-a.example.ts.net.","TailscaleIPs":["100.64.0.9"]}}"#
-        XCTAssertEqual(TailscaleStatus.magicDNSName(fromStatusJSON: Data(json.utf8)), "mac-a.example.ts.net")
+        let json = #"{"Version":"1.76","Self":{"DNSName":"Devbox.example.ts.net.","TailscaleIPs":["100.64.0.9"]}}"#
+        XCTAssertEqual(TailscaleStatus.magicDNSName(fromStatusJSON: Data(json.utf8)), "devbox.example.ts.net")
         XCTAssertNil(TailscaleStatus.magicDNSName(fromStatusJSON: Data(#"{"Self":{"DNSName":""}}"#.utf8)))
         XCTAssertNil(TailscaleStatus.magicDNSName(fromStatusJSON: Data("not json".utf8)))
         let paths = TailscaleStatus.candidatePaths(path: "/usr/bin:/opt/homebrew/bin:/custom/bin")
