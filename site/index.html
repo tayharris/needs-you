@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>needs-you: one inbox for "you have to do something"</title>
+  <meta name="description" content="A tiny floating panel on your Mac that shows when your machines, agents and CI jobs need you, and nearly disappears when nothing does. Local and tailnet only, no cloud.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d12">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="needs-you: one inbox for &quot;you have to do something&quot;">
+  <meta property="og:description" content="Your agents, servers and CI jobs post when they're blocked on you. A quiet floating pill on your Mac shows it. No cloud, no installs.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="needs-you">
+  <meta name="twitter:description" content="One inbox for &quot;you have to do something&quot;, fed by every machine and agent you own.">
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0d12'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23fcd34d' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23fcd34d'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <nav class="wrap nav" aria-label="Primary">
+      <a class="brand" href="#top" aria-label="needs-you home">
+        <span class="brand-pill" aria-hidden="true"></span>
+        needs-you
+      </a>
+      <ul class="nav-links">
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#quickstart">Quickstart</a></li>
+        <li><a href="#integrations">Integrations</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a class="nav-gh" href="https://github.com/tayharris/needs-you">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero wrap" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">For people who run agents, servers and CI</p>
+        <h1 id="hero-title">One quiet inbox for <span class="accent">&ldquo;you have to do something.&rdquo;</span></h1>
+        <p class="lede">Your agents, VMs and CI jobs post when they're blocked on you. A small floating pill on your Mac shows it, and all but disappears when nothing is waiting. No cloud, no accounts, nothing to install.</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="#quickstart">Get started</a>
+          <a class="btn btn-ghost" href="https://github.com/tayharris/needs-you">View on GitHub</a>
+        </div>
+      </div>
+
+      <figure class="stage" aria-labelledby="stage-caption">
+        <div class="desktop" role="img" aria-label="Animated mock of the needs-you pill: a faint idle pill expands into a glowing preview reading 'ACME-4170: choose how to unblock the push', then settles into a pill showing a count of 1 with an amber ring.">
+          <div class="menubar" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="window" aria-hidden="true">
+            <div class="window-bar"><i></i><i></i><i></i></div>
+            <div class="window-lines"><b></b><b></b><b></b><b></b></div>
+          </div>
+          <div class="pill" aria-hidden="true">
+            <span class="pill-count">1</span>
+            <span class="pill-preview">
+              <span class="pill-title">ACME-4170: choose how to unblock the push</span>
+              <span class="pill-meta">devbox &middot; claude-code &middot; now</span>
+            </span>
+          </div>
+        </div>
+        <figcaption id="stage-caption">Idle &rarr; new item &rarr; count. It never takes focus from what you're typing.</figcaption>
+      </figure>
+    </section>
+
+    <!-- How it works -->
+    <section class="section wrap" id="how" aria-labelledby="how-title">
+      <h2 id="how-title">How it works</h2>
+      <p class="section-lede">Three pieces. The first one is the only thing you install.</p>
+      <ol class="steps-flow">
+        <li class="card">
+          <span class="step-num" aria-hidden="true">1</span>
+          <h3>The Mac app is the hub</h3>
+          <p><code>NeedsYou.app</code> runs a small built-in hub (HTTP + SQLite) and shows the floating panel. It sits on every Space and display, over full-screen apps, and never steals focus.</p>
+        </li>
+        <li class="card">
+          <span class="step-num" aria-hidden="true">2</span>
+          <h3>Invite a machine</h3>
+          <p>Click <strong>Invite a machine</strong>. Paste the agent prompt into Claude Code, or run the one-line <code>curl</code> command on a server. Each machine gets its own revocable token.</p>
+        </li>
+        <li class="card">
+          <span class="step-num" aria-hidden="true">3</span>
+          <h3>Agents and servers post</h3>
+          <p>&ldquo;I need you for X&rdquo; is one command. Re-posting the same key updates the item instead of stacking duplicates, and the sender clears it once it's handled.</p>
+        </li>
+      </ol>
+
+      <div class="diagram card" aria-hidden="true">
+        <pre>senders                          your Mac
+───────                          ────────
+Claude Code ──┐
+servers, cron ┼── needs-you ──►  NeedsYou.app
+CI jobs ──────┘   CLI or curl    (built-in hub + pill)
+                  queues offline       │ optional
+                                       ▼
+                         always-on hubs (replicate)</pre>
+      </div>
+      <p class="visually-hidden">Diagram: Claude Code, servers, cron and CI jobs send items with the needs-you CLI or curl to NeedsYou.app on your Mac, which contains the built-in hub and the pill. Senders queue offline. Optional always-on hubs replicate for redundancy.</p>
+    </section>
+
+    <!-- Quickstart -->
+    <section class="section wrap" id="quickstart" aria-labelledby="qs-title">
+      <h2 id="qs-title">Quickstart</h2>
+      <p class="section-lede">About five minutes. You need a Mac (macOS 14+) and, for other machines, a <a href="https://tailscale.com">Tailscale</a> tailnet.</p>
+      <ol class="quickstart">
+        <li class="card">
+          <h3><span class="step-num" aria-hidden="true">1</span> Open the app</h3>
+          <p>Build it from the repo (or download a release), move it to Applications and open it. A faint pill appears in a corner: that's the idle state.</p>
+          <div class="code"><pre><code>cd mac &amp;&amp; scripts/bundle.sh
+open dist/NeedsYou.app</code></pre></div>
+        </li>
+        <li class="card">
+          <h3><span class="step-num" aria-hidden="true">2</span> Invite a machine</h3>
+          <p>Click the pill, then <strong>Invite a machine</strong>. Paste the agent prompt into Claude Code on that machine, or run the one-liner the app shows you:</p>
+          <div class="code"><pre><code>curl -fsSL "&lt;invite link from the app&gt;" | bash</code></pre></div>
+        </li>
+        <li class="card">
+          <h3><span class="step-num" aria-hidden="true">3</span> Post something</h3>
+          <p>From the invited machine. The pill springs out, then settles to <code>1</code>.</p>
+          <div class="code"><pre><code>needs-you add --key "personal:$(hostname -s):hello" \
+  --context personal --title "Say hi back"
+needs-you resolve --key "personal:$(hostname -s):hello"</code></pre></div>
+        </li>
+      </ol>
+      <p class="more">Full guide: <a href="https://github.com/tayharris/needs-you/blob/main/docs/guides/quickstart.md">docs/guides/quickstart.md</a></p>
+    </section>
+
+    <!-- Integrations -->
+    <section class="section wrap" id="integrations" aria-labelledby="int-title">
+      <h2 id="int-title">Integrations</h2>
+      <p class="section-lede">Anything that can make an HTTP request can post. These come ready-made.</p>
+      <ul class="grid">
+        <li class="card int">
+          <span class="int-icon" aria-hidden="true">&#x276F;_</span>
+          <h3>Claude Code</h3>
+          <p>Hooks put up a card when a session is waiting on a permission prompt or your input, and clear it when it moves again. A skill teaches the agent to post real blockers.</p>
+          <a href="https://github.com/tayharris/needs-you/blob/main/docs/guides/claude-code.md">Claude Code guide</a>
+        </li>
+        <li class="card int">
+          <span class="int-icon" aria-hidden="true">&#x25CE;</span>
+          <h3>Orca</h3>
+          <p>Agent sessions get the hooks automatically. Copy-paste prompt blocks for scheduled automations: ticket fixers, worktree cleanup, reapers.</p>
+          <a href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">Orca guide</a>
+        </li>
+        <li class="card int">
+          <span class="int-icon" aria-hidden="true">&#x23F1;</span>
+          <h3>CI, cron &amp; systemd</h3>
+          <p>A GitHub Actions step, a <code>run-or-alert.sh</code> wrapper that posts on failure and resolves on success, and an <code>OnFailure=</code> unit.</p>
+          <a href="https://github.com/tayharris/needs-you/blob/main/integrations/ci/README.md">CI examples</a>
+        </li>
+        <li class="card int">
+          <span class="int-icon" aria-hidden="true">{ }</span>
+          <h3>curl</h3>
+          <p>One JSON <code>POST</code> with a bearer token. Stable keys dedupe, <code>/v1/items/resolve</code> clears. The full contract is short.</p>
+          <a href="https://github.com/tayharris/needs-you/blob/main/docs/API.md">HTTP API</a>
+        </li>
+      </ul>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section wrap" id="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title">FAQ</h2>
+      <div class="faq">
+        <details class="card">
+          <summary>Where does my data go?</summary>
+          <p>Nowhere outside your machines. The hub runs inside the Mac app, or on servers you own, and listens only on loopback or your Tailscale tailnet, never on a public port. There is no cloud service, account or telemetry. Items are meant to hold titles, short text and links; senders are told never to post secrets.</p>
+        </details>
+        <details class="card">
+          <summary>What happens when my Mac is asleep?</summary>
+          <p>Senders keep working. The <code>needs-you</code> CLI writes to a local outbox when no hub answers, exits 0 so your job never fails, and delivers on its next run or <code>needs-you flush</code>. When the Mac wakes, queued items arrive. If you want posts to land immediately while the laptop is closed, add an always-on server hub.</p>
+        </details>
+        <details class="card">
+          <summary>Can I run it without the Mac being the hub?</summary>
+          <p>Yes. Optional always-on hubs (any Linux or macOS box with <code>python3</code>) replicate with each other and the app. Senders try hubs in order and the app fails over, so one machine going down loses nothing.</p>
+        </details>
+        <details class="card">
+          <summary>Will an hourly job spam me?</summary>
+          <p>No. Items are keyed: posting the same key again updates the existing card instead of adding one, and it only re-animates if the title, body or priority changed. There's also a per-sender cap on open items to stop a runaway loop.</p>
+        </details>
+        <details class="card">
+          <summary>What do I need to install on servers?</summary>
+          <p>Nothing. The hub and CLI are single files on the Python 3 standard library (3.9+), which stock Ubuntu and macOS already have. No pip, no brew, no build step.</p>
+        </details>
+        <details class="card">
+          <summary>Does it interrupt what I'm doing?</summary>
+          <p>It's built not to. The panel never takes keyboard focus or activates the app. You can snooze it for 15 minutes to 3 hours, and work and personal items show at different times of day.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p><span class="brand-pill" aria-hidden="true"></span> needs-you</p>
+      <ul>
+        <li><a href="https://github.com/tayharris/needs-you">GitHub</a></li>
+        <li><a href="https://github.com/tayharris/needs-you/tree/main/docs/guides">Guides</a></li>
+        <li><a href="https://github.com/tayharris/needs-you/blob/main/docs/AGENT-GUIDE.md">Agent guide</a></li>
+        <li><a href="https://github.com/tayharris/needs-you/issues">Issues</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>
