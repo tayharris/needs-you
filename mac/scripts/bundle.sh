@@ -2,17 +2,29 @@
 # Build NeedsYou in release mode and assemble mac/dist/NeedsYou.app, ad-hoc signed.
 #
 #   mac/scripts/bundle.sh            build + bundle + sign
-#   open mac/dist/NeedsYou.app       run it (uses Settings for the hub)
+#   mac/scripts/install.sh           build, then install/update /Applications/NeedsYou.app
 #   NEEDS_YOU_DEMO=1 mac/dist/NeedsYou.app/Contents/MacOS/NeedsYou &   demo mode
 #     (`open` doesn't pass environment variables; run the binary directly)
+#
+# Signing is ad-hoc (`codesign -s -`). Developer ID signing is on the roadmap
+# (docs/roadmap/distribution.md). The app keeps no secrets in the Keychain, so an ad-hoc
+# signature changing on every build costs nothing there.
+#
+# Overrides (scripts/upgrade-test.sh uses them to build throwaway copies):
+#   NEEDS_YOU_VERSION=x.y.z        CFBundleShortVersionString (default 0.2.0)
+#   NEEDS_YOU_DIST=dir             output directory (default mac/dist)
+#   NEEDS_YOU_BUNDLE_ID=id         another bundle id (its own defaults domain; can't be
+#                                  mistaken for, or quit as, the real app)
+#   NEEDS_YOU_NO_URL_SCHEME=1      don't register needsyou:// (a test copy mustn't take it)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME=NeedsYou
-DIST=dist
+DIST="${NEEDS_YOU_DIST:-dist}"
 APP="$DIST/$APP_NAME.app"
 VERSION="${NEEDS_YOU_VERSION:-0.2.0}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+BUNDLE_ID="${NEEDS_YOU_BUNDLE_ID:-app.needsyou.mac}"
 
 echo "==> swift build -c release"
 swift build -c release --product "$APP_NAME"
@@ -23,6 +35,12 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
+if [[ "$BUNDLE_ID" != app.needsyou.mac ]]; then
+  plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$APP/Contents/Info.plist"
+fi
+if [[ "${NEEDS_YOU_NO_URL_SCHEME:-0}" == 1 ]]; then
+  plutil -remove CFBundleURLTypes "$APP/Contents/Info.plist"
+fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
@@ -54,4 +72,4 @@ echo "==> ad-hoc codesign"
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --strict "$APP"
 
-echo "==> done: $(pwd)/$APP ($VERSION build $BUILD)"
+echo "==> done: $(cd "$DIST" && pwd)/$APP_NAME.app ($VERSION build $BUILD, $BUNDLE_ID)"
