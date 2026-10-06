@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Guides and troubleshooting
+    url: https://github.com/tayharris/needs-you/tree/main/docs/guides
+    about: Setup, the Mac app, senders, Claude Code, Orca, and what to check when an item doesn't show up.
+  - name: Sender contract (AGENT-GUIDE)
+    url: https://github.com/tayharris/needs-you/blob/main/docs/AGENT-GUIDE.md
+    about: When and how agents and scripts should post.
