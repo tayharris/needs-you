@@ -20,7 +20,14 @@
 #   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
 #                             {session}, {cwd}, {host}. Example:
-#                             "Orca=orca://terminal/{handle}" (unverified format)
+#                             "VS Code=vscode://file{cwd}". Orca has no terminal
+#                             or worktree deep link (1.4.220 opens only
+#                             orca://skills/share/<id>), so Orca sessions get
+#                             the worktree and an `orca terminal switch`
+#                             command in the card body instead.
+#   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
+#                             Orca uses for it (`orca environment list`), so
+#                             the switch command gets --environment
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -54,7 +61,8 @@ input=$(cat 2>/dev/null)
 [ -n "${NEEDS_YOU_AGENT_PRIORITY:-}" ] || NEEDS_YOU_AGENT_PRIORITY=$(file_val NEEDS_YOU_AGENT_PRIORITY)
 [ -n "${NEEDS_YOU_AGENT_LINK:-}" ]     || NEEDS_YOU_AGENT_LINK=$(file_val NEEDS_YOU_AGENT_LINK)
 [ -n "${NEEDS_YOU_BIN:-}" ]            || NEEDS_YOU_BIN=$(file_val NEEDS_YOU_BIN)
-export NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK
+[ -n "${NEEDS_YOU_ORCA_ENVIRONMENT:-}" ] || NEEDS_YOU_ORCA_ENVIRONMENT=$(file_val NEEDS_YOU_ORCA_ENVIRONMENT)
+export NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_ORCA_ENVIRONMENT
 
 log() {
   [ -n "${NEEDS_YOU_HOOK_LOG:-}" ] || return 0
@@ -105,7 +113,7 @@ case "$mode" in
     # (no shell quoting of untrusted text).
     NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
     python3 - <<'PY' >/dev/null 2>&1
-import json, os, subprocess
+import json, os, shlex, subprocess
 
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
@@ -119,6 +127,8 @@ project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
 project = os.path.basename(project_dir.rstrip("/")) or "claude"
 session = str(data.get("session_id") or "")
 handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
+# <repoId>::<path>; the path is the readable part.
+worktree = os.environ.get("ORCA_WORKTREE_ID", "").split("::", 1)[-1]
 host = os.environ["NY_HOST"]
 
 what = {
@@ -137,7 +147,12 @@ if message:
     lines.append(message[:400])
 lines.append("`%s` on `%s`" % (short_cwd, host))
 if handle:
-    lines.append("Orca terminal `%s`" % handle)
+    if worktree:
+        lines.append("Orca worktree `%s`" % worktree)
+    orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
+    jump = "orca terminal switch%s --terminal %s" % (
+        " --environment " + shlex.quote(orca_env) if orca_env else "", shlex.quote(handle))
+    lines.append("Jump to its terminal: `%s`" % jump)
 elif session:
     lines.append("Session `%s`" % session[:8])
 body = "\n\n".join(lines)[:2000]

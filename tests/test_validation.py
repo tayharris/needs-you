@@ -54,7 +54,7 @@ class ValidateItemInput(unittest.TestCase):
         ("file scheme", with_(links=[link("file:///etc/passwd")]), "not allowed"),
         ("no scheme", with_(links=[link("a.b/c")]), "not allowed"),
         ("scheme case-insensitive", with_(links=[link("HTTPS://a.b")]), None),
-        ("orca", with_(links=[link("orca://worktree/x")]), None),
+        ("orca", with_(links=[link("orca://skills/share/x")]), None),
         ("slack", with_(links=[link("slack://channel?team=T&id=C")]), None),
         ("vscode cursor figma msteams discord",
          with_(links=[link("vscode://file/x"), link("cursor://file/x"), link("figma://file/x"),

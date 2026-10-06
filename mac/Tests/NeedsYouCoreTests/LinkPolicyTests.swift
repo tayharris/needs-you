@@ -20,7 +20,7 @@ final class LinkPolicyTests: XCTestCase {
         let allowed = [
             "https://acme.atlassian.net/browse/ACME-4170",
             "HTTPS://github.com/acme/acme-backend/pull/2137",
-            "orca://worktree/acme-backend/ACME-4170",
+            "orca://skills/share/abc123",
             "slack://channel?team=T0&id=C0",
             "vscode://file/home/dev/x.py",
             "cursor://file/x",

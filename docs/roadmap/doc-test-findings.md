@@ -63,6 +63,6 @@ As found:
 - macOS firewall prompt for `python3` on the first tailnet connection.
 - `launchctl bootstrap` of the flush LaunchAgent and a real crontab (both stubbed), so the 5-minute flush never ran for real.
 - `needs-you self-update`, `--force` re-redeem, the `project` hooks scope, and an owner/reader invite's `needsyou://` link.
-- Claude Code actually firing the hooks in a live session, and Orca sessions (`$ORCA_TERMINAL_HANDLE`), including the unverified `orca://terminal/{handle}` link.
+- Claude Code actually firing the hooks in a live session, and Orca sessions (`$ORCA_TERMINAL_HANDLE`), including the unverified `orca://terminal/{handle}` link. (Later checked: Orca 1.4.220 has no terminal or worktree link; cards now carry an `orca terminal switch` command instead.)
 - Server hubs (HUB.md, `needs-you-admin` wrapper), GitHub Actions, systemd units, and `scripts/setup-sender.sh`.
 - Revoking a real token: the admin command was run only on a copy of the app's database. The two test tokens (`doctest-mac-doctest-mac1`, `doctest-srv-doctest-srv1`) are still active on the Mac's hub. Their machines' configs were deleted, and they have no open items.
