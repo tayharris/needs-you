@@ -1,6 +1,6 @@
 # Quickstart
 
-Four steps; only the first is required. Every step can be re-run safely, as long as the invite link still has a use left and hasn't expired (a used-up link returns 404).
+Four steps; only the first is required. Every step can be re-run safely until the invite link expires, even after its uses are spent (a machine that's already set up doesn't spend another).
 
 ```
  Claude Code / Orca on the Mac ──► 127.0.0.1 ──┐
@@ -49,7 +49,7 @@ needs-you resolve --key "personal:test:hello"
 
 The hooks stay quiet until opted in (`NEEDS_YOU_AGENT_ALERTS=1`, or any session Orca starts); see [claude-code.md](claude-code.md).
 
-**On the Mac itself,** the installer saves the hub's MagicDNS name in `~/.config/needs-you/env`, so local agents queue instead of posting whenever Tailscale is down. To avoid that, put the loopback address first: `NEEDS_YOU_URLS=http://127.0.0.1:8765,http://my-mac.example.ts.net:8765` (and `NEEDS_YOU_URL=http://127.0.0.1:8765`). The same token works on both.
+**On the Mac itself,** the installer lists `http://127.0.0.1:8765` first in `~/.config/needs-you/env` (the hub sees the redeem come from its own machine), then the MagicDNS name, so local agents keep posting while Tailscale is down. Check with `grep NEEDS_YOU_URLS ~/.config/needs-you/env`.
 
 ## 3. Servers over Tailscale (2 minutes each)
 
@@ -61,7 +61,7 @@ On each server, paste the agent prompt into its agent, or run:
 curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes
 ```
 
-Each server gets its own token (named `<invite name>-<hostname>`), so you can revoke one without touching the others ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)).
+Each server gets its own token (named `<invite name>-<hostname>`), so you can revoke one without touching the others: **Settings… → Access** in the app ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)).
 
 > **macOS firewall:** the first time a server connects, macOS may ask whether `python3` may accept incoming connections. Allow it; that's the app's hub.
 

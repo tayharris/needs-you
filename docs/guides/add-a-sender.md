@@ -8,7 +8,7 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
    - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes`,
    - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it."*
-2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve); elsewhere it must be on the tailnet.
+2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
 3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**).
 
 The join URL is safe to open in a browser first: it's Markdown that explains what will happen. Opening it doesn't spend a use.
@@ -35,19 +35,17 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--orca` | Write the Orca automation snippet to `~/.config/needs-you/orca-snippet.md` and print it. See [orca.md](orca.md). |
 | `--context work\|personal` | Default context for this machine's items. |
 | `--host NAME` | This machine's name (default: short hostname). |
-| `--hub URL` | Download and redeem from a different URL for the same hub (e.g. its IP while DNS is broken). Only for the install itself: the env file still gets the hub's advertised URLs, so edit `NEEDS_YOU_URLS` afterwards if you need the other address. |
+| `--hub URL` | Use a different URL for the same hub (e.g. its IP while DNS is broken). It is used for the install and saved first in `NEEDS_YOU_URLS`, ahead of the hub's advertised URLs. |
 | `--no-schedule` | Don't add the 5-minute flush. |
 | `--force` | Redeem again and replace an existing token (needs a link with a use left). |
-| `--uninstall` | Remove the CLI, the config, the flush schedule, the skill and (if installed) the user-level hooks. Needs a live link. |
+| `--uninstall` | Remove the CLI, the config, the flush schedule, the skill, local state (outbox, hook markers) and (if installed) the user-level hooks. Works until the link expires or is revoked. |
 
-Re-running with an already-configured machine updates the CLI and the schedule and keeps the token. It doesn't spend a use, but the link must still be live: once its last use is spent or it expires, the one-liner returns 404. Keep `uses` above the number of machines if you plan to re-run it from provisioning scripts.
-
-`--help` prints nothing when the script is piped into bash; the options are in the table above and on the join page.
+Re-running with an already-configured machine updates the CLI and the schedule and keeps the token. It doesn't spend a use, and it works until the link expires or is revoked, also after its last use is spent. A new machine (or `--force`) needs a use left; the installer stops with exit 1 before installing anything if there's none. Give provisioning scripts a link with a long enough expiry (up to 90 days).
 
 Notes:
 
-- A used-up or expired link returns 404. With `curl ... | bash`, bash then exits 0 on the empty script, so look for `curl: (22) ... 404` in the output.
-- `--uninstall` needs a live link to fetch the script; otherwise remove things by hand (below).
+- An expired, revoked or unknown link fails with exit 1 and `needs-you install: This invite link is unknown, expired or revoked.` on stderr.
+- After the link expires, remove things by hand (below).
 - Update the CLI later with `needs-you self-update`.
 
 ## Manually (no invite link)
@@ -97,7 +95,7 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
 
 ## Removing a sender
 
-1. **Revoke its token.** On a server hub: `needs-you-admin token revoke <name>`. On the Mac's own hub there's no button for this yet; run the admin tool bundled in the app against its database (safe while the app runs):
+1. **Revoke its token.** In the Mac app: right-click the pill → **Settings…** → **Access** → **Revoke** next to the machine (invites are listed there too). Over HTTP with an owner token: `DELETE /v1/tokens/<name>` ([API.md](../API.md#tokens)). On a server hub: `needs-you-admin token revoke <name>`. Or run the admin tool bundled in the app against its database (safe while the app runs):
 
    ```bash
    ADMIN=/Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py
@@ -112,7 +110,7 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
 
    ```bash
    . ~/.config/needs-you/env; d=$(mktemp -d)
-   for f in install-hooks.sh needs-you-hook.sh hooks.json; do curl -fsS "$NEEDS_YOU_URL/dl/$f" -o "$d/$f"; done
+   curl -fsS "$NEEDS_YOU_URL/dl/install-hooks.sh" -o "$d/install-hooks.sh"
    bash "$d/install-hooks.sh" --uninstall; rm -rf "$d"
    ```
 
