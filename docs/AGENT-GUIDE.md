@@ -78,6 +78,11 @@ needs-you resolve --key "work:ACME-123:deploy-approval"     # once it's handled
 needs-you done --key "work:nightly-import:last-run" --title "Nightly import: 3 files, 0 errors"   # FYI, expires in 24 h
 ```
 
+A sender that runs on a schedule passes `--expires-in` of about twice its interval in hours
+(hourly: `3`, daily: `48`) and re-posts on every run that still sees the blocker; each re-post
+renews the expiry. The explicit resolve stays the fast path; the expiry catches a run that
+crashed or skipped it.
+
 `--context` defaults to `NEEDS_YOU_DEFAULT_CONTEXT` (from the environment or the env file),
 else `work`. When no hub answers, the CLI writes to `~/.local/state/needs-you/outbox/` and
 sends on its next call or the 5-minute flush. The command still exits 0, so a down or sleeping
