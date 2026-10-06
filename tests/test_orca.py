@@ -102,8 +102,9 @@ class HookOrcaBodyTests(unittest.TestCase):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
                "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log,
                "ORCA_TERMINAL_HANDLE": "term_abc", "ORCA_WORKTREE_ID": "repo1::/home/me/wt/ACME-1"}
+        cwd = extra.pop("_cwd", "/home/me/wt/ACME-1/api")
         env.update(extra)
-        data = json.dumps({"session_id": "s1", "cwd": "/home/me/wt/ACME-1",
+        data = json.dumps({"session_id": "s1", "cwd": cwd,
                            "message": "Claude needs your permission to use Bash",
                            "notification_type": "permission_prompt"})
         r = subprocess.run([BASH, HOOK, "notify"], input=data, env=env,
@@ -122,6 +123,11 @@ class HookOrcaBodyTests(unittest.TestCase):
         self.assertIn("Orca worktree `/home/me/wt/ACME-1`", body)
         self.assertIn("`orca terminal switch --terminal term_abc`", body)
         self.assertNotIn("--link", argv)
+
+    def test_worktree_not_repeated_when_it_is_the_cwd(self):
+        body = self.body(self.notify(_cwd="/home/me/wt/ACME-1"))
+        self.assertNotIn("Orca worktree", body)
+        self.assertIn("orca terminal switch --terminal term_abc", body)
 
     def test_orca_environment_from_env_file(self):
         conf = os.path.join(self.home, ".config", "needs-you")

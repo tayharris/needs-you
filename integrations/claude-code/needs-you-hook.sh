@@ -147,7 +147,7 @@ if message:
     lines.append(message[:400])
 lines.append("`%s` on `%s`" % (short_cwd, host))
 if handle:
-    if worktree:
+    if worktree and worktree != cwd:
         lines.append("Orca worktree `%s`" % worktree)
     orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
     jump = "orca terminal switch%s --terminal %s" % (

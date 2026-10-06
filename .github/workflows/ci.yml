@@ -54,3 +54,13 @@ jobs:
           set -e
           git ls-files '*.sh' | while read -r f; do bash -n "$f"; done
           bash -n integrations/claude-code/needs-you-hook.sh
+
+  # Report-only until the existing findings are fixed; then drop continue-on-error and
+  # replace shell-syntax. shellcheck is preinstalled on GitHub's Ubuntu images.
+  shellcheck:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: shellcheck --version
+      - run: shellcheck -S warning -f gcc $(git ls-files '*.sh') integrations/claude-code/needs-you-hook.sh
