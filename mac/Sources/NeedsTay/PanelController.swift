@@ -38,6 +38,12 @@ final class NeedsPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
     }
+
+    /// Escape collapses. Handled here too because nothing in the panel is a text view, so
+    /// `cancelOperation` isn't guaranteed to be sent.
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { onCancel?() } else { super.keyDown(with: event) }
+    }
 }
 
 /// NSHostingView that takes the first click (the panel is never key when collapsed) and
@@ -183,7 +189,12 @@ final class PanelController {
             panel.orderFrontRegardless()
             animated ? fade(to: alpha(for: display)) : (panel.alphaValue = alpha(for: display))
         } else if !isDragging, panel.frame != target {
-            if animated {
+            if animated, changedShape, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                // Reduce Motion: fade between shapes instead of springing.
+                panel.alphaValue = 0
+                panel.setFrame(target, display: true)
+                fade(to: alpha(for: display))
+            } else if animated {
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = changedShape ? 0.28 : 0.18
                     ctx.timingFunction = Self.timing(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)

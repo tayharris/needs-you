@@ -156,14 +156,24 @@ struct CardList: View {
             if needs.isEmpty {
                 EmptyState(model: model)
             }
-            ForEach(ItemPriority.allCases, id: \.self) { priority in
-                let group = needs.filter { $0.priority == priority }
-                if !group.isEmpty {
-                    SectionLabel(text: priority.rawValue.uppercased(), color: Theme.color(priority))
-                    ForEach(group) { item in
-                        CardView(item: item, model: model)
+            if let since = model.summarySince {
+                // Phase 3 start-of-day summary: oldest first, split at "since yesterday".
+                let ordered = needs.sorted { $0.createdAt < $1.createdAt }
+                let older = ordered.filter { $0.createdAt <= since }
+                let newer = ordered.filter { $0.createdAt > since }
+                SectionLabel(text: "GOOD MORNING · \(needs.count) OPEN", color: Theme.muted)
+                ForEach(older) { item in CardView(item: item, model: model) }
+                if !newer.isEmpty {
+                    HStack(spacing: 6) {
+                        Rectangle().fill(Theme.hairline).frame(height: 1)
+                        Text("SINCE YESTERDAY").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.faint).fixedSize()
+                        Rectangle().fill(Theme.hairline).frame(height: 1)
                     }
+                    .padding(.vertical, 2)
+                    ForEach(newer) { item in CardView(item: item, model: model) }
                 }
+            } else {
+                PriorityGroups(needs: needs, model: model)
             }
             if !recent.isEmpty {
                 Button {
@@ -189,6 +199,24 @@ struct CardList: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Cards grouped urgent → normal → low.
+private struct PriorityGroups: View {
+    let needs: [Item]
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        ForEach(ItemPriority.allCases, id: \.self) { priority in
+            let group = needs.filter { $0.priority == priority }
+            if !group.isEmpty {
+                SectionLabel(text: priority.rawValue.uppercased(), color: Theme.color(priority))
+                ForEach(group) { item in
+                    CardView(item: item, model: model)
+                }
+            }
+        }
     }
 }
 

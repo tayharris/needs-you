@@ -36,6 +36,9 @@ final class AppModel: ObservableObject {
     @Published var expandedContentHeight: CGFloat = 0
     /// Phase 3: the new-item preview currently shown, if any.
     @Published var previewItem: Item?
+    /// Phase 3: set while the start-of-day summary is open; items created after this
+    /// date sit below a "since yesterday" divider. Cleared on collapse.
+    @Published var summarySince: Date?
 
     let settings: AppSettings
 
@@ -44,9 +47,14 @@ final class AppModel: ObservableObject {
     /// Set by the app delegate.
     var openSettingsHandler: (() -> Void)?
 
-    /// Phase 3 hooks. Phase 2 leaves them nil and falls back to a plain pulse.
+    // Phase 3 hooks. Phase 2 leaves them nil: new items get a plain pulse, the context
+    // only changes by hand, and nothing reacts to feed restarts.
     var announcer: ((AppModel, [Item]) -> Void)?
-    var contextResolver: ((Date) -> ItemContext)?
+    /// Returns the scheduled context, or nil to leave the current one.
+    var contextResolver: ((Date) -> ItemContext?)?
+    var onContextPicked: ((ItemContext) -> Void)?
+    var onFeedRestart: (() -> Void)?
+    var onTick: ((Date) -> Void)?
 
     private var feed: ItemFeed?
     private var demoFeed: DemoFeed?
@@ -143,6 +151,7 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             }
         }
+        onFeedRestart?()
     }
 
     private func startInjector(_ demo: DemoFeed) {
@@ -206,10 +215,10 @@ final class AppModel: ObservableObject {
         if case .snoozed(let until) = visibility, until <= now {
             visibility = .shown
         }
-        if let contextResolver {
-            let resolved = contextResolver(now)
-            if resolved != settings.viewContext { settings.viewContext = resolved }
+        if let resolved = contextResolver?(now), resolved != settings.viewContext {
+            settings.viewContext = resolved
         }
+        onTick?(now)
         var pruned = store
         if !pruned.prune(now: now).isEmpty || pruned.snoozedCardCount != store.snoozedCardCount {
             store = pruned
@@ -266,10 +275,12 @@ final class AppModel: ObservableObject {
 
     func collapse() {
         isExpanded = false
+        summarySince = nil
     }
 
     func setContext(_ context: ItemContext) {
         settings.viewContext = context
+        onContextPicked?(context)
         objectWillChange.send()
     }
 

@@ -9,6 +9,8 @@ final class SettingsWindowController {
     private var window: NSWindow?
     private let model: AppModel
     private let hotKeyStatus: () -> Bool
+    /// Extra Settings sections (phase 3 adds its schedule options here).
+    var extraSettings: (() -> AnyView)?
 
     init(model: AppModel, hotKeyStatus: @escaping () -> Bool) {
         self.model = model
@@ -17,7 +19,7 @@ final class SettingsWindowController {
 
     func show() {
         if window == nil {
-            let view = SettingsView(model: model, settings: model.settings, hotKeyRegistered: hotKeyStatus())
+            let view = SettingsView(model: model, settings: model.settings, hotKeyRegistered: hotKeyStatus(), extra: extraSettings?())
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
             w.title = "NeedsTay Settings"
@@ -37,6 +39,7 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
     let hotKeyRegistered: Bool
+    var extra: AnyView?
 
     @State private var urlDraft = ""
     @State private var tokenDraft = ""
@@ -83,6 +86,8 @@ struct SettingsView: View {
                         .foregroundStyle(hotKeyRegistered ? .primary : .secondary)
                 }
             }
+
+            if let extra { extra }
         }
         .formStyle(.grouped)
         .frame(width: 460)

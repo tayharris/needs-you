@@ -12,6 +12,7 @@ let entries =
     + testEntries(HubClientTests.self, HubClientTests.allTests)
     + testEntries(SupportTests.self, SupportTests.allTests)
     + testEntries(DemoFeedTests.self, DemoFeedTests.allTests, async: DemoFeedTests.asyncTests)
+    + testEntries(ScheduleTests.self, ScheduleTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
