@@ -101,6 +101,8 @@ final class Phase3Controller: ObservableObject {
 
     private func checkMorningSummary(now: Date) {
         guard morningSummaryEnabled else { return }
+        // A hidden panel stays hidden; the summary shows once it's back (same morning).
+        guard model.visibility != .hidden else { return }
         let last = defaults.object(forKey: Key.lastSummary) as? Date
         guard summary.isDue(now: now, lastShown: last) else { return }
         // Wait for a successful poll so the summary isn't empty for the wrong reason.

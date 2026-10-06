@@ -6,7 +6,17 @@ import Foundation
 // command line. Process management lives in the app (LocalHubController).
 
 public enum LocalHub {
-    public static let port = 8765
+    public static let defaultPort = 8765
+    /// 8765, or NEEDS_YOU_HUB_PORT (test instances, so they never collide with the real app's hub).
+    public static let port: Int = port(environment: ProcessInfo.processInfo.environment)
+    /// NEEDS_YOU_HUB_LOOPBACK_ONLY=1: listen on 127.0.0.1 only and skip tailnet detection
+    /// (test instances: no network exposure, no Local Network prompt).
+    public static let loopbackOnly: Bool = ProcessInfo.processInfo.environment["NEEDS_YOU_HUB_LOOPBACK_ONLY"] == "1"
+
+    public static func port(environment: [String: String]) -> Int {
+        if let s = environment["NEEDS_YOU_HUB_PORT"], let p = Int(s), (1024...65535).contains(p) { return p }
+        return defaultPort
+    }
     /// What the app itself talks to.
     public static let clientURL = URL(string: "http://127.0.0.1:\(port)")!
     /// Shown in place of the hub's host name.

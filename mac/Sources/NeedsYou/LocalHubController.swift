@@ -53,19 +53,8 @@ final class LocalHubController: ObservableObject {
     // MARK: Paths
 
     /// ~/Library/Application Support/NeedsYou, or NEEDS_YOU_SUPPORT_DIR (tests, trial runs:
-    /// keeps hub.db and owner.token out of the real profile).
-    static var supportDirectory: URL {
-        if let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SUPPORT_DIR"], !dir.isEmpty {
-            return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
-        }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("NeedsYou", isDirectory: true)
-    }
-
-    static var usesCustomSupportDirectory: Bool {
-        !(ProcessInfo.processInfo.environment["NEEDS_YOU_SUPPORT_DIR"] ?? "").isEmpty
-    }
+    /// keeps hub.db, owner.token and tokens.json out of the real profile).
+    static var supportDirectory: URL { SupportPaths.directory() }
 
     static var dbURL: URL { supportDirectory.appendingPathComponent("hub.db") }
     static var ownerTokenURL: URL { supportDirectory.appendingPathComponent("owner.token") }
@@ -93,22 +82,14 @@ final class LocalHubController: ObservableObject {
     // MARK: Token
 
     /// Load (or mint) the owner token synchronously, so the first feed includes this Mac.
-    /// The file (mode 600) is what the hub reads; the Keychain holds a copy.
+    /// The file (mode 600) is the only copy: the hub reads it, and the Keychain is never used.
     func prepareToken() {
         guard settings.runLocalHub, !settings.isDemo else {
             settings.localHubToken = nil
             return
         }
         do {
-            // The local hub's token lives only in the mode-600 file. Keychain reads from an
-            // ad-hoc-signed build trigger a "login" keychain password prompt after every rebuild,
-            // so the Keychain copy is not used until builds have a stable signing identity.
-            let keychain: KeychainTokenStore? = nil
-            let fileExists = FileManager.default.fileExists(atPath: Self.ownerTokenURL.path)
-            let stored = fileExists ? nil : keychain?.read()
-            let token = try OwnerToken.loadOrCreate(at: Self.ownerTokenURL, fallback: stored)
-            if let keychain, keychain.read() != token { keychain.write(token) }
-            settings.localHubToken = token
+            settings.localHubToken = try OwnerToken.loadOrCreate(at: Self.ownerTokenURL)
         } catch {
             settings.localHubToken = nil
             fail("Couldn't create the hub's token file in \(Self.supportDirectory.path): \(error.localizedDescription)")
@@ -224,6 +205,7 @@ final class LocalHubController: ObservableObject {
 
     private func makePlan(script: String) async -> LocalHubPlan {
         let (ip, dns) = await Task.detached(priority: .utility) { () -> (String?, String?) in
+            if LocalHub.loopbackOnly { return (nil, nil) }
             let ip = TailnetAddress.current()
             return (ip, ip == nil ? nil : Self.magicDNSName())
         }.value

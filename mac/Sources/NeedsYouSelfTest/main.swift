@@ -20,6 +20,10 @@ let entries =
     + testEntries(InviteClientTests.self, InviteClientTests.allTests, async: InviteClientTests.asyncTests)
     + testEntries(LocalHubTests.self, LocalHubTests.allTests)
     + testEntries(PruningTests.self, PruningTests.allTests)
+    + testEntries(TokenStoreTests.self, TokenStoreTests.allTests)
+    + testEntries(MenuBarTests.self, MenuBarTests.allTests)
+    + testEntries(PanelPositionTests.self, PanelPositionTests.allTests)
+    + testEntries(PrefsMigrationTests.self, PrefsMigrationTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

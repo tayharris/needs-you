@@ -99,6 +99,7 @@ final class PanelController {
             model.hovering = inside
         }
         model.dragHandler = { [weak self] phase in self?.handleDrag(phase) }
+        model.resetPositionHandler = { [weak self] in self?.resetPosition() }
 
         model.objectWillChange
             .sink { [weak self] _ in self?.scheduleSync() }
@@ -128,8 +129,7 @@ final class PanelController {
     }
 
     private func sync(animated: Bool) {
-        let now = Date()
-        if model.visibility.isHidden(at: now) {
+        if !model.isPanelVisible {
             if panel.isVisible { panel.orderOut(nil) }
             setExpandedBehaviour(false)
             return
@@ -310,11 +310,25 @@ final class PanelController {
         return NSScreen.screens.first ?? NSScreen.main
     }
 
+    /// Where the panel may go on `screen`: its visible frame (below the menu bar, beside the
+    /// Dock), widened by the glow padding so the visible shape itself can reach the edge.
+    private func bounds(of screen: NSScreen) -> CGRect {
+        screen.visibleFrame.insetBy(dx: -Self.glowPadding, dy: -Self.glowPadding)
+    }
+
+    /// The panel frame for `size`: anchored at the placement's corner (so it grows away
+    /// from the nearest screen edges) and clamped to the screen. Default: top right.
     private func frame(forPanelSize size: CGSize) -> CGRect {
         guard let screen = currentScreen() else { return CGRect(origin: .zero, size: size) }
-        let corner = placement?.corner ?? .topRight
-        return PanelGeometry.frame(size: size, corner: corner, in: screen.visibleFrame,
-                                   margin: Self.edgeMargin - Self.glowPadding)
+        let placement = placement ?? PanelPlacement(corner: .topRight, screenID: PanelGeometry.screenID(screen.frame))
+        return PanelGeometry.frame(size: size, placement: placement, in: bounds(of: screen), margin: Self.edgeMargin)
+    }
+
+    /// Back to the default spot (top right of the main display) for this screen layout.
+    func resetPosition() {
+        model.settings.removePlacement(forLayout: layoutKey())
+        placement = nil
+        sync(animated: true)
     }
 
     private func handleDrag(_ phase: DragPhase) {
@@ -335,8 +349,10 @@ final class PanelController {
             let screens = NSScreen.screens
             guard let index = PanelGeometry.bestScreen(for: panel.frame, screens: screens.map(\.frame)) else { return }
             let screen = screens[index]
-            let corner = PanelGeometry.nearestCorner(to: panel.frame, in: screen.visibleFrame)
-            let newPlacement = PanelPlacement(corner: corner, screenID: PanelGeometry.screenID(screen.frame))
+            // Snap on: nearest corner. Off (default): exactly here, clamped to the screen.
+            let newPlacement = PanelGeometry.placement(forDropped: panel.frame, in: bounds(of: screen),
+                                                       screenID: PanelGeometry.screenID(screen.frame),
+                                                       snap: model.settings.snapToCorners)
             placement = newPlacement
             model.settings.setPlacement(newPlacement, forLayout: layoutKey())
             sync(animated: true)
@@ -371,6 +387,7 @@ final class PanelController {
 
     private func makeContextMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let snooze = NSMenuItem(title: "Snooze", action: nil, keyEquivalent: "")
         let sub = NSMenu()
         for option in SnoozeOption.panelChoices {
@@ -378,7 +395,14 @@ final class PanelController {
         }
         snooze.submenu = sub
         menu.addItem(snooze)
-        menu.addItem(ClosureMenuItem(title: "Hide (⌃⌥Space to show)") { [weak model] in model?.hidePanel() })
+        let hide = ClosureMenuItem(title: "Hide Floating Panel") { [weak model] in model?.hidePanel() }
+        if !model.canHidePanel {
+            // The menu bar icon is off; hiding both would leave no way back.
+            hide.isEnabled = false
+            hide.toolTip = "Turn on the menu bar icon in Settings first"
+        }
+        menu.addItem(hide)
+        menu.addItem(ClosureMenuItem(title: "Reset Position") { [weak model] in model?.resetPosition() })
         menu.addItem(.separator())
 
         let other = model.context.other
@@ -387,11 +411,8 @@ final class PanelController {
         menu.addItem(ClosureMenuItem(title: "Refresh Now") { [weak model] in model?.pollNow(full: true) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(title: "Settings…") { [weak model] in model?.openSettings() })
-        menu.addItem(ClosureMenuItem(title: "About Needs You") {
-            // A user click: one of the few places allowed to activate the app.
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Needs You"])
-        })
+        // A user click: one of the few places allowed to activate the app.
+        menu.addItem(ClosureMenuItem(title: "About Needs You") { AboutPanel.show() })
         menu.addItem(ClosureMenuItem(title: "Quit Needs You") { NSApp.terminate(nil) })
         return menu
     }

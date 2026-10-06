@@ -4,7 +4,7 @@ import ServiceManagement
 import SwiftUI
 
 /// The Settings window: your name, the hub on this Mac, connecting with a link, inviting
-/// machines, the manual hub list (URLs in UserDefaults, one token per hub in the Keychain),
+/// machines, the manual hub list (URLs in UserDefaults, one token per hub in tokens.json),
 /// demo mode, snooze breakthrough, open at login.
 ///
 /// Focus rule: `show()` is the ONLY place the app activates or makes a window key, and it
@@ -92,6 +92,7 @@ struct SettingsView: View {
     @State private var inviteUses = 1
     @State private var inviteExpiry: InviteExpiry = .day
     @State private var copied: String?
+    @State private var visibilityMessage: String?
 
     /// Only when nothing works out of the box (the local hub is off and no hubs are set).
     private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo }
@@ -109,6 +110,7 @@ struct SettingsView: View {
             connectSection
             if connect.canInvite && !settings.isDemo { inviteSection }
             hubsSection
+            menuBarSection
 
             Section("Behaviour") {
                 Toggle("Demo mode (fixture items, no hub)", isOn: Binding(
@@ -257,8 +259,43 @@ struct SettingsView: View {
         }
     }
 
+    private var menuBarSection: some View {
+        Section {
+            Toggle("Show menu bar icon", isOn: Binding(
+                get: { settings.showMenuBarIcon },
+                set: { on in
+                    visibilityMessage = model.setShowMenuBarIcon(on) ? nil
+                        : "The floating panel is hidden, so the menu bar icon stays. Show the panel first."
+                }
+            ))
+            Toggle("Show count in menu bar", isOn: $settings.showMenuBarCount)
+                .disabled(!settings.showMenuBarIcon)
+            Toggle("Show floating panel", isOn: Binding(
+                get: { model.visibility != .hidden },
+                set: { on in
+                    if on { model.showPanel(); visibilityMessage = nil }
+                    else if !model.hidePanel() { visibilityMessage = "Turn on the menu bar icon first: the panel and the icon can't both be hidden." }
+                }
+            ))
+            Toggle("Urgent items show the panel even when hidden", isOn: $settings.urgentShowsHiddenPanel)
+            Toggle("Snap to corners", isOn: $settings.snapToCorners)
+            if let visibilityMessage {
+                Text(visibilityMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Menu bar and panel")
+        } footer: {
+            Text("While the panel is hidden, new items only update the menu bar; an urgent one pulses the icon once. ⌃⌥Space shows or hides the panel. Drag the pill anywhere; Reset Position is in the menu bar and right-click menus.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var hubsSection: some View {
         Section {
+            if settings.tokensNeedReconnect && !settings.hubsMissingTokens.isEmpty {
+                Text("Hub tokens are no longer kept in the Keychain. Re-connect \(settings.hubsMissingTokens.map(HubName.short).joined(separator: ", ")) once with a link from its owner (Connect with link), or paste its token below.")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
             if settings.runLocalHub && !settings.isDemo {
                 HStack {
                     Text("This Mac").bold()
@@ -287,7 +324,7 @@ struct SettingsView: View {
         } header: {
             Text("Hubs")
         } footer: {
-            Text("Manual setup, if you have a hub URL and token instead of a link. Polled in order (this Mac first): the first reachable hub is used and the next takes over on errors. Tokens are stored in your Keychain.")
+            Text("Manual setup, if you have a hub URL and token instead of a link. Polled in order (this Mac first): the first reachable hub is used and the next takes over on errors. Tokens are stored in ~/Library/Application Support/NeedsYou/tokens.json (mode 600).")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -336,8 +373,7 @@ struct SettingsView: View {
     private func load() {
         rows = settings.hubURLs.map { url in
             var row = HubRow(url: url.absoluteString)
-            // Reads the Keychain; Settings is only ever opened by the user.
-            row.hasToken = settings.tokenStore(for: url).read() != nil
+            row.hasToken = settings.token(for: url) != nil
             row.role = settings.role(for: url)
             return row
         }
@@ -365,12 +401,12 @@ struct SettingsView: View {
                 problems.append("\(HubName.short(url)): plain http:// only works for *.ts.net, local names and IP addresses; use https://")
             }
             if !rows[i].tokenDraft.isEmpty {
-                if settings.tokenStore(for: url).write(rows[i].tokenDraft) {
+                // A hand-entered token's role is unknown.
+                if settings.saveToken(rows[i].tokenDraft, role: nil, for: url) {
                     rows[i].hasToken = true
                     rows[i].tokenDraft = ""
-                    settings.setRole(nil, for: url)   // a hand-entered token's role is unknown
                 } else {
-                    problems.append("Couldn't save the token for \(HubName.short(url)) to the Keychain")
+                    problems.append("Couldn't save the token for \(HubName.short(url)) to tokens.json")
                 }
             }
             if !rows[i].hasToken { problems.append("\(HubName.short(url)) has no token") }
@@ -379,10 +415,11 @@ struct SettingsView: View {
         // Forget tokens and roles for hubs that were removed.
         let kept = Set(urls.compactMap(AppSettings.parseHubURL).map(HubName.key))
         for old in settings.hubURLs where !kept.contains(HubName.key(old)) {
-            settings.tokenStore(for: old).delete()
+            settings.removeToken(for: old)
         }
         settings.hubURLStrings = urls
-        settings.pruneRoles()
+        settings.pruneTokens()
+        if settings.hubsMissingTokens.isEmpty { settings.tokensNeedReconnect = false }
         if (!urls.isEmpty || settings.runLocalHub), settings.demoMode, !settings.demoForcedByEnvironment {
             settings.demoMode = false
             localHub.apply()
@@ -403,7 +440,7 @@ struct SettingsView: View {
             rows[i].status = "Enter an http(s)://host[:port] URL"
             return
         }
-        let token = rows[i].tokenDraft.isEmpty ? (settings.tokenStore(for: url).read() ?? "") : rows[i].tokenDraft
+        let token = rows[i].tokenDraft.isEmpty ? (settings.token(for: url) ?? "") : rows[i].tokenDraft
         rows[i].status = "Testing…"
         Task {
             let client = HubClient(config: HubConfig(baseURL: url, token: token))
@@ -457,7 +494,7 @@ private struct HubRowView: View {
             }
             HStack {
                 SecureField("Token", text: $row.tokenDraft,
-                            prompt: Text(row.hasToken ? "Saved in Keychain (leave blank to keep)" : "Read/patch token"))
+                            prompt: Text(row.hasToken ? "Saved (leave blank to keep)" : "Read/patch token"))
                 Button("Test", action: test)
             }
             if let status = row.status {

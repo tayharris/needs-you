@@ -95,7 +95,7 @@ public enum HubName {
         return String(host.split(separator: ".").first ?? Substring(host))
     }
 
-    /// Keychain account / identity for a hub: scheme://host[:port][/path], lowercased
+    /// The tokens.json key / identity for a hub: scheme://host[:port][/path], lowercased
     /// host, no trailing slash.
     public static func key(_ url: URL) -> String {
         var c = URLComponents(url: url, resolvingAgainstBaseURL: false) ?? URLComponents()

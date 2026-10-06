@@ -62,7 +62,7 @@ struct ExpandedHeader: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 5) {
             Text(model.needsLabel)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
@@ -77,11 +77,13 @@ struct ExpandedHeader: View {
                     Button(option.title) { model.snoozePanel(option) }
                 }
                 Divider()
-                Button("Hide until ⌃⌥Space") { model.hidePanel() }
+                Button("Hide Floating Panel") { model.hidePanel() }
+                    .disabled(!model.canHidePanel)
+                Button("Reset Position") { model.resetPosition() }
             } label: {
                 Image(systemName: "moon.zzz")
                     .font(.system(size: 12, weight: .medium))
-                    .frame(width: 20, height: 20)
+                    .frame(width: 18, height: 20)
                     .contentShape(Rectangle())
             }
             .menuStyle(.button)
@@ -93,8 +95,12 @@ struct ExpandedHeader: View {
             HeaderButton(symbol: "arrow.clockwise", help: "Refresh now") { model.pollNow(full: true) }
             HeaderButton(symbol: "gearshape", help: "Settings") { model.openSettings() }
             HeaderButton(symbol: "chevron.up", help: "Collapse (Esc)") { model.collapse() }
+            if model.canHidePanel {
+                // Hide the whole panel; the menu bar icon (or ⌃⌥Space) brings it back.
+                HeaderButton(symbol: "xmark", help: "Hide floating panel (menu bar icon or ⌃⌥Space shows it)") { model.hidePanel() }
+            }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .foregroundStyle(.white.opacity(0.8))
         .contentShape(Rectangle())
         .gesture(
@@ -114,7 +120,7 @@ private struct HeaderButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
-                .frame(width: 20, height: 20)
+                .frame(width: 18, height: 20)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
