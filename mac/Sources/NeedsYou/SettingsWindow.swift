@@ -59,6 +59,26 @@ private struct HubRow: Identifiable, Equatable {
     var status: String?
 }
 
+/// What the Access section's confirmation alert is about.
+private enum PendingRevoke: Equatable {
+    case invite(InviteSummary)
+    case token(TokenSummary)
+
+    var title: String {
+        switch self {
+        case .invite(let invite): return "Revoke invite “\(invite.name)”?"
+        case .token(let token): return "Revoke “\(token.name)”?"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .invite: return "Its link stops working. Machines it already set up keep their tokens."
+        case .token: return "That machine can no longer post. Its open items stay until resolved or dismissed. This can't be undone; it needs a new invite to reconnect."
+        }
+    }
+}
+
 /// Invite expiry choices.
 private enum InviteExpiry: Int, CaseIterable, Identifiable {
     case hour = 1, day = 24, week = 168, month = 720
@@ -93,6 +113,7 @@ struct SettingsView: View {
     @State private var inviteExpiry: InviteExpiry = .day
     @State private var copied: String?
     @State private var visibilityMessage: String?
+    @State private var pendingRevoke: PendingRevoke?
 
     /// Only when nothing works out of the box (the local hub is off and no hubs are set).
     private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo }
@@ -108,7 +129,10 @@ struct SettingsView: View {
 
             thisMacSection
             connectSection
-            if connect.canInvite && !settings.isDemo { inviteSection }
+            if connect.canInvite && !settings.isDemo {
+                inviteSection
+                accessSection
+            }
             hubsSection
             menuBarSection
 
@@ -256,6 +280,69 @@ struct SettingsView: View {
         } footer: {
             Text("Paste the agent prompt into an agent on the new machine, or run the one-liner there. Send the Mac link to another Mac.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var accessSection: some View {
+        Section {
+            HStack {
+                Text("Invites").bold()
+                Spacer()
+                Button("Refresh") { connect.refreshAccess() }
+                    .disabled(isWorking(connect.accessStatus))
+            }
+            if connect.accessInvites.isEmpty {
+                Text("No open invites.").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(connect.accessInvites) { invite in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(invite.name)
+                        Text("\(invite.role?.rawValue ?? "?") · \(invite.left) of \(invite.uses) left\(invite.expiresAt.map { " · expires \(ConnectController.formatExpiry($0))" } ?? "")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Revoke", role: .destructive) { pendingRevoke = .invite(invite) }
+                }
+            }
+            Text("Machines").bold()
+            if connect.accessTokens.isEmpty {
+                Text("Press Refresh to list the tokens on this hub.").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(connect.accessTokens) { token in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(token.name)
+                        Text("\(token.role?.rawValue ?? "?")\(token.openItems > 0 ? " · \(token.openItems) open" : "")\(token.current ? " · this Mac" : "")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if !token.current {
+                        Button("Revoke", role: .destructive) { pendingRevoke = .token(token) }
+                    }
+                }
+            }
+            statusText(connect.accessStatus)
+        } header: {
+            Text("Access")
+        } footer: {
+            Text("Revoking an invite stops new machines from using its link; machines it set up keep their own tokens. Revoking a machine's token stops it from posting.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .onAppear { connect.refreshAccess() }
+        .alert(pendingRevoke?.title ?? "", isPresented: Binding(
+            get: { pendingRevoke != nil }, set: { if !$0 { pendingRevoke = nil } }
+        ), presenting: pendingRevoke) { item in
+            Button("Revoke", role: .destructive) {
+                switch item {
+                case .invite(let invite): connect.revoke(invite)
+                case .token(let token): connect.revoke(token)
+                }
+                pendingRevoke = nil
+            }
+            Button("Cancel", role: .cancel) { pendingRevoke = nil }
+        } message: { item in
+            Text(item.message)
         }
     }
 

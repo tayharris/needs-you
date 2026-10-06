@@ -7,6 +7,8 @@ import Foundation
 //                            → 201 {code, join_url, mac_url, expires_at}
 //   POST /v1/invites/redeem  (no auth)      {code, host}
 //                            → 200 {token, role, name, hub_urls, hub_id} | 404
+//   GET /v1/invites, DELETE /v1/invites/<id>, GET /v1/tokens, DELETE /v1/tokens/<id>
+//                            (Bearer owner) list and revoke
 
 /// A token's role on the hub. `owner` = reader + may create invites.
 public enum HubRole: String, Codable, CaseIterable, Sendable {
@@ -213,6 +215,72 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     }
 }
 
+/// An invite as `GET /v1/invites` lists it (not revoked, not expired; `left` may be 0).
+public struct InviteSummary: Decodable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+    public var role: HubRole?
+    public var uses: Int
+    public var left: Int
+    public var expiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, role, uses, left
+        case expiresAt = "expires_at"
+    }
+
+    public init(id: String, name: String, role: HubRole?, uses: Int, left: Int, expiresAt: String?) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.uses = uses
+        self.left = left
+        self.expiresAt = expiresAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        role = (try? c.decodeIfPresent(String.self, forKey: .role)).flatMap { $0.flatMap(HubRole.init(rawValue:)) }
+        uses = (try? c.decodeIfPresent(Int.self, forKey: .uses)) ?? 0
+        left = (try? c.decodeIfPresent(Int.self, forKey: .left)) ?? 0
+        expiresAt = try? c.decodeIfPresent(String.self, forKey: .expiresAt)
+    }
+}
+
+/// An active token as `GET /v1/tokens` lists it. Never carries the secret.
+public struct TokenSummary: Decodable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+    public var role: HubRole?
+    public var openItems: Int
+    /// The token making the request (this Mac's own owner token).
+    public var current: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, role, current
+        case openItems = "open_items"
+    }
+
+    public init(id: String, name: String, role: HubRole?, openItems: Int = 0, current: Bool = false) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.openItems = openItems
+        self.current = current
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        role = (try? c.decodeIfPresent(String.self, forKey: .role)).flatMap { $0.flatMap(HubRole.init(rawValue:)) }
+        openItems = (try? c.decodeIfPresent(Int.self, forKey: .openItems)) ?? 0
+        current = (try? c.decodeIfPresent(Bool.self, forKey: .current)) ?? false
+    }
+}
+
 public enum ConnectError: Error, LocalizedError, Equatable {
     case badLink
     case httpNotAllowed(host: String)
@@ -301,6 +369,41 @@ public struct InviteClient: Sendable {
         let data = try await send(request, hub: hub, notFound: .http(status: 404, message: "this hub doesn't support invites yet"))
         guard let response = try? JSONDecoder().decode(InviteResponse.self, from: data) else { throw ConnectError.invalidResponse }
         return response
+    }
+
+    /// GET /v1/invites with an owner token.
+    public func listInvites(hub: URL, token: String) async throws -> [InviteSummary] {
+        struct Body: Decodable { var invites: [InviteSummary] }
+        let data = try await ownerRequest("GET", path: "v1/invites", hub: hub, token: token)
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { throw ConnectError.invalidResponse }
+        return body.invites
+    }
+
+    /// GET /v1/tokens with an owner token (active tokens only).
+    public func listTokens(hub: URL, token: String) async throws -> [TokenSummary] {
+        struct Body: Decodable { var tokens: [TokenSummary] }
+        let data = try await ownerRequest("GET", path: "v1/tokens", hub: hub, token: token)
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { throw ConnectError.invalidResponse }
+        return body.tokens
+    }
+
+    /// DELETE /v1/invites/<id>.
+    public func revokeInvite(id: String, hub: URL, token: String) async throws {
+        _ = try await ownerRequest("DELETE", path: "v1/invites/" + id, hub: hub, token: token)
+    }
+
+    /// DELETE /v1/tokens/<id>.
+    public func revokeToken(id: String, hub: URL, token: String) async throws {
+        _ = try await ownerRequest("DELETE", path: "v1/tokens/" + id, hub: hub, token: token)
+    }
+
+    private func ownerRequest(_ method: String, path: String, hub: URL, token: String) async throws -> Data {
+        guard HubTransportPolicy.allows(hub) else { throw ConnectError.httpNotAllowed(host: hub.host ?? hub.absoluteString) }
+        let request = HubClient.makeRequest(url: hub.appendingPathComponent(path), method: method, token: token)
+        let notFound: ConnectError = method == "GET"
+            ? .http(status: 404, message: "this hub can't list or revoke yet; update it")
+            : .http(status: 404, message: "already revoked, or not on this hub")
+        return try await send(request, hub: hub, notFound: notFound)
     }
 
     private func send(_ request: URLRequest, hub: URL, notFound: ConnectError) async throws -> Data {

@@ -117,9 +117,9 @@ final class HubListMergeTests: XCTestCase {
     }
 
     func testRedeemResponseDecoding() throws {
-        let json = #"{"token":"tok","role":"owner","name":"Taylor's Mac","hub_urls":["http://a.ts.net:8765"],"hub_id":"a","extra":1}"#
+        let json = #"{"token":"tok","role":"owner","name":"Sam's Mac","hub_urls":["http://a.ts.net:8765"],"hub_id":"a","extra":1}"#
         let r = try JSONDecoder().decode(RedeemResponse.self, from: Data(json.utf8))
-        XCTAssertEqual(r, RedeemResponse(token: "tok", role: .owner, name: "Taylor's Mac", hubURLs: ["http://a.ts.net:8765"], hubID: "a"))
+        XCTAssertEqual(r, RedeemResponse(token: "tok", role: .owner, name: "Sam's Mac", hubURLs: ["http://a.ts.net:8765"], hubID: "a"))
         // Unknown roles and missing optional fields don't fail the redeem.
         let lax = try JSONDecoder().decode(RedeemResponse.self, from: Data(#"{"token":"t","role":"admin"}"#.utf8))
         XCTAssertNil(lax.role)
@@ -190,6 +190,7 @@ final class InviteClientTests: XCTestCase {
         ("testRedeemUnreachable", testRedeemUnreachable),
         ("testRedeemPlainHTTPOffTailnetIsRefusedWithoutNetwork", testRedeemPlainHTTPOffTailnetIsRefusedWithoutNetwork),
         ("testCreateInvite", testCreateInvite),
+        ("testListAndRevokeAccess", testListAndRevokeAccess),
     ]
 
     override func setUp() {
@@ -211,7 +212,7 @@ final class InviteClientTests: XCTestCase {
         StubURLProtocol.handler = { _ in
             (200, Data(#"{"token":"tok","role":"reader","name":"mac","hub_urls":["http://hub1.t.ts.net:8765","http://hub2.t.ts.net:8765"],"hub_id":"hub1"}"#.utf8))
         }
-        let response = try await InviteClient(session: StubURLProtocol.session()).redeem(link, host: "mac-a")
+        let response = try await InviteClient(session: StubURLProtocol.session()).redeem(link, host: "devbox")
         XCTAssertEqual(response.token, "tok")
         XCTAssertEqual(response.role, .reader)
         XCTAssertEqual(response.hubURLs.count, 2)
@@ -220,7 +221,7 @@ final class InviteClientTests: XCTestCase {
         XCTAssertEqual(sent.request.httpMethod, "POST")
         XCTAssertNil(sent.request.value(forHTTPHeaderField: "Authorization"))
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: sent.body) as? [String: String])
-        XCTAssertEqual(body, ["code": "abc", "host": "mac-a"])
+        XCTAssertEqual(body, ["code": "abc", "host": "devbox"])
     }
 
     func testRedeem404IsExpiredOrUsed() async {
@@ -279,6 +280,42 @@ final class InviteClientTests: XCTestCase {
             XCTFail("expected an error")
         } catch {
             XCTAssertEqual(error as? ConnectError, .unauthorized)
+        }
+    }
+
+    func testListAndRevokeAccess() async throws {
+        let hub = URL(string: "http://127.0.0.1:8765")!
+        let client = InviteClient(session: StubURLProtocol.session())
+        StubURLProtocol.handler = { request in
+            switch (request.httpMethod ?? "", request.url?.path ?? "") {
+            case ("GET", "/v1/invites"):
+                return (200, Data(#"{"invites":[{"id":"01I","name":"servers","role":"sender","uses":5,"left":0,"created_at":"x","expires_at":"2026-10-09T17:00:00.000Z","new":1}]}"#.utf8))
+            case ("GET", "/v1/tokens"):
+                return (200, Data(#"{"tokens":[{"id":"01T","name":"servers-devbox","role":"sender","open_items":2,"current":false},{"id":"01O","name":"local-owner","role":"owner","current":true}]}"#.utf8))
+            case ("DELETE", "/v1/tokens/01T"), ("DELETE", "/v1/invites/01I"):
+                return (200, Data(#"{"revoked":[{"id":"01T","name":"servers-devbox"}]}"#.utf8))
+            default:
+                return (404, Data(#"{"error":"not_found"}"#.utf8))
+            }
+        }
+        let invites = try await client.listInvites(hub: hub, token: "owner-tok")
+        XCTAssertEqual(invites, [InviteSummary(id: "01I", name: "servers", role: .sender, uses: 5, left: 0,
+                                               expiresAt: "2026-10-09T17:00:00.000Z")])
+        let tokens = try await client.listTokens(hub: hub, token: "owner-tok")
+        XCTAssertEqual(tokens, [TokenSummary(id: "01T", name: "servers-devbox", role: .sender, openItems: 2),
+                                TokenSummary(id: "01O", name: "local-owner", role: .owner, current: true)])
+        try await client.revokeToken(id: "01T", hub: hub, token: "owner-tok")
+        try await client.revokeInvite(id: "01I", hub: hub, token: "owner-tok")
+        let deletes = StubURLProtocol.recorded.filter { $0.request.httpMethod == "DELETE" }
+        XCTAssertEqual(deletes.map { $0.request.url?.path ?? "" }, ["/v1/tokens/01T", "/v1/invites/01I"])
+        XCTAssertTrue(deletes.allSatisfy { $0.request.value(forHTTPHeaderField: "Authorization") == "Bearer owner-tok" })
+
+        // already revoked: a 404 is an error, not success
+        do {
+            try await client.revokeToken(id: "gone", hub: hub, token: "owner-tok")
+            XCTFail("expected an error")
+        } catch {
+            XCTAssertEqual(error as? ConnectError, .http(status: 404, message: "already revoked, or not on this hub"))
         }
     }
 }
