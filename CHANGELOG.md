@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-06
+
+The first packaged release: a private preview for invited testers.
+
 ### Added
 
 - CLI: `needs-you doctor` checks this machine's setup (env file and its mode, PATH, each hub's version and the token's role, the outbox, Claude Code hooks and skill, Orca settings, the flush schedule) and prints a fix for each problem. `--json` is for agents. Read-only; it never posts and never prints the token.
@@ -12,6 +16,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Mac app: when nothing is waiting, the pill shows a faint "Nothing needs <you>" instead of a sliver.
 - Orca: the automation prompt block (`--orca`) posts with stable keys and Jira, PR and branch links, names the worktree and the `orca terminal switch` command, and resolves the same key once it's handled. Agent cards from Orca terminals carry the same command; `NEEDS_YOU_ORCA_ENVIRONMENT` adds `--environment` for paired Orca servers.
 - `mac/scripts/install.sh` updates the installed app in place, with `--rollback`.
+- Releases: a downloadable Mac app zip (ad-hoc signed), the server tarball, the CLI and `SHA256SUMS` on GitHub Releases.
+- Agent cards from Orca terminals don't repeat the worktree path when it's the working directory.
 
 ### Changed
 
