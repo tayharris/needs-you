@@ -3,50 +3,7 @@ import Combine
 import NeedsYouCore
 import SwiftUI
 
-/// The floating panel. Non-activating, so clicking it never steals focus from the app
-/// you're typing in; it only takes key status while expanded (for Escape).
-final class NeedsPanel: NSPanel {
-    var allowsKey = false
-    var onCancel: (() -> Void)?
-
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 60, height: 40),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        // PLAN.md "Window behaviour": the part that went wrong before.
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        isFloatingPanel = true
-        hidesOnDeactivate = false
-        becomesKeyOnlyIfNeeded = true
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        isMovable = false            // dragging is handled explicitly so it can snap
-        isReleasedWhenClosed = false
-        animationBehavior = .none
-        appearance = NSAppearance(named: .darkAqua)
-        isExcludedFromWindowsMenu = true
-    }
-
-    override var canBecomeKey: Bool { allowsKey }
-    override var canBecomeMain: Bool { false }
-
-    override func cancelOperation(_ sender: Any?) {
-        onCancel?()
-    }
-
-    /// Escape collapses. Handled here too because nothing in the panel is a text view, so
-    /// `cancelOperation` isn't guaranteed to be sent.
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onCancel?() } else { super.keyDown(with: event) }
-    }
-}
-
-/// NSHostingView that takes the first click (the panel is never key when collapsed) and
+/// NSHostingView that takes the first click (the panel is never key) and
 /// routes right-clicks to the panel menu.
 final class PanelHostingView<Content: View>: NSHostingView<Content> {
     var menuProvider: (() -> NSMenu?)?
@@ -93,12 +50,14 @@ final class PanelController {
     static let edgeMargin: CGFloat = 12
 
     private let model: AppModel
-    private let panel = NeedsPanel()
+    private let panel = FloatingPanel()
     private let container = PanelContainerView()
     private let effect = NSVisualEffectView()
     private var hosting: PanelHostingView<RootView>!
     private var cancellables = Set<AnyCancellable>()
     private var clickOutsideMonitor: Any?
+    private var escapeMonitors: [Any] = []
+    private var escapeHotKey: HotKey?
 
     private var placement: PanelPlacement?
     private var dragStartMouse: NSPoint?
@@ -139,7 +98,6 @@ final class PanelController {
             guard let model, model.hovering != inside else { return }
             model.hovering = inside
         }
-        panel.onCancel = { [weak model] in model?.collapse() }
         model.dragHandler = { [weak self] phase in self?.handleDrag(phase) }
 
         model.objectWillChange
@@ -227,23 +185,56 @@ final class PanelController {
         }
     }
 
+    /// Expanded-only helpers. None of these touch key status or activation.
     private func setExpandedBehaviour(_ expanded: Bool) {
-        panel.allowsKey = expanded
         if expanded {
-            if !panel.isKeyWindow { panel.makeKey() }
             if clickOutsideMonitor == nil {
-                // Global monitors see clicks in *other* apps; no Accessibility permission needed for mouse events.
+                // Global monitors see clicks in *other* apps; mouse events need no permission.
                 clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                    Task { @MainActor in self?.model.collapse() }
+                    MainActor.assumeIsolated { self?.model.collapse() }
                 }
             }
+            installEscape(swallow: model.expandedByUser)
         } else {
-            if panel.isKeyWindow { panel.resignKey() }
             if let monitor = clickOutsideMonitor {
                 NSEvent.removeMonitor(monitor)
                 clickOutsideMonitor = nil
             }
+            removeEscape()
         }
+    }
+
+    /// Escape collapses without the panel ever being key:
+    /// - local monitor: key events delivered to this app (e.g. while Settings is front);
+    /// - global monitor: other apps' key events, only if the user granted Accessibility
+    ///   (otherwise it silently sees nothing, and never prompts);
+    /// - when the user opened the panel by clicking it, a Carbon Escape hotkey for as long
+    ///   as it stays expanded (no permission needed). That one swallows Escape from the
+    ///   front app while expanded, so it's never armed for automatic expansions such as
+    ///   the morning summary.
+    private func installEscape(swallow: Bool) {
+        if escapeMonitors.isEmpty {
+            if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+                guard event.keyCode == 53 else { return event }
+                MainActor.assumeIsolated { self?.model.collapse() }
+                return nil
+            }) { escapeMonitors.append(local) }
+            if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+                guard event.keyCode == 53 else { return }
+                MainActor.assumeIsolated { self?.model.collapse() }
+            }) { escapeMonitors.append(global) }
+        }
+        if swallow, escapeHotKey == nil {
+            escapeHotKey = HotKey(id: 2, keyCode: 53, modifiers: 0) { [weak self] in
+                MainActor.assumeIsolated { self?.model.collapse() }
+            }
+        }
+    }
+
+    private func removeEscape() {
+        escapeMonitors.forEach(NSEvent.removeMonitor)
+        escapeMonitors.removeAll()
+        escapeHotKey = nil
     }
 
     // MARK: Sizes (visible shape; the panel adds glow padding around it)
@@ -287,7 +278,7 @@ final class PanelController {
 
     private func alpha(for display: PanelDisplay) -> CGFloat {
         switch display {
-        case .idle: return model.hovering ? 0.7 : 0.10
+        case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.10 : 0.35)  // "set up" state is a little easier to find
         case .waiting: return model.hovering ? 1.0 : 0.85
         case .preview, .expanded: return 1.0
         }

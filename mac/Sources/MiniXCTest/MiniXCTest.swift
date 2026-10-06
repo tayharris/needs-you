@@ -103,8 +103,8 @@ public func XCTUnwrap<T>(_ expression: @autoclosure () throws -> T?, _ message: 
 
 public struct TestEntry {
     public let name: String
-    public let run: () async throws -> Void
-    public init(name: String, run: @escaping () async throws -> Void) {
+    public let run: @MainActor () async throws -> Void
+    public init(name: String, run: @escaping @MainActor () async throws -> Void) {
         self.name = name
         self.run = run
     }
@@ -142,6 +142,7 @@ public func testEntries<T: XCTestCase>(_ type: T.Type, _ tests: [(String, (T) ->
 }
 
 /// Runs entries, prints an XCTest-like summary, and returns the process exit code.
+@MainActor
 public func runTests(_ entries: [TestEntry]) async -> Int32 {
     var failed = 0
     let start = Date()

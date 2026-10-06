@@ -26,10 +26,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         settingsWindow = SettingsWindowController(model: model) { [weak self] in self?.hotKey?.isRegistered ?? false }
+        // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
         if let phase3 { settingsWindow.extraSettings = { phase3.settingsSection } }
 
         panel = PanelController(model: model)
+
+        // Focus-rule tripwire: activation is only legitimate right after the user opens
+        // Settings. Anything else is a regression; log it loudly.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                let settingsFront = NSApp.windows.contains { $0.isVisible && $0.title.hasSuffix("Settings") }
+                NSLog("NeedsYou focus: app became active (settings window visible: \(settingsFront))")
+            }
+        }
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { note in
+            MainActor.assumeIsolated {
+                if note.object is FloatingPanel { NSLog("NeedsYou focus: REGRESSION, the panel became key") }
+            }
+        }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
@@ -39,10 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         model.start()
 
+        // Focus rule: nothing here opens a window or activates the app. With no hub set
+        // up, the pill shows a "set up" state; clicking it is what opens Settings.
         if let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_DIR"] {
             runSnapshotTour(into: URL(fileURLWithPath: dir))
-        } else if !settings.isDemo, settings.hubURL == nil {
-            settingsWindow.show()
         }
     }
 
@@ -65,10 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("7-summary", { [weak self] model in
                 model.previewItem = nil
                 self?.phase3?.showSummaryNow()
-            }),
-            ("8-settings", { [weak self] model in
-                model.collapse()
-                self?.settingsWindow.show()
             }),
         ]
         Task { @MainActor in

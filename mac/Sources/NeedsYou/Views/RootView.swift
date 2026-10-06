@@ -43,7 +43,7 @@ struct RootView: View {
         case .preview(let item):
             PreviewPill(item: item, now: model.now)
                 .contentShape(Rectangle())
-                .onTapGesture { model.expand() }
+                .onTapGesture { model.expand(byUser: true) }
         case .expanded:
             ExpandedView(model: model)
         }
@@ -101,7 +101,7 @@ private struct PillInteraction: ViewModifier {
                     .onChanged { _ in model.dragHandler?(.changed) }
                     .onEnded { _ in model.dragHandler?(.ended) }
             )
-            .onTapGesture { model.toggleExpanded() }
+            .onTapGesture { model.isConfigured ? model.toggleExpanded() : model.openSettings() }
     }
 }
 

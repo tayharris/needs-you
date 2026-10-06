@@ -24,6 +24,8 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var store = ItemStore()
     @Published private(set) var isExpanded = false
+    /// True when the user clicked to expand (vs. the morning summary or NEEDS_YOU_EXPAND).
+    private(set) var expandedByUser = false
     @Published private(set) var visibility: PanelVisibility = .shown
     @Published var hovering = false
     @Published private(set) var lastCheck: Date?
@@ -262,11 +264,13 @@ final class AppModel: ObservableObject {
 
     // MARK: Expand / collapse
 
+    /// Clicking the pill. Never makes the panel key or activates the app.
     func toggleExpanded() {
-        isExpanded ? collapse() : expand()
+        isExpanded ? collapse() : expand(byUser: true)
     }
 
-    func expand() {
+    func expand(byUser: Bool = false) {
+        expandedByUser = byUser
         previewItem = nil
         if visibility.isHidden(at: Date()) { visibility = .shown }
         isExpanded = true

@@ -30,7 +30,6 @@ struct CardView: View {
                         .foregroundStyle(.white.opacity(0.85))
                         .tint(Theme.normal)
                         .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
                 }
 
                 if !item.links.isEmpty {
@@ -80,7 +79,6 @@ struct LinkRow: View {
                         .foregroundStyle(Theme.faint)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .textSelection(.enabled)
                         .help("Not opened: link scheme isn't on the allow-list")
                 }
             }

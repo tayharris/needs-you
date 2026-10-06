@@ -13,6 +13,7 @@ let entries =
     + testEntries(SupportTests.self, SupportTests.allTests)
     + testEntries(DemoFeedTests.self, DemoFeedTests.allTests, async: DemoFeedTests.asyncTests)
     + testEntries(ScheduleTests.self, ScheduleTests.allTests)
+    + testEntries(FloatingPanelTests.self, FloatingPanelTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
