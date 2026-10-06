@@ -4,7 +4,7 @@ Status (2026-10-06): ready to share with **invited collaborators**. Not ready to
 
 ## Done
 
-- CI on every push (Ubuntu 22.04 and latest with the system python3, macOS with `/usr/bin/python3` 3.9, the Mac app's tests and build, shell syntax, and a report-only shellcheck job). The site is checked by `tests/test_site.py`.
+- CI on every push (Ubuntu 22.04 and latest with the system python3, macOS with `/usr/bin/python3` 3.9, the Mac app's tests and build, and shellcheck at warning level). The site is checked by `tests/test_site.py`.
 - A release workflow: a `v*.*.*` tag drafts a GitHub Release with the app zip, the server tarball, the CLI, `SHA256SUMS`, and notes with the Gatekeeper steps. First tag: `v0.1.1`.
 - The tree has no personal hostnames, tailnet names or company names outside `docs/PLAN.md`. Demo data uses `acme` and `ACME-123`.
 - `README.md` has a status line and "Install from a release". `CONTRIBUTING.md` and `SECURITY.md` exist, and the issue chooser links to private security reports.
@@ -39,5 +39,4 @@ Suggestion: **Apache-2.0**. needs-you is a tool people run on their own machines
 
 - [ ] Decisions 1–4 above.
 - [ ] Run [fresh-user-test-plan.md](fresh-user-test-plan.md) on a second Mac and fix what it finds.
-- [ ] Shellcheck findings fixed and the job made blocking (`ci.yml`).
 - [ ] Site deployed ([site-deploy.md](site-deploy.md)), or the site's links point at the repo.

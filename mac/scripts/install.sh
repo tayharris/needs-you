@@ -96,7 +96,7 @@ stop_bundle_hubs() {
   [[ -n "$pids" ]] || return 0
   echo "==> stopping the old app's hub (pids: $(echo $pids))"
   kill -TERM $pids 2>/dev/null || true
-  for i in $(seq 1 50); do
+  for _ in $(seq 1 50); do
     pgrep -f "$app/Contents/Resources/hub/needs_you_hub\.py" >/dev/null || return 0
     sleep 0.1
   done

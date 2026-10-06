@@ -1,6 +1,6 @@
 # CI/CD plan
 
-Status: phases 1 and 2 exist as `.github/workflows/ci.yml` and `release.yml` (not yet run on GitHub). Phase 3 is a plan. Differences from the plan below: no `shellcheck` job yet (a `bash -n` job instead, until existing findings are fixed), no `site` job, and no version stamping (see Versioning).
+Status: phases 1 and 2 exist as `.github/workflows/ci.yml` and `release.yml` (not yet run on GitHub). Phase 3 is a plan. Differences from the plan below: the site is checked by `tests/test_site.py` inside the Python jobs instead of a separate `site` job, and no version stamping (see Versioning).
 
 Goal: every push and PR runs the same suites a contributor runs locally (`test-all` skill), and pushing a `vX.Y.Z` tag produces a GitHub Release with the Mac app, the server tarball and the CLI, checksummed, after the tests pass. Signing comes in a later phase because it needs paid-account secrets.
 
