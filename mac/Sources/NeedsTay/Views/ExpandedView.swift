@@ -1,0 +1,230 @@
+import NeedsTayCore
+import SwiftUI
+
+/// The 360 pt panel: header, cards grouped urgent → normal → low, then a collapsed
+/// "Recent" section with done and info items.
+struct ExpandedView: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ExpandedHeader(model: model)
+                .frame(height: 43.5) // + hairline = 44, matches PanelController
+            Rectangle().fill(Theme.hairline).frame(height: 0.5)
+            ScrollView(.vertical) {
+                CardList(model: model)
+                    .padding(10)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                        }
+                    )
+            }
+            .scrollIndicators(.automatic)
+            .frame(maxHeight: .infinity)
+            .onPreferenceChange(ContentHeightKey.self) { height in
+                if abs(model.expandedContentHeight - height) > 0.5 { model.expandedContentHeight = height }
+            }
+            Rectangle().fill(Theme.hairline).frame(height: 0.5)
+            footer.frame(height: 25.5)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 6) {
+            if model.isDemo {
+                Text("DEMO")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule().fill(Theme.normal.opacity(0.25)))
+                    .foregroundStyle(Theme.normal)
+            }
+            Text(model.statusLine)
+                .font(Theme.meta)
+                .foregroundStyle(model.lastError == nil ? Theme.faint : Theme.urgent.opacity(0.8))
+                .lineLimit(1)
+            Spacer()
+            Text("⌃⌥Space")
+                .font(Theme.mono)
+                .foregroundStyle(Theme.faint)
+                .help("Global shortcut: show / hide the panel")
+        }
+        .padding(.horizontal, 12)
+    }
+}
+
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+struct ExpandedHeader: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ContextSwitch(model: model)
+            Spacer()
+            Menu {
+                ForEach(SnoozeOption.panelChoices) { option in
+                    Button(option.title) { model.snoozePanel(option) }
+                }
+                Divider()
+                Button("Hide until ⌃⌥Space") { model.hidePanel() }
+            } label: {
+                Image(systemName: "moon.zzz")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Snooze the panel")
+
+            HeaderButton(symbol: "arrow.clockwise", help: "Refresh now") { model.pollNow(full: true) }
+            HeaderButton(symbol: "gearshape", help: "Settings") { model.openSettings() }
+            HeaderButton(symbol: "chevron.up", help: "Collapse (Esc)") { model.collapse() }
+        }
+        .padding(.horizontal, 12)
+        .foregroundStyle(.white.opacity(0.8))
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                .onChanged { _ in model.dragHandler?(.changed) }
+                .onEnded { _ in model.dragHandler?(.ended) }
+        )
+    }
+}
+
+private struct HeaderButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+/// Work / Personal toggle with counts. The other side stays visible, never fully hidden.
+struct ContextSwitch: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(ItemContext.allCases, id: \.self) { ctx in
+                let selected = ctx == model.context
+                let n = model.store.needsCount(in: ctx, now: model.now)
+                Button {
+                    model.setContext(ctx)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(ctx.rawValue.capitalized)
+                        if n > 0 {
+                            Text("\(n)").monospacedDigit()
+                                .foregroundStyle(selected ? Theme.color(model.store.highestPriority(in: ctx, now: model.now)) : Theme.faint)
+                        }
+                    }
+                    .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(selected ? Color.white.opacity(0.12) : .clear))
+                    .foregroundStyle(selected ? .white : Theme.muted)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+struct CardList: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let needs = model.needsItems
+        let recent = model.recentItems
+        VStack(alignment: .leading, spacing: 8) {
+            if needs.isEmpty {
+                EmptyState(model: model)
+            }
+            ForEach(ItemPriority.allCases, id: \.self) { priority in
+                let group = needs.filter { $0.priority == priority }
+                if !group.isEmpty {
+                    SectionLabel(text: priority.rawValue.uppercased(), color: Theme.color(priority))
+                    ForEach(group) { item in
+                        CardView(item: item, model: model)
+                    }
+                }
+            }
+            if !recent.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { model.showRecent.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: model.showRecent ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("RECENT · \(recent.count)")
+                        Spacer()
+                    }
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.faint)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                if model.showRecent {
+                    ForEach(recent) { item in
+                        RecentRow(item: item, model: model)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SectionLabel: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(color.opacity(0.85))
+            .padding(.leading, 2)
+    }
+}
+
+private struct EmptyState: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 18))
+                .foregroundStyle(.green.opacity(0.7))
+            Text("All clear in \(model.context.rawValue)")
+                .font(Theme.body)
+                .foregroundStyle(.white.opacity(0.8))
+            if model.otherCount > 0 {
+                Button("\(model.otherCount) waiting in \(model.context.other.rawValue)") {
+                    model.setContext(model.context.other)
+                }
+                .buttonStyle(.plain)
+                .font(Theme.meta)
+                .foregroundStyle(Theme.muted)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+    }
+}
