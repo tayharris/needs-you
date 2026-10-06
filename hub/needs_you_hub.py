@@ -63,7 +63,7 @@ LIST_LIMIT_MAX = 2000
 EXPIRY_HUB = "~expiry"  # reserved; never a real hub id
 DEFAULT_RETENTION_DAYS = 7.0
 OUTBOX_MAX_AGE_MS = 7 * 24 * 3600 * 1000  # older undelivered peer rows: anti-entropy covers them
-INVITE_GRACE_MS = 24 * 3600 * 1000  # keep used-up/revoked invites this long so the last use replicates
+INVITE_GRACE_MS = 24 * 3600 * 1000  # keep revoked invites this long so the revocation replicates
 INVITE_MAX_USES = 100
 INVITE_MAX_TTL_HOURS = 24 * 90
 DEFAULT_OWNER_TOKEN_NAME = "this-mac"
@@ -901,14 +901,22 @@ class Store:
             self.enqueue("invite", rec["id"])
         return code, rec
 
-    def invite_by_code(self, code: str) -> Optional[Dict[str, Any]]:
+    def invite_by_code(self, code: str, spent_ok: bool = False) -> Optional[Dict[str, Any]]:
+        """The invite for `code` if it is live. With `spent_ok`, also one whose uses are all
+        spent but that is neither revoked nor expired (its installer still re-runs and
+        uninstalls on machines that are already set up)."""
         if not isinstance(code, str) or not code or len(code) > 200:
             return None
         with self.lock:
             row = self.conn.execute("SELECT * FROM invites WHERE hash = ?", (hash_token(code),)).fetchone()
-        if row is None or not self.invite_live(dict(row)):
+        if row is None:
             return None
-        return dict(row)
+        rec = dict(row)
+        if self.invite_live(rec):
+            return rec
+        if spent_ok and rec["revoked_at"] is None and rec["expires_at"] > self.now_ms():
+            return rec
+        return None
 
     def _unique_token_name(self, base: str) -> str:
         base = base[:64]
@@ -945,14 +953,20 @@ class Store:
             self.enqueue("token", trec["id"])
         return token, trec, inv
 
-    def list_invites(self, include_dead: bool = False) -> List[Dict[str, Any]]:
+    def list_invites(self, include_dead: bool = False, include_spent: bool = False) -> List[Dict[str, Any]]:
+        """Live invites; `include_spent` adds used-up ones that are not revoked or expired,
+        `include_dead` returns every stored invite."""
         with self.lock:
             rows = [dict(r) for r in self.conn.execute("SELECT * FROM invites ORDER BY created_at")]
         now = self.now_ms()
         for r in rows:
             r["left"] = max(0, self.invite_left(r))
             r["live"] = self.invite_live(r, now)
-        return rows if include_dead else [r for r in rows if r["live"]]
+        if include_dead:
+            return rows
+        if include_spent:
+            return [r for r in rows if r["revoked_at"] is None and r["expires_at"] > now]
+        return [r for r in rows if r["live"]]
 
     def revoke_invite(self, name_or_id: str) -> List[Dict[str, Any]]:
         with self.tx():
@@ -971,8 +985,9 @@ class Store:
 
     def apply_invite(self, rec: Any) -> bool:
         """Merge a replicated invite. `used` is a per-hub grow-only counter (max per hub), so
-        redemptions on different hubs add up; revocation wins. Expired invites, and dead ones
-        past the grace period, are not stored (we purge them; storing would resurrect them)."""
+        redemptions on different hubs add up; revocation wins. Expired invites, and revoked
+        ones past the grace period, are not stored (we purge them; storing would resurrect
+        them). Used-up invites are kept until they expire."""
         rec = normalise_invite_record(rec)
         now = self.now_ms()
         with self.tx():
@@ -982,8 +997,7 @@ class Store:
                     self.conn.execute("DELETE FROM invites WHERE id = ?", (rec["id"],))
                 return False
             if row is None:
-                dead = rec["revoked_at"] is not None or self.invite_left(rec) <= 0
-                if dead and rec["updated_at"] < now - INVITE_GRACE_MS:
+                if rec["revoked_at"] is not None and rec["updated_at"] < now - INVITE_GRACE_MS:
                     return False
                 clash = self.conn.execute("SELECT id FROM invites WHERE hash = ?", (rec["hash"],)).fetchone()
                 if clash:
@@ -1010,7 +1024,7 @@ class Store:
 
     def purge(self) -> Dict[str, int]:
         """Hard-delete what nobody needs: closed/expired items past retention, stale peer
-        outbox rows, expired invites, and used-up/revoked invites past their grace period."""
+        outbox rows, expired invites, and revoked invites past their grace period."""
         now = self.now_ms()
         out = {"items": 0, "outbox": 0, "invites": 0}
         with self.tx() as c:
@@ -1026,8 +1040,7 @@ class Store:
                 r = dict(r)
                 if r["expires_at"] <= now:
                     dead.append(r["id"])
-                elif ((r["revoked_at"] is not None or self.invite_left(r) <= 0)
-                      and r["updated_at"] < now - INVITE_GRACE_MS):
+                elif r["revoked_at"] is not None and r["updated_at"] < now - INVITE_GRACE_MS:
                     dead.append(r["id"])
             for i in dead:
                 c.execute("DELETE FROM invites WHERE id = ?", (i,))
@@ -1594,6 +1607,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._list_invites()
             if path == "/v1/invites/redeem" and method == "POST":
                 return self._redeem()
+            if path.startswith("/v1/invites/") and method == "DELETE":
+                return self._revoke_invite(urllib.parse.unquote(path[len("/v1/invites/"):]))
+            if path == "/v1/tokens" and method == "GET":
+                return self._list_tokens()
+            if path.startswith("/v1/tokens/") and method == "DELETE":
+                return self._revoke_token(urllib.parse.unquote(path[len("/v1/tokens/"):]))
             if path.startswith("/join/") and method in ("GET", "HEAD"):
                 rest = path[len("/join/"):]
                 if rest.endswith("/install.sh"):
@@ -1675,7 +1694,38 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"invites": [
             {"id": r["id"], "name": r["name"], "role": r["role"], "uses": r["uses"], "left": r["left"],
              "created_at": fmt_ts(r["created_at"]), "expires_at": fmt_ts(r["expires_at"])}
-            for r in self.hub.store.list_invites()]})
+            for r in self.hub.store.list_invites(include_spent=True)]})
+
+    def _revoke_invite(self, name_or_id: str) -> None:
+        self._auth("owner")
+        if not name_or_id or "/" in name_or_id:
+            raise ApiError(404, "not_found", "no such endpoint")
+        revoked = self.hub.store.revoke_invite(name_or_id)
+        if not revoked:
+            raise ApiError(404, "not_found", "no unrevoked invite with that id or name")
+        self.hub.notify()
+        self._send(200, {"revoked": [{"id": r["id"], "name": r["name"]} for r in revoked]})
+
+    # -- tokens ----------------------------------------------------------
+
+    def _list_tokens(self) -> None:
+        me = self._auth("owner")
+        self._send(200, {"tokens": [
+            {"id": r["id"], "name": r["name"], "role": r["role"], "created_at": fmt_ts(r["created_at"]),
+             "open_items": int(r["open_items"]), "current": r["id"] == me["id"]}
+            for r in self.hub.store.list_tokens() if r["revoked_at"] is None]})
+
+    def _revoke_token(self, name_or_id: str) -> None:
+        me = self._auth("owner")
+        if not name_or_id or "/" in name_or_id:
+            raise ApiError(404, "not_found", "no such endpoint")
+        if name_or_id in (me["id"], me["name"]):
+            raise ApiError(400, "invalid", "this is the token making the request; revoke it with another owner token")
+        revoked = self.hub.store.revoke_token(name_or_id)
+        if not revoked:
+            raise ApiError(404, "not_found", "no active token with that id or name")
+        self.hub.notify()
+        self._send(200, {"revoked": [{"id": r["id"], "name": r["name"]} for r in revoked]})
 
     def _rate_check(self) -> None:
         if self.hub.limiter.blocked(self._client_ip()):
@@ -1695,22 +1745,42 @@ class Handler(BaseHTTPRequestHandler):
         self.hub.notify()
         if not self.hub.cfg.get("quiet"):
             sys.stderr.write("invite redeemed: token %r (%s)\n" % (trec["name"], trec["role"]))
+        local = self.hub.is_local_client(self._client_ip())
         self._send(200, {"token": token, "role": trec["role"], "name": trec["name"],
-                         "hub_urls": self.hub.hub_urls(), "hub_id": self.hub.hub_id})
+                         "hub_urls": self.hub.hub_urls(local_first=local), "hub_id": self.hub.hub_id})
 
     def _join(self, code: str, script: bool) -> None:
         if self.hub.limiter.blocked(self._client_ip()):
-            return self._send_text(429, "Too many failed invite attempts. Try again later.\n")
+            return self._join_failed(429, "Too many failed invite attempts. Try again later.", script)
         code = urllib.parse.unquote(code)
-        inv = self.hub.store.invite_by_code(code)
+        inv = self.hub.store.invite_by_code(code, spent_ok=True)
         if inv is None:
             self.hub.limiter.fail(self._client_ip())
-            return self._send_text(404, "This invite link is unknown, expired or used up. "
-                                        "Ask for a new one.\n")
+            return self._join_failed(404, "This invite link is unknown, expired or revoked. "
+                                          "Ask for a new one.", script)
         if script:
             return self._send_text(200, install_script(self.hub, inv, code),
                                    "text/x-shellscript; charset=utf-8")
         self._send_text(200, join_markdown(self.hub, inv, code), "text/markdown; charset=utf-8")
+
+    def _join_failed(self, status: int, message: str, script: bool) -> None:
+        """A dead link. The page gets a plain-text error. The script gets a 200 whose body
+        prints the error and exits 1: `curl -f` turns any 4xx into empty output, and bash
+        runs an empty script with exit 0, which agents read as success."""
+        if not script:
+            return self._send_text(status, message + "\n")
+        body = ("#!/usr/bin/env bash\n# needs-you: this invite link can't be used.\n"
+                "printf '%%s\\n' %s >&2\nexit 1\n" % _sh_quote("needs-you install: " + message))
+        data = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/x-shellscript; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Needs-You-Invite", "unusable (HTTP %d)" % status)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(data)
 
     def _download(self, name: str) -> None:
         entry = DOWNLOADS.get(name)
@@ -1981,9 +2051,31 @@ class Hub:
         """The URL others should use for this hub (config public_url, else the first bind)."""
         return self.cfg.get("public_url") or self.url
 
-    def hub_urls(self) -> List[str]:
+    @property
+    def loopback_url(self) -> Optional[str]:
+        """http://<loopback>:<port> when one of the binds is a loopback address."""
+        for srv in self.servers:
+            host = str(srv.server_address[0])
+            if host.startswith("127.") or host == "::1":
+                return "http://%s:%d" % ("[::1]" if host == "::1" else host, self.port)
+        return None
+
+    def is_local_client(self, ip: str) -> bool:
+        """Did the request come from this machine (loopback, or one of our own bind addresses)?"""
+        if not ip:
+            return False
+        if ip.startswith("::ffff:"):
+            ip = ip[len("::ffff:"):]
+        if ip.startswith("127.") or ip == "::1":
+            return True
+        return ip in {str(srv.server_address[0]) for srv in self.servers}
+
+    def hub_urls(self, local_first: bool = False) -> List[str]:
+        """public_url, then the peers. With `local_first` (the caller is on this machine),
+        the loopback URL goes first, so this machine's senders don't depend on the tailnet."""
         out: List[str] = []
-        for u in [self.public_url] + list(self.cfg["peers"]):
+        first = [self.loopback_url] if local_first else []
+        for u in first + [self.public_url] + list(self.cfg["peers"]):
             if u and u not in out:
                 out.append(u)
         return out
@@ -2096,7 +2188,7 @@ def install_script(hub: Hub, inv: Dict[str, Any], code: str) -> str:
         tmpl = fh.read()
     links = invite_links(hub.public_url, code, inv["role"])
     values = {"HUB_URL": hub.public_url, "CODE": code, "ROLE": inv["role"], "INVITE_NAME": inv["name"],
-              "MAC_URL": links["mac_url"]}
+              "MAC_URL": links["mac_url"], "USES_LEFT": str(max(0, Store.invite_left(inv)))}
     for k, v in values.items():
         tmpl = tmpl.replace("__NY_%s__" % k, _sh_quote(v))
     return tmpl
@@ -2112,13 +2204,17 @@ def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:
             "%d use%s left, expires %s) connects one machine to the hub at %s.\n\n"
             % (inv["name"], inv["role"], left, "" if left == 1 else "s", fmt_ts(inv["expires_at"]),
                hub.public_url))
+    if left <= 0:
+        head += ("**This link has no uses left.** It still re-runs the installer (or `--uninstall`) "
+                 "on a machine it already set up, but it can't set up a new one. For a new machine, "
+                 "stop and ask the user for a new link.\n\n")
     if inv["role"] != "sender":
         return head + (
             "## This invite is for the Mac app\n\n"
             "It grants a **%s** token (read the inbox%s), so it isn't for a server or an agent. "
             "On the Mac, open this link (click it, or run `open` on it in Terminal):\n\n"
             "    %s\n\n"
-            "NeedsYou.app adds the hub and stores its token in the Keychain. If you are an agent, "
+            "NeedsYou.app adds the hub and stores its token. If you are an agent, "
             "stop here and tell the user to open that link on their Mac.\n"
             % (inv["role"], ", and invite machines" if inv["role"] == "owner" else "", links["mac_url"]))
     return head + """## Install (one line)
@@ -2144,10 +2240,10 @@ asleep or unreachable get delivered, checks health, and posts a test `info` item
 | `--orca` | This machine runs Orca automations: write the prompt snippet for them to `~/.config/needs-you/orca-snippet.md` and print it. |
 | `--context work\\|personal` | Default context for items from this machine (the CLI's `--context` still wins). |
 | `--host NAME` | Name for this machine (default: short hostname). |
-| `--hub URL` | Download and redeem from another URL for this same hub, e.g. `http://127.0.0.1:8765` on the hub's own Mac when the name above doesn't resolve. |
+| `--hub URL` | Use another URL for this same hub, e.g. `http://127.0.0.1:8765` on the hub's own Mac when the name above doesn't resolve. It is saved first in this machine's hub list. |
 | `--no-schedule` | Don't add the 5-minute flush. |
 | `--force` | Redeem again and replace an existing token. Without it, a machine that's already set up keeps its token. |
-| `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Needs this link to still be live. |
+| `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Works until the link expires or is revoked, even with no uses left. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude` and
 `orca` on PATH), say which ones you chose, run the one line, and report the output of the
@@ -2158,10 +2254,12 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 - If you added `--claude-hooks`, tell the user the hooks stay quiet until opted in:
   `NEEDS_YOU_AGENT_ALERTS=1` in the environment or in `~/.config/needs-you/env` (sessions
   started by Orca are opted in already).
-- If the only output is `curl: (22) ... 404`, this link was used up or expired after you read
-  it. Stop and ask for a new one.
-- Re-running on a machine that's already set up is safe and keeps its token, while the link
-  is still live. `needs-you self-update` updates the CLI later without a link.
+- If the installer exits 1 saying the link is unknown, expired or revoked, or that the hub
+  refused the invite (no uses left), stop and ask the user for a new link.
+- Re-running on a machine that's already set up is safe and keeps its token, until the link
+  expires (even with no uses left). `needs-you self-update` updates the CLI later without a link.
+- On the hub's own machine, the installer lists `http://127.0.0.1:<port>` first, so local
+  agents don't depend on the network.
 
 ## Posting rules (short version)
 

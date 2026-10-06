@@ -64,8 +64,10 @@ while [ $# -gt 0 ]; do
 done
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required"
-[ -f "$HOOK_SRC" ] || die "missing $HOOK_SRC"
-[ -f "$SNIPPET" ] || die "missing $SNIPPET"
+if [ "$ACTION" = "install" ]; then  # uninstall needs neither file
+  [ -f "$HOOK_SRC" ] || die "missing $HOOK_SRC"
+  [ -f "$SNIPPET" ] || die "missing $SNIPPET"
+fi
 
 # The command string written into settings.json. User level uses $HOME so the
 # same settings work on every machine; project level uses $CLAUDE_PROJECT_DIR
@@ -127,8 +129,10 @@ if os.path.exists(settings_path):
     if not isinstance(settings, dict):
         sys.exit("error: %s does not contain a JSON object; nothing was changed" % settings_path)
 
-with open(snippet_path, encoding="utf-8") as f:
-    snippet = json.load(f)["hooks"]
+snippet = {}
+if action == "install":
+    with open(snippet_path, encoding="utf-8") as f:
+        snippet = json.load(f)["hooks"]
 
 hooks = settings.get("hooks")
 if hooks is None:
@@ -230,8 +234,15 @@ Next:
   - The hooks stay quiet until opted in. Either run Claude from Orca, or set
     NEEDS_YOU_AGENT_ALERTS=1 (in your shell profile, or as a line in
     ~/.config/needs-you/env to opt in every session on this machine).
-  - They call the needs-you CLI; check `needs-you --help` works here
-    (scripts/setup-sender.sh installs it).
+EOF
+  # The invite installer sets NEEDS_YOU_INSTALLER=1: it has just installed the CLI.
+  if [ "${NEEDS_YOU_INSTALLER:-}" != 1 ]; then
+    cat <<'EOF'
+  - They call the needs-you CLI; check `needs-you --help` works here (an invite
+    link's installer, or scripts/setup-sender.sh, installs it).
+EOF
+  fi
+  cat <<'EOF'
   - Restart Claude Code sessions (or open /hooks) to pick up the change.
 EOF
 else

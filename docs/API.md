@@ -19,7 +19,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   |---|---|
   | `sender` | `POST /v1/items`, `POST /v1/items/resolve` |
   | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream` |
-  | `owner` | everything `reader` can, plus `POST /v1/invites` and `GET /v1/invites` (the Mac app) |
+  | `owner` | everything `reader` can, plus invites (`/v1/invites`) and tokens (`/v1/tokens`): list, create and revoke (the Mac app) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
   `GET /join/<code>[/install.sh]` and `GET /dl/<file>` need no token. The hub stores only the sha256 of each token, and records
@@ -33,7 +33,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 400 | `invalid` | Validation failed, bad JSON, bad query parameter |
   | 401 | `unauthorized` | Missing, unknown or revoked token (or bad peer secret) |
   | 403 | `forbidden` | Valid token, wrong role for the endpoint |
-  | 404 | `not_found` | Unknown endpoint, or unknown id on `GET`/`PATCH /v1/items/{id}` |
+  | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
   | 409 | `self` | A hub tried to replicate to itself (replication only) |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
@@ -260,8 +260,34 @@ hub's `public_url` (config `public_url` / `--public-url`; without it, the first 
 
 ### `GET /v1/invites` (owner)
 
-`{"invites": [{"id", "name", "role", "uses", "left", "created_at", "expires_at"}, ...]}`, live
-invites only. Never includes codes.
+`{"invites": [{"id", "name", "role", "uses", "left", "created_at", "expires_at"}, ...]}`: every
+invite that is neither revoked nor expired, including used-up ones (`left: 0`), whose
+installer still re-runs and uninstalls until they expire. Never includes codes.
+
+### `DELETE /v1/invites/<id or name>` (owner)
+
+Revokes the invite: it can't be redeemed, and its `/join` page and installer stop working.
+Tokens it already minted stay valid (revoke those separately). Response `200`
+`{"revoked": [{"id", "name"}]}`; `404 not_found` if no unrevoked invite has that id or name.
+
+## Tokens
+
+### `GET /v1/tokens` (owner)
+
+```json
+{"tokens": [{"id": "01M...", "name": "servers-devbox", "role": "sender",
+             "created_at": "2026-10-06T17:04:05.123Z", "open_items": 2, "current": false}]}
+```
+
+Active tokens only. `current` marks the token making the request. Never includes secrets or
+hashes.
+
+### `DELETE /v1/tokens/<id or name>` (owner)
+
+Revokes the token on this hub (and, by replication, on its peers). Its open items stay until
+they are resolved, dismissed or expire. Response `200` `{"revoked": [{"id", "name"}]}`;
+`404 not_found` if no active token has that id or name; `400 invalid` for the token making the
+request (use another owner token, or `needs_you_admin.py`).
 
 ### `POST /v1/invites/redeem` (no token)
 
@@ -280,7 +306,11 @@ Response `200`:
 - `name` is `<invite name>-<host>` (the host is reduced to letters, digits, `.`, `_`, `-`). If
   an active token already has that name, `-2`, `-3`... is appended.
 - `hub_urls` is this hub's `public_url` followed by its peers, in that order. Save it as
-  `NEEDS_YOU_URLS`.
+  `NEEDS_YOU_URLS`. When the request comes from the hub's own machine (a loopback address, or
+  one of the addresses the hub listens on) and the hub listens on loopback, its loopback URL
+  (`http://127.0.0.1:<port>`) comes first, so that machine's senders don't depend on the
+  tailnet. (Behind a local reverse proxy every client looks local; the CLI fails over to the
+  next URL.)
 - Unknown, expired, revoked or used-up codes all get the same `404`
   `{"error": "not_found", "message": "invite not found, expired or used up"}`. Each failure
   counts against the client IP; after 10 failures in 10 minutes (`redeem_fail_limit`,
@@ -292,13 +322,21 @@ Response `200`:
 `text/markdown`, written for an agent and readable by a person: what needs-you is, the
 one-line install command, the installer's options, and the posting rules. For a `reader` or
 `owner` invite it says to open the `needsyou://` link on the Mac instead. Viewing the page
-doesn't spend a use. Unknown codes get a plain-text `404` (and count as a failed attempt).
+doesn't spend a use. A used-up invite's page is still served, with a note that it can't set
+up a new machine. Unknown, expired and revoked codes get a plain-text `404` (and count as a
+failed attempt).
 
 ### `GET /join/<code>/install.sh` (no token)
 
-A bash script (bash, curl and python3 only) with this hub's URL and the code baked in. See
-[guides/add-a-sender.md](guides/add-a-sender.md) for its flags. It is only served while the
-invite is live.
+A bash script (bash, curl and python3 only) with this hub's URL, the code and the uses left
+baked in. See [guides/add-a-sender.md](guides/add-a-sender.md) for its flags. It is served
+until the invite expires or is revoked, also after its uses are spent: re-runs and
+`--uninstall` on a machine that is already set up don't redeem.
+
+For an unknown, expired or revoked code (or a rate-limited client) the response is still
+`200`, with header `X-Needs-You-Invite: unusable (HTTP 404)` (or `429`) and a script that
+prints the reason to stderr and exits 1. A `4xx` would make `curl -fsSL ... | bash` run an
+empty script and exit 0, which reads as success.
 
 ### `GET /dl/<file>` (no token)
 
@@ -337,14 +375,15 @@ The hub cleans up after itself every 10 minutes (`maintenance_seconds`):
   ago, and items whose `expires_at` passed more than `retention_days` ago. Open `needs` items
   are never purged.
 - Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).
-- Deletes expired invites, and used-up or revoked ones 24 h after their last change.
+- Deletes expired invites, and revoked ones 24 h after their last change. Used-up invites
+  are kept until they expire.
 - Checkpoints the WAL and runs an incremental vacuum (`auto_vacuum=INCREMENTAL`; older
   databases are migrated once at start-up), plus a full `VACUUM` once a day when more than a
   quarter of the file is free pages.
 
 So purged items can't come back, a hub **refuses to apply** a replicated item that is closed
 (or expired) and older than its own retention cutoff, and an invite that is expired, or
-used up/revoked past the 24 h grace period.
+revoked past the 24 h grace period.
 
 ## Replication between hubs
 

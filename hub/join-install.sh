@@ -3,23 +3,8 @@
 #
 #   curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]
 #
-# Options:
-#   --yes                         don't ask for confirmation (needed when piped)
-#   --claude-hooks user|project|none
-#                                 Claude Code hooks: post when a session waits on you
-#                                 (project = the current directory's repo; default none)
-#   --skill                       install the needs-you skill to ~/.claude/skills
-#   --orca                        write the Orca automation snippet and print it
-#   --context work|personal       default context for this machine's items
-#   --host NAME                   this machine's name (default: short hostname)
-#   --hub URL                     use this hub URL instead of the one in the link
-#   --no-schedule                 don't add the 5-minute `needs-you flush`
-#   --force                       redeem again and replace an existing token
-#   --uninstall                   remove the CLI, config, flush schedule and skill
-#   -h, --help                    this help
-#
-# Needs bash, curl and python3 3.9+. Writes only under $HOME (plus your crontab on
-# Linux, or a LaunchAgent on macOS, for the flush). Re-running is safe.
+# The options are in usage() below (also: --help). The help is a heredoc, not this
+# comment, because piped into bash there is no "$0" file to read it from.
 set -euo pipefail
 
 HUB_URL=__NY_HUB_URL__
@@ -27,6 +12,7 @@ CODE=__NY_CODE__
 ROLE=__NY_ROLE__
 INVITE_NAME=__NY_INVITE_NAME__
 MAC_URL=__NY_MAC_URL__
+USES_LEFT=__NY_USES_LEFT__
 
 YES=0
 HOOKS=none
@@ -37,11 +23,37 @@ HOST_NAME=""
 SCHEDULE=1
 FORCE=0
 UNINSTALL=0
+HUB_GIVEN=""
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'needs-you install: %s\n' "$*" >&2; }
 die() { warn "$*"; exit 1; }
-usage() { sed -n '2,21p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || true; }
+usage() {
+  cat <<'EOF'
+needs-you installer for one machine:
+
+  curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]
+
+Options:
+  --yes                         don't ask for confirmation (needed when piped)
+  --claude-hooks user|project|none
+                                Claude Code hooks: post when a session waits on you
+                                (project = the current directory's repo; default none)
+  --skill                       install the needs-you skill to ~/.claude/skills
+  --orca                        write the Orca automation snippet and print it
+  --context work|personal       default context for this machine's items
+  --host NAME                   this machine's name (default: short hostname)
+  --hub URL                     use this URL for the hub (saved first in the hub list)
+  --no-schedule                 don't add the 5-minute `needs-you flush`
+  --force                       redeem again and replace an existing token
+  --uninstall                   remove the CLI, config, flush schedule, skill and hooks
+  -h, --help                    this help
+
+Needs bash, curl and python3 3.9+. Writes only under $HOME (plus your crontab on
+Linux, or a LaunchAgent on macOS, for the flush). Re-running is safe and keeps the
+token; it works until the link expires, even with no uses left.
+EOF
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -53,7 +65,8 @@ while [ $# -gt 0 ]; do
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
     --context=*) CONTEXT=${1#*=}; shift ;;
     --host) HOST_NAME=${2:-}; shift 2 || die "--host needs a name" ;;
-    --hub) HUB_URL=${2:-}; shift 2 || die "--hub needs a URL" ;;
+    --hub) HUB_GIVEN=${2:-}; shift 2 || die "--hub needs a URL" ;;
+    --hub=*) HUB_GIVEN=${1#*=}; shift ;;
     --no-schedule) SCHEDULE=0; shift ;;
     --force) FORCE=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
@@ -64,6 +77,10 @@ done
 
 case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, project or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
+if [ -n "$HUB_GIVEN" ]; then
+  case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
+  HUB_URL=$HUB_GIVEN
+fi
 HUB_URL=${HUB_URL%/}
 
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"
@@ -135,9 +152,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
   if [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
      command -v curl >/dev/null 2>&1; then
     tmp=$(mktemp -d)
-    if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh" &&
-       curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/needs-you-hook.sh" -o "$tmp/needs-you-hook.sh" &&
-       curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/hooks.json" -o "$tmp/hooks.json"; then
+    if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh"; then
       bash "$tmp/install-hooks.sh" --user --uninstall || warn "removing the Claude Code hooks failed"
     else
       warn "hub unreachable; remove the hooks with integrations/claude-code/install-hooks.sh --uninstall"
@@ -146,9 +161,9 @@ if [ "$UNINSTALL" -eq 1 ]; then
   fi
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
-  rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/outbox"
+  rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
   rmdir "$CONF_DIR" 2>/dev/null || true
-  say "needs-you removed from this machine. Revoke its token on the hub or in the Mac app."
+  say "needs-you removed from this machine. Revoke its token in the Mac app (Settings → Access) or on the hub."
   exit 0
 fi
 
@@ -169,6 +184,10 @@ HOST_NAME=${HOST_NAME%%.*}
 HAVE_TOKEN=0
 if [ -f "$ENV_FILE" ] && grep -Eq '^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_TOKEN=.' "$ENV_FILE"; then
   HAVE_TOKEN=1
+fi
+
+if { [ "$HAVE_TOKEN" -eq 0 ] || [ "$FORCE" -eq 1 ]; } && [ "$USES_LEFT" -le 0 ] 2>/dev/null; then
+  die "invite $INVITE_NAME has no uses left, so it can't set up $HOST_NAME$([ "$FORCE" -eq 1 ] && printf ' again with --force'). Ask for a new link."
 fi
 
 say "needs-you: connect $HOST_NAME to $HUB_URL (invite $INVITE_NAME)"
@@ -223,22 +242,35 @@ if [ "$HAVE_TOKEN" -eq 0 ] || [ "$FORCE" -eq 1 ]; then
 fi
 
 # Rewrite the env file: keep unrelated lines, replace ours. The token never touches argv.
-python3 - "$ENV_FILE" "$TMP/resp.json" "$CONTEXT" <<'PY'
+python3 - "$ENV_FILE" "$TMP/resp.json" "$CONTEXT" "$HUB_GIVEN" <<'PY'
 import json, os, sys
-path, resp_path, context = sys.argv[1:4]
-updates = {}
-if os.path.exists(resp_path):
-    resp = json.load(open(resp_path))
-    urls = [u.rstrip("/") for u in resp.get("hub_urls") or [] if u]
-    updates["NEEDS_YOU_URLS"] = ",".join(urls)
-    updates["NEEDS_YOU_URL"] = urls[0] if urls else ""
-    updates["NEEDS_YOU_TOKEN"] = resp["token"]
-if context:
-    updates["NEEDS_YOU_DEFAULT_CONTEXT"] = context
+path, resp_path, context, given = sys.argv[1:5]
 lines = []
 if os.path.exists(path):
     with open(path, encoding="utf-8") as fh:
         lines = fh.read().splitlines()
+
+def current(key):
+    for line in lines:
+        k, _, v = line.strip().partition("=")
+        if k.replace("export ", "", 1).strip() == key:
+            return v.strip().strip("'\"")
+    return ""
+
+updates = {}
+urls = None
+if os.path.exists(resp_path):
+    resp = json.load(open(resp_path))
+    urls = [u.rstrip("/") for u in resp.get("hub_urls") or [] if u]
+    updates["NEEDS_YOU_TOKEN"] = resp["token"]
+if given:  # --hub: this URL first, then the rest
+    rest = urls if urls is not None else [u for u in current("NEEDS_YOU_URLS").split(",") if u]
+    urls = [given.rstrip("/")] + [u for u in rest if u.rstrip("/") != given.rstrip("/")]
+if urls is not None:
+    updates["NEEDS_YOU_URLS"] = ",".join(urls)
+    updates["NEEDS_YOU_URL"] = urls[0] if urls else ""
+if context:
+    updates["NEEDS_YOU_DEFAULT_CONTEXT"] = context
 out, seen = [], set()
 for line in lines:
     k = line.strip()
@@ -266,6 +298,8 @@ if "NEEDS_YOU_TOKEN" in updates:
     print("redeemed the invite: wrote %s (hubs: %s)" % (path, updates["NEEDS_YOU_URLS"]))
 else:
     print("kept the existing token in %s (use --force to replace it)" % path)
+    if "NEEDS_YOU_URLS" in updates:
+        print("hubs: %s" % updates["NEEDS_YOU_URLS"])
 PY
 
 # ---------------------------------------------------------------- extras
@@ -276,9 +310,9 @@ if [ "$HOOKS" != none ]; then
     fetch "$f" "$TMP/$f" || die "could not download the Claude Code hooks ($f)"
   done
   if [ "$HOOKS" = user ]; then
-    bash "$TMP/install-hooks.sh" --user
+    NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --user
   else
-    bash "$TMP/install-hooks.sh" --project "$PWD"
+    NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --project "$PWD"
   fi
 fi
 
@@ -332,7 +366,8 @@ fi
 say ""
 "$CLI" health || warn "no hub answered right now (asleep or offline?). Items queue and are sent by the 5-minute flush."
 "$CLI" -q info --key "setup:$HOST_NAME:test" --title "needs-you is set up on $HOST_NAME" \
-  --body "Test item from the invite installer. It expires on its own." --agent installer || true
+  --body "Test item from the invite installer. It expires on its own." --agent installer \
+  --host "$HOST_NAME" || true
 say ""
 say "Done. Try: $CLI add --key \"test:$HOST_NAME:hello\" --title \"Hello from $HOST_NAME\""
 case ":$PATH:" in

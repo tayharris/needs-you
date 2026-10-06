@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
 import sys
 import time
+import types
 import unittest
 import urllib.parse
 
@@ -91,7 +93,8 @@ class Redeem(InviteCase):
             self.assertEqual(status, 200, body)
             self.assertEqual(body["role"], "sender")
             self.assertEqual(body["hub_id"], "hub-a")
-            self.assertEqual(body["hub_urls"], ["http://hub-a.example.ts.net:8765"])
+            # redeemed from this machine: the loopback URL first, then public_url
+            self.assertEqual(body["hub_urls"], [self.hub.url, "http://hub-a.example.ts.net:8765"])
             tokens.append(body)
         self.assertEqual([t["name"] for t in tokens], ["srv-box1", "srv-box2", "srv-box1-2"])
         self.assertEqual(len({t["token"] for t in tokens}), 3)
@@ -157,6 +160,41 @@ class JoinAndDownloads(InviteCase):
         self.assertEqual(status, 200)
         self.assertIn("ROLE='owner'", script.decode())
 
+    def test_spent_link_still_serves_page_and_script(self):
+        _, inv = self.invite(uses=1)
+        self.assertEqual(self.redeem(inv["code"])[0], 200)
+        status, _, data = get_raw(self.hub.url + "/join/" + inv["code"])
+        self.assertEqual(status, 200)
+        self.assertIn("no uses left", data.decode())
+        status, _, script = get_raw(self.hub.url + "/join/" + inv["code"] + "/install.sh")
+        self.assertEqual(status, 200)
+        self.assertIn("USES_LEFT='0'", script.decode())
+        self.assertEqual(self.redeem(inv["code"])[0], 404)  # but it can't mint another token
+        # listed for the owner (so it can be revoked), with nothing left
+        _, body = request("GET", self.hub.url + "/v1/invites", OWNER)
+        self.assertEqual([(i["name"], i["left"]) for i in body["invites"]], [("srv", 0)])
+        # an hour past the grace period it's still there; gone once it expires
+        self.clock.advance(hubmod.INVITE_GRACE_MS / 1000 + 3600)
+        self.hub.store.purge()
+        self.assertEqual(get_raw(self.hub.url + "/join/" + inv["code"])[0], 200)
+        self.clock.advance(72 * 3600)
+        self.hub.store.purge()
+        self.assertEqual(get_raw(self.hub.url + "/join/" + inv["code"])[0], 404)
+
+    def test_dead_link_script_fails_loudly(self):
+        _, inv = self.invite()
+        self.hub.store.revoke_invite("srv")
+        for code in (inv["code"], "nyi_unknown"):
+            status, ctype, script = get_raw(self.hub.url + "/join/" + code + "/install.sh")
+            # 200 on purpose: `curl -f` swallows a 4xx body and bash then exits 0
+            self.assertEqual(status, 200)
+            self.assertIn("shellscript", ctype)
+            text = script.decode()
+            self.assertIn("unknown, expired or revoked", text)
+            self.assertTrue(text.rstrip().endswith("exit 1"))
+            self.assertNotIn(code, text)
+            self.assertEqual(get_raw(self.hub.url + "/join/" + code)[0], 404)
+
     def test_install_script_is_baked(self):
         _, inv = self.invite()
         status, ctype, data = get_raw(self.hub.url + "/join/" + inv["code"] + "/install.sh")
@@ -187,6 +225,72 @@ class JoinAndDownloads(InviteCase):
         self.assertNotIn("outbox", body["stats"])
         _, body = request("GET", self.hub.url + "/v1/health", self.reader)
         self.assertEqual(body["stats"]["outbox"], {})
+
+
+class LocalFirst(InviteCase):
+    def test_only_redeems_from_this_machine_get_loopback_first(self):
+        pub = "http://hub-a.example.ts.net:8765"
+        self.assertEqual(self.hub.hub_urls(), [pub])
+        self.assertEqual(self.hub.hub_urls(local_first=True), [self.hub.url, pub])
+        for ip, local in (("127.0.0.1", True), ("::1", True), ("::ffff:127.0.0.1", True),
+                          ("100.64.0.9", False), ("", False)):
+            with self.subTest(ip):
+                self.assertEqual(self.hub.is_local_client(ip), local)
+
+    def test_own_tailnet_bind_counts_as_local(self):
+        # The Mac's hub binds 127.0.0.1 and its tailnet IP. Running the one-liner on the Mac
+        # with the MagicDNS URL connects from that tailnet IP. (A fake second listener: a
+        # real tailnet address can't be bound here.)
+        fake = types.SimpleNamespace(server_address=("100.64.0.9", self.hub.port))
+        self.hub.servers.append(fake)
+        try:
+            self.assertTrue(self.hub.is_local_client("100.64.0.9"))
+            self.assertFalse(self.hub.is_local_client("100.64.0.10"))
+            self.assertEqual(self.hub.loopback_url, self.hub.url)
+        finally:
+            self.hub.servers.remove(fake)
+
+
+class Revoke(InviteCase):
+    def test_owner_lists_and_revokes_tokens(self):
+        _, inv = self.invite(uses=2)
+        _, box1 = self.redeem(inv["code"], "box1")
+        self.assertEqual(request("GET", self.hub.url + "/v1/tokens", self.reader)[0], 403)
+        self.assertEqual(request("DELETE", self.hub.url + "/v1/tokens/srv-box1", self.reader)[0], 403)
+        status, body = request("GET", self.hub.url + "/v1/tokens", OWNER)
+        self.assertEqual(status, 200)
+        rows = {t["name"]: t for t in body["tokens"]}
+        self.assertIn("srv-box1", rows)
+        self.assertTrue(rows["this-mac"]["current"])
+        self.assertFalse(rows["srv-box1"]["current"])
+        self.assertNotIn("hash", rows["srv-box1"])
+        self.assertNotIn(box1["token"], json.dumps(body))
+        # by id
+        status, body = request("DELETE", self.hub.url + "/v1/tokens/" + rows["srv-box1"]["id"], OWNER)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["revoked"][0]["name"], "srv-box1")
+        self.assertEqual(request("POST", self.hub.url + "/v1/items", box1["token"], {"title": "x"})[0], 401)
+        _, body = request("GET", self.hub.url + "/v1/tokens", OWNER)
+        self.assertNotIn("srv-box1", [t["name"] for t in body["tokens"]])
+        # again: nothing active by that name
+        self.assertEqual(request("DELETE", self.hub.url + "/v1/tokens/srv-box1", OWNER)[0], 404)
+        # never the token making the request
+        status, body = request("DELETE", self.hub.url + "/v1/tokens/this-mac", OWNER)
+        self.assertEqual(status, 400)
+        self.assertEqual(request("GET", self.hub.url + "/v1/items", OWNER)[0], 200)
+
+    def test_owner_revokes_invites(self):
+        _, inv = self.invite(uses=3)
+        self.assertEqual(request("DELETE", self.hub.url + "/v1/invites/" + inv["id"], self.reader)[0], 403)
+        status, body = request("DELETE", self.hub.url + "/v1/invites/" + inv["id"], OWNER)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["revoked"], [{"id": inv["id"], "name": "srv"}])
+        self.assertEqual(self.redeem(inv["code"])[0], 404)
+        self.assertEqual(request("GET", self.hub.url + "/v1/invites", OWNER)[1]["invites"], [])
+        self.assertEqual(request("DELETE", self.hub.url + "/v1/invites/" + inv["id"], OWNER)[0], 404)
+        # by name works too
+        self.invite(name="other")
+        self.assertEqual(request("DELETE", self.hub.url + "/v1/invites/other", OWNER)[0], 200)
 
 
 class Replication(HubTestCase):
@@ -232,10 +336,15 @@ class Replication(HubTestCase):
         # expired records are never stored
         self.assertFalse(h.store.apply_invite(dict(base, id="01OLD", hash="b" * 64, used={},
                                                    expires_at=ts(now - 1))))
-        # a used-up record older than the grace period is not stored either
+        # a revoked record older than the grace period is not stored either
         old = now - hubmod.INVITE_GRACE_MS - 1000
-        self.assertFalse(h.store.apply_invite(dict(base, id="01USED", hash="c" * 64, used={"p": 5},
-                                                   updated_at=ts(old))))
+        self.assertFalse(h.store.apply_invite(dict(base, id="01REV", hash="c" * 64, used={},
+                                                   revoked_at=ts(old), updated_at=ts(old))))
+        # a used-up one is kept until it expires (its installer still re-runs and uninstalls)
+        self.assertTrue(h.store.apply_invite(dict(base, id="01USED", hash="d" * 64, used={"p": 5},
+                                                  updated_at=ts(old))))
+        h.store.purge()
+        self.assertEqual([r["id"] for r in h.store.list_invites(include_spent=True)], ["01INV", "01USED"])
 
 
 class OwnerToken(HubTestCase):
