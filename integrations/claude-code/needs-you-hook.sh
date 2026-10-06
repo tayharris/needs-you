@@ -16,7 +16,7 @@
 # NEEDS_YOU_AGENT_ALERTS=0 turns it off even inside Orca.
 #
 # Optional settings (environment, or lines in ~/.config/needs-you/env):
-#   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: work)
+#   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: NEEDS_YOU_DEFAULT_CONTEXT, else work)
 #   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
 #                             {session}, {cwd}, {host}. Example:
@@ -142,17 +142,16 @@ elif session:
     lines.append("Session `%s`" % session[:8])
 body = "\n\n".join(lines)[:2000]
 
-context = os.environ.get("NEEDS_YOU_AGENT_CONTEXT") or "work"
+# No NEEDS_YOU_AGENT_CONTEXT: the CLI uses NEEDS_YOU_DEFAULT_CONTEXT, else work.
+context = os.environ.get("NEEDS_YOU_AGENT_CONTEXT") or ""
 priority = os.environ.get("NEEDS_YOU_AGENT_PRIORITY") or "normal"
-if context not in ("work", "personal"):
-    context = "work"
 if priority not in ("urgent", "normal", "low"):
     priority = "normal"
 
 args = [
     os.environ["NY_CLI"], "add",
     "--key", os.environ["NY_KEY"],
-    "--context", context,
+] + (["--context", context] if context in ("work", "personal") else []) + [
     "--priority", priority,
     "--title", title,
     "--body", body,

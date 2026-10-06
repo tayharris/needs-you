@@ -1,0 +1,16 @@
+[Unit]
+Description=needs-you hub (user service)
+# A user unit can't order itself after tailscaled (a system unit). "freebind": true in the
+# config lets the hub bind the tailnet IP before tailscaled has it; Restart=always covers the rest.
+
+[Service]
+Type=simple
+ExecStart=@PYTHON@ %h/.local/share/needs-you/hub/needs_you_hub.py --config %h/.config/needs-you/hub.json
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

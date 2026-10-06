@@ -5,8 +5,10 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 
 ## Conventions
 
-- **Transport:** plain HTTP on the tailnet. Clients use the hub's MagicDNS name
-  (`http://<hub>.<tailnet>.ts.net:8765`). Request and response bodies are JSON (UTF-8).
+- **Transport:** plain HTTP on the tailnet or loopback, or any https URL. Clients use the hub's
+  `public_url`: a MagicDNS name (`http://<hub>.<tailnet>.ts.net:8765`), or
+  `http://127.0.0.1:8765` for a hub on the same machine. Request and response bodies are JSON
+  (UTF-8), except the `/join` pages and `/dl` files.
 - **Timestamps:** the hub always emits RFC 3339 UTC with exactly three fractional digits:
   `2026-10-06T17:04:05.123Z`. These sort correctly as strings. On input the hub accepts
   ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset, or no
@@ -17,8 +19,10 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   |---|---|
   | `sender` | `POST /v1/items`, `POST /v1/items/resolve` |
   | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream` |
+  | `owner` | everything `reader` can, plus `POST /v1/invites` and `GET /v1/invites` (the Mac app) |
 
-  `GET /v1/health` needs no token. The hub stores only the sha256 of each token, and records
+  `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
+  `GET /join/<code>[/install.sh]` and `GET /dl/<file>` need no token. The hub stores only the sha256 of each token, and records
   which token created or last re-posted each item (used by the volume guard).
 - **Errors:** a non-2xx response has the body
   `{"error": "<code>", "message": "<human text>", "field": "<field path>"}` (`field` only on
@@ -33,6 +37,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 409 | `self` | A hub tried to replicate to itself (replication only) |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
+  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default) |
   | 500 | `internal` | Bug; details are in the hub's log |
 
 - Unknown JSON fields in requests are ignored, so newer clients can send extra fields.
@@ -43,14 +48,14 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 ```jsonc
 {
   "id": "01M492BJ7AYVYAA9X7WTP13JWG",      // ULID minted once by the hub that created it; same on every hub
-  "key": "acme:ACME-4170:redo-blocked",       // sender's dedupe key; = id when the sender gave none
+  "key": "work:ACME-123:redo-blocked",       // sender's dedupe key; = id when the sender gave none
   "context": "work",                         // work | personal
   "kind": "needs",                           // needs | done | info
   "priority": "normal",                      // urgent | normal | low
-  "title": "ACME-4170: push blocked on the migration fork",
+  "title": "ACME-123: push blocked on the migration fork",
   "body": "Choose: **merge** or **bypass**.", // markdown, or null when empty
-  "links": [{"label": "Jira", "url": "https://acme.atlassian.net/browse/ACME-4170"}],
-  "source": {"host": "devbox", "agent": "orca:redo-fixer", "project": "acme-backend"},
+  "links": [{"label": "Jira", "url": "https://example.atlassian.net/browse/ACME-123"}],
+  "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
   "updated_at": "2026-10-06T18:04:05.456Z",  // moves on EVERY write (re-post, resolve, patch)
@@ -87,8 +92,12 @@ pollers still learn about it).
 No auth needed. Always `200` while the hub is up:
 
 ```json
-{"ok": true, "hub_id": "hub-d", "version": "1.0.0", "api": "v1", "time": "2026-10-06T17:04:05.123Z"}
+{"ok": true, "hub_id": "hub-a", "version": "1.0.0", "api": "v1", "time": "2026-10-06T17:04:05.123Z",
+ "stats": {"db_bytes": 98304, "items": 41, "open_items": 3, "live_invites": 1, "outbox_pending": 0}}
 ```
+
+`stats.db_bytes` is the database plus its WAL file. With a valid token, `stats.outbox` also
+gives the pending outbox rows per peer URL.
 
 If a bearer token is sent it is checked but never causes an error: a valid token adds
 `"token": {"name": "...", "role": "sender"}` and a `"peers"` array (per-peer outbox depth,
@@ -167,7 +176,7 @@ Query parameters:
 Response:
 
 ```json
-{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "hub_id": "hub-d", "more": false}
+{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "hub_id": "hub-a", "more": false}
 ```
 
 **Without `since`:** the full current set for `status`. `status=open` returns every item that
@@ -216,6 +225,127 @@ A comment line (`: ping`) is sent about every 15 s. Reconnect with `Last-Event-I
 sequence number, so after failover to another hub, reconnect without `Last-Event-ID` and do a
 full poll. Expiry is not an event; clients compare `expires_at` with the clock themselves.
 
+## Invites
+
+An invite is a link that sets up one or more machines. Redeeming it mints a **new token per
+machine**, so one link with `uses: 5` can set up five servers, each with its own revocable
+token. Codes are `nyi_` plus 192 random bits (URL-safe base64); hubs store only their sha256.
+
+### `POST /v1/invites` (owner)
+
+```json
+{"name": "my-server", "role": "sender", "uses": 1, "ttl_hours": 72}
+```
+
+| Field | Rule | Default |
+|---|---|---|
+| `name` | required, 1–40 chars of letters, digits, `.`, `_`, `@`, `-` | |
+| `role` | `sender`, `reader` or `owner` | `sender` |
+| `uses` | integer 1–100 | 1 |
+| `ttl_hours` | number, more than 0 and at most 2160 (90 days) | 72 |
+
+Response `201`:
+
+```json
+{"code": "nyi_...", "join_url": "http://hub-a.example.ts.net:8765/join/nyi_...",
+ "mac_url": "needsyou://connect?hub=http%3A%2F%2Fhub-a.example.ts.net%3A8765&code=nyi_...",
+ "expires_at": "2026-10-09T17:04:05.123Z",
+ "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
+ "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes",
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it."}
+```
+
+`install_command` and `agent_prompt` are only present for `sender` invites. The URLs use the
+hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
+
+### `GET /v1/invites` (owner)
+
+`{"invites": [{"id", "name", "role", "uses", "left", "created_at", "expires_at"}, ...]}`, live
+invites only. Never includes codes.
+
+### `POST /v1/invites/redeem` (no token)
+
+```json
+{"code": "nyi_...", "host": "build-1"}
+```
+
+Response `200`:
+
+```json
+{"token": "ny_...", "role": "sender", "name": "my-server-build-1",
+ "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"],
+ "hub_id": "hub-a"}
+```
+
+- `name` is `<invite name>-<host>` (the host is reduced to letters, digits, `.`, `_`, `-`). If
+  an active token already has that name, `-2`, `-3`... is appended.
+- `hub_urls` is this hub's `public_url` followed by its peers, in that order. Save it as
+  `NEEDS_YOU_URLS`.
+- Unknown, expired, revoked or used-up codes all get the same `404`
+  `{"error": "not_found", "message": "invite not found, expired or used up"}`. Each failure
+  counts against the client IP; after 10 failures in 10 minutes (`redeem_fail_limit`,
+  `redeem_fail_window_seconds`) that IP gets `429 rate_limited` on redeem and `/join` until the
+  window passes. Successful redeems don't count.
+
+### `GET /join/<code>` (no token)
+
+`text/markdown`, written for an agent and readable by a person: what needs-you is, the
+one-line install command, the installer's options, and the posting rules. For a `reader` or
+`owner` invite it says to open the `needsyou://` link on the Mac instead. Viewing the page
+doesn't spend a use. Unknown codes get a plain-text `404` (and count as a failed attempt).
+
+### `GET /join/<code>/install.sh` (no token)
+
+A bash script (bash, curl and python3 only) with this hub's URL and the code baked in. See
+[guides/add-a-sender.md](guides/add-a-sender.md) for its flags. It is only served while the
+invite is live.
+
+### `GET /dl/<file>` (no token)
+
+Serves files from the hub's install directory (`install_dir`, default: the directory above
+`hub/`). Allow-list only:
+
+| File | Source in the repo layout |
+|---|---|
+| `needs-you` | `cli/needs-you` |
+| `needs-you-hook.sh` | `integrations/claude-code/needs-you-hook.sh` |
+| `install-hooks.sh` | `integrations/claude-code/install-hooks.sh` |
+| `hooks.json` | `integrations/claude-code/hooks.json` |
+| `SKILL.md` | `integrations/claude-code/skill/needs-you/SKILL.md` |
+
+Anything else is a `404`.
+
+### Invite replication
+
+Invite records replicate like tokens (`invites` arrays next to `tokens` in `/v1/replicate`
+and `/v1/replicate/changes`), carrying the hash, never the code. Uses are a per-hub
+grow-only counter (`"used": {"hub-a": 2, "hub-b": 1}`), merged by taking the maximum per hub,
+so redemptions on different hubs add up and every hub converges on the same count.
+Revocation wins over an unrevoked version.
+
+**Double-spend window:** each hub checks uses against what it has seen. If two hubs redeem
+the last use of the same invite within the replication delay (normally under a second; up to
+the retry backoff if a hub is unreachable), both succeed, so a link can set up one machine
+more than `uses`. Each extra machine still gets its own revocable token. Keep `uses` and
+`ttl_hours` small.
+
+## Housekeeping
+
+The hub cleans up after itself every 10 minutes (`maintenance_seconds`):
+
+- Hard-deletes items that were resolved or dismissed more than `retention_days` (default 7)
+  ago, and items whose `expires_at` passed more than `retention_days` ago. Open `needs` items
+  are never purged.
+- Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).
+- Deletes expired invites, and used-up or revoked ones 24 h after their last change.
+- Checkpoints the WAL and runs an incremental vacuum (`auto_vacuum=INCREMENTAL`; older
+  databases are migrated once at start-up), plus a full `VACUUM` once a day when more than a
+  quarter of the file is free pages.
+
+So purged items can't come back, a hub **refuses to apply** a replicated item that is closed
+(or expired) and older than its own retention cutoff, and an invite that is expired, or
+used up/revoked past the 24 h grace period.
+
 ## Replication between hubs
 
 Hubs are peers with no leader. Each hub has a `hub_id`, a list of peer URLs and a shared
@@ -232,16 +362,16 @@ token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 ### Push: `POST /v1/replicate`
 
 ```json
-{"from_hub": "hub-d", "items": [ ...item records... ], "tokens": [ ...token records... ]}
+{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}
 ```
 
-Response `{"ok": true, "applied": <n>, "hub_id": "linux-box"}`; `409 self` if `from_hub` is the
+Response `{"ok": true, "applied": <n>, "hub_id": "hub-b"}`; `409 self` if `from_hub` is the
 receiving hub's own id (the sender then stops using that peer).
 
 Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
 thread per peer sends batches of up to 200 records, always the record's *current* version, and
-deletes the rows only after a 2xx. On failure it backs off exponentially (1 s doubling to
+deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
 5 min, ±20% jitter). Outbox rows survive restarts. The admin tool writes to the same outbox, so
 `needs-you-admin token add` on one hub reaches every peer.
 
@@ -252,7 +382,7 @@ Applied records are not forwarded again (the mesh is full); anti-entropy covers 
 Every stored version gets a per-hub sequence number. The response is
 
 ```json
-{"hub_id": "linux-box", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
+{"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
  "items": [ ... ], "tokens": [ ... ]}
 ```
 
@@ -302,4 +432,6 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
   resolve land on the same hub.
 - A resolve on one hub concurrent with a re-post on another is decided by LWW: the later write
   wins.
-- Closed items are kept indefinitely (they're tiny). There is no purge yet.
+- Closed items are purged after `retention_days`. A hub that was offline for longer than that
+  can still hold (and push) open versions of items the others resolved and purged; wipe such a
+  hub's database before bringing it back (see HUB.md).

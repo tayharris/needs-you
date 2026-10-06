@@ -1,18 +1,38 @@
 # Orca
 
-Orca runs agents in worktrees and scheduled automations. needs-you gives both a way to reach you when they stop on something only you can do.
+Orca runs agents in worktrees and scheduled automations, often on several servers. needs-you gives every one of them a way to reach you when it stops on something only you can do, without you watching their terminals.
 
-Prerequisite: the machine running Orca is a sender ([add-a-sender.md](add-a-sender.md)) and `needs-you` is on the `PATH` that Orca terminals get. Check from an Orca terminal: `command -v needs-you`.
+## Several Orca servers: one link
 
-## Agent sessions: install the Claude Code hooks
+Make one invite with a use per server. In the Mac app: **Invite a machine**, uses = the number of servers. On a server hub:
 
 ```bash
-integrations/claude-code/install-hooks.sh
+needs-you-admin invite create orca --role sender --uses 4 --ttl 72
 ```
 
-That's all. Orca sets `$ORCA_TERMINAL_HANDLE` in its terminals, which switches the hooks on for those sessions only. When an agent hits a permission prompt or sits idle, a card appears keyed `agent:<host>:<terminal handle>`; it clears when the agent moves again. Details: [claude-code.md](claude-code.md).
+Then on each Orca server, paste the agent prompt into an Orca terminal, or run:
 
-To add a link back to the terminal:
+```bash
+curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --orca
+```
+
+Each server redeems the same link and gets **its own token**, named `orca-<hostname>` (e.g. `orca-build-1`, `orca-build-2`). Revoke one server without touching the others: in the Mac app, or `needs-you-admin token revoke orca-build-2`. Running the installer again on a server keeps its token, so it's safe in provisioning scripts.
+
+What the flags give you:
+
+| Flag | Effect on an Orca server |
+|---|---|
+| `--claude-hooks user` | Agent sessions that Orca starts post a card when they wait on a permission prompt or input, and clear it when they move again. Orca sets `$ORCA_TERMINAL_HANDLE`, which switches the hooks on for its sessions only. |
+| `--skill` | Agents know when and how to post a specific blocker ("choose A or B for ACME-123") and to resolve it. |
+| `--orca` | Writes the automation prompt block to `~/.config/needs-you/orca-snippet.md` and prints it. |
+
+The installer also adds a 5-minute `needs-you flush`, so alerts raised while your Mac sleeps arrive when it wakes.
+
+Check from an Orca terminal on each server: `command -v needs-you` (if it's missing, `~/.local/bin` isn't on the PATH Orca gives agents; add it, or set `NEEDS_YOU_BIN`).
+
+## Agent sessions
+
+With the hooks installed, nothing else is needed. Cards are keyed `agent:<host>:<terminal handle>`, so agents on different servers never collide. To link back to the terminal:
 
 ```bash
 echo "NEEDS_YOU_AGENT_LINK='Orca=orca://terminal/{handle}'" >> ~/.config/needs-you/env
@@ -20,26 +40,31 @@ echo "NEEDS_YOU_AGENT_LINK='Orca=orca://terminal/{handle}'" >> ~/.config/needs-y
 
 > The `orca://` deep-link format is **unverified**. Test one with `open 'orca://...'` on the Mac before relying on it, and drop the link if it doesn't open anything.
 
-## Automations: add a prompt block
+## Automations: add the prompt block
 
-Automations are agent prompts on a schedule, so the change is text: tell the agent when to `needs-you add`, `resolve` and `done`. [integrations/orca/README.md](../../integrations/orca/README.md) has copy-paste blocks for:
+Automations are agent prompts on a schedule, so the change is text: paste the block from `--orca` into each automation prompt (or the template they're rendered from). [integrations/orca/README.md](../../integrations/orca/README.md) has per-automation versions:
 
-- a shared **preamble** with the posting rules,
 - a **ticket fixer** (e.g. an hourly "Redo" fixer): one item per blocked ticket, resolved when the ticket moves, plus a `done` summary,
-- a **worktree cleanup**: one item per branch it won't delete, with a state-file reconcile so items from earlier runs get resolved,
-- a **session/memory reaper**: urgent item only on anomalies,
+- a **worktree cleanup**: one item per branch it won't delete, with a state-file reconcile so earlier items get resolved,
+- a **session/memory reaper**: an urgent item only on anomalies, keyed per host,
 - **automation failure** reporting.
 
-If your automations are rendered from templates, edit the templates, not the live prompts.
+Use keys that include the host when the same automation runs on several servers (`work:$(hostname -s):memory`), and keys that don't when they describe one shared thing (`work:ACME-123:redo-blocked`), so two servers working the same ticket update one card.
 
-Keep setting the board status (`orca worktree set --workspace-status ... --comment ...`) as before. needs-you is the alert; the board is the record.
+Keep setting the board status alongside the item:
+
+```bash
+orca worktree set --worktree active --workspace-status in-review --comment "Blocked: needs a deploy decision (see needs-you)"
+```
+
+needs-you is the alert; the board is the record.
 
 ## Check it works
 
 From an Orca terminal:
 
 ```bash
-needs-you add --key "work:orca-test:hello" --context work --title "Orca can reach needs-you" --agent "orca:test"
+needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
 needs-you resolve --key "work:orca-test:hello"
 ```
 

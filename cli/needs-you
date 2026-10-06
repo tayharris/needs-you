@@ -16,9 +16,15 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
   NEEDS_YOU_URL     a hub URL (or comma-separated list); used when NEEDS_YOU_URLS is unset
   NEEDS_YOU_TOKEN   this machine's sender token
   NEEDS_YOU_TIMEOUT seconds per hub attempt (default 3)
+  NEEDS_YOU_DEFAULT_CONTEXT  work | personal: --context when not given (default work)
+  NEEDS_YOU_OUTBOX_MAX       max queued requests kept (default 500)
+  NEEDS_YOU_OUTBOX_MAX_DAYS  queued requests older than this are dropped (default 7)
+
+  needs-you self-update                              replace this file with the hub's /dl/needs-you
 
 If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ and the
-command still exits 0. Every invocation sends the outbox first.
+command still exits 0. Every invocation sends the outbox first. The outbox is capped
+(oldest dropped, with a warning), so a hub that is gone for weeks can't fill the disk.
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub.
@@ -93,6 +99,8 @@ class Config:
         except ValueError:
             self.timeout = 3.0
         self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
+        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
+        self.default_context = ctx if ctx in ("work", "personal") else "work"
 
     @property
     def ok(self) -> bool:
@@ -174,7 +182,56 @@ def queue(method: str, path: str, body: Optional[Dict[str, Any]]) -> str:
         json.dump(entry, fh)
     final = os.path.join(d, name)
     os.replace(tmp, final)
+    prune()
     return final
+
+
+def _env_number(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name) or default)
+    except ValueError:
+        return default
+
+
+def _prune_dir(d: str, max_files: int, max_age_s: float) -> int:
+    """Drop entries older than max_age_s, then the oldest beyond max_files. Names start
+    with time_ns, so sorting by name is oldest first. Returns how many were dropped."""
+    try:
+        names = sorted(n for n in os.listdir(d) if n.endswith(".json") and not n.startswith("."))
+    except OSError:
+        return 0
+    cutoff_ns = (time.time() - max_age_s) * 1e9
+    drop = []
+    keep = []
+    for n in names:
+        try:
+            ts = int(n.split("-", 1)[0])
+        except ValueError:  # not our naming: judge it by its mtime instead
+            try:
+                ts = int(os.path.getmtime(os.path.join(d, n)) * 1e9)
+            except OSError:
+                continue
+        (drop if ts < cutoff_ns else keep).append(n)
+    if len(keep) > max_files:
+        drop += keep[:len(keep) - max_files]
+    for n in drop:
+        try:
+            os.remove(os.path.join(d, n))
+        except OSError:
+            pass
+    return len(drop)
+
+
+def prune() -> int:
+    max_files = int(_env_number("NEEDS_YOU_OUTBOX_MAX", 500))
+    max_age = _env_number("NEEDS_YOU_OUTBOX_MAX_DAYS", 7) * 86400
+    d = outbox_dir()
+    dropped = _prune_dir(d, max_files, max_age)
+    _prune_dir(os.path.join(d, "failed"), min(max_files, 100), max_age)
+    if dropped:
+        warn("outbox over its cap (%d requests / %g days): dropped the %d oldest"
+             % (max_files, max_age / 86400, dropped))
+    return dropped
 
 
 def pending() -> List[str]:
@@ -207,6 +264,9 @@ def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
     """Send queued entries oldest first. Stops at the first unreachable attempt.
     Returns (sent, dropped, remaining)."""
     files = pending()
+    if files:
+        prune()
+        files = pending()
     if not files or not cfg.ok:
         return 0, 0, len(files)
     lock = _lock()
@@ -307,7 +367,7 @@ def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, An
             with open(args.body_file, "r", encoding="utf-8") as fh:
                 body = fh.read()
     item: Dict[str, Any] = {"key": args.key, "title": args.title, "kind": kind,
-                            "context": args.context, "priority": args.priority}
+                            "context": args.context or cfg.default_context, "priority": args.priority}
     if body:
         item["body"] = body
     if args.link:
@@ -334,11 +394,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     def item_parser(name: str, help_: str) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help_)
-        sp.add_argument("--key", required=True, help="stable dedupe key, e.g. acme:ACME-4170:redo-blocked")
+        sp.add_argument("--key", required=True, help="stable dedupe key, e.g. work:ACME-123:redo-blocked")
         sp.add_argument("--title", required=True, help="the action needed, <= 100 chars")
         sp.add_argument("--body", help="markdown, <= 2000 chars")
         sp.add_argument("--body-file", help="read the body from a file ('-' for stdin)")
-        sp.add_argument("--context", choices=("work", "personal"), default="work")
+        sp.add_argument("--context", choices=("work", "personal"), default=None,
+                        help="default: $NEEDS_YOU_DEFAULT_CONTEXT, else work")
         sp.add_argument("--priority", choices=("urgent", "normal", "low"), default="normal")
         sp.add_argument("--link", action="append", type=parse_link, metavar="LABEL=URL",
                         help="repeatable, at most 6")
@@ -360,12 +421,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--id")
     sub.add_parser("flush", help="send queued items now")
     sub.add_parser("health", help="check hubs and token")
+    sub.add_parser("self-update", help="replace this CLI with the copy served by the first healthy hub")
 
     args = p.parse_args(argv)
     if not args.cmd:
         p.print_help()
         return 2
     cfg = Config()
+    if args.cmd == "self-update":
+        return self_update(cfg, args.quiet)
 
     # Every invocation drains the outbox first, so queued items go out in order.
     sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
@@ -384,6 +448,66 @@ def main(argv: Optional[List[str]] = None) -> int:
         warn("at most 6 links")
         return 2
     return deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+
+
+def self_update(cfg: Config, quiet: bool) -> int:
+    """Fetch /dl/needs-you from the first healthy hub and atomically replace this file."""
+    target = os.path.realpath(sys.argv[0] if sys.argv and sys.argv[0] else __file__)
+    if not cfg.urls:
+        warn("NEEDS_YOU_URLS is not set (%s)" % config_path())
+        return 1
+    errors = []
+    for url in cfg.urls:
+        try:
+            status, body = _call(url, "", "GET", "/v1/health", None, cfg.timeout)
+            if status != 200 or not body.get("ok"):
+                raise ValueError("HTTP %d" % status)
+            req = urllib.request.Request(url + "/dl/needs-you", method="GET")
+            req.add_header("User-Agent", "needs-you-cli/" + VERSION)
+            with OPENER.open(req, timeout=max(cfg.timeout, 10)) as resp:
+                data = resp.read()
+        except (OSError, ValueError) as e:
+            errors.append("%s: %s" % (url, getattr(e, "reason", e)))
+            continue
+        try:
+            src = data.decode("utf-8")
+            if not src.startswith("#!") or "def main(" not in src:
+                raise ValueError("not the needs-you CLI")
+            compile(src, "needs-you", "exec")
+        except (UnicodeDecodeError, ValueError, SyntaxError) as e:
+            errors.append("%s: bad download (%s)" % (url, e))
+            continue
+        import re
+        m = re.search(r'^VERSION = "([^"]+)"', src, re.M)
+        new_version = m.group(1) if m else "?"
+        try:
+            with open(target, "rb") as fh:
+                if fh.read() == data:
+                    if not quiet:
+                        print("needs-you %s is already up to date (%s)" % (VERSION, url))
+                    return 0
+        except OSError:
+            pass
+        d = os.path.dirname(target)
+        tmp = os.path.join(d, ".needs-you.%d.tmp" % os.getpid())
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o755)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+            os.chmod(tmp, 0o755)
+            os.replace(tmp, target)
+        except OSError as e:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            warn("cannot replace %s: %s" % (target, e))
+            return 1
+        if not quiet:
+            print("updated %s: %s -> %s (from %s)" % (target, VERSION, new_version, url))
+        return 0
+    warn("no hub could serve an update: %s" % "; ".join(errors))
+    return 1
 
 
 def health(cfg: Config, queued: int) -> int:

@@ -3,9 +3,11 @@
 Two pieces, for any repo or VM, with or without Orca:
 
 - **Hooks:** a card appears when a Claude Code session is waiting on you (a permission prompt, or idle waiting for input) and clears itself when the session moves again.
-- **Skill:** teaches the agent to post specific blockers ("choose A or B for ACME-4170") and to resolve them.
+- **Skill:** teaches the agent to post specific blockers ("choose A or B for ACME-123") and to resolve them.
 
-Prerequisite: the machine is a sender (`./scripts/setup-sender.sh`, see [add-a-sender.md](add-a-sender.md)), so `needs-you` works in a shell there.
+Quickest: an invite link installs both. Paste the link's agent prompt into Claude Code, or run `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill` ([add-a-sender.md](add-a-sender.md)). The rest of this page is the manual route and the reference.
+
+Prerequisite for the manual route: the machine is a sender (an invite link, or `./scripts/setup-sender.sh`), so `needs-you` works in a shell there.
 
 Full reference: [integrations/claude-code/README.md](../../integrations/claude-code/README.md).
 

@@ -7,11 +7,11 @@ There are two layers:
 1. **Agent sessions** (any Claude Code terminal Orca starts): install the Claude Code hooks. Orca sets `$ORCA_TERMINAL_HANDLE`, which switches them on. Nothing Orca-specific to configure. See [integrations/claude-code](../claude-code/README.md).
 2. **Automations** (scheduled Orca runs such as a Redo fixer, a worktree cleanup, a session reaper): add a short block to each automation's prompt telling the agent when to `add`, `resolve` and `done`. That's this page.
 
-Prerequisites on the machine that runs Orca: it's a needs-you sender (`scripts/setup-sender.sh`, with the CLI installed), and `needs-you` is on the `PATH` Orca agents get. Check from an Orca terminal: `command -v needs-you`.
+Prerequisites on the machine that runs Orca: it's a needs-you sender (an invite link's installer, ideally with `--claude-hooks user --skill --orca`; see [docs/guides/orca.md](../../docs/guides/orca.md)), and `needs-you` is on the `PATH` Orca agents get. Check from an Orca terminal: `command -v needs-you`.
 
 ## Conventions
 
-Pick a **key prefix** per workspace and stick to it. The examples use `work:`; Taylor's own setup uses `acme:`. Keys are `<prefix>:<thing>:<reason>`, never with a timestamp, so hourly runs update one item instead of stacking 24.
+Pick a **key prefix** per workspace and stick to it. The examples use `work:`; use whatever prefix fits your workspace (for example `acme:`). Keys are `<prefix>:<thing>:<reason>`, never with a timestamp, so hourly runs update one item instead of stacking 24.
 
 | Automation | Key | Kind / priority | Resolve when |
 |---|---|---|---|
@@ -156,7 +156,6 @@ Keep updating the board alongside the item, for example:
 orca worktree set --worktree active --workspace-status in-review --comment "Blocked: needs a push decision (see needs-you)"
 ```
 
-(Some setups wrap the Orca CLI as `orca-ide`; use whichever your automations already call.)
 
 ## Test it
 

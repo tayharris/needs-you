@@ -22,13 +22,25 @@ tailscale status | head                          # is this machine on the tailne
 | `curl: (7) Failed to connect` / timeout | Hub down, or listening on a different address/port | On the hub: `systemctl status needs-you-hub`, `journalctl -u needs-you-hub -n 50` (see [HUB.md](../HUB.md) for the unit name) |
 | Times out only from some machines | Tailscale ACL | Allow those machines (or their tag) to reach the hub's tag on `tcp:8765` |
 | Works by IP, not by name | DNS | Use the full MagicDNS name, `<hub>.<tailnet>.ts.net` |
-| `HTTP 401` / `403` | Wrong, revoked, or Mac-only token | Mint a sender token for this machine; re-run `setup-sender.sh` |
+| `HTTP 401` / `403` | Wrong, revoked, or Mac-only token | Get a new invite link and re-run its installer with `--force` |
+| Times out only while the Mac sleeps | The Mac's own hub is asleep | Expected: items queue and the 5-minute flush sends them after it wakes. Add a [server hub](../HUB.md) to avoid the wait. |
+| Times out from servers, works on the Mac | The hub listens only on `127.0.0.1`, or the macOS firewall blocks it | Turn on tailnet access in the app; allow `python3` in System Settings → Network → Firewall |
 | `HTTP 422` / `400` | Validation: title > 100 chars, body > 2,000, > 6 links, a link scheme not on the allow-list, a bad `context`/`kind`/`priority` | Fix the item; the response body says which field |
 | `HTTP 429` or "too many open items" | The sender has 60 open items: something is looping | Stop the loop; resolve the stale keys |
 
-The CLI never fails your job because of the hub. It queues to `~/.local/state/needs-you/outbox/` and sends on the next call or `needs-you flush`. Items sitting in the outbox mean no hub has accepted them yet.
+The CLI never fails your job because of the hub. It queues to `~/.local/state/needs-you/outbox/` and sends on the next call or `needs-you flush` (the invite installer schedules one every 5 minutes). Items sitting in the outbox mean no hub has accepted them yet. The outbox keeps at most 500 requests and 7 days; older ones are dropped with a warning.
 
-## setup-sender.sh
+## Invite links
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `curl: (22) ... 404` from the one-liner (and bash "succeeds" with no output) | The link is used up, expired or revoked | Make a new link |
+| `HTTP 429` / "too many failed invite attempts" | 10 failed tries from this IP in 10 minutes | Wait 10 minutes; check the link was pasted whole |
+| "This invite (..., role owner) is for the Mac app" | An owner/reader link was used on a server | Open the `needsyou://` link on the Mac; make a `sender` link for servers |
+| "kept the existing token" | The machine was already set up | Expected. `--force` redeems again and replaces the token |
+| Installer says no hub answered | The hub is asleep or unreachable right now | The setup still completed; the test item is queued |
+
+## setup-sender.sh (manual setup)
 
 - **`needs-you: command not found` after setup:** `~/.local/bin` isn't on your `PATH`. Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile. Hooks and cron don't read your profile; they find the CLI at `~/.local/bin/needs-you` directly (or set `NEEDS_YOU_BIN`).
 - **"no terminal available; continuing as --non-interactive":** you ran it without a TTY (e.g. over `ssh host cmd`). Use `ssh -t`, or pass `--url` and `--token-stdin`.
@@ -40,8 +52,8 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 1. **Context and hours:** a `work` item at 21:00 shows only as the faint second number (`0 · 1`). Use the toggle in the expanded header, or check the work-hours setting.
 2. **Kind:** `done` and `info` items never raise the count. They're in the collapsed **Recent** section.
 3. **Snoozed:** press ⌃⌥Space (or your configured shortcut) to bring the panel back.
-4. **Mac can't reach a hub:** the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.
-5. **Wrong token on the Mac:** it needs the read/patch token. Re-enter it in Settings.
+4. **Mac can't reach a server hub:** the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.
+5. **Wrong hub:** the sender's `NEEDS_YOU_URLS` must include the Mac's hub or a server hub peered with it.
 6. **Hubs out of sync:** if the Mac polls `hub-a` and the sender wrote to `hub-b`, replication should copy it within seconds. If it doesn't, check the peer list and the replication outbox on `hub-b` ([HUB.md](../HUB.md)).
 
 ## Duplicate or stale cards

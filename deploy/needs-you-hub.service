@@ -1,6 +1,5 @@
 [Unit]
 Description=needs-you hub (inbox API, tailnet only)
-Documentation=https://github.com/tayharris/needs-you/blob/main/docs/HUB.md
 # The hub binds to the tailnet IP. With "freebind": true in the config it can bind before
 # tailscaled has brought the address up; otherwise Restart=always retries until it can.
 After=network-online.target tailscaled.service
