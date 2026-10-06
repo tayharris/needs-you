@@ -1,0 +1,25 @@
+# needs-you-failed@.service: post a needs-you item when any unit fails.
+#
+# Install (as root), editing User= and the CLI path first:
+#   cp needs-you-failed@.service /etc/systemd/system/
+#   systemctl daemon-reload
+# Then add to the [Unit] section of each unit you care about (or a drop-in):
+#   OnFailure=needs-you-failed@%n.service
+# See backup.service.example for the matching resolve-on-success line.
+#
+# %i is the failed unit's name, %H this host's name.
+
+[Unit]
+Description=needs-you alert: %i failed
+
+[Service]
+Type=oneshot
+# The user that ran scripts/setup-sender.sh; the CLI reads its ~/.config/needs-you/env.
+User=me
+ExecStart=/home/me/.local/bin/needs-you add \
+  --key "personal:%H:%i:failed" \
+  --context personal \
+  --priority normal \
+  --title "%i failed on %H" \
+  --body "systemd unit `%i` failed. Run: journalctl -u %i -n 50" \
+  --agent "systemd"

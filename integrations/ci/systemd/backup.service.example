@@ -1,0 +1,15 @@
+# Example job unit wired to needs-you: alert on failure, clear on success.
+# Pair with a backup.timer as usual.
+
+[Unit]
+Description=Nightly backup
+OnFailure=needs-you-failed@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup.sh
+# Runs only when ExecStart succeeded: clear an earlier failure item.
+# The leading "-" means a needs-you problem never marks the backup failed.
+# runuser switches to the sender user (whose ~/.config/needs-you/env holds the
+# token); if this unit already runs as that user, call needs-you directly.
+ExecStartPost=-/usr/sbin/runuser -u me -- /home/me/.local/bin/needs-you resolve --key "personal:%H:%n:failed"
