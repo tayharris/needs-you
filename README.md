@@ -7,7 +7,7 @@ One inbox for "Taylor has to do something", fed by every VM, project and agent o
 
 Layout (in progress):
 
-- `mac/`: NeedsTay.app (SwiftUI + NSPanel)
+- `mac/`: NeedsYou.app (SwiftUI + NSPanel)
 - `hub/`: HTTP + SQLite service (tailnet only)
-- `cli/`: `needs-tay` sender CLI with offline outbox
+- `cli/`: `needs-you` sender CLI with offline outbox
 - `scripts/`: setup helpers

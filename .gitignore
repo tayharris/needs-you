@@ -34,3 +34,6 @@ mac/dist/
 *.sqlite
 *.sqlite3
 outbox/
+
+# Claude Code agent worktrees
+.claude/worktrees/
