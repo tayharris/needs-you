@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import NeedsYouCore
+import os
 
 /// Connecting with an invite link (needsyou://connect?… or http(s)://<hub>/join/<code>)
 /// and inviting other machines with an owner token.
@@ -12,7 +13,10 @@ final class ConnectController: ObservableObject {
         case failure(String)
     }
 
-    @Published private(set) var status: Status?
+    @Published private(set) var status: Status? {
+        didSet { if let status { log.info("connect: \(String(describing: status), privacy: .public)") } }
+    }
+    private let log = Logger(subsystem: "app.needsyou.mac", category: "connect")
     @Published private(set) var invite: InviteResponse?
     @Published private(set) var inviteRole: HubRole = .sender
     @Published private(set) var inviteStatus: Status?

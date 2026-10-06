@@ -52,10 +52,19 @@ final class LocalHubController: ObservableObject {
 
     // MARK: Paths
 
+    /// ~/Library/Application Support/NeedsYou, or NEEDS_YOU_SUPPORT_DIR (tests, trial runs:
+    /// keeps hub.db and owner.token out of the real profile).
     static var supportDirectory: URL {
+        if let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SUPPORT_DIR"], !dir.isEmpty {
+            return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         return base.appendingPathComponent("NeedsYou", isDirectory: true)
+    }
+
+    static var usesCustomSupportDirectory: Bool {
+        !(ProcessInfo.processInfo.environment["NEEDS_YOU_SUPPORT_DIR"] ?? "").isEmpty
     }
 
     static var dbURL: URL { supportDirectory.appendingPathComponent("hub.db") }
@@ -91,11 +100,12 @@ final class LocalHubController: ObservableObject {
             return
         }
         do {
-            let keychain = AppSettings.localTokenStore
+            // With NEEDS_YOU_SUPPORT_DIR (a throwaway profile) the Keychain copy is left alone.
+            let keychain: KeychainTokenStore? = Self.usesCustomSupportDirectory ? nil : AppSettings.localTokenStore
             let fileExists = FileManager.default.fileExists(atPath: Self.ownerTokenURL.path)
-            let stored = fileExists ? nil : keychain.read()
+            let stored = fileExists ? nil : keychain?.read()
             let token = try OwnerToken.loadOrCreate(at: Self.ownerTokenURL, fallback: stored)
-            if keychain.read() != token { keychain.write(token) }
+            if let keychain, keychain.read() != token { keychain.write(token) }
             settings.localHubToken = token
         } catch {
             settings.localHubToken = nil
@@ -146,7 +156,7 @@ final class LocalHubController: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_000_000_000)   // let interfaces settle
             guard !Task.isCancelled, let self else { return }
             guard let current = self.plan else {
-                if self.process == nil { self.launch() }
+                if self.process == nil, self.restartTask == nil, self.state != .starting { self.launch() }
                 return
             }
             let next = await self.makePlan(script: current.script)
@@ -331,6 +341,7 @@ final class LocalHubController: ObservableObject {
         restartTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled, let self, self.settings.runLocalHub, self.process == nil else { return }
+            self.restartTask = nil
             self.launch()
         }
     }

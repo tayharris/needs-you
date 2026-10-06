@@ -387,7 +387,12 @@ final class PanelController {
         menu.addItem(ClosureMenuItem(title: "Refresh Now") { [weak model] in model?.pollNow(full: true) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(title: "Settings…") { [weak model] in model?.openSettings() })
-        menu.addItem(ClosureMenuItem(title: "Quit NeedsYou") { NSApp.terminate(nil) })
+        menu.addItem(ClosureMenuItem(title: "About Needs You") {
+            // A user click: one of the few places allowed to activate the app.
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Needs You"])
+        })
+        menu.addItem(ClosureMenuItem(title: "Quit Needs You") { NSApp.terminate(nil) })
         return menu
     }
 }

@@ -35,7 +35,7 @@ final class SettingsWindowController {
                                     close: { [weak self] in self?.window?.performClose(nil) })
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
-            w.title = "needs-you Settings"
+            w.title = "Needs You Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.appearance = NSAppearance(named: .darkAqua)
@@ -144,8 +144,8 @@ struct SettingsView: View {
     private var welcome: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Welcome to needs-you").font(.headline)
-                Text("needs-you shows the things your machines, projects and agents need from you, as a small floating pill that stays out of the way until something's waiting.")
+                Text("Welcome to Needs You").font(.headline)
+                Text("Needs You shows the things your machines, projects and agents need from you, as a small floating pill that stays out of the way until something's waiting.")
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Turn on “Run hub on this Mac”, paste a connect link from another Mac, or add a hub by hand below. Just looking? Try demo mode.")
                     .foregroundStyle(.secondary)
@@ -427,7 +427,7 @@ struct SettingsView: View {
         }
         openAtLogin = SMAppService.mainApp.status == .enabled
         if SMAppService.mainApp.status == .requiresApproval {
-            loginMessage = "Approve needs-you in System Settings → General → Login Items."
+            loginMessage = "Approve Needs You in System Settings → General → Login Items."
         }
     }
 }
