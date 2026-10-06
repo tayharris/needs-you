@@ -196,6 +196,10 @@ cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` sh
 
 - **Upgrade:** `cd ~/needs-you && git pull && ./scripts/install-hub.sh --user` (or `sudo
   ./scripts/install-hub.sh`). Senders update their CLI with `needs-you self-update`.
+  Upgrade all peered hubs (and the Mac app) together when moving from a version without
+  invites: older hubs ignore invite records and refuse a replication batch that contains an
+  `owner` token, so they fall behind until they're upgraded (nothing is lost; the outbox
+  retries).
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`
   (safe while running), or `python3 -c "import sqlite3; s=sqlite3.connect('$HOME/.local/state/needs-you/hub.db'); s.backup(sqlite3.connect('$HOME/hub-backup.db'))"`
   where the `sqlite3` CLI isn't installed. With two or more hubs, each is a live backup of the

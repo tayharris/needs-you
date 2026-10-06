@@ -235,6 +235,18 @@ class LastWriterWins(HubTestCase):
                 with self.assertRaises(hubmod.ApiError):
                     h.store.apply_item(bad)
 
+    def test_old_peer_payloads_without_invites_are_accepted(self):
+        """A pre-invites hub sends no `invites` key and knows only sender/reader tokens."""
+        h = self.make_hub("hub-x")
+        tok = {"id": "01TOK", "name": "old-sender", "role": "sender", "hash": "d" * 64,
+               "created_at": "2026-10-06T10:00:00.000Z", "updated_at": "2026-10-06T10:00:00.000Z",
+               "updated_by": "hub-old"}
+        status, body = request("POST", h.url + "/v1/replicate", PEER_SECRET,
+                               {"from_hub": "hub-old", "items": [self.rec()], "tokens": [tok]})
+        self.assertEqual((status, body["applied"]), (200, 2))
+        status, body = request("GET", h.url + "/v1/replicate/changes?after=0", PEER_SECRET)
+        self.assertEqual(body["invites"], [])
+
     def test_replicate_to_self_is_refused(self):
         h = self.make_hub("hub-x")
         status, _ = request("POST", h.url + "/v1/replicate", PEER_SECRET,
