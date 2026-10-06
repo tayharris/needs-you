@@ -88,6 +88,21 @@ quit_app() {
   return 1
 }
 
+# The app's bundled hub normally exits with the app (--parent-pid), but a hub started by an
+# older build can outlive it and keep port 8765. Stop any hub still running from this bundle.
+stop_bundle_hubs() {
+  local app="$1" pids i
+  pids="$(pgrep -f "^.*[Pp]ython.* $app/Contents/Resources/hub/needs_you_hub\.py" || true)"
+  [[ -n "$pids" ]] || return 0
+  echo "==> stopping the old app's hub (pids: $(echo $pids))"
+  kill -TERM $pids 2>/dev/null || true
+  for i in $(seq 1 50); do
+    pgrep -f "$app/Contents/Resources/hub/needs_you_hub\.py" >/dev/null || return 0
+    sleep 0.1
+  done
+  kill -KILL $pids 2>/dev/null || true
+}
+
 launch_app() {
   local app="$1"
   local env_args=()
@@ -108,7 +123,7 @@ launch_app() {
 if [[ $ROLLBACK == 1 ]]; then
   [[ -d "$PREVIOUS" ]] || { echo "error: no previous version at $PREVIOUS" >&2; exit 1; }
   [[ -d "$TARGET" ]] || { echo "error: nothing installed at $TARGET" >&2; exit 1; }
-  quit_app "$TARGET"
+  quit_app "$TARGET"; stop_bundle_hubs "$TARGET"
   echo "==> rolling back: $(plist "$TARGET" CFBundleShortVersionString) → $(plist "$PREVIOUS" CFBundleShortVersionString)"
   SWAP="$DEST/.$NAME.swap.$$"
   mv "$TARGET" "$SWAP"
@@ -142,7 +157,7 @@ echo "==> staging $APP_SRC ($(plist "$APP_SRC" CFBundleShortVersionString))"
 ditto "$APP_SRC" "$STAGED"
 codesign --verify --strict "$STAGED"
 
-quit_app "$TARGET"
+quit_app "$TARGET"; stop_bundle_hubs "$TARGET"
 if [[ -d "$TARGET" ]]; then
   rm -rf "$PREVIOUS"
   mv "$TARGET" "$PREVIOUS"
@@ -155,7 +170,7 @@ if [[ $LAUNCH == 1 ]] && ! launch_app "$TARGET"; then
   echo "error: the new version didn't stay running" >&2
   if [[ -d "$PREVIOUS" ]]; then
     echo "==> restoring the previous version"
-    quit_app "$TARGET" || true
+    quit_app "$TARGET" || true; stop_bundle_hubs "$TARGET"
     FAILED="$DEST/.$NAME.failed.$$"
     mv "$TARGET" "$FAILED"
     mv "$PREVIOUS" "$TARGET"
