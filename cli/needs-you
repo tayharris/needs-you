@@ -10,6 +10,8 @@
   needs-you resolve (--key KEY | --id ID)
   needs-you flush                                    send anything queued in the outbox
   needs-you health                                   check each configured hub and the token
+  needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
+                                                     schedule (read-only; never posts)
 
 Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
   NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
@@ -27,7 +29,7 @@ command still exits 0. Every invocation sends the outbox first. The outbox is ca
 (oldest dropped, with a warning), so a hub that is gone for weeks can't fill the disk.
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
-volume guard) or usage error; 1 `health` found no healthy hub.
+volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
 
 Python 3.9+ standard library only.
 """
@@ -422,6 +424,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub.add_parser("flush", help="send queued items now")
     sub.add_parser("health", help="check hubs and token")
     sub.add_parser("self-update", help="replace this CLI with the copy served by the first healthy hub")
+    dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
+    dp.add_argument("--json", dest="doctor_json", action="store_true",
+                    help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
 
     args = p.parse_args(argv)
     if not args.cmd:
@@ -430,6 +435,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     cfg = Config()
     if args.cmd == "self-update":
         return self_update(cfg, args.quiet)
+    if args.cmd == "doctor":  # before the flush below: doctor changes nothing
+        return doctor(cfg, args.json or args.doctor_json)
 
     # Every invocation drains the outbox first, so queued items go out in order.
     sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
@@ -533,6 +540,381 @@ def health(cfg: Config, queued: int) -> int:
             print("%s  HTTP %d  %s" % (url, status, body.get("message") or body.get("error") or ""))
     print("outbox: %d queued" % queued)
     return 0 if healthy else 1
+
+
+# ---------------------------------------------------------------------------
+# doctor: read-only self-diagnosis. Never writes a file, never posts, never
+# prints a token (only "set" and its length).
+# ---------------------------------------------------------------------------
+
+FLUSH_LABEL = "io.needs-you.flush"
+CRON_TAG = "# needs-you-flush"
+HOOK_MARKER = "orca terminal switch"  # present in every hook since agent cards name the Orca terminal
+_ON = ("1", "true", "yes", "on")
+_OFF = ("0", "false", "no", "off")
+
+
+def _tilde(path: str) -> str:
+    home = os.path.expanduser("~")
+    if path == home or path.startswith(home + os.sep):
+        return "~" + path[len(home):]
+    return path
+
+
+def _age(seconds: float) -> str:
+    s = max(0, int(seconds))
+    if s < 120:
+        return "%ds" % s
+    if s < 7200:
+        return "%dm" % (s // 60)
+    if s < 172800:
+        return "%dh" % (s // 3600)
+    return "%dd" % (s // 86400)
+
+
+def _entry_time(d: str, name: str) -> Optional[float]:
+    try:
+        return int(name.split("-", 1)[0]) / 1e9
+    except ValueError:
+        try:
+            return os.path.getmtime(os.path.join(d, name))
+        except OSError:
+            return None
+
+
+def _list_json(d: str) -> List[str]:
+    """Like pending(), but read-only: never creates the directory or prunes."""
+    try:
+        return sorted(n for n in os.listdir(d) if n.endswith(".json") and not n.startswith("."))
+    except OSError:
+        return []
+
+
+def crontab_has_flush(text: str) -> bool:
+    return any(CRON_TAG in line and not line.lstrip().startswith("#") for line in text.splitlines())
+
+
+def _is_loopback(url: str) -> bool:
+    import urllib.parse
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+class Doctor:
+    def __init__(self, cfg: Config) -> None:
+        self.cfg = cfg
+        self.checks: List[Dict[str, str]] = []
+        self.home = os.path.expanduser("~")
+        self.env_path = config_path()
+        self.file = read_env_file(self.env_path)
+
+    def add(self, check: str, status: str, detail: str, hint: str = "") -> None:
+        self.checks.append({"check": check, "status": status, "detail": detail, "hint": hint})
+
+    def setting(self, name: str) -> Tuple[str, str]:
+        """(value, where): the environment wins over the env file, like the CLI and the hooks."""
+        if os.environ.get(name):
+            return os.environ[name], "env"
+        if self.file.get(name):
+            return self.file[name], "env file"
+        return "", ""
+
+    def run(self) -> List[Dict[str, str]]:
+        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.skill,
+                     self.orca, self.schedule):
+            try:
+                step()
+            except Exception as e:  # a broken check must not hide the others
+                self.add(step.__name__, "WARN", "check crashed: %s" % type(e).__name__,
+                         "report this as a needs-you bug")
+        return self.checks
+
+    # -- config ------------------------------------------------------------
+    def config(self) -> None:
+        p = self.env_path
+        shown = _tilde(p)
+        status, hint, parts = "OK", "", []
+        try:
+            st = os.stat(p)
+        except OSError:
+            st = None
+        if st is None:
+            parts.append("%s not found" % shown)
+            if not self.cfg.ok:
+                status, hint = "FAIL", "set this machine up with an invite link from the Mac app (or scripts/setup-sender.sh)"
+            else:
+                status = "WARN"
+                hint = "the settings come from the environment only; cron, LaunchAgents and hooks won't see them"
+        else:
+            mode = st.st_mode & 0o777
+            parts.append("%s (mode %o)" % (shown, mode))
+            if mode & 0o077:
+                status, hint = "WARN", "chmod 600 %s" % shown
+        hooks_file = os.environ.get("NEEDS_YOU_ENV_FILE")
+        if hooks_file and os.path.abspath(os.path.expanduser(hooks_file)) != os.path.abspath(p):
+            parts.append("hooks read NEEDS_YOU_ENV_FILE=%s instead" % _tilde(hooks_file))
+            if status == "OK":
+                status, hint = "WARN", "point NEEDS_YOU_ENV_FILE and the CLI at the same file, or unset it"
+        urls, where = self.setting("NEEDS_YOU_URLS")
+        if not urls:
+            urls, where = self.setting("NEEDS_YOU_URL")
+            name = "NEEDS_YOU_URL"
+        else:
+            name = "NEEDS_YOU_URLS"
+        if self.cfg.urls:
+            parts.append("%s: %d hub URL%s (%s)" % (name, len(self.cfg.urls),
+                                                    "" if len(self.cfg.urls) == 1 else "s", where))
+        else:
+            parts.append("NEEDS_YOU_URLS not set")
+            status = "FAIL"
+            hint = hint if st is None else "add NEEDS_YOU_URLS=<hub url>[,<hub url>...] to %s" % shown
+        tok, where = self.setting("NEEDS_YOU_TOKEN")
+        if tok:
+            parts.append("NEEDS_YOU_TOKEN set (%d chars, %s)" % (len(tok), where))
+        else:
+            parts.append("NEEDS_YOU_TOKEN not set")
+            status = "FAIL"
+            if st is not None:
+                hint = "re-run the invite installer with --force to get a token for this machine"
+        self.add("config", status, "; ".join(parts), hint)
+
+    # -- PATH --------------------------------------------------------------
+    def path(self) -> None:
+        import shutil
+        local_bin = os.path.join(self.home, ".local", "bin")
+        entries = [os.path.realpath(os.path.expanduser(e)) for e in os.environ.get("PATH", "").split(os.pathsep) if e]
+        on_path = os.path.realpath(local_bin) in entries
+        found = shutil.which("needs-you")
+        installed = os.path.join(local_bin, "needs-you")
+        hint_line = 'add export PATH="$HOME/.local/bin:$PATH" to your shell profile'
+        if found:
+            detail = "needs-you -> %s" % _tilde(found)
+            me = os.path.realpath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+            if me and os.path.realpath(found) != me:
+                detail += " (this run: %s)" % _tilde(me)
+            detail += "; ~/.local/bin %s PATH" % ("on" if on_path else "not on")
+            self.add("path", "OK", detail)
+        elif os.path.exists(installed):
+            self.add("path", "WARN", "needs-you is not on PATH; ~/.local/bin/needs-you exists",
+                     hint_line + "; until then call ~/.local/bin/needs-you by its full path")
+        else:
+            self.add("path", "WARN", "needs-you is not on PATH%s" % ("" if on_path else "; ~/.local/bin not on PATH"),
+                     "install the CLI to ~/.local/bin (the invite installer does) and " + hint_line)
+
+    # -- hubs --------------------------------------------------------------
+    def hubs(self) -> None:
+        urls = self.cfg.urls
+        if not urls:
+            self.add("hubs", "FAIL", "no hub URL configured", "set NEEDS_YOU_URLS in %s" % _tilde(self.env_path))
+            return
+        timeout = min(self.cfg.timeout, 3.0)
+        answered: List[int] = []
+        usable: List[int] = []
+        for i, url in enumerate(urls):
+            name = "hub %d" % (i + 1)
+            try:
+                status, body = _call(url, self.cfg.token, "GET", "/v1/health", None, timeout)
+            except (OSError, ValueError) as e:
+                self.add(name, "WARN", "%s unreachable (%s)" % (url, getattr(e, "reason", e)),
+                         "is the hub up, and this machine on the tailnet? see docs/guides/troubleshooting.md")
+                continue
+            if status != 200:
+                self.add(name, "WARN", "%s answered HTTP %d" % (url, status), "is that a needs-you hub URL?")
+                continue
+            answered.append(i)
+            hub_v = body.get("version") or "?"
+            base = "%s hub=%s version %s" % (url, body.get("hub_id", "?"), hub_v)
+            vhint = ""
+            if hub_v not in ("?", VERSION):
+                vhint = "CLI is %s; needs-you self-update fetches the hub's copy" % VERSION
+            tok = body.get("token")
+            if body.get("token_error") or not isinstance(tok, dict):
+                why = body.get("token_error") or ("no token sent" if not self.cfg.token else "token not recognised")
+                self.add(name, "FAIL", "%s; token rejected: %s" % (base, why),
+                         "get a new invite link and re-run its installer with --force")
+                continue
+            role = tok.get("role", "?")
+            detail = "%s token=%s role=%s" % (base, tok.get("name", "?"), role)
+            if role not in ("sender", "owner"):
+                self.add(name, "WARN", detail + " (this role can't post)", "use a sender token on this machine")
+                continue
+            usable.append(i)
+            self.add(name, "OK", detail, vhint)
+        n = len(urls)
+        summary = "%d configured, %d answered, %d accept the token" % (n, len(answered), len(usable))
+        if not usable:
+            self.add("hubs", "FAIL", summary,
+                     "items will queue in the outbox until a hub accepts the token; see docs/guides/troubleshooting.md")
+        elif 0 not in usable:
+            self.add("hubs", "WARN", summary + "; only a fallback hub works (%s)" % urls[usable[0]],
+                     "check the first hub %s; every post waits for it to time out first" % urls[0])
+        else:
+            self.add("hubs", "OK", summary)
+        if sys.platform == "darwin":
+            loop = [i for i, u in enumerate(urls) if _is_loopback(u)]
+            if loop and loop[0] != 0:
+                self.add("hub order", "WARN", "%s is #%d in NEEDS_YOU_URLS" % (urls[loop[0]], loop[0] + 1),
+                         "on the Mac that runs the hub, list %s first so local agents don't depend on Tailscale"
+                         % urls[loop[0]])
+
+    # -- outbox ------------------------------------------------------------
+    def outbox(self) -> None:
+        d = outbox_dir()
+        now = time.time()
+        queued = _list_json(d)
+        failed = _list_json(os.path.join(d, "failed"))
+        parts = ["%d queued" % len(queued)]
+        if queued:
+            t = _entry_time(d, queued[0])
+            if t is not None:
+                parts[0] += ", oldest %s" % _age(now - t)
+        parts.append("%d failed" % len(failed))
+        status, hints = "OK", []
+        if queued:
+            status = "WARN"
+            hints.append("needs-you flush (sends them once a hub answers)")
+        if failed:
+            status = "WARN"
+            hints.append("a hub rejected the entries in %s; read them, then delete them"
+                         % _tilde(os.path.join(d, "failed")))
+        self.add("outbox", status, "%s (%s)" % (", ".join(parts), _tilde(d)), "; ".join(hints))
+
+    # -- Claude Code hooks -------------------------------------------------
+    def hooks(self) -> None:
+        claude = os.path.join(self.home, ".claude")
+        hook = os.path.join(claude, "hooks", "needs-you-hook.sh")
+        settings = os.path.join(claude, "settings.json")
+        installer = "integrations/claude-code/install-hooks.sh (or the invite installer with --claude-hooks user)"
+        if not os.path.isdir(claude):
+            self.add("claude hooks", "INFO", "~/.claude not found; Claude Code isn't set up for this user")
+            return
+        try:
+            with open(settings, "r", encoding="utf-8") as fh:
+                referenced = "needs-you-hook.sh" in fh.read()
+        except OSError:
+            referenced = False
+        exists = os.path.isfile(hook)
+        if not exists and not referenced:
+            self.add("claude hooks", "INFO", "not installed (optional: cards when a session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts = [], []
+        if not exists:
+            problems.append("~/.claude/settings.json references the hook but %s is missing" % _tilde(hook))
+        else:
+            parts.append(_tilde(hook))
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            if not referenced:
+                problems.append("~/.claude/settings.json doesn't reference it")
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    current = HOOK_MARKER in fh.read()
+            except OSError:
+                current = False
+            if not current:
+                problems.append("old hook")
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif os.environ.get("ORCA_TERMINAL_HANDLE"):
+            parts.append("alerts on (Orca session)")
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            hint = "re-run the installer: " + installer
+            self.add("claude hooks", "WARN", "; ".join(problems + parts), hint)
+        else:
+            hint = ""
+            if parts[-1] == "alerts off until opted in":
+                hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+            self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
+
+    # -- skill -------------------------------------------------------------
+    def skill(self) -> None:
+        p = os.path.join(self.home, ".claude", "skills", "needs-you", "SKILL.md")
+        if os.path.isfile(p):
+            self.add("claude skill", "OK", _tilde(p))
+        else:
+            self.add("claude skill", "INFO", "%s not installed (optional)" % _tilde(p),
+                     "copy integrations/claude-code/skill/needs-you to ~/.claude/skills/ (or the invite installer's --skill)")
+
+    # -- Orca --------------------------------------------------------------
+    def orca(self) -> None:
+        import shutil
+        handle = os.environ.get("ORCA_TERMINAL_HANDLE")
+        if not handle and not shutil.which("orca"):
+            return
+        parts = ["ORCA_TERMINAL_HANDLE %s" % ("set" if handle else "not set (not an Orca terminal)"),
+                 "ORCA_WORKTREE_ID %s" % ("set" if os.environ.get("ORCA_WORKTREE_ID") else "not set")]
+        env_name, where = self.setting("NEEDS_YOU_ORCA_ENVIRONMENT")
+        hint = ""
+        if env_name:
+            parts.append("NEEDS_YOU_ORCA_ENVIRONMENT=%s (%s)" % (env_name, where))
+        else:
+            parts.append("NEEDS_YOU_ORCA_ENVIRONMENT not set")
+            hint = ("on a paired Orca server, set NEEDS_YOU_ORCA_ENVIRONMENT in %s to the name "
+                    "`orca environment list` shows on the Mac" % _tilde(self.env_path))
+        self.add("orca", "INFO", "; ".join(parts), hint)
+
+    # -- flush schedule ----------------------------------------------------
+    def schedule(self) -> None:
+        if sys.platform == "darwin":
+            plist = os.path.join(self.home, "Library", "LaunchAgents", FLUSH_LABEL + ".plist")
+            try:
+                import plistlib
+                with open(plist, "rb") as fh:
+                    data = plistlib.load(fh)
+            except OSError:
+                self.add("flush schedule", "WARN", "no LaunchAgent %s" % _tilde(plist),
+                         "re-run the invite installer (without --no-schedule) so queued items go out every 5 minutes")
+                return
+            except Exception:
+                self.add("flush schedule", "WARN", "%s is not a valid plist" % _tilde(plist),
+                         "re-run the invite installer")
+                return
+            args = data.get("ProgramArguments") or []
+            prog = args[0] if args else ""
+            if prog and not os.path.exists(prog):
+                self.add("flush schedule", "WARN", "%s runs %s, which doesn't exist" % (_tilde(plist), _tilde(prog)),
+                         "re-run the invite installer")
+                return
+            self.add("flush schedule", "OK", "LaunchAgent %s (every %ss)" % (FLUSH_LABEL, data.get("StartInterval", "?")))
+            return
+        import shutil
+        import subprocess
+        if not shutil.which("crontab"):
+            self.add("flush schedule", "WARN", "no crontab on this machine",
+                     "run `needs-you -q flush` every few minutes some other way (e.g. a systemd timer)")
+            return
+        try:
+            r = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+            text = r.stdout if r.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            text = ""
+        if crontab_has_flush(text):
+            self.add("flush schedule", "OK", "crontab line tagged %s" % CRON_TAG)
+        else:
+            self.add("flush schedule", "WARN", "no crontab line tagged %s" % CRON_TAG,
+                     "re-run the invite installer (without --no-schedule) so queued items go out every 5 minutes")
+
+
+def doctor(cfg: Config, as_json: bool) -> int:
+    checks = Doctor(cfg).run()
+    ok = not any(c["status"] == "FAIL" for c in checks)
+    if as_json:
+        print(json.dumps({"ok": ok, "version": VERSION, "checks": checks}, indent=1))
+    else:
+        print("needs-you doctor (CLI %s)" % VERSION)
+        width = max(len(c["check"]) for c in checks)
+        for c in checks:
+            print("%-4s  %-*s  %s" % (c["status"], width, c["check"], c["detail"]))
+            if c["hint"]:
+                print("      %-*s  -> %s" % (width, "", c["hint"]))
+        print("ok" if ok else "problems found (FAIL above)")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

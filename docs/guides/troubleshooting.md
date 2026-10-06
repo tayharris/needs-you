@@ -2,7 +2,18 @@
 
 Work from the sender toward the Mac: can the sender reach a hub, did the hub store the item, can the Mac see it, is the Mac showing the right context.
 
-## Quick checks
+## Start here: `needs-you doctor`
+
+On the sender, run:
+
+```bash
+needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
+needs-you doctor --json   # the same, for agents: {ok, version, checks: [{check, status, detail, hint}]}
+```
+
+It checks the env file (and that its mode is 600), whether `needs-you` and `~/.local/bin` are on `PATH`, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), the Claude Code hooks and skill, Orca settings, and the 5-minute flush schedule. Each line is `OK`, `WARN`, `FAIL` or `INFO`, with a one-line fix under it. It exits 1 if any check is `FAIL`. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).
+
+## Quick checks by hand
 
 ```bash
 # on the sender

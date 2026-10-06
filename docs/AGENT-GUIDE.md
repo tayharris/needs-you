@@ -36,7 +36,8 @@ or `needs-you-admin invite create` on a server hub). It looks like
 
 4. Report the health check output (a line like
    `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token. If `~/.local/bin` isn't on `PATH`, the installer says so; call
-   `~/.local/bin/needs-you` by its full path until it is. If the installer exits 1
+   `~/.local/bin/needs-you` by its full path until it is. Then run `needs-you doctor` and
+   report any `WARN` or `FAIL` lines with their fixes. If the installer exits 1
    saying the link is unknown, expired or revoked, or has no uses left, ask the person for a new one.
 5. If you installed the hooks, say that they stay quiet until opted in
    (`NEEDS_YOU_AGENT_ALERTS=1`, or a session Orca starts).
@@ -96,6 +97,15 @@ curl -fsS -X POST "$NEEDS_YOU_URL/v1/items" \
 ```
 
 No outbox or failover with curl: loop over `NEEDS_YOU_URLS` yourself or accept the loss.
+
+### When something seems wrong
+
+Run `needs-you doctor --json` whenever you're unsure the machine is set up (a post queued
+instead of sending, a command not found, a hook that never fires). It prints
+`{"ok": ..., "checks": [{"check", "status", "detail", "hint"}]}`, where `status` is `OK`,
+`WARN`, `FAIL` or `INFO` and `hint` is a fix you can run or relay to the person. It exits 1
+on any `FAIL`. It is read-only, never posts an item and never prints the token. Don't post an
+item to test the setup; doctor is the test.
 
 ## Rules
 

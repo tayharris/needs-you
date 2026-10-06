@@ -2251,6 +2251,8 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 
 - If the installer notes that `~/.local/bin` is not on PATH, call `~/.local/bin/needs-you`
   by its full path, and tell the user the line to add to their shell profile.
+- Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule)
+  and report any `WARN` or `FAIL` lines with their fixes. `--json` gives the same as data.
 - If you added `--claude-hooks`, tell the user the hooks stay quiet until opted in:
   `NEEDS_YOU_AGENT_ALERTS=1` in the environment or in `~/.config/needs-you/env` (sessions
   started by Orca are opted in already).
