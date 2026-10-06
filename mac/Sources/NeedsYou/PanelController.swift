@@ -242,11 +242,10 @@ final class PanelController {
     private func contentSize(for display: PanelDisplay) -> CGSize {
         switch display {
         case .idle:
-            // PLAN.md: 28×10 at ~10%; on hover it shows "all clear" and the last check.
-            guard model.hovering else { return CGSize(width: 28, height: 10) }
-            let text = model.idleHoverLine as NSString
+            // PLAN.md: a faint "Nothing needs <you>" pill; on hover "all clear" and the last check.
+            let text = (model.hovering ? model.idleHoverLine : model.idleRestLine) as NSString
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width
-            return CGSize(width: min(340, ceil(width) + 32), height: 22)
+            return CGSize(width: min(340, ceil(width) + 32), height: model.hovering ? 22 : 18)
         case .waiting:
             let digits = String(model.count).count + (model.otherCount > 0 ? String(model.otherCount).count + 2 : 0)
             return CGSize(width: max(44, CGFloat(18 + digits * 8)), height: 22)
@@ -272,7 +271,7 @@ final class PanelController {
 
     private func cornerRadius(for display: PanelDisplay) -> CGFloat {
         switch display {
-        case .idle: return model.hovering ? 11 : 5
+        case .idle: return model.hovering ? 11 : 9
         case .waiting: return 11
         case .preview: return 14
         case .expanded: return 14
@@ -281,7 +280,7 @@ final class PanelController {
 
     private func alpha(for display: PanelDisplay) -> CGFloat {
         switch display {
-        case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.10 : 0.35)  // "set up" state is a little easier to find
+        case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
         case .waiting: return model.hovering ? 1.0 : 0.85
         case .preview, .expanded: return 1.0
         }

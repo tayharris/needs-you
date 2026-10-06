@@ -56,7 +56,7 @@ struct RootView: View {
 
     private func shape(_ display: PanelDisplay) -> RoundedRectangle {
         switch display {
-        case .idle: return RoundedRectangle(cornerRadius: model.hovering ? 11 : 5, style: .continuous)
+        case .idle: return RoundedRectangle(cornerRadius: model.hovering ? 11 : 9, style: .continuous)
         case .waiting: return RoundedRectangle(cornerRadius: 11, style: .continuous)
         case .preview, .expanded: return RoundedRectangle(cornerRadius: 14, style: .continuous)
         }
@@ -118,21 +118,19 @@ struct IdlePill: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        ZStack {
-            if model.hovering {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
-                        .frame(width: 5, height: 5)
-                    Text(model.idleHoverLine)
-                        .font(Theme.meta)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 8)
-                .transition(.opacity)
-            }
+        // At rest a small, faint "Nothing needs <you>" (still easy to drag, right-click or
+        // hide); on hover the full status line.
+        HStack(spacing: 6) {
+            Circle()
+                .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
+                .frame(width: 5, height: 5)
+            Text(model.hovering ? model.idleHoverLine : model.idleRestLine)
+                .font(Theme.meta)
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
         }
+        .padding(.horizontal, 8)
+        .animation(.easeInOut(duration: 0.15), value: model.hovering)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
         .help(model.statusLine)
