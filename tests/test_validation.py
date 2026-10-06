@@ -138,9 +138,17 @@ class BindChecks(unittest.TestCase):
         c.update(kw)
         return c
 
-    def test_bind_required(self):
+    def test_bind_defaults_to_loopback(self):
+        cfg = self.cfg()
+        self.assertEqual(cfg["bind"], ["127.0.0.1"])
+        hubmod.check_bind(cfg)
+
+    def test_bind_list_and_commas(self):
+        self.assertEqual(hubmod.normalise_binds("127.0.0.1, 100.64.1.2"), ["127.0.0.1", "100.64.1.2"])
+        self.assertEqual(hubmod.normalise_binds(["127.0.0.1", "[::1]", "127.0.0.1"]), ["127.0.0.1", "::1"])
+        hubmod.check_bind(self.cfg(bind=["127.0.0.1", "100.64.1.2"]))
         with self.assertRaises(SystemExit):
-            hubmod.check_bind(self.cfg())
+            hubmod.check_bind(self.cfg(bind=["127.0.0.1", "0.0.0.0"]))
 
     def test_any_interface_refused(self):
         for addr in ("0.0.0.0", "::", ""):
