@@ -1,6 +1,6 @@
 ---
 name: release
-description: Manual release steps for needs-you (version bump, tests, Mac app zip, server tarball, CLI, checksums, tag, GitHub Release) until CI/CD exists. Use when asked to cut, package or publish a release.
+description: Release steps for needs-you (changelog, version bump, tests, tag; the release workflow builds the Mac app zip, server tarball, CLI and checksums into a draft GitHub Release). Use when asked to cut, package or publish a release.
 ---
 
 # release (manual, for now)

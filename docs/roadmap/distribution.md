@@ -1,6 +1,6 @@
 # Distribution plan
 
-Status: plan only. Today people build the app themselves (`mac/scripts/bundle.sh`) and clone the repo for hubs and senders.
+Status: the release workflow exists (draft GitHub Releases with the app zip, server tarball, CLI and `SHA256SUMS`; see [ci-cd.md](ci-cd.md)) but hasn't cut a release yet. Today people build the app themselves (`mac/scripts/bundle.sh`) and clone the repo for hubs and senders. Test plan for someone new: [fresh-user-test-plan.md](fresh-user-test-plan.md), which also lists what's blocked on open decisions.
 
 ## Install paths
 
