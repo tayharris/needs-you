@@ -85,18 +85,11 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
     public let config: HubConfig
     private let session: URLSession
 
-    public init(config: HubConfig, session: URLSession? = nil) {
+    /// `session` defaults to `HubSession.shared` (ephemeral, no URLCache, no cookies), so
+    /// rebuilding clients on a hub switch never leaves sessions behind.
+    public init(config: HubConfig, session: URLSession = HubSession.shared) {
         self.config = config
-        if let session {
-            self.session = session
-        } else {
-            let cfg = URLSessionConfiguration.ephemeral
-            cfg.timeoutIntervalForRequest = 15
-            cfg.timeoutIntervalForResource = 30
-            cfg.waitsForConnectivity = false
-            cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
-            self.session = URLSession(configuration: cfg)
-        }
+        self.session = session
     }
 
     // MARK: Request building (pure, tested)

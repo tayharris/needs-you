@@ -21,15 +21,30 @@ public struct MergeResult: Equatable, Sendable {
 
 /// The local mirror of the hub's open items plus purely local state (per-card snoozes,
 /// optimistic closes). A value type with no I/O, so the rules are easy to test.
+///
+/// Memory stays bounded: only open items are kept (closed ones are dropped as soon as
+/// the hub reports them), local-close tombstones live at most `closedRetention` (24 h),
+/// and card snoozes are dropped when they end or their item goes away. Nothing is
+/// written to disk.
 public struct ItemStore: Sendable {
     public private(set) var items: [String: Item] = [:]
     /// Newest `updated_at` seen from the hub; sent back as `since`.
     public private(set) var latestUpdatedAt: Date?
     /// Per-card snoozes (PLAN.md: 15 min / 1 hr / tomorrow), local to this Mac.
     public private(set) var cardSnoozes: [String: Date] = [:]
-    /// Items closed locally while the PATCH is in flight, with the `updated_at` they had,
-    /// so a poll that races the PATCH doesn't resurrect them.
-    private var locallyClosed: [String: Date] = [:]
+    /// Items closed locally while the PATCH is in flight, with the `updated_at` they had
+    /// and when they were closed, so a poll that races the PATCH doesn't resurrect them.
+    private var locallyClosed: [String: Tombstone] = [:]
+
+    private struct Tombstone: Sendable {
+        var updatedAt: Date
+        var closedAt: Date
+    }
+
+    /// How long a local close is remembered (it's settled long before this).
+    public static let closedRetention: TimeInterval = 24 * 3600
+    /// Hard cap on remembered local closes.
+    public static let maxClosedTombstones = 500
 
     public init(items: [Item] = []) {
         for item in items where item.status == .open { self.items[item.id] = item }
@@ -51,8 +66,8 @@ public struct ItemStore: Sendable {
             seenIDs.insert(incoming.id)
             latestUpdatedAt = max(latestUpdatedAt ?? incoming.updatedAt, incoming.updatedAt)
 
-            if let closedAt = locallyClosed[incoming.id] {
-                if incoming.updatedAt <= closedAt { continue }
+            if let tombstone = locallyClosed[incoming.id] {
+                if incoming.updatedAt <= tombstone.updatedAt { continue }
                 // The sender updated it after we closed it: it's live again.
                 locallyClosed[incoming.id] = nil
             }
@@ -113,7 +128,14 @@ public struct ItemStore: Sendable {
             cardSnoozes[id] = nil
             dropped.append(item)
         }
-        cardSnoozes = cardSnoozes.filter { $0.value > now }
+        // Snoozes end, and never outlive their item.
+        cardSnoozes = cardSnoozes.filter { $0.value > now && items[$0.key] != nil }
+        // Local-close tombstones: 24 h at most, and never more than the cap.
+        locallyClosed = locallyClosed.filter { now.timeIntervalSince($0.value.closedAt) < Self.closedRetention }
+        if locallyClosed.count > Self.maxClosedTombstones {
+            let keep = locallyClosed.sorted { $0.value.closedAt > $1.value.closedAt }.prefix(Self.maxClosedTombstones)
+            locallyClosed = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+        }
         return dropped
     }
 
@@ -121,9 +143,9 @@ public struct ItemStore: Sendable {
 
     /// Optimistically close an item (Done / Dismiss). Returns it so a failed PATCH can restore it.
     @discardableResult
-    public mutating func closeLocally(id: String) -> Item? {
+    public mutating func closeLocally(id: String, now: Date = Date()) -> Item? {
         guard let item = items.removeValue(forKey: id) else { return nil }
-        locallyClosed[id] = item.updatedAt
+        locallyClosed[id] = Tombstone(updatedAt: item.updatedAt, closedAt: now)
         cardSnoozes[id] = nil
         return item
     }
@@ -186,4 +208,6 @@ public struct ItemStore: Sendable {
     }
 
     public var snoozedCardCount: Int { cardSnoozes.count }
+    /// Local closes still remembered (for tests and the bounded-memory guarantee).
+    public var closedTombstoneCount: Int { locallyClosed.count }
 }

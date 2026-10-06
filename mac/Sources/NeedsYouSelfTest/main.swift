@@ -15,6 +15,11 @@ let entries =
     + testEntries(ScheduleTests.self, ScheduleTests.allTests)
     + testEntries(FloatingPanelTests.self, FloatingPanelTests.allTests)
     + testEntries(FailoverFeedTests.self, FailoverFeedTests.allTests, async: FailoverFeedTests.asyncTests)
+    + testEntries(ConnectLinkTests.self, ConnectLinkTests.allTests)
+    + testEntries(HubListMergeTests.self, HubListMergeTests.allTests)
+    + testEntries(InviteClientTests.self, InviteClientTests.allTests, async: InviteClientTests.asyncTests)
+    + testEntries(LocalHubTests.self, LocalHubTests.allTests)
+    + testEntries(PruningTests.self, PruningTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
