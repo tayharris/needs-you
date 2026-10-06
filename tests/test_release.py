@@ -56,14 +56,23 @@ class BuildReleaseTests(unittest.TestCase):
         return subprocess.run([BASH, os.path.join(self.repo, "scripts", "build-release.sh"), self.out],
                               env=e, capture_output=True, text=True, timeout=60)
 
-    def cut_changelog(self):
+    def set_changelog_section(self, present):
+        """The clone's CHANGELOG with or without a "## [VERSION]" section, whatever the repo has."""
         path = os.path.join(self.repo, "CHANGELOG.md")
         with open(path) as fh:
             s = fh.read()
+        heading = "## [%s]" % self.v
+        s = s.replace(heading, "## [0.0.0-test]")
+        if present:
+            s = s.replace("## [Unreleased]", "## [Unreleased]\n\n%s - 2026-10-06\n\n- A change." % heading, 1)
         with open(path, "w") as fh:
-            fh.write(s.replace("## [Unreleased]", "## [Unreleased]\n\n## [%s] - 2026-10-06" % self.v, 1))
+            fh.write(s)
+
+    def cut_changelog(self):
+        self.set_changelog_section(True)
 
     def test_refuses_without_a_changelog_section(self):
+        self.set_changelog_section(False)
         r = self.build()
         self.assertEqual(r.returncode, 1)
         self.assertIn('no "## [%s]" section' % self.v, r.stderr)
