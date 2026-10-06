@@ -5,17 +5,17 @@ description: Release steps for needs-you (changelog, version bump, tests, tag; t
 
 # release (manual, for now)
 
-The automated version is planned in `docs/roadmap/ci-cd.md`; follow that once `.github/workflows/` exists and retire these steps. Never push a tag or publish a release without the user's explicit go-ahead for that specific push.
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and then drafts the GitHub Release with `scripts/build-release.sh` (see `docs/roadmap/ci-cd.md`). The steps below are the manual fallback; `scripts/build-release.sh OUT_DIR` replaces step 4. Never push a tag or publish a release without the user's explicit go-ahead for that specific push.
 
-## Versions today (not unified yet)
+## Versions
 
 | Part | Where | Current |
 |---|---|---|
 | Hub | `VERSION` in `hub/needs_you_hub.py` (also served by `/v1/health`) | 1.0.0 |
 | CLI | `VERSION` in `cli/needs-you` (`needs-you --version`) | 1.0.0 |
-| Mac app | `NEEDS_YOU_VERSION` env for `mac/scripts/bundle.sh` (default `0.2.0`); build number = `git rev-list --count HEAD` | 0.2.0 |
+| Mac app | `VERSION` at the repo root (`mac/scripts/bundle.sh` reads it; `NEEDS_YOU_VERSION` overrides); build number = `git rev-list --count HEAD` | 1.0.0 |
 
-The roadmap moves all three to one `VERSION` file at the repo root. Until then, pick one semver `X.Y.Z` and set it in all three places in a single commit.
+`VERSION`, the hub and the CLI must agree (`tests/test_release.py` checks); bump all three in one commit, with the `CHANGELOG.md` section.
 
 ## Steps
 
