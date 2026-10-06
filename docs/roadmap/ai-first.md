@@ -1,6 +1,6 @@
 # AI-first
 
-Status: plan only. The decision behind it is [ADR 0005](../adr/0005-ai-first.md).
+Status: plan; item 5 (`needs-you doctor`) is done. The decision behind it is [ADR 0005](../adr/0005-ai-first.md).
 
 **Product goal:** give AI agents the tools to set themselves up and to alert people when they actually need them, routed to where they need to act.
 
@@ -16,7 +16,7 @@ That means two audiences are first-class: agents that *use* needs-you (set up a 
 | Self-setup | Invite links: an agent prompt or `curl` one-liner from the Mac app, a `/join/<code>` page (in progress on other branches) |
 | Contributor entry | `CLAUDE.md`, `AGENTS.md`, `.claude/skills/` |
 | Machine-readable API | None. `docs/API.md` is prose |
-| Diagnosis | `needs-you health` (reachability + token role) |
+| Diagnosis | `needs-you health` (reachability + token role); `needs-you doctor [--json]` (the whole setup, item 5) |
 
 ## 1. Repo structure review
 
@@ -71,7 +71,16 @@ A `needs-you` MCP server so agents call tools instead of shelling out:
 
 ## 5. `needs-you doctor`
 
-Self-diagnosis an agent can run and act on:
+**Done** (`cli/needs-you`, `tests/test_doctor.py`). As built: checks are `config`, `path`,
+`hub N` per URL plus a `hubs` summary (and `hub order` on a Mac whose `127.0.0.1` URL isn't
+first), `outbox`, `claude hooks`, `claude skill`, `orca` (only when Orca is present) and
+`flush schedule`. Each has a `status` of `OK`, `WARN`, `FAIL` or `INFO` and a `hint`. `--json`
+prints `{"ok", "version", "checks": [{"check", "status", "detail", "hint"}]}`; the exit code is
+1 on any `FAIL`. It is read-only (it runs before the usual outbox flush) and never posts.
+Tailscale isn't checked: hub reachability covers it. Still to do: the Mac diagnostics pane and
+the `/join` verify step reusing these checks.
+
+The original sketch:
 
 ```
 $ needs-you doctor --json
@@ -110,7 +119,7 @@ The invite flow is the agent's setup path. Make it fully scriptable:
 
 | Phase | What |
 |---|---|
-| 1 | `protocol/openapi.json` + schemas + drift test; `needs-you doctor` |
+| 1 | `protocol/openapi.json` + schemas + drift test; `needs-you doctor` (done) |
 | 2 | Conformance suite extracted from `tests/test_api.py` and `test_replication.py`; CI job |
 | 3 | Repo moves (one coordinated PR) |
 | 4 | MCP server; machine-readable `/join` |

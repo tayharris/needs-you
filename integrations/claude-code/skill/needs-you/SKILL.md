@@ -19,7 +19,7 @@ Don't post: progress updates, "started X", questions you can answer by reading t
 
 ## How
 
-Check it's set up first: `command -v needs-you`. If that finds nothing, try `~/.local/bin/needs-you` (the installer puts it there, which isn't always on `PATH`) and use that full path. If neither exists, say so in your reply and don't try to install it.
+Check it's set up first: `command -v needs-you`. If that finds nothing, try `~/.local/bin/needs-you` (the installer puts it there, which isn't always on `PATH`) and use that full path. If neither exists, say so in your reply and don't try to install it. If you're unsure it works (a post queued, a hook never fires), run `needs-you doctor --json` (read-only, never posts) and relay any `FAIL`/`WARN` line with its `hint`.
 
 ```bash
 needs-you add \
