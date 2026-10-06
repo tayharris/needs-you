@@ -1,6 +1,6 @@
 import AppKit
 import Combine
-import NeedsTayCore
+import NeedsYouCore
 import SwiftUI
 
 /// The floating panel. Non-activating, so clicking it never steals focus from the app
@@ -351,7 +351,7 @@ final class PanelController {
 
     // MARK: Debug snapshot
 
-    /// Renders the panel's view hierarchy to a PNG (NEEDS_TAY_SNAPSHOT_DIR). Works without
+    /// Renders the panel's view hierarchy to a PNG (NEEDS_YOU_SNAPSHOT_DIR). Works without
     /// Screen Recording permission; the behind-window material renders as plain dark.
     func writeSnapshot(to url: URL) {
         guard let view = panel.contentView, panel.isVisible else { return }
@@ -393,7 +393,7 @@ final class PanelController {
         menu.addItem(ClosureMenuItem(title: "Refresh Now") { [weak model] in model?.pollNow(full: true) })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(title: "Settings…") { [weak model] in model?.openSettings() })
-        menu.addItem(ClosureMenuItem(title: "Quit NeedsTay") { NSApp.terminate(nil) })
+        menu.addItem(ClosureMenuItem(title: "Quit NeedsYou") { NSApp.terminate(nil) })
         return menu
     }
 }

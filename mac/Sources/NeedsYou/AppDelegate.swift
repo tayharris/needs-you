@@ -1,5 +1,5 @@
 import AppKit
-import NeedsTayCore
+import NeedsYouCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.model.toggleVisibility() }
         }
         if hotKey?.isRegistered != true {
-            NSLog("NeedsTay: couldn't register ⌃⌥Space (status \(hotKey?.status ?? -1)); is it bound to input-source switching?")
+            NSLog("NeedsYou: couldn't register ⌃⌥Space (status \(hotKey?.status ?? -1)); is it bound to input-source switching?")
         }
 
         settingsWindow = SettingsWindowController(model: model) { [weak self] in self?.hotKey?.isRegistered ?? false }
@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         model.start()
 
-        if let dir = ProcessInfo.processInfo.environment["NEEDS_TAY_SNAPSHOT_DIR"] {
+        if let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_DIR"] {
             runSnapshotTour(into: URL(fileURLWithPath: dir))
         } else if !settings.isDemo, settings.hubURL == nil {
             settingsWindow.show()
@@ -78,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name).png"))
             }
-            NSLog("NeedsTay: snapshots written to \(dir.path)")
+            NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
     }
 
@@ -92,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        appMenu.addItem(withTitle: "Quit NeedsTay", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit NeedsYou", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 

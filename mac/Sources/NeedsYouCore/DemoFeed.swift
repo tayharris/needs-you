@@ -1,7 +1,7 @@
 import Foundation
 
 /// An in-memory stand-in for the hub so the UI can be exercised without one.
-/// Enabled with `NEEDS_TAY_DEMO=1` or the Settings toggle. It behaves like the hub as
+/// Enabled with `NEEDS_YOU_DEMO=1` or the Settings toggle. It behaves like the hub as
 /// specified: `fetchOpen(since:)` returns open items updated at/after `since`, and
 /// `patch` closes or marks items seen. `injectNext()` simulates a sender posting.
 public actor DemoFeed: ItemFeed {
@@ -140,11 +140,11 @@ public actor DemoFeed: ItemFeed {
                 createdAt: ago(45)
             ),
             Item(
-                id: "01DEMO00000000000000000003", key: "acme:cleanup:tay/ACME-4400-old", context: .work,
+                id: "01DEMO00000000000000000003", key: "acme:cleanup:feature/ACME-4400-old", context: .work,
                 kind: .needs, priority: .low,
-                title: "Cleanup: tay/ACME-4400-old has 2 unpushed commits",
+                title: "Cleanup: feature/ACME-4400-old has 2 unpushed commits",
                 body: "Daily cleanup won't delete it. Push, or say it can go.",
-                links: [ItemLink(label: "VS Code", url: "vscode://file/home/taylor/acme-backend")],
+                links: [ItemLink(label: "VS Code", url: "vscode://file/home/dev/acme-backend")],
                 source: ItemSource(host: "devbox", agent: "orca:daily-cleanup"),
                 createdAt: ago(60 * 20)
             ),

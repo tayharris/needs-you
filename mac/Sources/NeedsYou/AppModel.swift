@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import NeedsTayCore
+import NeedsYouCore
 
 /// A request for the ring glow to pulse `times` times.
 struct PulseRequest: Equatable {

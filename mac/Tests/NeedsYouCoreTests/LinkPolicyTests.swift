@@ -1,10 +1,10 @@
-#if NEEDSTAY_SELFTEST
+#if NEEDSYOU_SELFTEST
 import MiniXCTest
 #else
 import XCTest
 #endif
 import Foundation
-import NeedsTayCore
+import NeedsYouCore
 
 final class LinkPolicyTests: XCTestCase {
     static var allTests = [
@@ -22,7 +22,7 @@ final class LinkPolicyTests: XCTestCase {
             "HTTPS://github.com/acme/acme-backend/pull/2137",
             "orca://worktree/acme-backend/ACME-4170",
             "slack://channel?team=T0&id=C0",
-            "vscode://file/home/taylor/x.py",
+            "vscode://file/home/dev/x.py",
             "cursor://file/x",
             "figma://file/abc",
             "msteams://teams.microsoft.com/l/chat/0/0",
@@ -43,7 +43,7 @@ final class LinkPolicyTests: XCTestCase {
             "ssh://host",
             "x-apple.systempreferences:com.apple.preference.security",
             "smb://server/share",
-            "mailto:taylor@example.com",
+            "mailto:someone@example.com",
         ]
         for s in rejected {
             XCTAssertNil(LinkPolicy.openableURL(s), s)

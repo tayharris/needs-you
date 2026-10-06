@@ -1,5 +1,5 @@
 import AppKit
-import NeedsTayCore
+import NeedsYouCore
 import SwiftUI
 
 /// A minimal Settings window: hub URL (UserDefaults), token (Keychain), demo mode, and
@@ -22,7 +22,7 @@ final class SettingsWindowController {
             let view = SettingsView(model: model, settings: model.settings, hotKeyRegistered: hotKeyStatus(), extra: extraSettings?())
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
-            w.title = "NeedsTay Settings"
+            w.title = "NeedsYou Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.appearance = NSAppearance(named: .darkAqua)
@@ -78,7 +78,7 @@ struct SettingsView: View {
                 ))
                 .disabled(settings.demoForcedByEnvironment)
                 if settings.demoForcedByEnvironment {
-                    Text("Demo mode is on via NEEDS_TAY_DEMO=1.").font(.caption).foregroundStyle(.secondary)
+                    Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
                 }
                 Toggle("Urgent items break through a snooze", isOn: $settings.urgentBreaksSnooze)
                 LabeledContent("Show / hide shortcut") {

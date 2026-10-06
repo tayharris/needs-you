@@ -1,5 +1,5 @@
 import AppKit
-import NeedsTayCore
+import NeedsYouCore
 import SwiftUI
 
 // Phase 3 (PLAN.md build order): the springy new-item preview, the work/personal

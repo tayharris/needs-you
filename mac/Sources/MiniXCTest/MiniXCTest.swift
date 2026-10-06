@@ -1,8 +1,8 @@
 import Foundation
 
 // A minimal XCTest stand-in. The Command Line Tools for Swift 5.10 don't ship XCTest, so
-// `swift test` can't run without Xcode. The test files in Tests/NeedsTayCoreTests import
-// this module instead when built into `needstay-selftest` (NEEDSTAY_SELFTEST is defined),
+// `swift test` can't run without Xcode. The test files in Tests/NeedsYouCoreTests import
+// this module instead when built into `needsyou-selftest` (NEEDSYOU_SELFTEST is defined),
 // and real XCTest otherwise. Only the API those tests use is provided.
 
 public struct TestFailure: CustomStringConvertible {

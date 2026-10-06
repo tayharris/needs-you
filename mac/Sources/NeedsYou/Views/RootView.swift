@@ -1,4 +1,4 @@
-import NeedsTayCore
+import NeedsYouCore
 import SwiftUI
 
 /// Fills the whole panel. The visible shape sits inside the glow padding; the material

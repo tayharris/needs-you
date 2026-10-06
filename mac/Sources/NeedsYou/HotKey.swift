@@ -23,7 +23,7 @@ final class HotKey {
         }, 1, &spec, context, &handlerRef)
         guard status == noErr else { return }
 
-        let id = EventHotKeyID(signature: OSType(0x4E_54_41_59) /* 'NTAY' */, id: 1)
+        let id = EventHotKeyID(signature: OSType(0x4E_59_4F_55) /* 'NYOU' */, id: 1)
         status = RegisterEventHotKey(keyCode, modifiers, id, GetApplicationEventTarget(), 0, &hotKeyRef)
     }
 

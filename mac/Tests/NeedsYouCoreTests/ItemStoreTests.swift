@@ -1,10 +1,10 @@
-#if NEEDSTAY_SELFTEST
+#if NEEDSYOU_SELFTEST
 import MiniXCTest
 #else
 import XCTest
 #endif
 import Foundation
-import NeedsTayCore
+import NeedsYouCore
 
 private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
 

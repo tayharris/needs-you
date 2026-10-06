@@ -42,7 +42,7 @@ public struct KeychainTokenStore: Sendable {
         var add = baseQuery
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        add[kSecAttrLabel as String] = "NeedsTay hub token"
+        add[kSecAttrLabel as String] = "NeedsYou hub token"
         return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 

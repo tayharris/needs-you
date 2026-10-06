@@ -1,15 +1,15 @@
 import Foundation
-import NeedsTayCore
+import NeedsYouCore
 
 /// User settings. The hub URL and toggles live in UserDefaults; the token lives in the
 /// Keychain (PLAN.md, "Credentials").
 ///
 /// Environment overrides (handy for running the binary directly):
-///   NEEDS_TAY_DEMO=1                 demo mode, no hub, no Keychain access
-///   NEEDS_TAY_DEMO_FIXTURE=path.json demo seed items (hub list shape) instead of the built-in set
-///   NEEDS_TAY_DEMO_INJECT_SECONDS=n  demo: post a new item every n seconds (default 45, 0 = never)
-///   NEEDS_TAY_POLL_SECONDS=n         poll interval (default 30; 5 in demo mode)
-///   NEEDS_TAY_EXPAND=1               start expanded
+///   NEEDS_YOU_DEMO=1                 demo mode, no hub, no Keychain access
+///   NEEDS_YOU_DEMO_FIXTURE=path.json demo seed items (hub list shape) instead of the built-in set
+///   NEEDS_YOU_DEMO_INJECT_SECONDS=n  demo: post a new item every n seconds (default 45, 0 = never)
+///   NEEDS_YOU_POLL_SECONDS=n         poll interval (default 30; 5 in demo mode)
+///   NEEDS_YOU_EXPAND=1               start expanded
 @MainActor
 final class AppSettings: ObservableObject {
     private let defaults: UserDefaults
@@ -50,22 +50,22 @@ final class AppSettings: ObservableObject {
 
     // MARK: Derived
 
-    var demoForcedByEnvironment: Bool { env["NEEDS_TAY_DEMO"].map { $0 == "1" || $0.lowercased() == "true" } ?? false }
+    var demoForcedByEnvironment: Bool { env["NEEDS_YOU_DEMO"].map { $0 == "1" || $0.lowercased() == "true" } ?? false }
     var isDemo: Bool { demoForcedByEnvironment || demoMode }
-    var startExpanded: Bool { env["NEEDS_TAY_EXPAND"] == "1" }
+    var startExpanded: Bool { env["NEEDS_YOU_EXPAND"] == "1" }
 
     var pollInterval: TimeInterval {
-        if let s = env["NEEDS_TAY_POLL_SECONDS"], let v = Double(s), v >= 1 { return v }
+        if let s = env["NEEDS_YOU_POLL_SECONDS"], let v = Double(s), v >= 1 { return v }
         return isDemo ? 5 : 30
     }
 
     var demoInjectInterval: TimeInterval {
-        if let s = env["NEEDS_TAY_DEMO_INJECT_SECONDS"], let v = Double(s), v >= 0 { return v }
+        if let s = env["NEEDS_YOU_DEMO_INJECT_SECONDS"], let v = Double(s), v >= 0 { return v }
         return 45
     }
 
     var demoFixtureURL: URL? {
-        env["NEEDS_TAY_DEMO_FIXTURE"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+        env["NEEDS_YOU_DEMO_FIXTURE"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
     }
 
     /// A usable hub URL: http(s) with a host. Plain http is expected on the tailnet.

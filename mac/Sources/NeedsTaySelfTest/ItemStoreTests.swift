@@ -1,1 +1,0 @@
-../../Tests/NeedsTayCoreTests/ItemStoreTests.swift

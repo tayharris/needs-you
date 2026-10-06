@@ -1,4 +1,4 @@
-import NeedsTayCore
+import NeedsYouCore
 import SwiftUI
 
 /// The 360 pt panel: header, cards grouped urgent → normal → low, then a collapsed

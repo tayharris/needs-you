@@ -1,5 +1,5 @@
 import Foundation
-import NeedsTayCore
+import NeedsYouCore
 
 /// Optional `GET /v1/stream` (server-sent events). PLAN.md doesn't define the event
 /// payload, so any event is treated as a nudge to poll now; polling stays the source of

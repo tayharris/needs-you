@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Build NeedsTay in release mode and assemble mac/dist/NeedsTay.app, ad-hoc signed.
+# Build NeedsYou in release mode and assemble mac/dist/NeedsYou.app, ad-hoc signed.
 #
 #   mac/scripts/bundle.sh            build + bundle + sign
-#   open mac/dist/NeedsTay.app       run it (uses Settings for the hub)
-#   NEEDS_TAY_DEMO=1 mac/dist/NeedsTay.app/Contents/MacOS/NeedsTay &   demo mode
+#   open mac/dist/NeedsYou.app       run it (uses Settings for the hub)
+#   NEEDS_YOU_DEMO=1 mac/dist/NeedsYou.app/Contents/MacOS/NeedsYou &   demo mode
 #     (`open` doesn't pass environment variables; run the binary directly)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME=NeedsTay
+APP_NAME=NeedsYou
 DIST=dist
 APP="$DIST/$APP_NAME.app"
-VERSION="${NEEDS_TAY_VERSION:-0.2.0}"
+VERSION="${NEEDS_YOU_VERSION:-0.2.0}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
 echo "==> swift build -c release"

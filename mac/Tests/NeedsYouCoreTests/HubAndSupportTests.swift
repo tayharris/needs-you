@@ -1,11 +1,11 @@
-#if NEEDSTAY_SELFTEST
+#if NEEDSYOU_SELFTEST
 import MiniXCTest
 #else
 import XCTest
 #endif
 import CoreGraphics
 import Foundation
-import NeedsTayCore
+import NeedsYouCore
 
 final class HubClientTests: XCTestCase {
     static var allTests = [

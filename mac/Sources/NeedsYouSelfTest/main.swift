@@ -1,8 +1,8 @@
 import Foundation
 import MiniXCTest
 
-// Runs Tests/NeedsTayCoreTests (symlinked into this target) without XCTest.
-// `swift run needstay-selftest`, or `scripts/test.sh` which picks XCTest when available.
+// Runs Tests/NeedsYouCoreTests (symlinked into this target) without XCTest.
+// `swift run needsyou-selftest`, or `scripts/test.sh` which picks XCTest when available.
 // Add new test classes here as well as to the XCTest target.
 
 let entries =

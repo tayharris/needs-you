@@ -1,4 +1,4 @@
-import NeedsTayCore
+import NeedsYouCore
 import SwiftUI
 
 enum Theme {
