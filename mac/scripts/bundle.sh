@@ -11,7 +11,7 @@
 # signature changing on every build costs nothing there.
 #
 # Overrides (scripts/upgrade-test.sh uses them to build throwaway copies):
-#   NEEDS_YOU_VERSION=x.y.z        CFBundleShortVersionString (default 0.2.0)
+#   NEEDS_YOU_VERSION=x.y.z        CFBundleShortVersionString (default: the repo's VERSION file)
 #   NEEDS_YOU_DIST=dir             output directory (default mac/dist)
 #   NEEDS_YOU_BUNDLE_ID=id         another bundle id (its own defaults domain; can't be
 #                                  mistaken for, or quit as, the real app)
@@ -22,7 +22,7 @@ cd "$(dirname "$0")/.."
 APP_NAME=NeedsYou
 DIST="${NEEDS_YOU_DIST:-dist}"
 APP="$DIST/$APP_NAME.app"
-VERSION="${NEEDS_YOU_VERSION:-0.2.0}"
+VERSION="${NEEDS_YOU_VERSION:-$(tr -d '[:space:]' < ../VERSION)}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 BUNDLE_ID="${NEEDS_YOU_BUNDLE_ID:-app.needsyou.mac}"
 

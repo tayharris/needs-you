@@ -1,0 +1,41 @@
+# Push a vX.Y.Z tag -> tests -> a DRAFT GitHub Release with the Mac app zip, the server
+# tarball, the CLI and SHA256SUMS. A person reviews and publishes the draft.
+# The app is ad-hoc signed; the notes carry the Gatekeeper steps. See docs/roadmap/ci-cd.md.
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Build assets
+        env:
+          NEEDS_YOU_TAG: ${{ github.ref_name }}
+        run: scripts/build-release.sh "$RUNNER_TEMP/release"
+      - name: Verify checksums
+        working-directory: ${{ runner.temp }}/release
+        run: shasum -a 256 -c SHA256SUMS
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "needs-you ${TAG#v}" --notes-file NOTES.md \
+            NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* SHA256SUMS

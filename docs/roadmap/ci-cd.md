@@ -1,6 +1,6 @@
 # CI/CD plan
 
-Status: plan only. Nothing here exists yet.
+Status: phases 1 and 2 exist as `.github/workflows/ci.yml` and `release.yml` (not yet run on GitHub). Phase 3 is a plan. Differences from the plan below: no `shellcheck` job yet (a `bash -n` job instead, until existing findings are fixed), no `site` job, and no version stamping (see Versioning).
 
 Goal: every push and PR runs the same suites a contributor runs locally (`test-all` skill), and pushing a `vX.Y.Z` tag produces a GitHub Release with the Mac app, the server tarball and the CLI, checksummed, after the tests pass. Signing comes in a later phase because it needs paid-account secrets.
 
@@ -22,6 +22,8 @@ Settings: `permissions: contents: read`; `concurrency` per ref with cancel-in-pr
 Files to add: `.github/workflows/ci.yml`, and later the conformance job (see [ADR 0004](../adr/0004-always-on-hub.md) and [ai-first.md](ai-first.md)) that runs `protocol/conformance` against every hub implementation.
 
 ## Phase 2: release on tag
+
+Cutting a release: rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - <date>` (and add a fresh `Unreleased` above it), bump the three versions, commit, then tag `vX.Y.Z` and push the tag (with approval). `scripts/build-release.sh OUT_DIR` builds the same assets locally. The fresh-user check is [fresh-user-test-plan.md](fresh-user-test-plan.md).
 
 `.github/workflows/release.yml`, triggered on `push: tags: ['v*.*.*']`:
 
@@ -49,7 +51,7 @@ Steps: `bundle.sh` gains an optional `NEEDS_YOU_SIGN_IDENTITY` (default stays ad
 
 ## Versioning
 
-- One `VERSION` file at the repo root (`1.1.0`), semver. The hub and CLI read it at release time: the release job stamps `VERSION = "..."` into `hub/needs_you_hub.py` and `cli/needs-you` (they must stay single files that work without the repo), and `bundle.sh` reads `VERSION` instead of its `0.2.0` default.
+- One `VERSION` file at the repo root, semver. The hub and CLI keep their own `VERSION = "..."` line (they must stay single files that work without the repo); `tests/test_release.py` and `scripts/build-release.sh` fail unless all three agree, so a release bump edits three lines in one commit. `bundle.sh` reads `VERSION`.
 - The API version (`v1`) is separate and changes only with a breaking wire change.
 - Major: breaking API, config or data-format change. Minor: features. Patch: fixes.
 

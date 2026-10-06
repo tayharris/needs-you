@@ -1,0 +1,56 @@
+# Tests on every push and PR, and the gate the release workflow calls before it builds.
+# Same suites as the test-all skill. See docs/roadmap/ci-cd.md.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  python-ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The system python3 on purpose: it's what server hubs and senders run.
+      - run: /usr/bin/python3 --version
+      - run: /usr/bin/python3 -m unittest discover -s tests
+
+  python-macos-39:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The compatibility floor: stdlib-only, 3.9 syntax.
+      - run: /usr/bin/python3 -c 'import sys; print(sys.version); assert sys.version_info[:2] == (3, 9), sys.version'
+      - run: /usr/bin/python3 -m unittest discover -s tests
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # bundle.sh uses the commit count as the build number
+      - run: mac/scripts/test.sh
+      - run: mac/scripts/bundle.sh
+
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: bash -n on every shell script
+        run: |
+          set -e
+          git ls-files '*.sh' | while read -r f; do bash -n "$f"; done
+          bash -n integrations/claude-code/needs-you-hook.sh
