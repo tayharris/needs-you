@@ -1,0 +1,86 @@
+# Example: tell needs-you when a scheduled GitHub Actions workflow fails, and
+# clear the item when it passes again. Copy the two `needs-you` steps (and the
+# Tailscale step) into your own workflow.
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET  Tailscale OAuth client with the
+#                                        "auth_keys" write scope, allowed to
+#                                        create nodes tagged tag:ci
+#   NEEDS_YOU_URLS    hub URL(s), comma-separated, e.g.
+#                     http://hub-a.example.ts.net:8765,http://hub-b.example.ts.net:8765
+#   NEEDS_YOU_TOKEN   a token minted for this repo's CI (not a machine's token)
+#
+# Tailscale ACL: tag:ci must be allowed to reach the hubs on tcp:8765.
+# No jq or CLI install needed: ubuntu runners have curl and python3.
+
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the job
+        run: ./scripts/nightly.sh   # your real work
+
+      # Join the tailnet only to report. Ephemeral node, removed after the job.
+      - name: Connect to Tailscale
+        if: always()
+        uses: tailscale/github-action@v3   # check for the current major version
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: needs-you (report failure / clear on success)
+        if: always()
+        continue-on-error: true          # alerting must never fail the build
+        env:
+          NEEDS_YOU_URLS: ${{ secrets.NEEDS_YOU_URLS }}
+          NEEDS_YOU_TOKEN: ${{ secrets.NEEDS_YOU_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          KEY: "work:${{ github.event.repository.name }}:${{ github.workflow }}:failed"
+          TITLE: "${{ github.workflow }} failed on ${{ github.ref_name }} (${{ github.repository }})"
+          RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          set -u
+          # Keys stay stable and simple: workflow names may contain spaces.
+          KEY=$(printf '%s' "$KEY" | tr -c 'A-Za-z0-9:._-' '-'); export KEY
+          if [ "$JOB_STATUS" = "success" ]; then
+            path=/v1/items/resolve
+            body=$(python3 -c 'import json,os; print(json.dumps({"key": os.environ["KEY"]}))')
+          else
+            path=/v1/items
+            body=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+              "key": os.environ["KEY"],
+              "context": "work",
+              "kind": "needs",
+              "priority": "normal",
+              "title": os.environ["TITLE"][:100],
+              "body": "Workflow run ended with status `%s`. Open the run for logs." % os.environ["JOB_STATUS"],
+              "links": [{"label": "Run", "url": os.environ["RUN_URL"]}],
+              "source": {"host": "github-actions", "agent": "gha", "project": os.environ["REPO"]},
+          }))
+          PY
+          )
+          fi
+          # Try each hub in order; stop at the first that accepts.
+          for url in $(printf '%s' "$NEEDS_YOU_URLS" | tr ',' ' '); do
+            if curl -fsS --connect-timeout 5 --max-time 15 -X POST "${url%/}$path" \
+                 -H "Authorization: Bearer $NEEDS_YOU_TOKEN" \
+                 -H 'Content-Type: application/json' \
+                 --data-binary "$body" -o /dev/null; then
+              echo "needs-you: posted to ${url%/}$path"
+              exit 0
+            fi
+          done
+          echo "::warning::needs-you: no hub accepted the item"

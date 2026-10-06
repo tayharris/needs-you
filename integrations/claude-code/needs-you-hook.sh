@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# needs-you-hook.sh: Claude Code hook that mirrors "the agent is waiting on
+# you" to needs-you.
+#
+#   needs-you-hook.sh notify    (Notification hook)  -> needs-you add, kind needs
+#   needs-you-hook.sh resolve   (Stop, UserPromptSubmit, PostToolUse,
+#                                SessionEnd hooks)   -> needs-you resolve
+#
+# Reads the hook input JSON from stdin (session_id, cwd, message,
+# notification_type). Always exits 0 and never prints to stdout, so it can't
+# block or steer Claude. Installed by install-hooks.sh.
+#
+# Off unless one of these is true (so ordinary interactive use stays quiet):
+#   NEEDS_YOU_AGENT_ALERTS=1          opt in for this shell/VM
+#   ORCA_TERMINAL_HANDLE is set       session started by Orca
+# NEEDS_YOU_AGENT_ALERTS=0 turns it off even inside Orca.
+#
+# Optional settings (environment, or lines in ~/.config/needs-you/env):
+#   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: work)
+#   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
+#   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
+#                             {session}, {cwd}, {host}. Example:
+#                             "Orca=orca://terminal/{handle}" (unverified format)
+#   NEEDS_YOU_BIN             path to the needs-you CLI
+#   NEEDS_YOU_HOOK_LOG        file to append debug lines to
+
+# Never fail, never block.
+set +e
+trap 'exit 0' INT TERM HUP
+
+mode=${1:-}
+
+# Settings may also live in the sender env file (written by setup-sender.sh),
+# e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
+# The environment wins over the file.
+env_file="${NEEDS_YOU_ENV_FILE:-$HOME/.config/needs-you/env}"
+file_val() {
+  [ -r "$env_file" ] || return 0
+  sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$env_file" | tail -n 1 |
+    sed -e "s/^'\(.*\)'\$/\1/" -e 's/^"\(.*\)"$/\1/'
+}
+[ -n "${NEEDS_YOU_AGENT_ALERTS+x}" ] || NEEDS_YOU_AGENT_ALERTS=$(file_val NEEDS_YOU_AGENT_ALERTS)
+
+# ---- gate (cheap: no python, no network, for sessions that aren't opted in)
+case "${NEEDS_YOU_AGENT_ALERTS:-}" in
+  0|false|no|off) exit 0 ;;
+  1|true|yes|on) ;;
+  *) [ -n "${ORCA_TERMINAL_HANDLE:-}" ] || exit 0 ;;
+esac
+
+input=$(cat 2>/dev/null)
+
+[ -n "${NEEDS_YOU_AGENT_CONTEXT:-}" ]  || NEEDS_YOU_AGENT_CONTEXT=$(file_val NEEDS_YOU_AGENT_CONTEXT)
+[ -n "${NEEDS_YOU_AGENT_PRIORITY:-}" ] || NEEDS_YOU_AGENT_PRIORITY=$(file_val NEEDS_YOU_AGENT_PRIORITY)
+[ -n "${NEEDS_YOU_AGENT_LINK:-}" ]     || NEEDS_YOU_AGENT_LINK=$(file_val NEEDS_YOU_AGENT_LINK)
+[ -n "${NEEDS_YOU_BIN:-}" ]            || NEEDS_YOU_BIN=$(file_val NEEDS_YOU_BIN)
+export NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK
+
+log() {
+  [ -n "${NEEDS_YOU_HOOK_LOG:-}" ] || return 0
+  printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*" >>"$NEEDS_YOU_HOOK_LOG" 2>/dev/null
+}
+
+sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
+
+# session_id is a UUID; a sed grab avoids a python start-up on every event.
+session_id=$(printf '%s\n' "$input" |
+  sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+
+host=$(hostname -s 2>/dev/null || hostname 2>/dev/null)
+host=$(sanitize "${host%%.*}")
+id=${ORCA_TERMINAL_HANDLE:-$session_id}
+[ -n "$id" ] || { log "no session id or terminal handle; skipping"; exit 0; }
+id=$(sanitize "$id")
+key="agent:$host:$id"
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
+marker="$state_dir/$id"
+
+# Find the CLI. Hooks run with Claude Code's PATH, which may not include
+# ~/.local/bin.
+cli=${NEEDS_YOU_BIN:-}
+if [ -z "$cli" ]; then
+  if command -v needs-you >/dev/null 2>&1; then
+    cli=$(command -v needs-you)
+  elif [ -x "$HOME/.local/bin/needs-you" ]; then
+    cli="$HOME/.local/bin/needs-you"
+  fi
+fi
+[ -n "$cli" ] || { log "needs-you CLI not found"; exit 0; }
+
+case "$mode" in
+  resolve)
+    # Only call the hub if this session actually posted something. Stop and
+    # PostToolUse fire constantly; the marker keeps them local and free.
+    [ -f "$marker" ] || exit 0
+    rm -f "$marker"
+    "$cli" resolve --key "$key" </dev/null >/dev/null 2>&1
+    log "resolve $key -> $?"
+    ;;
+
+  notify)
+    command -v python3 >/dev/null 2>&1 || { log "python3 not found"; exit 0; }
+    # Build the item from the hook JSON and call the CLI with an argv list
+    # (no shell quoting of untrusted text).
+    NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
+    python3 - <<'PY' >/dev/null 2>&1
+import json, os, subprocess
+
+try:
+    data = json.loads(os.environ.get("NY_INPUT") or "{}")
+except Exception:
+    data = {}
+
+ntype = str(data.get("notification_type") or "")
+message = " ".join(str(data.get("message") or "").split())
+cwd = str(data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
+project = os.path.basename(project_dir.rstrip("/")) or "claude"
+session = str(data.get("session_id") or "")
+handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
+host = os.environ["NY_HOST"]
+
+what = {
+    "permission_prompt": "Claude needs permission",
+    "idle_prompt": "Claude is waiting for you",
+    "elicitation_dialog": "Claude needs an answer",
+    "elicitation_url_dialog": "Claude needs you to sign in",
+    "agent_needs_input": "Agent needs input",
+}.get(ntype, "Claude needs you")
+title = ("%s: %s" % (what, project))[:100]
+
+home = os.path.expanduser("~")
+short_cwd = "~" + cwd[len(home):] if cwd.startswith(home) else cwd
+lines = []
+if message:
+    lines.append(message[:400])
+lines.append("`%s` on `%s`" % (short_cwd, host))
+if handle:
+    lines.append("Orca terminal `%s`" % handle)
+elif session:
+    lines.append("Session `%s`" % session[:8])
+body = "\n\n".join(lines)[:2000]
+
+context = os.environ.get("NEEDS_YOU_AGENT_CONTEXT") or "work"
+priority = os.environ.get("NEEDS_YOU_AGENT_PRIORITY") or "normal"
+if context not in ("work", "personal"):
+    context = "work"
+if priority not in ("urgent", "normal", "low"):
+    priority = "normal"
+
+args = [
+    os.environ["NY_CLI"], "add",
+    "--key", os.environ["NY_KEY"],
+    "--context", context,
+    "--priority", priority,
+    "--title", title,
+    "--body", body,
+    "--agent", "claude-code",
+    "--project", project,
+]
+tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "")
+if "=" in tmpl:
+    label, url = tmpl.split("=", 1)
+    needs_handle = "{handle}" in url
+    from urllib.parse import quote
+    url = (url.replace("{handle}", quote(handle, safe=""))
+              .replace("{session}", quote(session, safe=""))
+              .replace("{cwd}", quote(cwd)).replace("{host}", quote(host, safe="")))
+    if label and url and not (needs_handle and not handle):
+        args += ["--link", "%s=%s" % (label, url)]
+
+try:
+    rc = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, timeout=15).returncode
+except Exception:
+    rc = 1
+raise SystemExit(rc)
+PY
+    rc=$?
+    log "notify $key -> $rc"
+    # The CLI queues offline and exits 0, so a down hub still leaves a marker
+    # and the later resolve is queued behind the add.
+    if [ "$rc" -eq 0 ]; then
+      mkdir -p "$state_dir" 2>/dev/null && : >"$marker"
+    fi
+    ;;
+esac
+
+exit 0
