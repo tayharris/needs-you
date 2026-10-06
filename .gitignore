@@ -20,6 +20,10 @@ Packages/
 *.dSYM
 mac/dist/
 
+# Python
+__pycache__/
+*.pyc
+
 # Editors
 .vscode/
 .idea/

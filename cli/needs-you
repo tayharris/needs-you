@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+"""needs-you: tell your human they have to do something.
+
+  needs-you add --key KEY --title TITLE [--context work|personal] [--priority urgent|normal|low]
+                [--body TEXT | --body-file PATH|-] [--link "Label=https://..."]...
+                [--agent NAME] [--project NAME] [--host NAME] [--kind needs|done|info]
+                [--expires-in HOURS]
+  needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
+  needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
+  needs-you resolve (--key KEY | --id ID)
+  needs-you flush                                    send anything queued in the outbox
+  needs-you health                                   check each configured hub and the token
+
+Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
+  NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
+  NEEDS_YOU_URL     a hub URL (or comma-separated list); used when NEEDS_YOU_URLS is unset
+  NEEDS_YOU_TOKEN   this machine's sender token
+  NEEDS_YOU_TIMEOUT seconds per hub attempt (default 3)
+
+If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ and the
+command still exits 0. Every invocation sends the outbox first.
+
+Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
+volume guard) or usage error; 1 `health` found no healthy hub.
+
+Python 3.9+ standard library only.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import sys
+import time
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
+
+VERSION = "1.0.0"
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+# ---------------------------------------------------------------------------
+# Config and paths
+# ---------------------------------------------------------------------------
+
+def config_path() -> str:
+    if os.environ.get("NEEDS_YOU_CONFIG"):
+        return os.environ["NEEDS_YOU_CONFIG"]
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "needs-you", "env")
+
+
+def outbox_dir() -> str:
+    if os.environ.get("NEEDS_YOU_OUTBOX"):
+        return os.environ["NEEDS_YOU_OUTBOX"]
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(base, "needs-you", "outbox")
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].strip()
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
+class Config:
+    def __init__(self) -> None:
+        f = read_env_file(config_path())
+        get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
+        # Precedence: env NEEDS_YOU_URLS, env NEEDS_YOU_URL, file NEEDS_YOU_URLS, file NEEDS_YOU_URL.
+        raw = (os.environ.get("NEEDS_YOU_URLS") or os.environ.get("NEEDS_YOU_URL")
+               or f.get("NEEDS_YOU_URLS") or f.get("NEEDS_YOU_URL") or "")
+        self.urls = [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
+        self.token = get("NEEDS_YOU_TOKEN")
+        try:
+            self.timeout = float(get("NEEDS_YOU_TIMEOUT", "3"))
+        except ValueError:
+            self.timeout = 3.0
+        self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.urls and self.token)
+
+
+def warn(msg: str) -> None:
+    sys.stderr.write("needs-you: %s\n" % msg)
+
+
+# ---------------------------------------------------------------------------
+# HTTP with failover
+# ---------------------------------------------------------------------------
+
+class Unreachable(Exception):
+    pass
+
+
+class Rejected(Exception):
+    def __init__(self, status: int, body: Dict[str, Any]) -> None:
+        super().__init__("%s %s" % (status, body.get("message") or body.get("error") or ""))
+        self.status = status
+        self.body = body
+
+
+def _call(url: str, token: str, method: str, path: str, body: Optional[Dict[str, Any]],
+          timeout: float) -> Tuple[int, Dict[str, Any]]:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url + path, data=data, method=method)
+    if token:
+        req.add_header("Authorization", "Bearer " + token)
+    req.add_header("Accept", "application/json")
+    req.add_header("User-Agent", "needs-you-cli/" + VERSION)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with OPENER.open(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8") or "{}"
+            return resp.status, json.loads(raw)
+    except urllib.error.HTTPError as e:
+        try:
+            parsed = json.loads(e.read().decode("utf-8") or "{}")
+        except ValueError:
+            parsed = {}
+        return e.code, parsed if isinstance(parsed, dict) else {}
+
+
+def send(cfg: Config, method: str, path: str, body: Optional[Dict[str, Any]]) -> Tuple[str, int, Dict[str, Any]]:
+    """Try each hub in order. 2xx -> result. 4xx -> Rejected (no failover: every hub
+    would say the same). Network errors, timeouts and 5xx -> next hub; none -> Unreachable."""
+    errors = []
+    for url in cfg.urls:
+        try:
+            status, parsed = _call(url, cfg.token, method, path, body, cfg.timeout)
+        except (OSError, ValueError) as e:  # URLError, timeouts, refused, bad JSON
+            errors.append("%s: %s" % (url, getattr(e, "reason", e)))
+            continue
+        if 200 <= status < 300:
+            return url, status, parsed
+        if 400 <= status < 500:
+            raise Rejected(status, parsed)
+        errors.append("%s: HTTP %d" % (url, status))
+    raise Unreachable("; ".join(errors) or "no hub URL configured")
+
+
+# ---------------------------------------------------------------------------
+# Outbox
+# ---------------------------------------------------------------------------
+
+def queue(method: str, path: str, body: Optional[Dict[str, Any]]) -> str:
+    d = outbox_dir()
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    name = "%020d-%05d.json" % (time.time_ns(), os.getpid() % 100000)
+    tmp = os.path.join(d, "." + name + ".tmp")
+    entry = {"method": method, "path": path, "body": body,
+             "queued_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(entry, fh)
+    final = os.path.join(d, name)
+    os.replace(tmp, final)
+    return final
+
+
+def pending() -> List[str]:
+    d = outbox_dir()
+    try:
+        names = sorted(n for n in os.listdir(d) if n.endswith(".json") and not n.startswith("."))
+    except OSError:
+        return []
+    return [os.path.join(d, n) for n in names]
+
+
+def _lock():  # type: ignore[no-untyped-def]
+    """Non-blocking exclusive lock on the outbox, so two invocations don't double-send."""
+    d = outbox_dir()
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        import fcntl
+        fh = open(os.path.join(d, ".lock"), "a")
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fh.close()
+            return None
+        return fh
+    except (OSError, ImportError):
+        return None
+
+
+def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
+    """Send queued entries oldest first. Stops at the first unreachable attempt.
+    Returns (sent, dropped, remaining)."""
+    files = pending()
+    if not files or not cfg.ok:
+        return 0, 0, len(files)
+    lock = _lock()
+    if lock is None:
+        return 0, 0, len(pending())
+    sent = dropped = 0
+    try:
+        for path in pending():
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    entry = json.load(fh)
+            except (OSError, ValueError):
+                _move_failed(path)
+                dropped += 1
+                continue
+            try:
+                url, _status, _body = send(cfg, entry["method"], entry["path"], entry.get("body"))
+                os.remove(path)
+                sent += 1
+                if verbose:
+                    warn("sent queued %s %s via %s" % (entry["method"], entry["path"], url))
+            except Rejected as e:
+                if e.status == 404 and entry["path"].endswith("/resolve"):
+                    os.remove(path)  # nothing open with that key: the resolve is moot
+                    sent += 1
+                    continue
+                warn("hub rejected a queued request (%s); moved it to outbox/failed/" % e)
+                _move_failed(path)
+                dropped += 1
+            except Unreachable:
+                break
+    finally:
+        lock.close()
+    return sent, dropped, len(pending())
+
+
+def _move_failed(path: str) -> None:
+    d = os.path.join(os.path.dirname(path), "failed")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    try:
+        os.replace(path, os.path.join(d, os.path.basename(path)))
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bool,
+            as_json: bool) -> int:
+    if not cfg.ok:
+        f = queue(method, path, body)
+        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); queued %s" % (config_path(), f))
+        return 0
+    try:
+        url, status, resp = send(cfg, method, path, body)
+    except Unreachable as e:
+        f = queue(method, path, body)
+        warn("no hub reachable (%s); queued %s" % (e, os.path.basename(f)))
+        return 0
+    except Rejected as e:
+        if e.status == 404 and path.endswith("/resolve"):
+            if not quiet:
+                warn("nothing open with that key/id (already resolved?)")
+            return 0
+        warn("hub rejected the request: HTTP %d %s" % (e.status, e.body.get("message") or e.body.get("error") or ""))
+        return 2
+    if as_json:
+        print(json.dumps(resp, sort_keys=True))
+    elif not quiet:
+        if path.endswith("/resolve"):
+            ids = [i.get("id") for i in resp.get("items", [])]
+            if ids:
+                print("resolved %s via %s" % (", ".join(ids), url))
+            else:
+                print("nothing open to resolve (already resolved?) via %s" % url)
+        else:
+            state = "created" if resp.get("created") else ("updated" if resp.get("changed") else "unchanged")
+            print("%s %s via %s" % (state, resp.get("id"), url))
+    return 0
+
+
+def parse_link(raw: str) -> Dict[str, str]:
+    """'Label=URL'. A bare URL (or one whose only '=' is in its query) gets the label 'Link'."""
+    label, sep, url = raw.partition("=")
+    if not sep or "://" in label or not label.strip():
+        return {"label": "Link", "url": raw.strip()}
+    return {"label": label.strip(), "url": url.strip()}
+
+
+def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, Any]:
+    body = args.body
+    if args.body_file:
+        if args.body_file == "-":
+            body = sys.stdin.read()
+        else:
+            with open(args.body_file, "r", encoding="utf-8") as fh:
+                body = fh.read()
+    item: Dict[str, Any] = {"key": args.key, "title": args.title, "kind": kind,
+                            "context": args.context, "priority": args.priority}
+    if body:
+        item["body"] = body
+    if args.link:
+        item["links"] = args.link
+    source = {"host": args.host or cfg.host}
+    if args.agent:
+        source["agent"] = args.agent
+    if args.project:
+        source["project"] = args.project
+    item["source"] = source
+    if args.expires_in is not None:
+        exp = time.time() + args.expires_in * 3600
+        item["expires_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(exp))
+    return item
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(prog="needs-you", description=__doc__.split("\n")[0],
+                                epilog="See docs/AGENT-GUIDE.md for when and how to post.")
+    p.add_argument("--version", action="version", version="needs-you " + VERSION)
+    p.add_argument("-q", "--quiet", action="store_true", help="no output on success")
+    p.add_argument("--json", action="store_true", help="print the hub's JSON response")
+    sub = p.add_subparsers(dest="cmd")
+
+    def item_parser(name: str, help_: str) -> argparse.ArgumentParser:
+        sp = sub.add_parser(name, help=help_)
+        sp.add_argument("--key", required=True, help="stable dedupe key, e.g. acme:ACME-4170:redo-blocked")
+        sp.add_argument("--title", required=True, help="the action needed, <= 100 chars")
+        sp.add_argument("--body", help="markdown, <= 2000 chars")
+        sp.add_argument("--body-file", help="read the body from a file ('-' for stdin)")
+        sp.add_argument("--context", choices=("work", "personal"), default="work")
+        sp.add_argument("--priority", choices=("urgent", "normal", "low"), default="normal")
+        sp.add_argument("--link", action="append", type=parse_link, metavar="LABEL=URL",
+                        help="repeatable, at most 6")
+        sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")
+        sp.add_argument("--project", help="source project")
+        sp.add_argument("--host", help="source host (default: this machine's hostname)")
+        sp.add_argument("--expires-in", type=float, metavar="HOURS",
+                        help="expiry (done/info default to 24 h on the hub)")
+        if name == "add":
+            sp.add_argument("--kind", choices=("needs", "done", "info"), default="needs")
+        return sp
+
+    item_parser("add", "add or update an item (kind needs by default)")
+    item_parser("done", "FYI: something finished (expires in 24 h, never counted)")
+    item_parser("info", "FYI: information (expires in 24 h, never counted)")
+    rp = sub.add_parser("resolve", help="mark an item handled")
+    g = rp.add_mutually_exclusive_group(required=True)
+    g.add_argument("--key")
+    g.add_argument("--id")
+    sub.add_parser("flush", help="send queued items now")
+    sub.add_parser("health", help="check hubs and token")
+
+    args = p.parse_args(argv)
+    if not args.cmd:
+        p.print_help()
+        return 2
+    cfg = Config()
+
+    # Every invocation drains the outbox first, so queued items go out in order.
+    sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
+
+    if args.cmd == "flush":
+        if not args.quiet:
+            print("sent %d, dropped %d, %d still queued" % (sent, dropped, remaining))
+        return 0
+    if args.cmd == "health":
+        return health(cfg, remaining)
+    if args.cmd == "resolve":
+        body = {"key": args.key} if args.key else {"id": args.id}
+        return deliver(cfg, "POST", "/v1/items/resolve", body, args.quiet, args.json)
+    kind = args.kind if args.cmd == "add" else args.cmd
+    if args.link and len(args.link) > 6:
+        warn("at most 6 links")
+        return 2
+    return deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+
+
+def health(cfg: Config, queued: int) -> int:
+    if not cfg.urls:
+        warn("NEEDS_YOU_URLS is not set (%s)" % config_path())
+        return 1
+    healthy = 0
+    for url in cfg.urls:
+        try:
+            status, body = _call(url, cfg.token, "GET", "/v1/health", None, cfg.timeout)
+        except (OSError, ValueError) as e:
+            print("%s  DOWN  %s" % (url, getattr(e, "reason", e)))
+            continue
+        if status == 200 and body.get("token_error"):
+            print("%s  UP    hub=%s but the token was rejected: %s" % (url, body.get("hub_id"),
+                                                                    body["token_error"]))
+        elif status == 200:
+            tok = body.get("token") or {}
+            print("%s  OK    hub=%s token=%s role=%s" % (url, body.get("hub_id"), tok.get("name", "-"),
+                                                        tok.get("role", "-")))
+            healthy += 1
+        else:
+            print("%s  HTTP %d  %s" % (url, status, body.get("message") or body.get("error") or ""))
+    print("outbox: %d queued" % queued)
+    return 0 if healthy else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
