@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Xcode / Swift
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+.build/
+.swiftpm/
+Packages/
+*.ipa
+*.dSYM.zip
+*.dSYM
+mac/dist/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Secrets / local state (tokens never get committed)
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+outbox/
