@@ -1,0 +1,49 @@
+[Unit]
+Description=needs-you hub (inbox API, tailnet only)
+Documentation=https://github.com/tayharris/needs-you/blob/main/docs/HUB.md
+# The hub binds to the tailnet IP. With "freebind": true in the config it can bind before
+# tailscaled has brought the address up; otherwise Restart=always retries until it can.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=needs-you
+Group=needs-you
+ExecStart=/usr/bin/python3 /opt/needs-you/hub/needs_you_hub.py --config /etc/needs-you/hub.json
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+# State lives in /var/lib/needs-you (created and owned by systemd for the service user).
+StateDirectory=needs-you
+StateDirectoryMode=0700
+UMask=0077
+
+# Sandboxing
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
