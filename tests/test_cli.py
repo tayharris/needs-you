@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 import sys
 
 from support import CLI, HubTestCase, free_port, request
@@ -16,14 +17,15 @@ class CliTestCase(HubTestCase):
         self.outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
         self.dead = "http://127.0.0.1:%d" % free_port()
 
-    def run_cli(self, *args, urls=None, token="t", config_file=None):
+    def run_cli(self, *args, urls=None, token="t", config_file=None, extra_env=None, cli=CLI):
         env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
                "NEEDS_YOU_HOST": "testbox"}
+        env.update(extra_env or {})
         if urls is not None:
             env["NEEDS_YOU_URL"] = ",".join(urls)
         if token is not None:
             env["NEEDS_YOU_TOKEN"] = token
-        return subprocess.run([sys.executable, CLI] + list(args), env=env, capture_output=True,
+        return subprocess.run([sys.executable, cli] + list(args), env=env, capture_output=True,
                               text=True, timeout=60)
 
     def queued(self):
@@ -159,6 +161,66 @@ class Failover(CliTestCase):
         r = self.run_cli("info", "--key", "i", "--title", "fyi", urls=None, token=None)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual([i["kind"] for i in self.items(a, reader, "open")], ["info"])
+
+
+class Caps(CliTestCase):
+    def test_outbox_is_capped_by_count_and_age(self):
+        os.makedirs(self.outbox)
+        old = "%020d-00001.json" % int((time.time() - 8 * 86400) * 1e9)
+        with open(os.path.join(self.outbox, old), "w") as fh:
+            json.dump({"method": "POST", "path": "/v1/items", "body": {"title": "old"}}, fh)
+        env = {"NEEDS_YOU_OUTBOX_MAX": "3"}
+        for i in range(5):
+            r = self.run_cli("add", "--key", "k%d" % i, "--title", "t", urls=[self.dead], extra_env=env)
+            self.assertEqual(r.returncode, 0)
+        files = self.queued()
+        self.assertEqual(len(files), 3)
+        self.assertNotIn(old, files)
+        bodies = []
+        for f in files:
+            with open(os.path.join(self.outbox, f)) as fh:
+                bodies.append(json.load(fh)["body"]["key"])
+        self.assertEqual(bodies, ["k2", "k3", "k4"])  # the oldest were dropped
+        self.assertIn("dropped", r.stderr)
+
+
+class DefaultContext(CliTestCase):
+    def test_env_file_default_context(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        cfg_dir = os.path.join(self.home, ".config", "needs-you")
+        os.makedirs(cfg_dir)
+        with open(os.path.join(cfg_dir, "env"), "w") as fh:
+            fh.write("NEEDS_YOU_URLS=%s\nNEEDS_YOU_TOKEN=%s\nNEEDS_YOU_DEFAULT_CONTEXT=personal\n"
+                     % (a.url, sender))
+        self.run_cli("add", "--key", "a", "--title", "t", urls=None, token=None)
+        self.run_cli("add", "--key", "b", "--title", "t", "--context", "work", urls=None, token=None)
+        items = {i["key"]: i["context"] for i in self.items(a, reader, "open")}
+        self.assertEqual(items, {"a": "personal", "b": "work"})
+
+
+class SelfUpdate(CliTestCase):
+    def test_replaces_itself_atomically(self):
+        a = self.make_hub("hub-a")
+        bindir = os.path.join(self.home, "bin")
+        os.makedirs(bindir)
+        target = os.path.join(bindir, "needs-you")
+        with open(CLI) as fh:
+            src = fh.read()
+        with open(target, "w") as fh:
+            fh.write(src.replace('VERSION = "', 'VERSION = "0.0.1-old" or "', 1))
+        os.chmod(target, 0o755)
+        r = self.run_cli("self-update", urls=[self.dead, a.url], cli=target)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("updated", r.stdout)
+        with open(target) as fh:
+            self.assertEqual(fh.read(), src)
+        self.assertEqual(os.stat(target).st_mode & 0o777, 0o755)
+        self.assertEqual(sorted(os.listdir(bindir)), ["needs-you"])  # no temp files left
+        r = self.run_cli("self-update", urls=[a.url], cli=target)
+        self.assertIn("already up to date", r.stdout)
+        r = self.run_cli("self-update", urls=[self.dead], cli=target)
+        self.assertEqual(r.returncode, 1)
 
 
 if __name__ == "__main__":
