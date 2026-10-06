@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement or a new integration.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you'd like to happen. Sketch the command, API field or UI if you have one in mind.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Mac app
+        - Hub / API
+        - CLI
+        - Invites and onboarding
+        - New integration (sender)
+        - Docs or site
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Fits the project's constraints
+      description: See CLAUDE.md. It's fine to propose something that doesn't; say why.
+      options:
+        - label: No new runtime dependencies (Python stdlib only for the hub and CLI)
+        - label: Works without a cloud service (loopback or tailnet only)
+        - label: The panel still never takes focus

@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in the Mac app, hub, CLI or an integration doesn't work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Never paste tokens, peer secrets, invite links or codes.** Replace hostnames you'd rather not share with `hub-a.example.ts.net`.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Mac app (NeedsYou.app)
+        - Hub built into the Mac app
+        - Server hub (needs_you_hub.py)
+        - needs-you CLI
+        - Invites / joining a machine
+        - Claude Code hooks or skill
+        - Orca integration
+        - CI / cron / systemd integration
+        - Docs or site
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. needs-you add --key "personal:test:x" --title "..."
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: "CLI output, `journalctl -u needs-you-hub`, the `/v1/health` response, or Console.app lines. Redact tokens."
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "e.g. needs-you --version, the app's About, or git rev-parse --short HEAD"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "macOS 14.6 / Ubuntu 24.04, python3 3.9.6, Tailscale 1.76"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I read [troubleshooting.md](https://github.com/tayharris/needs-you/blob/main/docs/guides/troubleshooting.md).
+          required: true
+        - label: This report contains no tokens, secrets or invite codes.
+          required: true
