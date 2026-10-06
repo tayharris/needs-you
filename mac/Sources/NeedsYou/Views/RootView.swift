@@ -43,6 +43,11 @@ struct RootView: View {
         case .preview(let item):
             PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel)
                 .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                        .onChanged { _ in model.dragHandler?(.changed) }
+                        .onEnded { _ in model.dragHandler?(.ended) }
+                )
                 .onTapGesture { model.expand(byUser: true) }
         case .expanded:
             ExpandedView(model: model)

@@ -1,0 +1,1 @@
+../../Tests/NeedsYouCoreTests/MenuBarTests.swift

@@ -222,7 +222,7 @@ public enum ConnectError: Error, LocalizedError, Equatable {
     case senderOnly
     case http(status: Int, message: String?)
     case invalidResponse
-    case keychain
+    case tokenStore
 
     public var errorDescription: String? {
         switch self {
@@ -242,8 +242,8 @@ public enum ConnectError: Error, LocalizedError, Equatable {
             return message.map { "Hub returned HTTP \(status): \($0)" } ?? "Hub returned HTTP \(status)"
         case .invalidResponse:
             return "The hub sent a response this app doesn't understand. Is it up to date?"
-        case .keychain:
-            return "Couldn't save the token to the Keychain."
+        case .tokenStore:
+            return "Couldn't save the token to ~/Library/Application Support/NeedsYou/tokens.json."
         }
     }
 }

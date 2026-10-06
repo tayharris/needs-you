@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var phase3: Phase3Controller?
     private var localHub: LocalHubController!
     private var connect: ConnectController!
+    private var menuBar: MenuBarController!
+    private var termSource: DispatchSourceSignal?
     /// needsyou:// URLs that arrived before launch finished.
     private var pendingURLs: [URL] = []
     private var launched = false
@@ -26,10 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load (or mint) the local hub's owner token before the first feed is built, so
         // "this Mac" is in the hub list from the start. The hub itself starts below.
         localHub.prepareToken()
-        phase3 = Phase3Controller(model: model)   // phase 3; remove with the Phase3 folder
+        phase3 = Phase3Controller(model: model, defaults: settings.defaults)   // phase 3; remove with the Phase3 folder
 
         hotKey = HotKey { [weak self] in
-            Task { @MainActor in self?.model.toggleVisibility() }
+            // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
+            Task { @MainActor in if self?.model.toggleVisibility() == false { NSSound.beep() } }
         }
         if hotKey?.isRegistered != true {
             NSLog("NeedsYou: couldn't register ⌃⌥Space (status \(hotKey?.status ?? -1)); is it bound to input-source switching?")
@@ -40,9 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
+        model.openInviteHandler = { [weak self] in self?.settingsWindow.show() }
         if let phase3 { settingsWindow.extraSettings = { phase3.settingsSection } }
 
         panel = PanelController(model: model)
+        menuBar = MenuBarController(model: model)
+        installTerminationSignal()
 
         // Focus-rule tripwire: activation is only legitimate right after the user opens
         // Settings. Anything else is a regression; log it loudly.
@@ -118,6 +124,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         localHub?.stop()
+    }
+
+    /// SIGTERM (scripts/install.sh's fallback, `kill`) quits like the Quit menu item, so the
+    /// local hub is stopped cleanly instead of being orphaned until it notices.
+    private func installTerminationSignal() {
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { NSApp.terminate(nil) }
+        source.resume()
+        termSource = source
     }
 
     // MARK: needsyou:// links

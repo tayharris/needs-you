@@ -26,7 +26,18 @@ final class AppModel: ObservableObject {
     @Published private(set) var isExpanded = false
     /// True when the user clicked to expand (vs. the morning summary or NEEDS_YOU_EXPAND).
     private(set) var expandedByUser = false
-    @Published private(set) var visibility: PanelVisibility = .shown
+    /// Shown, snoozed, or hidden. `.hidden` persists across launches (settings.panelHidden).
+    @Published private(set) var visibility: PanelVisibility = .shown {
+        didSet {
+            let hidden = visibility == .hidden
+            if settings.panelHidden != hidden { settings.panelHidden = hidden }
+        }
+    }
+    /// The panel is shown for a moment while hidden (an item without a link was clicked in
+    /// the menu bar menu). Collapsing ends the peek; the panel stays hidden.
+    @Published private(set) var peeking = false
+    /// One brief pulse of the menu bar icon (an urgent arrival while the panel is hidden).
+    @Published private(set) var menuBarPulse: UUID?
     @Published var hovering = false
     @Published private(set) var lastCheck: Date?
     @Published private(set) var lastError: String?
@@ -50,6 +61,10 @@ final class AppModel: ObservableObject {
     var dragHandler: ((DragPhase) -> Void)?
     /// Set by the app delegate.
     var openSettingsHandler: (() -> Void)?
+    /// Set by the app delegate: opens Settings at the invite section (activates the app).
+    var openInviteHandler: (() -> Void)?
+    /// Set by the panel controller: forget the saved position for this screen layout.
+    var resetPositionHandler: (() -> Void)?
 
     // Phase 3 hooks. Phase 2 leaves them nil: new items get a plain pulse, the context
     // only changes by hand, and nothing reacts to feed restarts.
@@ -76,6 +91,7 @@ final class AppModel: ObservableObject {
 
     init(settings: AppSettings) {
         self.settings = settings
+        visibility = settings.panelHidden ? .hidden : .shown
     }
 
     // MARK: Derived
@@ -250,6 +266,7 @@ final class AppModel: ObservableObject {
         now = Date()
         if case .snoozed(let until) = visibility, until <= now {
             visibility = .shown
+            objectWillChange.send()
         }
         if let resolved = contextResolver?(now), resolved != settings.viewContext {
             settings.viewContext = resolved
@@ -267,17 +284,25 @@ final class AppModel: ObservableObject {
         let needs = items.filter { $0.kind == .needs && !store.isCardSnoozed($0.id, now: Date()) }
         guard !needs.isEmpty else { return }
 
-        if visibility.isHidden(at: Date()) {
-            if SnoozeBreakthrough.shouldBreakThrough(
-                visibility: visibility, announced: needs,
-                urgentBreaksThrough: settings.urgentBreaksSnooze, now: Date()
+        if visibility.isHidden(at: Date()) && !peeking {
+            // Out of sight: the menu bar count updates by itself; an urgent item pulses the
+            // icon once, or brings the panel back (see HiddenArrivalPolicy).
+            switch HiddenArrivalPolicy.decide(
+                visibility: visibility, announced: needs, urgentBreaksSnooze: settings.urgentBreaksSnooze,
+                urgentShowsHiddenPanel: settings.urgentShowsHiddenPanel, now: Date()
             ) {
-                // Open decision 2: break through with a single pulse. The snooze ends.
+            case .none:
+                break
+            case .pulseMenuBar:
+                menuBarPulse = UUID()
+            case .showPanel:
+                // Open decision 2: break through with a single pulse. The snooze/hide ends.
                 visibility = .shown
                 if let urgent = needs.first(where: { $0.priority == .urgent }), urgent.context != context {
                     settings.viewContext = urgent.context
                 }
                 pulse = PulseRequest(times: 1, priority: .urgent)
+                menuBarPulse = UUID()
             }
             return
         }
@@ -304,9 +329,11 @@ final class AppModel: ObservableObject {
     }
 
     func expand(byUser: Bool = false) {
+        // Automatic expansions (NEEDS_YOU_EXPAND, the morning summary) never undo a hide.
+        if visibility == .hidden && !byUser && !peeking { return }
         expandedByUser = byUser
         previewItem = nil
-        if visibility.isHidden(at: Date()) { visibility = .shown }
+        if visibility.isHidden(at: Date()) && !peeking { visibility = .shown }
         isExpanded = true
         markVisibleSeen()
     }
@@ -314,6 +341,7 @@ final class AppModel: ObservableObject {
     func collapse() {
         isExpanded = false
         summarySince = nil
+        peeking = false
     }
 
     func setContext(_ context: ItemContext) {
@@ -357,27 +385,76 @@ final class AppModel: ObservableObject {
 
     // MARK: Panel visibility
 
+    /// Is the floating panel on screen? (Shown, or peeking while hidden.)
+    var isPanelVisible: Bool { peeking || !visibility.isHidden(at: Date()) }
+
     func snoozePanel(_ option: SnoozeOption) {
         isExpanded = false
         previewItem = nil
+        peeking = false
         visibility = .snoozed(until: option.until(from: Date()))
     }
 
-    /// Hidden until the hotkey (or Settings) brings it back.
-    func hidePanel() {
+    /// Can the panel be hidden right now? Not while the menu bar icon is off: the two
+    /// can't both be hidden (VisibilityRules).
+    var canHidePanel: Bool { VisibilityRules.canHidePanel(showMenuBarIcon: settings.showMenuBarIcon) }
+
+    /// Hidden (and remembered across launches) until the menu bar menu, ⌃⌥Space or Settings
+    /// brings it back. Refused, returning false, while the menu bar icon is off.
+    @discardableResult
+    func hidePanel() -> Bool {
+        guard canHidePanel else { return false }
         isExpanded = false
         previewItem = nil
+        peeking = false
+        summarySince = nil
         visibility = .hidden
+        return true
     }
 
     func showPanel() {
+        peeking = false
         visibility = .shown
     }
 
-    /// The global shortcut: hidden/snoozed → shown, shown → hidden.
-    func toggleVisibility() {
-        if visibility.isHidden(at: Date()) { showPanel() } else { hidePanel() }
+    /// The global shortcut and the menu bar's Show Floating Panel: hidden/snoozed → shown,
+    /// shown → hidden. Returns false if hiding was refused.
+    @discardableResult
+    func toggleVisibility() -> Bool {
+        if visibility.isHidden(at: Date()) && !peeking { showPanel(); return true }
+        return hidePanel()
     }
+
+    /// Turn the menu bar icon on or off. Turning it off is refused (returns false) while
+    /// the panel is hidden: the icon is the way back.
+    @discardableResult
+    func setShowMenuBarIcon(_ on: Bool) -> Bool {
+        if !on && !VisibilityRules.canHideMenuBarIcon(panelHidden: visibility == .hidden) { return false }
+        settings.showMenuBarIcon = on
+        return true
+    }
+
+    /// A menu bar item was clicked: open its first allowed link, or show the panel
+    /// expanded (peeking if it's hidden). Never activates the app.
+    func activate(_ item: Item) {
+        switch MenuItemAction.forItem(item) {
+        case .open(let url):
+            NSWorkspace.shared.open(url)
+        case .showPanel:
+            if item.context != context { setContext(item.context) }
+            showExpanded()
+        }
+    }
+
+    /// Expand the panel from the menu bar. While hidden or snoozed it only peeks:
+    /// collapsing puts it back out of sight.
+    func showExpanded() {
+        if visibility.isHidden(at: Date()) { peeking = true }
+        expand(byUser: true)
+    }
+
+    func resetPosition() { resetPositionHandler?() }
+    func openInvite() { (openInviteHandler ?? openSettingsHandler)?() }
 
     var snoozeDescription: String? {
         switch visibility {

@@ -70,16 +70,13 @@ final class ConnectController: ObservableObject {
         let merge = HubListMerge.merge(existing: settings.hubURLs.map(\.absoluteString), given: link.hub,
                                        returned: response.hubURLs, exclude: [localKey])
         var failed: [String] = []
-        for hub in merge.tokenHubs {
-            if settings.tokenStore(for: hub).write(response.token) {
-                settings.setRole(response.role, for: hub)
-            } else {
-                failed.append(HubName.short(hub))
-            }
+        for hub in merge.tokenHubs where !settings.saveToken(response.token, role: response.role, for: hub) {
+            failed.append(HubName.short(hub))
         }
-        if failed.count == merge.tokenHubs.count, !merge.tokenHubs.isEmpty { throw ConnectError.keychain }
+        if failed.count == merge.tokenHubs.count, !merge.tokenHubs.isEmpty { throw ConnectError.tokenStore }
         settings.hubURLStrings = merge.hubs
-        settings.pruneRoles()
+        settings.pruneTokens()
+        if settings.hubsMissingTokens.isEmpty { settings.tokensNeedReconnect = false }
         if settings.demoMode, !settings.demoForcedByEnvironment { settings.demoMode = false }
         model.restartFeed()
 

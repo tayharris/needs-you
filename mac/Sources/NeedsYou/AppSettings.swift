@@ -1,21 +1,24 @@
 import Foundation
 import NeedsYouCore
 
-/// User settings. Hub URLs, the display name and toggles live in UserDefaults; each hub's
-/// token lives in the Keychain, keyed by the hub URL (PLAN.md, "Credentials").
+/// User settings. Hub URLs, the display name and toggles live in UserDefaults; each remote
+/// hub's token (and its role) lives in `tokens.json` in the support directory, keyed by the
+/// hub URL. Nothing here touches the Keychain.
 ///
 /// Environment overrides (handy for running the binary directly):
-///   NEEDS_YOU_DEMO=1                 demo mode, no hub, no Keychain access
+///   NEEDS_YOU_DEMO=1                 demo mode, no hub
 ///   NEEDS_YOU_DEMO_FIXTURE=path.json demo seed items (hub list shape) instead of the built-in set
 ///   NEEDS_YOU_DEMO_INJECT_SECONDS=n  demo: post a new item every n seconds (default 45, 0 = never)
 ///   NEEDS_YOU_POLL_SECONDS=n         poll interval (default 30; 5 in demo mode)
 ///   NEEDS_YOU_EXPAND=1               start expanded (never takes focus)
 ///   NEEDS_YOU_SNAPSHOT_DIR=dir       debug: write PNGs of each panel state
+///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
+///   NEEDS_YOU_DEFAULTS_SUITE=name    use this UserDefaults suite instead of the app's domain
 @MainActor
 final class AppSettings: ObservableObject {
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
     private let env = ProcessInfo.processInfo.environment
-    static let keychainService = "app.needsyou.mac"
+    let tokens: FileTokenStore
 
     private enum Key {
         static let hubURLs = "hubURLs"
@@ -24,8 +27,20 @@ final class AppSettings: ObservableObject {
         static let urgentBreaksSnooze = "urgentBreaksSnooze"
         static let viewContext = "viewContext"
         static let placements = "panelPlacements"
-        static let hubRoles = "hubRoles"
         static let runLocalHub = "runLocalHub"
+        static let showMenuBarIcon = "showMenuBarIcon"
+        static let showMenuBarCount = "showMenuBarCount"
+        static let urgentShowsHiddenPanel = "urgentShowsHiddenPanel"
+        static let panelHidden = "panelHidden"
+        static let snapToCorners = "snapToCorners"
+    }
+
+    /// The app's defaults, or the NEEDS_YOU_DEFAULTS_SUITE suite (test instances).
+    nonisolated static func makeDefaults(environment: [String: String] = ProcessInfo.processInfo.environment) -> UserDefaults {
+        if let suite = environment["NEEDS_YOU_DEFAULTS_SUITE"], !suite.isEmpty, let d = UserDefaults(suiteName: suite) {
+            return d
+        }
+        return .standard
     }
 
     /// Hub URLs in failover order (first reachable wins).
@@ -53,18 +68,70 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(runLocalHub, forKey: Key.runLocalHub) }
     }
     /// The local hub's owner token, once LocalHubController has loaded or minted it.
-    /// Kept in memory; the token file and the Keychain hold the stored copies.
+    /// Kept in memory; `owner.token` (mode 600) is the only stored copy.
     @Published var localHubToken: String?
 
-    init(defaults: UserDefaults = .standard) {
+    // Menu bar and panel visibility. Use AppModel to change these: it enforces
+    // VisibilityRules (the icon and the panel can't both be hidden).
+
+    /// Show the menu bar icon. Default on.
+    @Published var showMenuBarIcon: Bool {
+        didSet { defaults.set(showMenuBarIcon, forKey: Key.showMenuBarIcon) }
+    }
+    /// Show the open count next to the menu bar icon. Default on.
+    @Published var showMenuBarCount: Bool {
+        didSet { defaults.set(showMenuBarCount, forKey: Key.showMenuBarCount) }
+    }
+    /// An urgent arrival brings back a hidden panel (instead of pulsing the icon). Default off.
+    @Published var urgentShowsHiddenPanel: Bool {
+        didSet { defaults.set(urgentShowsHiddenPanel, forKey: Key.urgentShowsHiddenPanel) }
+    }
+    /// The floating panel is hidden (not snoozed); persists across launches.
+    @Published var panelHidden: Bool {
+        didSet { defaults.set(panelHidden, forKey: Key.panelHidden) }
+    }
+    /// Dropping the pill snaps it to the nearest corner. Default off: it stays exactly where
+    /// it's dropped (clamped to the screen).
+    @Published var snapToCorners: Bool {
+        didSet { defaults.set(snapToCorners, forKey: Key.snapToCorners) }
+    }
+    /// Remote hubs were configured when tokens moved out of the Keychain (PrefsMigrator 3).
+    @Published var tokensNeedReconnect: Bool {
+        didSet { defaults.set(tokensNeedReconnect, forKey: PrefsMigrator.reconnectKey) }
+    }
+
+    init(defaults: UserDefaults = AppSettings.makeDefaults(), tokens: FileTokenStore = .standard()) {
         self.defaults = defaults
-        defaults.register(defaults: [Key.urgentBreaksSnooze: true, Key.runLocalHub: true])
+        self.tokens = tokens
+        // Forward-only; never deletes keys (see PrefsMigrator).
+        PrefsMigrator.migrate(defaults)
+        defaults.register(defaults: [
+            Key.urgentBreaksSnooze: true,
+            Key.runLocalHub: true,
+            Key.showMenuBarIcon: true,
+            Key.showMenuBarCount: true,
+            Key.urgentShowsHiddenPanel: false,
+            Key.panelHidden: false,
+            Key.snapToCorners: false,
+        ])
         runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
         userName = defaults.string(forKey: Key.userName) ?? ""
         demoMode = defaults.bool(forKey: Key.demoMode)
         urgentBreaksSnooze = defaults.bool(forKey: Key.urgentBreaksSnooze)
         viewContext = ItemContext(rawValue: defaults.string(forKey: Key.viewContext) ?? "") ?? .work
+        let visibility = VisibilityRules.normalized(showMenuBarIcon: defaults.bool(forKey: Key.showMenuBarIcon),
+                                                    panelHidden: defaults.bool(forKey: Key.panelHidden))
+        showMenuBarIcon = visibility.showMenuBarIcon
+        panelHidden = visibility.panelHidden
+        showMenuBarCount = defaults.bool(forKey: Key.showMenuBarCount)
+        urgentShowsHiddenPanel = defaults.bool(forKey: Key.urgentShowsHiddenPanel)
+        tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
+        snapToCorners = defaults.bool(forKey: Key.snapToCorners)
+        // Stored prefs that hide both the icon and the panel: keep the icon.
+        if visibility.showMenuBarIcon != defaults.bool(forKey: Key.showMenuBarIcon) {
+            defaults.set(true, forKey: Key.showMenuBarIcon)
+        }
     }
 
     // MARK: Derived
@@ -106,13 +173,35 @@ final class AppSettings: ObservableObject {
     var hubURLs: [URL] { hubURLStrings.compactMap(Self.parseHubURL).filter { !LocalHub.isLocal($0) } }
     var hasHubs: Bool { !hubURLs.isEmpty || runLocalHub }
 
-    func tokenStore(for url: URL) -> KeychainTokenStore {
-        KeychainTokenStore(service: Self.keychainService, account: HubName.key(url))
+    // MARK: Tokens (tokens.json)
+
+    func token(for url: URL) -> String? { tokens.token(for: url) }
+
+    /// Save a token (and its role, when known). Returns false if the file couldn't be written.
+    @discardableResult
+    func saveToken(_ token: String, role: HubRole?, for url: URL) -> Bool {
+        do {
+            try tokens.set(token, role: role, for: url)
+            objectWillChange.send()
+            return true
+        } catch {
+            NSLog("NeedsYou: \(error.localizedDescription)")
+            return false
+        }
     }
 
-    static var localTokenStore: KeychainTokenStore {
-        KeychainTokenStore(service: keychainService, account: HubName.key(LocalHub.clientURL))
+    func removeToken(for url: URL) {
+        try? tokens.remove(url)
+        objectWillChange.send()
     }
+
+    /// Forget tokens of hubs that are no longer in the list.
+    func pruneTokens() {
+        try? tokens.prune(keeping: hubURLs)
+    }
+
+    /// Remote hubs in the list without a stored token (e.g. after the move off the Keychain).
+    var hubsMissingTokens: [URL] { hubURLs.filter { token(for: $0) == nil } }
 
     /// Hubs that have a token, in failover order. The local hub, when on, is always first.
     func hubConfigs() -> [HubConfig] {
@@ -121,7 +210,7 @@ final class AppSettings: ObservableObject {
             configs.append(HubConfig(baseURL: LocalHub.clientURL, token: token))
         }
         configs += hubURLs.compactMap { url in
-            guard let token = tokenStore(for: url).read(), !token.isEmpty else { return nil }
+            guard let token = token(for: url) else { return nil }
             return HubConfig(baseURL: url, token: token)
         }
         return configs
@@ -132,35 +221,15 @@ final class AppSettings: ObservableObject {
         LocalHub.isLocal(url) ? LocalHub.displayName : HubName.short(url)
     }
 
-    // MARK: Token roles (from the redeem response)
-
-    private var roleBook: HubRoleBook {
-        get { HubRoleBook(plist: defaults.dictionary(forKey: Key.hubRoles) as? [String: String]) }
-        set { defaults.set(newValue.plist, forKey: Key.hubRoles) }
-    }
+    // MARK: Token roles (from the redeem response, stored next to the token)
 
     /// The role of the token stored for `url`; nil when unknown (entered by hand).
     func role(for url: URL) -> HubRole? {
         if LocalHub.isLocal(url) { return runLocalHub ? .owner : nil }
-        return roleBook.role(for: url)
+        return tokens.role(for: url)
     }
 
-    func setRole(_ role: HubRole?, for url: URL) {
-        var book = roleBook
-        book.set(role, for: url)
-        book.prune(keeping: hubURLs + [url])
-        roleBook = book
-        objectWillChange.send()
-    }
-
-    /// Forget roles of hubs that are no longer in the list.
-    func pruneRoles() {
-        var book = roleBook
-        book.prune(keeping: hubURLs)
-        roleBook = book
-    }
-
-    /// Is any configured token an owner token? (No Keychain access.)
+    /// Is any configured token an owner token?
     var hasOwnerHub: Bool {
         if runLocalHub, localHubToken != nil { return true }
         return hubURLs.contains { role(for: $0) == .owner }
@@ -187,6 +256,12 @@ final class AppSettings: ObservableObject {
     func setPlacement(_ placement: PanelPlacement, forLayout key: String) {
         var book = PlacementBook.decode(defaults.data(forKey: Key.placements))
         book.set(placement, forLayout: key)
+        if let data = book.encoded() { defaults.set(data, forKey: Key.placements) }
+    }
+
+    func removePlacement(forLayout key: String) {
+        var book = PlacementBook.decode(defaults.data(forKey: Key.placements))
+        guard book.remove(forLayout: key) else { return }
         if let data = book.encoded() { defaults.set(data, forKey: Key.placements) }
     }
 }
