@@ -21,6 +21,8 @@ Pick a **key prefix** per workspace and stick to it. The examples use `work:`; u
 | Session / memory reaper | `work:<host>:memory` | needs / urgent | memory is back under the line |
 | Any automation that crashed | `work:<automation>:failed` | needs / normal | the next run succeeds |
 
+Every post from a scheduled automation also carries `--expires-in` of about twice its interval (hourly: `3`, daily: `48`), renewed by each run that still sees the blocker. The explicit resolve stays the fast path; the expiry catches a run that crashed or skipped its resolve step.
+
 Keep setting the Orca board status as you do today. needs-you is the alert; the board is the record.
 
 ## Links: Jira, PR, branch, and the terminal by name
@@ -76,6 +78,10 @@ Rules:
   word such as `redo-blocked`, `push-decision` or `deploy-approval`. No ticket:
   `work:<repo>/<branch>:<reason>`. Never put a time, run id or terminal handle
   in a key.
+- On a schedule, also pass `--expires-in` of about twice the interval in
+  hours (hourly: `--expires-in 3`, daily: `--expires-in 48`). Each run that
+  still sees the blocker re-posts and renews it, so a blocker the run stops
+  reporting drops off even if a resolve is missed or the run crashes.
 - Leave out any link you don't have (no PR yet: no PR link). Outside an Orca
   terminal (`$ORCA_TERMINAL_HANDLE` empty), pass only the sentences as --body.
 - If this run fails in a way you can't recover from, post
@@ -94,9 +100,10 @@ Add to the step where the run decides it can't proceed on a ticket, and to the e
 ### needs-you
 
 - For each ticket you leave blocked on the user, post it as in "Telling the
-  user" with `--key "work:<TICKET>:redo-blocked"` and
-  `--agent "orca:redo-fixer"`. Run it every time you see the ticket still
-  blocked; the same key updates the existing item.
+  user" with `--key "work:<TICKET>:redo-blocked"`,
+  `--agent "orca:redo-fixer"` and `--expires-in 3`. Run it every time you see
+  the ticket still blocked; the same key updates the existing item and renews
+  its expiry.
 - When you move a ticket back to review, or find it's no longer in the Redo
   column, run `needs-you resolve --key "work:<TICKET>:redo-blocked"`.
 - At the end of the run, only if you changed anything, run:
@@ -116,6 +123,7 @@ Build the list of things you are reporting under "Needs you" this run. For
 each, post:
 
     needs-you add --key "work:cleanup:<worktree-or-branch>" --context work --priority low \
+      --expires-in 48 \
       --title "Cleanup: decide on <branch> (<reason, e.g. 3 unpushed commits>)" \
       --body "<path>, last commit <date>. Push it, merge it, or tell the cleanup it can go." \
       --agent "orca:cleanup" --project "<repo>"

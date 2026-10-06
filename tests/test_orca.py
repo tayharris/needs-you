@@ -57,7 +57,7 @@ class OrcaSnippetTests(unittest.TestCase):
         self.assertNotIn("orca://", s)
         for want in ('--link "Jira=', '--link "PR=', '--link "Branch=',
                      "orca terminal switch", "needs-you resolve --key \"work:<TICKET>:<reason>\"",
-                     "$ORCA_TERMINAL_HANDLE", "ORCA_WORKTREE_ID"):
+                     "$ORCA_TERMINAL_HANDLE", "ORCA_WORKTREE_ID", "--expires-in"):
             self.assertIn(want, s)
 
     def body_from_block(self, orca_env=None):

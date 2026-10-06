@@ -362,6 +362,10 @@ Rules:
   word such as `redo-blocked`, `push-decision` or `deploy-approval`. No ticket:
   `work:<repo>/<branch>:<reason>`. Never put a time, run id or terminal handle
   in a key.
+- On a schedule, also pass `--expires-in` of about twice the interval in
+  hours (hourly: `--expires-in 3`, daily: `--expires-in 48`). Each run that
+  still sees the blocker re-posts and renews it, so a blocker the run stops
+  reporting drops off even if a resolve is missed or the run crashes.
 - Leave out any link you don't have (no PR yet: no PR link). Outside an Orca
   terminal (`$ORCA_TERMINAL_HANDLE` empty), pass only the sentences as --body.
 - If this run fails in a way you can't recover from, post

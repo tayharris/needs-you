@@ -51,7 +51,7 @@ Never print or echo the token.
 ## Rules
 
 1. **Stable, specific keys:** `<context-prefix>:<project-or-ticket>:<reason>`, e.g. `work:ACME-456:ssm-flag`, `personal:blog:cert-expiring`. Posting the same key again updates the item instead of adding a new one. Never put a timestamp or random id in a key. Use the prefix the user or the project's docs give you; otherwise `work` or `personal`.
-2. **Resolve what you post.** When the blocker clears (the user answered, the ticket moved, the job passed), run `needs-you resolve --key <same key>`. Before ending your session, resolve anything you posted that is no longer true. Stale items teach people to ignore the panel.
+2. **Resolve what you post.** When the blocker clears (the user answered, the ticket moved, the job passed), run `needs-you resolve --key <same key>`. Before ending your session, resolve anything you posted that is no longer true. Stale items teach people to ignore the panel. If you run on a schedule, also pass `--expires-in` of about twice the interval in hours (hourly: `3`) and re-post on every run that still sees the blocker, so a missed resolve expires on its own.
 3. **The title is the action.** Lead with what the person has to do or decide, 100 characters or fewer. The body (2,000 characters at most, Markdown, no HTML or images) gives the options and where the question already lives.
 4. **Link to where they act:** the PR, ticket, dashboard, log or worktree. At most 6 links. Allowed schemes: `https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`. Anything else isn't clickable.
 5. **No secrets, ever.** No credentials, tokens, customer data, card data, personal data or code beyond a short identifier (a ticket key, a sha, a file name). Titles, short text and links only.

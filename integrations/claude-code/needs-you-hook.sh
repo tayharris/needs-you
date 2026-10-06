@@ -25,6 +25,10 @@
 #                             orca://skills/share/<id>), so Orca sessions get
 #                             the worktree and an `orca terminal switch`
 #                             command in the card body instead.
+#   NEEDS_YOU_AGENT_EXPIRY_HOURS  cards expire after this many hours without a
+#                             re-post (default 48; 0 = never), a backstop for
+#                             a session that dies on a machine that never
+#                             runs `needs-you flush` again
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
@@ -62,7 +66,9 @@ input=$(cat 2>/dev/null)
 [ -n "${NEEDS_YOU_AGENT_LINK:-}" ]     || NEEDS_YOU_AGENT_LINK=$(file_val NEEDS_YOU_AGENT_LINK)
 [ -n "${NEEDS_YOU_BIN:-}" ]            || NEEDS_YOU_BIN=$(file_val NEEDS_YOU_BIN)
 [ -n "${NEEDS_YOU_ORCA_ENVIRONMENT:-}" ] || NEEDS_YOU_ORCA_ENVIRONMENT=$(file_val NEEDS_YOU_ORCA_ENVIRONMENT)
+[ -n "${NEEDS_YOU_AGENT_EXPIRY_HOURS:-}" ] || NEEDS_YOU_AGENT_EXPIRY_HOURS=$(file_val NEEDS_YOU_AGENT_EXPIRY_HOURS)
 export NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_ORCA_ENVIRONMENT
+export NEEDS_YOU_AGENT_EXPIRY_HOURS
 
 log() {
   [ -n "${NEEDS_YOU_HOOK_LOG:-}" ] || return 0
@@ -84,6 +90,22 @@ key="agent:$host:$id"
 
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
+
+# The Claude process this hook belongs to: the first ancestor that isn't a
+# shell (Claude Code may start hooks through `sh -c`). `needs-you flush`
+# resolves the card once that pid is gone or reused (different start time).
+agent_pid() {
+  local p=$PPID n=0 comm
+  while [ "$n" -lt 8 ] && [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null; do
+    comm=$(ps -o comm= -p "$p" 2>/dev/null) || return 0
+    case "${comm##*/}" in
+      sh|-sh|bash|-bash|dash|zsh|-zsh|env|timeout|nohup) ;;
+      *) printf '%s' "$p"; return 0 ;;
+    esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+    n=$((n + 1))
+  done
+}
 
 # Find the CLI. Hooks run with Claude Code's PATH, which may not include
 # ~/.local/bin.
@@ -173,6 +195,12 @@ args = [
     "--agent", "claude-code",
     "--project", project,
 ]
+try:
+    expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
+except ValueError:
+    expiry = 48.0
+if expiry > 0:
+    args += ["--expires-in", "%g" % expiry]
 tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "")
 if "=" in tmpl:
     label, url = tmpl.split("=", 1)
@@ -195,8 +223,18 @@ PY
     log "notify $key -> $rc"
     # The CLI queues offline and exits 0, so a down hub still leaves a marker
     # and the later resolve is queued behind the add.
-    if [ "$rc" -eq 0 ]; then
-      mkdir -p "$state_dir" 2>/dev/null && : >"$marker"
+    # The marker is the lease: key, Claude's pid and its start time.
+    if [ "$rc" -eq 0 ] && mkdir -p "$state_dir" 2>/dev/null; then
+      pid=$(agent_pid)
+      start=
+      [ -n "$pid" ] && start=$(LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null)
+      tmp="$state_dir/.$id.$$"
+      if [ -n "$start" ]; then
+        printf 'key=%s\npid=%s\nstart=%s\n' "$key" "$pid" "$start" >"$tmp"
+      else
+        printf 'key=%s\n' "$key" >"$tmp"
+      fi
+      mv -f "$tmp" "$marker" 2>/dev/null || rm -f "$tmp"
     fi
     ;;
 esac

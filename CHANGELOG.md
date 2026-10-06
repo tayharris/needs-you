@@ -4,6 +4,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent cards from a killed Claude session (closed terminal, reboot, OOM) no longer stay forever. The hook leases each card to its Claude process, and `needs-you flush` (every 5 minutes) resolves the card once that process is gone. Cards also expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`, `0` turns it off).
+
+### Changed
+
+- The Orca prompt block, the skill and the agent guide tell scheduled senders to post with `--expires-in` of about twice their interval, so a blocker a run stops reporting drops off even if its resolve is missed.
+
 ## [0.1.1] - 2026-10-06
 
 The first packaged release: a private preview for invited testers.
