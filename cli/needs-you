@@ -206,8 +206,11 @@ def _prune_dir(d: str, max_files: int, max_age_s: float) -> int:
     for n in names:
         try:
             ts = int(n.split("-", 1)[0])
-        except ValueError:
-            ts = 0
+        except ValueError:  # not our naming: judge it by its mtime instead
+            try:
+                ts = int(os.path.getmtime(os.path.join(d, n)) * 1e9)
+            except OSError:
+                continue
         (drop if ts < cutoff_ns else keep).append(n)
     if len(keep) > max_files:
         drop += keep[:len(keep) - max_files]

@@ -355,7 +355,13 @@ def check_bind(cfg: Dict[str, Any]) -> None:
 # Storage
 # ---------------------------------------------------------------------------
 
-SCHEMA = """
+# Schema history. PRAGMA user_version is the number of migrations applied. Migrations are
+# forward-only, run in one transaction each at start-up, and never drop or rewrite user data.
+# Append new ones; never edit a released one. A database newer than this code is refused.
+MIGRATIONS: List[str] = [
+    # 1: the original schema (as released before invites). IF NOT EXISTS, so it also adopts
+    #    databases created before user_version was tracked (user_version 0).
+    """
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS items (
   id TEXT PRIMARY KEY,
@@ -404,6 +410,17 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS outbox_peer ON outbox(peer, id);
+CREATE TABLE IF NOT EXISTS peer_state (
+  peer TEXT PRIMARY KEY,
+  cursor INTEGER NOT NULL DEFAULT 0,
+  epoch TEXT NOT NULL DEFAULT '',
+  last_push_ok INTEGER,
+  last_pull_ok INTEGER,
+  last_error TEXT
+);
+""",
+    # 2: invites, and an index for outbox retention
+    """
 CREATE INDEX IF NOT EXISTS outbox_created ON outbox(created_at);
 CREATE TABLE IF NOT EXISTS invites (
   id TEXT PRIMARY KEY,
@@ -421,15 +438,10 @@ CREATE TABLE IF NOT EXISTS invites (
   seq INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS invites_seq ON invites(seq);
-CREATE TABLE IF NOT EXISTS peer_state (
-  peer TEXT PRIMARY KEY,
-  cursor INTEGER NOT NULL DEFAULT 0,
-  epoch TEXT NOT NULL DEFAULT '',
-  last_push_ok INTEGER,
-  last_pull_ok INTEGER,
-  last_error TEXT
-);
-"""
+""",
+]
+SCHEMA_VERSION = len(MIGRATIONS)
+DB_BACKUPS_KEPT = 2
 
 ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "source",
              "status", "created_at", "updated_at", "content_updated_at", "seen_at", "expires_at",
@@ -457,24 +469,74 @@ class Store:
         self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout=10000")
+        version = int(self.conn.execute("PRAGMA user_version").fetchone()[0])
+        has_tables = int(self.conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]) > 0
+        if version > SCHEMA_VERSION:
+            self.conn.close()
+            raise SystemExit("%s has schema version %d, but this hub only knows %d: it was written "
+                             "by a newer needs-you. Upgrade this hub; the database was not touched."
+                             % (path, version, SCHEMA_VERSION))
+        auto_vacuum = int(self.conn.execute("PRAGMA auto_vacuum").fetchone()[0])
+        if has_tables and (version < SCHEMA_VERSION or auto_vacuum != 2):
+            self.backup_path = self._backup(version)
         # auto_vacuum must be chosen before the first table exists; older databases are
-        # migrated once with a VACUUM (they are small).
-        if int(self.conn.execute("PRAGMA auto_vacuum").fetchone()[0]) != 2:
+        # converted once with a VACUUM (they are small). VACUUM keeps every row.
+        if auto_vacuum != 2:
             self.conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
-            has_tables = self.conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
             if has_tables:
                 self.conn.execute("VACUUM")
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
         with self.lock:
-            self.conn.executescript(SCHEMA)
+            self._migrate(version)
             self.conn.execute("INSERT OR IGNORE INTO meta(k, v) VALUES('seq', '0')")
             self.conn.execute("INSERT OR IGNORE INTO meta(k, v) VALUES('epoch', ?)", (new_ulid(),))
         try:
             os.chmod(path, 0o600)
         except OSError:
             pass
+
+    backup_path: Optional[str] = None
+
+    def _backup(self, version: int) -> str:
+        """Copy the database (online backup API, consistent even with WAL) to
+        <db>.bak-<old version> before migrating; keep the newest DB_BACKUPS_KEPT."""
+        dest = "%s.bak-%d" % (self.path, version)
+        tmp = dest + ".tmp"
+        out = sqlite3.connect(tmp)
+        try:
+            self.conn.backup(out)
+        finally:
+            out.close()
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, dest)
+        d = os.path.dirname(os.path.abspath(self.path))
+        prefix = os.path.basename(self.path) + ".bak-"
+        olds = sorted((os.path.join(d, n) for n in os.listdir(d)
+                       if n.startswith(prefix) and not n.endswith(".tmp")),
+                      key=lambda f: os.path.getmtime(f), reverse=True)
+        for f in olds[DB_BACKUPS_KEPT:]:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        sys.stderr.write("needs-you: backed up %s (schema %d) to %s before upgrading\n"
+                         % (self.path, version, dest))
+        return dest
+
+    def _migrate(self, version: int) -> None:
+        for n in range(version + 1, SCHEMA_VERSION + 1):
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                for stmt in MIGRATIONS[n - 1].split(";"):
+                    if stmt.strip():
+                        self.conn.execute(stmt)
+                self.conn.execute("PRAGMA user_version = %d" % n)
+            except BaseException:
+                self.conn.execute("ROLLBACK")
+                raise
+            self.conn.execute("COMMIT")
 
     def close(self) -> None:
         with self.lock:

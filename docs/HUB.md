@@ -192,14 +192,36 @@ vacuum every 10 minutes and a full `VACUUM` at most daily. Replicated records ol
 cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` shows
 `db_bytes`, item counts and outbox depth.
 
-## Operations
+## Upgrading
 
-- **Upgrade:** `cd ~/needs-you && git pull && ./scripts/install-hub.sh --user` (or `sudo
-  ./scripts/install-hub.sh`). Senders update their CLI with `needs-you self-update`.
-  Upgrade all peered hubs (and the Mac app) together when moving from a version without
-  invites: older hubs ignore invite records and refuse a replication batch that contains an
-  `owner` token, so they fall behind until they're upgraded (nothing is lost; the outbox
-  retries).
+Upgrades never lose config or data.
+
+```bash
+cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./scripts/install-hub.sh
+```
+
+- **Code** in `~/.local/share/needs-you` (or `/opt/needs-you`) is replaced in place, and the
+  service is restarted.
+- **Config** (`hub.json`) is kept. Only the flags you pass on the re-run are applied to it; new
+  config keys have defaults, so an old file keeps working unchanged.
+- **Database:** the schema is versioned (`PRAGMA user_version`). On start, a hub that finds an
+  older schema first copies the database with SQLite's online backup API to
+  `hub.db.bak-<old version>` (mode 600; the newest 2 backups are kept), then applies the
+  missing migrations, each in its own transaction. Migrations only add tables, columns and
+  indexes; they never drop or rewrite rows. Databases from before versioning (version 0) are
+  adopted as-is and also converted to incremental auto-vacuum. A hub refuses to open a
+  database written by a *newer* version and exits without touching it, so a rollback can't
+  corrupt data: restore the matching `hub.db.bak-<n>` (with the hub stopped) if you need to go
+  back.
+- **Tokens and invites** live in the database, so they survive. Senders keep their
+  `~/.config/needs-you/env` and outbox; both formats are unchanged (an env file with only
+  `NEEDS_YOU_URL` still works). Update the CLI with `needs-you self-update`.
+- **Peered hubs:** upgrade all of them (and the Mac app) together when moving from a version
+  without invites. Older hubs ignore invite records and refuse a replication batch that
+  contains an `owner` token, so they fall behind until upgraded. Nothing is lost: the outbox
+  retries for up to 7 days, and anti-entropy catches up after that.
+
+## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`
   (safe while running), or `python3 -c "import sqlite3; s=sqlite3.connect('$HOME/.local/state/needs-you/hub.db'); s.backup(sqlite3.connect('$HOME/hub-backup.db'))"`
   where the `sqlite3` CLI isn't installed. With two or more hubs, each is a live backup of the

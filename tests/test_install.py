@@ -223,7 +223,15 @@ class InstallHubUser(unittest.TestCase):
                 self.assertIn("Restart=always", fh.read())
             self.assertTrue(os.access(os.path.join(home, ".local", "bin", "needs-you-admin"), os.X_OK))
 
-            # re-run: upgrade in place, keep config + secret, apply the flag passed, no new invite
+            # a token in the DB before the upgrade
+            admin = os.path.join(home, ".local", "bin", "needs-you-admin")
+            r = subprocess.run([admin, "token", "add", "keep-me"], env=env, capture_output=True,
+                               text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            db = cfg["db"]
+            db_ino = os.stat(db).st_ino
+
+            # re-run: upgrade in place, keep config + secret + DB, apply the flag passed, no new invite
             r = subprocess.run([BASH, script, "--user", "--no-start", "--public-url",
                                 "http://hub-a2.example.ts.net:8765"],
                                env=env, capture_output=True, text=True, timeout=120)
@@ -235,6 +243,9 @@ class InstallHubUser(unittest.TestCase):
             self.assertEqual(cfg2["peers"], cfg["peers"])
             self.assertNotIn("needsyou://", r.stdout)
             self.assertNotIn(secret, r.stdout)
+            self.assertEqual(os.stat(db).st_ino, db_ino)  # same database file
+            r = subprocess.run([admin, "token", "list"], env=env, capture_output=True, text=True, timeout=60)
+            self.assertIn("keep-me", r.stdout)
 
             # the admin wrapper works against the user config
             r = subprocess.run([os.path.join(home, ".local", "bin", "needs-you-admin"), "invite", "list"],

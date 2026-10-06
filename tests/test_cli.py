@@ -184,6 +184,30 @@ class Caps(CliTestCase):
         self.assertIn("dropped", r.stderr)
 
 
+class BackwardCompatible(CliTestCase):
+    def test_outbox_and_env_from_the_previous_cli(self):
+        """Files exactly as main's CLI (f43bf2f) wrote them: a URL-only env file and an outbox entry."""
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        cfg_dir = os.path.join(self.home, ".config", "needs-you")
+        os.makedirs(cfg_dir)
+        with open(os.path.join(cfg_dir, "env"), "w") as fh:
+            fh.write("NEEDS_YOU_URL=%s\nNEEDS_YOU_TOKEN=%s\n" % (a.url, sender))
+        os.makedirs(self.outbox)
+        name = "%020d-%05d.json" % (time.time_ns() - 60 * 10 ** 9, 4242)
+        with open(os.path.join(self.outbox, name), "w") as fh:
+            json.dump({"method": "POST", "path": "/v1/items", "queued_at": "2026-10-06T10:00:00Z",
+                       "body": {"key": "old:queued", "title": "from the old CLI", "kind": "needs",
+                                "context": "work", "priority": "normal", "source": {"host": "x"}}}, fh)
+        with open(os.path.join(self.outbox, "not-our-name.json"), "w") as fh:  # unknown name: kept by age
+            json.dump({"method": "POST", "path": "/v1/items", "body": {"key": "odd", "title": "odd"}}, fh)
+        r = self.run_cli("flush", urls=None, token=None)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("sent 2", r.stdout)
+        keys = sorted(i["key"] for i in self.items(a, reader, "open"))
+        self.assertEqual(keys, ["odd", "old:queued"])
+
+
 class DefaultContext(CliTestCase):
     def test_env_file_default_context(self):
         a = self.make_hub("hub-a")
