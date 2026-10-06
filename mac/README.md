@@ -6,7 +6,8 @@ A small floating pill that shows what your machines, projects and agents need fr
 - Waiting: a count pill with a priority-coloured ring. The other context's count shows faintly (`3 · 1`).
 - Click: a 360 pt card list (urgent → normal → low, then Recent). Links open only for allowed schemes (`https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`).
 - Right-click the pill, or use the moon button in the header, to snooze for 15 min / 30 min / 1 hr / 3 hr / until tomorrow. **⌃⌥Space** shows or hides it.
-- Drag it anywhere: it snaps to the nearest corner, remembered per display layout.
+- Drag it anywhere, on any display, in any state (idle, count, preview, or by the expanded header). It stays exactly where you drop it (pulled back onto the screen if it would be lost off an edge), remembered per display layout. When it expands or shows a new item, it grows away from the nearest screen edges. **Settings → Snap to corners** (off by default) snaps it to the nearest corner instead. **Reset Position** (menu bar menu or right-click) puts it back in the top-right corner.
+- A menu bar icon shows the same count (see below).
 
 Requires macOS 14 and Swift 5.10 or later. The Command Line Tools are enough; Xcode is not needed. The built-in hub uses Apple's `/usr/bin/python3`, which comes with the Command Line Tools.
 
@@ -14,16 +15,34 @@ Requires macOS 14 and Swift 5.10 or later. The Command Line Tools are enough; Xc
 
 ```bash
 cd mac
-scripts/bundle.sh                       # release build → dist/NeedsYou.app (ad-hoc signed)
-cp -R dist/NeedsYou.app /Applications/  # or: ditto dist/NeedsYou.app /Applications/NeedsYou.app
-open /Applications/NeedsYou.app
+scripts/install.sh      # release build (scripts/bundle.sh, ad-hoc signed) → /Applications/NeedsYou.app, launched in the background
 ```
 
-The app shows as **Needs You**; the file is `NeedsYou.app` (no space, so scripts don't need quoting). It's an agent app (`LSUIElement`): no Dock icon and no menu bar. Look for the pill in the top-right corner.
+`scripts/bundle.sh` alone just builds `dist/NeedsYou.app`.
+
+The app shows as **Needs You**; the file is `NeedsYou.app` (no space, so scripts don't need quoting). It's an agent app (`LSUIElement`): no Dock icon and no app menus. Look for the pill in the top-right corner and the pill-shaped icon in the menu bar.
+
+To update an installed copy, use `scripts/install.sh` (see [Updating](#updating)) rather than copying over a running app.
 
 **Open at login:** in Settings, turn on **Open at login**. This registers the app with `SMAppService.mainApp`, so run it from `/Applications` first. If macOS asks, approve it in System Settings → General → Login Items. To remove it, turn the toggle off, or remove it from that list.
 
-**Gatekeeper / security tools:** the build is ad-hoc signed (`codesign -s -`). A copy you built yourself runs without a prompt. A copy someone sends you may need right-click → Open the first time. Endpoint security tools (SentinelOne and similar) may flag ad-hoc signed apps; sign with a Developer ID if that happens.
+**Gatekeeper / security tools:** the build is ad-hoc signed (`codesign -s -`). A copy you built yourself runs without a prompt. A copy someone sends you may need right-click → Open the first time. Endpoint security tools (SentinelOne and similar) may flag ad-hoc signed apps. Developer ID signing is on the roadmap (`docs/roadmap/distribution.md`). Since the app keeps nothing in the Keychain, a new ad-hoc signature on every build doesn't cause password prompts.
+
+## Menu bar icon
+
+On by default (Settings → Menu bar and panel → **Show menu bar icon**). It's a monochrome template icon, so it follows the menu bar's light or dark look.
+
+- With open `needs` items it shows the count, tinted with the highest priority's colour (**Show count in menu bar**, on by default). A small dot on the icon means the hub can't be reached.
+- The menu: a status line (`All clear · This Mac`, `3 need you · hub2`); the top 5 open items (clicking one opens its first allowed link, or shows the panel expanded); **Show Floating Panel** (checked while it's shown); **Snooze ▸** 15 min / 30 min / 1 hr / 3 hr / until tomorrow; **Reset Position**; **Work** / **Personal**; **Invite a Machine…** (only with an owner token); **Settings…**; **About Needs You**; **Quit Needs You**, which stops the local hub cleanly.
+- Opening the menu never activates the app or takes focus. Only Settings…, Invite a Machine… and About bring a window forward.
+
+### Hiding the floating panel
+
+Hide it from the menu bar (**Show Floating Panel**), the pill's right-click menu (**Hide Floating Panel**), the **×** in the expanded header, or **⌃⌥Space**. It stays hidden across launches until you show it again the same ways.
+
+- While it's hidden, new items only update the menu bar count. An urgent item gives the icon one brief pulse. Turn on **Urgent items show the panel even when hidden** (off by default) to have urgent items bring the panel back instead.
+- A snooze is different: it ends by itself, and **Urgent items break through a snooze** (on by default) still applies to it.
+- The menu bar icon and the panel can't both be hidden. With the icon off, hiding the panel is refused (⌃⌥Space beeps); with the panel hidden, the icon can't be turned off.
 
 ## The hub on this Mac (default)
 
@@ -31,7 +50,7 @@ The app shows as **Needs You**; the file is `NeedsYou.app` (no space, so scripts
 
 - It listens on `127.0.0.1:8765` and, if the Mac is on a tailnet, on its Tailscale address (100.64.0.0/10). Never on `0.0.0.0`.
 - Other machines are told to use the Mac's MagicDNS name (from `tailscale status --json`), else its Tailscale IP, else `http://127.0.0.1:8765`.
-- Data lives in `~/Library/Application Support/NeedsYou/` (`hub.db`, plus `owner.token`, mode 600, with a copy in the Keychain). The hub's output goes to the unified log, not to files: `log stream --predicate 'subsystem == "app.needsyou.mac"'`.
+- Data lives in `~/Library/Application Support/NeedsYou/` (`hub.db`, plus `owner.token`, mode 600). The hub's output goes to the unified log, not to files: `log stream --predicate 'subsystem == "app.needsyou.mac"'`.
 - If the hub exits it's restarted with backoff. When the network changes or the Mac wakes, the app re-checks the Tailscale address and restarts the hub if it moved. Quitting the app stops the hub (and the hub exits by itself if the app dies).
 - This Mac is always first in the hub list, with an owner token, so **Invite a machine** works straight away.
 
@@ -54,25 +73,53 @@ To read from someone else's hub (or your own always-on hub), get a Mac invite li
 - click/open the `needsyou://connect?hub=…&code=…` link (the app opens Settings and shows the result), or
 - paste it, or an `http(s)://<hub>/join/<code>` URL, into Settings → **Connect with link**.
 
-The app redeems the code (sending this Mac's host name), adds every hub URL the hub returns to your list (deduplicated, after this Mac), and stores the token and its role in the Keychain for each. Tokens replicate between hubs, so one token works on all of them. A used or expired link, an unreachable hub, or a plain `http://` URL that isn't on Tailscale each get a clear message.
+The app redeems the code (sending this Mac's host name), adds every hub URL the hub returns to your list (deduplicated, after this Mac), and stores the token and its role in `tokens.json` for each. Tokens replicate between hubs, so one token works on all of them. A used or expired link, an unreachable hub, or a plain `http://` URL that isn't on Tailscale each get a clear message.
 
 ## Manual setup (fallback)
 
 Under **Hubs**, add a hub URL, e.g. `http://hub.example.ts.net:8765`, and a read/patch token you were given. Press **Test**, then **Save & Connect**. Hubs are polled in order (this Mac first): the first reachable one is used and the next takes over on errors or timeouts. A failed hub is retried after 2 minutes. The hover line shows which one is in use. Hand-entered tokens have no known role, so they don't enable inviting.
 
-Tokens are stored in your login Keychain (service `app.needsyou.mac`, one item per hub URL). Hub URLs and other settings are in `defaults read app.needsyou.mac`.
+Tokens are stored in `tokens.json` (see [Where config lives](#where-config-lives)). Hub URLs and other settings are in `defaults read app.needsyou.mac`.
 
 Plain `http://` is allowed for `*.ts.net` (Tailscale MagicDNS), `localhost`, IP addresses and local network names; Tailscale encrypts the traffic. Any other host needs `https://`.
 
 **Just looking?** Click **Try demo mode** in Settings to see fixture items, with a new one arriving every 45 s. Demo mode doesn't run the hub.
 
+## Where config lives
+
+Nothing is kept in the Keychain. Everything is in two places:
+
+| What | Where |
+|---|---|
+| Remote hub tokens and their roles | `~/Library/Application Support/NeedsYou/tokens.json` (directory mode 700, file mode 600, written atomically, keyed by hub URL) |
+| The local hub's items, tokens (hashed), invites | `~/Library/Application Support/NeedsYou/hub.db` |
+| The local hub's owner token | `~/Library/Application Support/NeedsYou/owner.token` (mode 600) |
+| Hub URLs, your name, toggles, panel positions | `defaults read app.needsyou.mac` |
+
+- If `tokens.json` doesn't parse, it's moved aside to `tokens.json.corrupt-<time>` and the app starts with no remote tokens (re-connect with a link). Nothing is deleted.
+- Prefs carry a `prefsVersion`. Migrations only move forward and never delete keys, so rolling back to an older build loses nothing.
+- **Upgrading from a build that used the Keychain:** remote hub tokens used to be in the login Keychain. This build deliberately never reads it (on a Mac whose login keychain password is out of sync, every access prompts, endlessly). Re-connect each remote hub once with a Mac link from its owner (Settings → **Connect with link**), or paste its token under **Hubs**; Settings points out which hubs need it. The hub on this Mac needs nothing: its token was already file-only. The old Keychain items are harmless; delete them in Keychain Access (search "NeedsYou") if you like.
+
+## Updating
+
+```bash
+cd mac
+scripts/install.sh                 # build, quit the running app, swap it in, relaunch
+scripts/install.sh --rollback      # back to the previous version (run again to undo)
+scripts/install.sh --app path/to/NeedsYou.app   # install a build you already have
+```
+
+`install.sh` builds with `scripts/bundle.sh`, copies the new app next to the installed one with `ditto`, then quits the running app gracefully by bundle id (it stops its hub cleanly) and waits for it to exit, falling back to SIGTERM (which the app also treats as Quit). It moves the old copy to `/Applications/NeedsYou.app.previous`, moves the new one into place, and relaunches it in the background (`open -g`, no focus steal). If the new version doesn't stay running, the previous one is put back. The path, bundle id and data stay the same, so settings, tokens, the hub's data and the login item carry over.
+
+`scripts/upgrade-test.sh` runs the whole update and rollback against throwaway copies: a test bundle id, `--dest` in a temp dir, a temp support dir and defaults suite, and a hub on a random high port. It never touches `/Applications` or the running app.
+
 ## Staying small
 
-The app keeps nothing on disk except a few `UserDefaults` keys and the Keychain items (the hub's own database is the hub's business):
+The app keeps nothing on disk except a few `UserDefaults` keys and the files above (the hub's own database is the hub's business):
 
 - In memory it holds only open items. Closed ones are dropped as soon as the hub says so; local "done/dismiss" markers expire after 24 h (500 at most), and card snoozes go when they end or their item closes.
 - Network requests use one ephemeral `URLSession` with no URL cache and no cookies.
-- Panel positions are remembered for the 10 most recently used display layouts; token roles are pruned with the hub list.
+- Panel positions are remembered for the 10 most recently used display layouts; tokens and their roles are pruned with the hub list.
 - Switching hubs cancels the old poll loop and stream; there's one 15 s UI timer for the app's lifetime.
 
 ## Develop
@@ -85,17 +132,20 @@ NEEDS_YOU_DEMO=1 dist/NeedsYou.app/Contents/MacOS/NeedsYou &   # the bundle, in 
 NEEDS_YOU_SUPPORT_DIR=$(mktemp -d) dist/NeedsYou.app/Contents/MacOS/NeedsYou &   # throwaway hub data
 ```
 
-`open` doesn't pass environment variables, so run the binary inside the bundle directly. Useful variables:
+`open` doesn't pass environment variables (except with `open --env`), so run the binary inside the bundle directly. A copy with the real bundle id still writes AppKit's own state (window and status item positions) to the real app's defaults domain; for a fully separate trial copy build one with another id: `NEEDS_YOU_BUNDLE_ID=app.needsyou.mac.trial NEEDS_YOU_NO_URL_SCHEME=1 NEEDS_YOU_DIST=/tmp/ny scripts/bundle.sh`. Useful variables:
 
 | Variable | Effect |
 |---|---|
-| `NEEDS_YOU_DEMO=1` | Demo feed, no hub or Keychain access |
+| `NEEDS_YOU_DEMO=1` | Demo feed, no hub |
 | `NEEDS_YOU_DEMO_INJECT_SECONDS=n` | Demo: a new item every n s (default 45, 0 = off) |
 | `NEEDS_YOU_DEMO_FIXTURE=file.json` | Demo seed items (the hub's list shape) |
 | `NEEDS_YOU_POLL_SECONDS=n` | Poll interval (default 30; 5 in demo) |
 | `NEEDS_YOU_EXPAND=1` | Start expanded (still never takes focus) |
 | `NEEDS_YOU_SNAPSHOT_DIR=dir` | Write a PNG of each panel state into dir (no Screen Recording permission needed) |
-| `NEEDS_YOU_SUPPORT_DIR=dir` | Local hub data (`hub.db`, `owner.token`) here instead of Application Support; the Keychain copy is left alone |
+| `NEEDS_YOU_SUPPORT_DIR=dir` | `hub.db`, `owner.token` and `tokens.json` here instead of Application Support |
+| `NEEDS_YOU_DEFAULTS_SUITE=name` | Read and write settings in this defaults suite instead of `app.needsyou.mac` |
+| `NEEDS_YOU_HUB_PORT=n` | Run the local hub on port n instead of 8765 (test copies next to the real app) |
+| `NEEDS_YOU_HUB_LOOPBACK_ONLY=1` | Local hub on 127.0.0.1 only; skip the tailnet address and `tailscale status` |
 | `NEEDS_YOU_HUB_SCRIPT=path` | Run this `needs_you_hub.py` instead of the bundled one |
 
 `swift run NeedsYou` finds the hub at `../hub/needs_you_hub.py` in the repo. `scripts/bundle.sh` copies `hub/`, `cli/needs-you` and `integrations/claude-code/` into `Contents/Resources/` with the repo layout, so the hub serves the CLI and the Claude Code files to joining machines (`/dl`).
@@ -106,8 +156,8 @@ To try a link by hand: `open 'needsyou://connect?hub=http%3A%2F%2F127.0.0.1%3A9&
 
 **Layout.**
 
-- `Sources/NeedsYouCore`: model, hub client, failover, demo feed, merge/count rules, link policy, limited markdown, snooze/schedule maths, panel geometry, `FloatingPanel`, connect links and invites (`Connect.swift`), the local hub's command line and network detection (`LocalHub.swift`), bounded prefs (`Prefs.swift`). Unit-tested.
-- `Sources/NeedsYou`: the app (AppKit `NSPanel` + SwiftUI). `LocalHubController` runs the hub child; `ConnectController` redeems links and creates invites. `Phase3/` holds the new-item preview, work/personal schedule, 7:30 summary and SSE. It plugs in through `AppModel` hooks and can be removed.
+- `Sources/NeedsYouCore`: model, hub client, failover, demo feed, merge/count rules, link policy, limited markdown, snooze/schedule maths, panel geometry and free positioning, `FloatingPanel`, connect links and invites (`Connect.swift`), the local hub's command line and network detection (`LocalHub.swift`), bounded prefs and `prefsVersion` migrations (`Prefs.swift`), the `tokens.json` store (`TokenStore.swift`), menu bar rules and text (`MenuBar.swift`). Unit-tested.
+- `Sources/NeedsYou`: the app (AppKit `NSPanel` + SwiftUI). `LocalHubController` runs the hub child; `ConnectController` redeems links and creates invites; `MenuBarController` owns the status item. `Phase3/` holds the new-item preview, work/personal schedule, 7:30 summary and SSE. It plugs in through `AppModel` hooks and can be removed.
 - `Resources/Info.plist`: bundle metadata (`app.needsyou.mac`, display name "Needs You", `LSUIElement`, the `needsyou` URL scheme, ATS exceptions).
 
-**Focus rule.** The panel must never become key or main, and must never activate the app. `FloatingPanel` hard-wires `canBecomeKey`/`canBecomeMain` to false, and `FloatingPanelTests` guards it. The only code that activates the app is `SettingsWindowController.show()` and the About item, which run only from a user click (Settings, the set-up pill, About, or opening a `needsyou://` link). Starting or restarting the hub never activates anything. Don't put text fields or focusable views in the panel.
+**Focus rule.** The panel must never become key or main, and must never activate the app. `FloatingPanel` hard-wires `canBecomeKey`/`canBecomeMain` to false, and `FloatingPanelTests` guards it. The only code that activates the app is `SettingsWindowController.show()` and `AboutPanel.show()`, which run only from a user click (Settings…, Invite a Machine…, the set-up pill, About, or opening a `needsyou://` link). The menu bar menu and dragging the pill never activate it. Starting or restarting the hub never activates anything. Don't put text fields or focusable views in the panel.

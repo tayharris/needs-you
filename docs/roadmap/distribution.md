@@ -41,7 +41,13 @@ Until there's a Developer ID build, the app is ad-hoc signed (`codesign -s -`):
 
 With a Developer ID and notarization (CI phase 3) the zip opens with the normal "downloaded from the internet" dialog, and most EDR tools trust it.
 
+### Developer ID signing (roadmap)
+
+Builds stay ad-hoc signed for now. The app no longer keeps anything in the Keychain (tokens are in `~/Library/Application Support/NeedsYou/tokens.json`, mode 600), so a signature that changes on every build no longer causes Keychain prompts, and `mac/scripts/install.sh` updates in place without one. A Developer ID signature is still wanted for downloaded builds (Gatekeeper, notarization, EDR trust, a firewall rule that survives updates). When it lands: sign in CI only (never with a local identity created by a script), add the hardened runtime, notarize and staple, and keep `install.sh` unchanged. Moving tokens back into the Keychain is a separate decision and would need a stable identity first.
+
 ## Updates
+
+Today: `mac/scripts/install.sh` builds, quits the running app gracefully, swaps `/Applications/NeedsYou.app` (keeping `NeedsYou.app.previous` for `--rollback`) and relaunches it in the background. Prefs carry a `prefsVersion` with forward-only migrations that never delete keys.
 
 - Phase 1: the app checks the GitHub Releases API at most daily and shows "update available" in Settings (no auto-install). Opt-out setting. This is the only outbound non-tailnet request the app would make, so it must be off by default or clearly disclosed (privacy promise on the site).
 - Later: Sparkle with an EdDSA-signed appcast hosted on the site.
