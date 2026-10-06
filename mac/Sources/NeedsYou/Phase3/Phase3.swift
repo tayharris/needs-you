@@ -124,7 +124,7 @@ final class Phase3Controller: ObservableObject {
 
     private func restartStream() {
         stream.stop()
-        guard useStream, !model.isDemo, let config = model.settings.hubConfig() else { return }
+        guard useStream, !model.isDemo, let config = model.settings.hubConfigs().first else { return }
         stream.start(config: config) { [weak self] in
             self?.model.pollNow()
         }

@@ -6,6 +6,30 @@ public protocol ItemFeed: Sendable {
     func fetchOpen(since: Date?) async throws -> [Item]
     /// PATCH /v1/items/{id}.
     func patch(id: String, _ patch: ItemPatch) async throws
+    /// What the app polls: items plus whether they form a full snapshot and which hub
+    /// served them. The default wraps `fetchOpen`.
+    func fetchPage(since: Date?) async throws -> FeedPage
+}
+
+/// One poll response.
+public struct FeedPage: Equatable, Sendable {
+    public var items: [Item]
+    /// True when the response is every open item (no `since`), so absences mean "closed".
+    public var isFullSnapshot: Bool
+    /// Short name of the hub that answered (nil for the demo feed).
+    public var source: String?
+
+    public init(items: [Item], isFullSnapshot: Bool, source: String? = nil) {
+        self.items = items
+        self.isFullSnapshot = isFullSnapshot
+        self.source = source
+    }
+}
+
+extension ItemFeed {
+    public func fetchPage(since: Date?) async throws -> FeedPage {
+        FeedPage(items: try await fetchOpen(since: since), isFullSnapshot: since == nil)
+    }
 }
 
 /// The Mac's PATCH body: `status` (dismissed/resolved) and/or `seen_at`.

@@ -14,6 +14,7 @@ let entries =
     + testEntries(DemoFeedTests.self, DemoFeedTests.allTests, async: DemoFeedTests.asyncTests)
     + testEntries(ScheduleTests.self, ScheduleTests.allTests)
     + testEntries(FloatingPanelTests.self, FloatingPanelTests.allTests)
+    + testEntries(FailoverFeedTests.self, FailoverFeedTests.allTests, async: FailoverFeedTests.asyncTests)
 
 let code = await runTests(entries)
 exit(code)

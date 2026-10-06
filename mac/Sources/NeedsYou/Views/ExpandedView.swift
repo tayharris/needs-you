@@ -63,8 +63,15 @@ struct ExpandedHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            Text(model.needsLabel)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
             ContextSwitch(model: model)
-            Spacer()
+                .fixedSize()
+            Spacer(minLength: 4)
             Menu {
                 ForEach(SnoozeOption.panelChoices) { option in
                     Button(option.title) { model.snoozePanel(option) }

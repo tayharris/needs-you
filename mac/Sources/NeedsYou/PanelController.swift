@@ -243,7 +243,10 @@ final class PanelController {
         switch display {
         case .idle:
             // PLAN.md: 28×10 at ~10%; on hover it shows "all clear" and the last check.
-            return model.hovering ? CGSize(width: 190, height: 22) : CGSize(width: 28, height: 10)
+            guard model.hovering else { return CGSize(width: 28, height: 10) }
+            let text = model.idleHoverLine as NSString
+            let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width
+            return CGSize(width: min(340, ceil(width) + 32), height: 22)
         case .waiting:
             let digits = String(model.count).count + (model.otherCount > 0 ? String(model.otherCount).count + 2 : 0)
             return CGSize(width: max(44, CGFloat(18 + digits * 8)), height: 22)

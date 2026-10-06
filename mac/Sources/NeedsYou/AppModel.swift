@@ -30,6 +30,8 @@ final class AppModel: ObservableObject {
     @Published var hovering = false
     @Published private(set) var lastCheck: Date?
     @Published private(set) var lastError: String?
+    /// Short name of the hub the last successful poll came from ("hub2").
+    @Published private(set) var activeHub: String?
     @Published private(set) var pulse: PulseRequest?
     @Published var showRecent = false
     /// Ticks every 15 s so ages ("2h") and snooze expiry stay current.
@@ -91,11 +93,23 @@ final class AppModel: ObservableObject {
         return count > 0 || otherCount > 0 ? .waiting : .idle
     }
 
+    /// "needs Sam" / "needs you".
+    var needsLabel: String { settings.needsLabel }
+
+    /// Footer / tooltip status: "hub2 · 10:42", "Demo · 10:42", or the error.
     var statusLine: String {
-        if !isConfigured { return "Hub not set up · open Settings" }
+        if !isConfigured { return "No hub set up · click to set up" }
         let time = lastCheck.map { Self.timeFormatter.string(from: $0) } ?? "–"
         if let lastError { return "\(lastError) · \(time)" }
-        return "Checked \(time)"
+        let source = isDemo ? "demo" : (activeHub ?? "hub")
+        return "\(source) · \(time)"
+    }
+
+    /// Idle hover: "all clear · needs Sam · hub2 · 10:42".
+    var idleHoverLine: String {
+        if !isConfigured { return "\(needsLabel) · click to set up" }
+        if lastError != nil { return statusLine }
+        return "all clear · \(needsLabel) · \(statusLine)"
     }
 
     static let timeFormatter: DateFormatter = {
@@ -127,6 +141,7 @@ final class AppModel: ObservableObject {
         hasSynced = false
         lastError = nil
         lastCheck = nil
+        activeHub = nil
         demoFeed = nil
 
         if settings.isDemo {
@@ -138,8 +153,11 @@ final class AppModel: ObservableObject {
             demoFeed = demo
             feed = demo
             startInjector(demo)
-        } else if let config = settings.hubConfig() {
-            feed = HubClient(config: config)
+        } else if case let configs = settings.hubConfigs(), !configs.isEmpty {
+            // One or more hubs, polled in order with failover (FailoverFeed).
+            feed = FailoverFeed(hubs: configs.map {
+                FailoverFeed.Hub(name: HubName.short($0.baseURL), feed: HubClient(config: $0))
+            })
         } else {
             feed = nil
         }
@@ -192,10 +210,12 @@ final class AppModel: ObservableObject {
         let generation = feedGeneration
         let since = planner.nextSince(latest: store.latestUpdatedAt)
         do {
-            let items = try await feed.fetchOpen(since: since)
+            let page = try await feed.fetchPage(since: since)
             guard generation == feedGeneration else { return }
             var updated = store
-            let result = updated.merge(items, isFullSnapshot: since == nil, now: Date())
+            // By id, last-writer-wins on updated_at; a hub switch forces a full snapshot.
+            let result = updated.merge(page.items, isFullSnapshot: page.isFullSnapshot, now: Date())
+            activeHub = page.source
             store = updated
             lastCheck = Date()
             lastError = nil
@@ -206,8 +226,10 @@ final class AppModel: ObservableObject {
             if isExpanded { markVisibleSeen() }
         } catch {
             guard generation == feedGeneration else { return }
-            lastError = (error as? LocalizedError)?.errorDescription ?? "Hub unreachable"
-            if (error as? URLError) != nil { lastError = "Hub unreachable" }
+            let many = settings.hubURLs.count > 1
+            lastError = (error as? LocalizedError)?.errorDescription ?? (many ? "No hub reachable" : "Hub unreachable")
+            if (error as? URLError) != nil { lastError = many ? "No hub reachable" : "Hub unreachable" }
+            activeHub = nil
             planner.forceFull()
         }
     }

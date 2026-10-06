@@ -41,7 +41,7 @@ struct RootView: View {
         case .waiting:
             CountPill(model: model)
         case .preview(let item):
-            PreviewPill(item: item, now: model.now)
+            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel)
                 .contentShape(Rectangle())
                 .onTapGesture { model.expand(byUser: true) }
         case .expanded:
@@ -119,7 +119,7 @@ struct IdlePill: View {
                     Circle()
                         .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
                         .frame(width: 5, height: 5)
-                    Text(model.isConfigured && model.lastError == nil ? "All clear · \(model.statusLine.lowercased())" : model.statusLine)
+                    Text(model.idleHoverLine)
                         .font(Theme.meta)
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
@@ -150,7 +150,7 @@ struct CountPill: View {
         .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
-        .help("\(model.count) \(model.context.rawValue) item\(model.count == 1 ? "" : "s") need you · \(model.statusLine)")
+        .help("\(model.needsLabel): \(model.count) \(model.context.rawValue) item\(model.count == 1 ? "" : "s") · \(model.statusLine)")
     }
 }
 
@@ -158,6 +158,7 @@ struct CountPill: View {
 struct PreviewPill: View {
     let item: Item
     let now: Date
+    let needsLabel: String
 
     var body: some View {
         HStack(spacing: 10) {
@@ -167,9 +168,9 @@ struct PreviewPill: View {
                     .font(Theme.title)
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(Format.meta(item, now: now))
+                (Text(needsLabel).foregroundStyle(Theme.color(item.priority).opacity(0.9))
+                 + Text(" · " + Format.meta(item, now: now)).foregroundStyle(Theme.muted))
                     .font(Theme.meta)
-                    .foregroundStyle(Theme.muted)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
