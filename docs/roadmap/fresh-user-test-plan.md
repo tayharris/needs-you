@@ -88,4 +88,4 @@ These stay open until you decide. Everything above works without them.
 | **Draft vs auto-publish releases** | Nothing yet: the workflow makes drafts | Keep drafts, or publish when tests pass | [ci-cd.md](ci-cd.md#open-decisions) |
 | **Checksum signing** | Verifying downloads beyond `SHA256SUMS` from the same page | None, minisign, or Sigstore keyless | [ci-cd.md](ci-cd.md#open-decisions) |
 | **Update checks** | An "update available" notice in the app | Off by default, or on with disclosure | [distribution.md](distribution.md#open-decisions) |
-| **First version number** | Tagging the first release | `1.0.0` (hub and CLI already say so) or `1.1.0` | `VERSION`, `CHANGELOG.md` |
+| **First version number** | Tagging the first release | decided: `0.1.1` | `VERSION`, `CHANGELOG.md` |

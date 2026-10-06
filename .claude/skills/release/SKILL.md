@@ -11,9 +11,9 @@ Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and the
 
 | Part | Where | Current |
 |---|---|---|
-| Hub | `VERSION` in `hub/needs_you_hub.py` (also served by `/v1/health`) | 1.0.0 |
-| CLI | `VERSION` in `cli/needs-you` (`needs-you --version`) | 1.0.0 |
-| Mac app | `VERSION` at the repo root (`mac/scripts/bundle.sh` reads it; `NEEDS_YOU_VERSION` overrides); build number = `git rev-list --count HEAD` | 1.0.0 |
+| Hub | `VERSION` in `hub/needs_you_hub.py` (also served by `/v1/health`) | 0.1.1 |
+| CLI | `VERSION` in `cli/needs-you` (`needs-you --version`) | 0.1.1 |
+| Mac app | `VERSION` at the repo root (`mac/scripts/bundle.sh` reads it; `NEEDS_YOU_VERSION` overrides); build number = `git rev-list --count HEAD` | 0.1.1 |
 
 `VERSION`, the hub and the CLI must agree (`tests/test_release.py` checks); bump all three in one commit, with the `CHANGELOG.md` section.
 
