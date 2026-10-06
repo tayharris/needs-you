@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" notify", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}
