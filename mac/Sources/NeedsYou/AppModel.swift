@@ -130,6 +130,13 @@ final class AppModel: ObservableObject {
         return "\(source) · \(time)"
     }
 
+    /// Idle at rest: a short line that keeps the pill findable, so it can be dragged or hidden.
+    var idleRestLine: String {
+        if !isConfigured { return localHubIssue != nil ? "Hub can't start" : "Set up Needs You" }
+        if lastError != nil { return "Can't reach hub" }
+        return "Nothing \(needsLabel)"
+    }
+
     /// Idle hover: "all clear · needs Sam · hub2 · 10:42".
     var idleHoverLine: String {
         if !isConfigured { return localHubIssue != nil ? statusLine : "\(needsLabel) · click to set up" }

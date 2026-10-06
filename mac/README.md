@@ -2,7 +2,7 @@
 
 A small floating pill that shows what your machines, projects and agents need from you. **It runs its own hub**, so there's no server to set up: agents and servers post straight to your Mac over Tailscale (or to `localhost` if they run on the Mac). Remote, always-on hubs are an optional extra. The pill sits on every Space and over full-screen apps, and it never takes focus from what you're typing.
 
-- Idle: a faint 28×10 pill. Hover shows `all clear · needs <you> · this Mac · <time>`.
+- Idle: a small, faint pill reading `Nothing needs <you>` (about 35% opacity), so you can always drag it or right-click to hide it. Hover shows `all clear · needs <you> · this Mac · <time>`.
 - Waiting: a count pill with a priority-coloured ring. The other context's count shows faintly (`3 · 1`).
 - Click: a 360 pt card list (urgent → normal → low, then Recent). Links open only for allowed schemes (`https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`).
 - Right-click the pill, or use the moon button in the header, to snooze for 15 min / 30 min / 1 hr / 3 hr / until tomorrow. **⌃⌥Space** shows or hides it.
