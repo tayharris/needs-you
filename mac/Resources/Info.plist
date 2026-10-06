@@ -31,14 +31,35 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
+	<!-- needsyou://connect?hub=<url>&code=<code>: invite links open the app and redeem. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.needsyou.mac.connect</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>needsyou</string>
+			</array>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+		</dict>
+	</array>
 	<!-- The hub is plain HTTP on the tailnet (AGENT-GUIDE: http://<hub>.example.ts.net:8765).
-	     Tailscale encrypts the transport; allow HTTP only for MagicDNS names and local networking. -->
+	     Tailscale encrypts the transport; allow HTTP only for MagicDNS names and local networking.
+	     The hub inside the app is http://127.0.0.1:8765 (IP literals are outside ATS;
+	     localhost is listed explicitly). -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
 			<key>ts.net</key>
 			<dict>
 				<key>NSIncludesSubdomains</key>

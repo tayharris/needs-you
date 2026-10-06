@@ -177,25 +177,36 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     public var joinURL: String
     public var macURL: String?
     public var expiresAt: String?
+    /// Optional extras some hubs send for sender invites; preferred when present.
+    public var hubAgentPrompt: String?
+    public var hubInstallCommand: String?
 
     enum CodingKeys: String, CodingKey {
         case code
         case joinURL = "join_url"
         case macURL = "mac_url"
         case expiresAt = "expires_at"
+        case hubAgentPrompt = "agent_prompt"
+        case hubInstallCommand = "install_command"
     }
 
-    public init(code: String, joinURL: String, macURL: String?, expiresAt: String?) {
+    public init(code: String, joinURL: String, macURL: String?, expiresAt: String?,
+                hubAgentPrompt: String? = nil, hubInstallCommand: String? = nil) {
         self.code = code
         self.joinURL = joinURL
         self.macURL = macURL
         self.expiresAt = expiresAt
+        self.hubAgentPrompt = hubAgentPrompt
+        self.hubInstallCommand = hubInstallCommand
     }
 
     /// What to paste into an agent on the new machine.
-    public var agentPrompt: String { "Set up needs-you alerts on this machine: read \(joinURL) and follow it." }
+    public var agentPrompt: String {
+        hubAgentPrompt ?? "Set up needs-you alerts on this machine: read \(joinURL) and follow it."
+    }
     /// What to run on the new machine.
     public var shellOneLiner: String {
+        if let hubInstallCommand { return hubInstallCommand }
         var base = joinURL
         while base.hasSuffix("/") { base.removeLast() }
         return "curl -fsSL \(base)/install.sh | bash -s -- --yes"

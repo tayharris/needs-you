@@ -24,6 +24,8 @@ final class AppSettings: ObservableObject {
         static let urgentBreaksSnooze = "urgentBreaksSnooze"
         static let viewContext = "viewContext"
         static let placements = "panelPlacements"
+        static let hubRoles = "hubRoles"
+        static let runLocalHub = "runLocalHub"
     }
 
     /// Hub URLs in failover order (first reachable wins).
@@ -46,9 +48,18 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(viewContext.rawValue, forKey: Key.viewContext) }
     }
 
+    /// Run the bundled hub inside the app (the default: no servers needed).
+    @Published var runLocalHub: Bool {
+        didSet { defaults.set(runLocalHub, forKey: Key.runLocalHub) }
+    }
+    /// The local hub's owner token, once LocalHubController has loaded or minted it.
+    /// Kept in memory; the token file and the Keychain hold the stored copies.
+    @Published var localHubToken: String?
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        defaults.register(defaults: [Key.urgentBreaksSnooze: true])
+        defaults.register(defaults: [Key.urgentBreaksSnooze: true, Key.runLocalHub: true])
+        runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
         userName = defaults.string(forKey: Key.userName) ?? ""
         demoMode = defaults.bool(forKey: Key.demoMode)
@@ -91,37 +102,91 @@ final class AppSettings: ObservableObject {
         return url
     }
 
-    var hubURLs: [URL] { hubURLStrings.compactMap(Self.parseHubURL) }
-    var hasHubs: Bool { !hubURLs.isEmpty }
+    /// Remote hubs, in failover order (the local hub is never stored in this list).
+    var hubURLs: [URL] { hubURLStrings.compactMap(Self.parseHubURL).filter { !LocalHub.isLocal($0) } }
+    var hasHubs: Bool { !hubURLs.isEmpty || runLocalHub }
 
     func tokenStore(for url: URL) -> KeychainTokenStore {
         KeychainTokenStore(service: Self.keychainService, account: HubName.key(url))
     }
 
-    /// Hubs that have a token, in failover order.
+    static var localTokenStore: KeychainTokenStore {
+        KeychainTokenStore(service: keychainService, account: HubName.key(LocalHub.clientURL))
+    }
+
+    /// Hubs that have a token, in failover order. The local hub, when on, is always first.
     func hubConfigs() -> [HubConfig] {
-        hubURLs.compactMap { url in
+        var configs: [HubConfig] = []
+        if runLocalHub, let token = localHubToken, !token.isEmpty {
+            configs.append(HubConfig(baseURL: LocalHub.clientURL, token: token))
+        }
+        configs += hubURLs.compactMap { url in
             guard let token = tokenStore(for: url).read(), !token.isEmpty else { return nil }
             return HubConfig(baseURL: url, token: token)
         }
+        return configs
     }
 
-    // MARK: Panel placement per screen layout
+    /// Display name for a hub in the failover feed and status line.
+    static func displayName(for url: URL) -> String {
+        LocalHub.isLocal(url) ? LocalHub.displayName : HubName.short(url)
+    }
+
+    // MARK: Token roles (from the redeem response)
+
+    private var roleBook: HubRoleBook {
+        get { HubRoleBook(plist: defaults.dictionary(forKey: Key.hubRoles) as? [String: String]) }
+        set { defaults.set(newValue.plist, forKey: Key.hubRoles) }
+    }
+
+    /// The role of the token stored for `url`; nil when unknown (entered by hand).
+    func role(for url: URL) -> HubRole? {
+        if LocalHub.isLocal(url) { return runLocalHub ? .owner : nil }
+        return roleBook.role(for: url)
+    }
+
+    func setRole(_ role: HubRole?, for url: URL) {
+        var book = roleBook
+        book.set(role, for: url)
+        book.prune(keeping: hubURLs + [url])
+        roleBook = book
+        objectWillChange.send()
+    }
+
+    /// Forget roles of hubs that are no longer in the list.
+    func pruneRoles() {
+        var book = roleBook
+        book.prune(keeping: hubURLs)
+        roleBook = book
+    }
+
+    /// Is any configured token an owner token? (No Keychain access.)
+    var hasOwnerHub: Bool {
+        if runLocalHub, localHubToken != nil { return true }
+        return hubURLs.contains { role(for: $0) == .owner }
+    }
+
+    /// Hubs whose token may create invites, in failover order (local hub first).
+    func ownerHubConfigs() -> [HubConfig] {
+        hubConfigs().filter { role(for: $0.baseURL) == .owner }
+    }
+
+    // MARK: Panel placement per screen layout (LRU, at most 10 layouts)
 
     func placement(forLayout key: String) -> PanelPlacement? {
-        placements()[key]
+        var book = PlacementBook.decode(defaults.data(forKey: Key.placements))
+        guard let placement = book.placement(forLayout: key) else { return nil }
+        // Bump the LRU stamp at most hourly; layouts don't change often.
+        if let last = book.entries[key]?.lastUsed, Date().timeIntervalSince(last) > 3600 {
+            book.touch(key)
+            if let data = book.encoded() { defaults.set(data, forKey: Key.placements) }
+        }
+        return placement
     }
 
     func setPlacement(_ placement: PanelPlacement, forLayout key: String) {
-        var all = placements()
-        all[key] = placement
-        if let data = try? JSONEncoder().encode(all) { defaults.set(data, forKey: Key.placements) }
-    }
-
-    private func placements() -> [String: PanelPlacement] {
-        guard let data = defaults.data(forKey: Key.placements),
-              let all = try? JSONDecoder().decode([String: PanelPlacement].self, from: data)
-        else { return [:] }
-        return all
+        var book = PlacementBook.decode(defaults.data(forKey: Key.placements))
+        book.set(placement, forLayout: key)
+        if let data = book.encoded() { defaults.set(data, forKey: Key.placements) }
     }
 }

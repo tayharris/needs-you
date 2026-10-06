@@ -10,9 +10,7 @@ final class EventStream: @unchecked Sendable {
     func start(config: HubConfig, onEvent: @escaping @MainActor () -> Void) {
         stop()
         task = Task.detached(priority: .utility) {
-            let cfg = URLSessionConfiguration.ephemeral
-            cfg.timeoutIntervalForRequest = 600     // idle gap between events
-            cfg.timeoutIntervalForResource = 24 * 3600
+            let cfg = HubSession.makeConfiguration(requestTimeout: 600, resourceTimeout: 24 * 3600)  // ephemeral, no URLCache
             let session = URLSession(configuration: cfg)
             defer { session.invalidateAndCancel() }
 

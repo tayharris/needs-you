@@ -69,6 +69,10 @@ final class AppModel: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var injectTask: Task<Void, Never>?
     private var tickTimer: Timer?
+    private var feedHubCount = 0
+
+    /// Set by LocalHubController when the bundled hub can't run (no Python, port taken).
+    @Published var localHubIssue: String?
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -85,7 +89,12 @@ final class AppModel: ObservableObject {
     var needsItems: [Item] { store.needs(in: context, now: now) }
     var recentItems: [Item] { store.recent(in: context, now: now) }
     var isDemo: Bool { settings.isDemo }
-    var isConfigured: Bool { feed != nil }
+    /// False shows the "set up" pill (click opens Settings): no hub at all, or only the
+    /// local hub and it can't run (no Python, port taken).
+    var isConfigured: Bool {
+        guard feed != nil else { return false }
+        return !(localHubIssue != nil && feedHubCount == 1 && settings.runLocalHub && !isDemo)
+    }
 
     var display: PanelDisplay {
         if isExpanded { return .expanded }
@@ -98,7 +107,7 @@ final class AppModel: ObservableObject {
 
     /// Footer / tooltip status: "hub2 · 10:42", "Demo · 10:42", or the error.
     var statusLine: String {
-        if !isConfigured { return "No hub set up · click to set up" }
+        if !isConfigured { return localHubIssue != nil ? "Hub on this Mac can't start · click for Settings" : "No hub set up · click to set up" }
         let time = lastCheck.map { Self.timeFormatter.string(from: $0) } ?? "–"
         if let lastError { return "\(lastError) · \(time)" }
         let source = isDemo ? "demo" : (activeHub ?? "hub")
@@ -107,7 +116,7 @@ final class AppModel: ObservableObject {
 
     /// Idle hover: "all clear · needs Sam · hub2 · 10:42".
     var idleHoverLine: String {
-        if !isConfigured { return "\(needsLabel) · click to set up" }
+        if !isConfigured { return localHubIssue != nil ? statusLine : "\(needsLabel) · click to set up" }
         if lastError != nil { return statusLine }
         return "all clear · \(needsLabel) · \(statusLine)"
     }
@@ -143,6 +152,7 @@ final class AppModel: ObservableObject {
         lastCheck = nil
         activeHub = nil
         demoFeed = nil
+        feedHubCount = 0
 
         if settings.isDemo {
             var seed: [Item]?
@@ -154,9 +164,11 @@ final class AppModel: ObservableObject {
             feed = demo
             startInjector(demo)
         } else if case let configs = settings.hubConfigs(), !configs.isEmpty {
-            // One or more hubs, polled in order with failover (FailoverFeed).
+            // One or more hubs, polled in order with failover (FailoverFeed). The local
+            // hub, when on, is first.
+            feedHubCount = configs.count
             feed = FailoverFeed(hubs: configs.map {
-                FailoverFeed.Hub(name: HubName.short($0.baseURL), feed: HubClient(config: $0))
+                FailoverFeed.Hub(name: AppSettings.displayName(for: $0.baseURL), feed: HubClient(config: $0))
             })
         } else {
             feed = nil
@@ -226,7 +238,7 @@ final class AppModel: ObservableObject {
             if isExpanded { markVisibleSeen() }
         } catch {
             guard generation == feedGeneration else { return }
-            let many = settings.hubURLs.count > 1
+            let many = feedHubCount > 1
             lastError = (error as? LocalizedError)?.errorDescription ?? (many ? "No hub reachable" : "Hub unreachable")
             if (error as? URLError) != nil { lastError = many ? "No hub reachable" : "Hub unreachable" }
             activeHub = nil
