@@ -35,11 +35,12 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `curl: (22) ... 404` from the one-liner (and bash "succeeds" with no output) | The link is used up, expired or revoked | Make a new link |
+| `This invite link is unknown, expired or revoked` (exit 1) | What it says | Make a new link |
+| `invite ... has no uses left` (exit 1) | A new machine, or `--force`, on a used-up link | Make a new link, or one with more uses |
 | `HTTP 429` / "too many failed invite attempts" | 10 failed tries from this IP in 10 minutes | Wait 10 minutes; check the link was pasted whole |
 | "This invite (..., role owner) is for the Mac app" | An owner/reader link was used on a server | Open the `needsyou://` link on the Mac; make a `sender` link for servers |
-| Re-running the one-liner (or `--uninstall`) returns 404 on a machine that's already set up | The link's last use was spent, or it expired. Re-runs need a live link even though they don't spend a use | Update the CLI with `needs-you self-update`; remove by hand ([add-a-sender.md](add-a-sender.md#removing-a-sender)); or make a new link |
-| `--help` prints nothing | The script was piped into bash, so it can't read its own header | The options are on the join page and in [add-a-sender.md](add-a-sender.md#options) |
+| Re-running the one-liner (or `--uninstall`) fails after the link expired | Re-runs work until expiry, not after | Update the CLI with `needs-you self-update`; remove by hand ([add-a-sender.md](add-a-sender.md#removing-a-sender)); or make a new link |
+| `curl: (22) ... 404` and no other output | A hub older than this release (it 404s dead links, and bash runs the empty script) | Make a new link; update the hub |
 | "kept the existing token" | The machine was already set up | Expected. `--force` redeems again and replaces the token |
 | Installer says no hub answered | The hub is asleep or unreachable right now | The setup still completed; the test item is queued |
 

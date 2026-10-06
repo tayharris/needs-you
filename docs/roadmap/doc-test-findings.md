@@ -30,7 +30,21 @@ Invites used: `doctest-mac` and `doctest-srv` (1 use, 1 h each; both spent by th
 | 20 | SKILL.md "a sender with more than 60 open items is refused" | Refused at 60 (`n >= max_open`). | Wording |
 | 21 | ci README cron line runs `run-or-alert.sh` from a checkout | The invite installer doesn't install it, and `/dl/` doesn't serve it. | Says to copy it from a checkout |
 
-## Open code bugs (not fixed here)
+## Code bugs
+
+All fixed on `tay/doc-test-fixes` (2026-10-06):
+
+| Bug | Fix |
+|---|---|
+| B1 | A redeem from the hub's own machine (loopback, or one of the hub's bind addresses) gets `http://127.0.0.1:<port>` first in `hub_urls`. `--hub URL` is saved first in `NEEDS_YOU_URLS`. |
+| B2 | Used-up invites are kept until they expire; their join page and installer are still served. Re-runs and `--uninstall` work; a new machine (or `--force`) stops with exit 1 before installing anything. |
+| B3 | `GET /v1/tokens`, `DELETE /v1/tokens/<id>`, `DELETE /v1/invites/<id>` (owner), and **Settings → Access** in the Mac app. |
+| B4 | The help is a heredoc in `usage()`. |
+| B5 | A dead link's `install.sh` is a `200` script that prints the reason and exits 1 (a `4xx` would still run an empty script under `curl -f`). |
+| B6 | `install-hooks.sh --uninstall` needs no hook files; the test card uses `--host`; no `setup-sender.sh` hint from the invite installer; `--uninstall` removes `~/.local/state/needs-you`. |
+
+As found:
+
 
 - **B1. The Mac's own sender config depends on Tailscale.** `Hub.hub_urls()` (`hub/needs_you_hub.py`) returns only `public_url` plus peers, so an invite redeemed on the Mac writes `NEEDS_YOU_URLS=http://<mac>.<tailnet>.ts.net:8765`. Repro: run the one-liner on the Mac, then `cat ~/.config/needs-you/env`; turn Tailscale off and `needs-you add ...` queues. Also, the installer's `--hub URL` is used only for the download and redeem and never reaches the env file. Suggested: when the redeem comes from loopback, put `http://127.0.0.1:<port>` first.
 - **B2. Re-run and `--uninstall` need a live link.** `/join/<code>/install.sh` 404s once the last use is spent (`invite_by_code` requires `invite_live`), so a 1-use link can't be re-run or used to uninstall, even though neither spends a use. Repro: create a 1-use invite, run the one-liner, run it again: `curl: (22) 404`, exit 0. Options: serve the script for used-up (not revoked or expired) links, or serve a generic uninstaller at `/dl/`.

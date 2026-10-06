@@ -36,8 +36,8 @@ or `needs-you-admin invite create` on a server hub). It looks like
 
 4. Report the health check output (a line like
    `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token. If `~/.local/bin` isn't on `PATH`, the installer says so; call
-   `~/.local/bin/needs-you` by its full path until it is. If the output is only
-   `curl: (22) ... 404`, the link is used up or expired: ask the person for a new one.
+   `~/.local/bin/needs-you` by its full path until it is. If the installer exits 1
+   saying the link is unknown, expired or revoked, or has no uses left, ask the person for a new one.
 5. If you installed the hooks, say that they stay quiet until opted in
    (`NEEDS_YOU_AGENT_ALERTS=1`, or a session Orca starts).
 
@@ -152,8 +152,8 @@ set by Orca). Details: [integrations/claude-code](../integrations/claude-code/RE
 
 - Hubs listen on loopback and their tailnet IP, never on 0.0.0.0. On the Mac, local agents can
   always use `http://127.0.0.1:8765`; other machines use the Mac's MagicDNS name. The invite
-  installer writes the MagicDNS name even on the Mac, so put `http://127.0.0.1:8765` first in
-  `NEEDS_YOU_URLS` there if local agents shouldn't depend on Tailscale (the token works on both).
+  installer puts `http://127.0.0.1:8765` first in `NEEDS_YOU_URLS` on the hub's own Mac, so
+  local agents don't depend on Tailscale (the token works on both).
 - Use MagicDNS names (`<host>.example.ts.net`), not raw `100.x` IPs.
 - The Mac hub is offline while the Mac sleeps. Items queue on each sender and arrive within
   about 5 minutes of it waking; always-on server hubs ([HUB.md](HUB.md)) avoid the wait.

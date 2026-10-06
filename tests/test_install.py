@@ -129,13 +129,16 @@ class InstallScript(HubTestCase):
         r = self.install(inv, "--yes", "--force", "--host", "box1")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotEqual(self.envfile()["NEEDS_YOU_TOKEN"], token)
-        # used up now
-        # used up: the script is no longer served (curl | bash then exits 0 on empty input,
-        # but curl says 404 and nothing changes)
+        # used up now: --force can't redeem again, and says so with exit 1
         before = self.envfile()["NEEDS_YOU_TOKEN"]
-        r = self.install(inv, "--yes", "--force")
-        self.assertIn("404", r.stderr)
+        r = self.install(inv, "--yes", "--force", "--host", "box1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("no uses left", r.stderr)
         self.assertEqual(self.envfile()["NEEDS_YOU_TOKEN"], before)
+        # but a plain re-run still works on this machine
+        r = self.install(inv, "--yes", "--host", "box1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("kept the existing token", r.stdout)
 
     def test_uninstall_and_linux_cron(self):
         inv = self.invite(uses=1)
@@ -145,29 +148,64 @@ class InstallScript(HubTestCase):
             cron = fh.read()
         self.assertEqual(cron.count("needs-you-flush"), 1)
         self.assertIn("*/5 * * * *", cron)
-        # keep the script (the link is used up after one redeem) and re-run it: idempotent
-        script = os.path.join(self.tmp, "i.sh")
-        status = subprocess.run(["curl", "-fsS", "-o", script, inv["join_url"] + "/install.sh"],
-                                env=self.env()).returncode
-        self.assertNotEqual(status, 0)  # used up: no longer served
-        # fetch a fresh link's script to test re-run + uninstall
-        inv2 = self.invite(uses=1, name="srv2")
-        subprocess.run(["curl", "-fsS", "-o", script, inv2["join_url"] + "/install.sh"],
-                       env=self.env(), check=True)
-        r = subprocess.run([BASH, script, "--yes", "--host", "lin"], env=self.env(STUB_UNAME="Linux"),
-                           capture_output=True, text=True, timeout=60, cwd=self.home)
-        self.assertEqual(r.returncode, 0, r.stderr)
+        # the link is used up after one redeem; re-running it is still idempotent
+        r = self.install(inv, "--yes", "--host", "lin", "--claude-hooks", "user", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("setup-sender.sh", r.stdout)  # the installer has just installed the CLI
         with open(self.cron) as fh:
             self.assertEqual(fh.read().count("needs-you-flush"), 1)
         with open(self.cron, "a") as fh:
             fh.write("0 1 * * * other-job\n")
-        r = subprocess.run([BASH, script, "--uninstall"], env=self.env(STUB_UNAME="Linux"),
-                           capture_output=True, text=True, timeout=60, cwd=self.home)
-        self.assertEqual(r.returncode, 0, r.stderr)
+        state = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks")
+        os.makedirs(state)
+        # and --uninstall works from the used-up link too
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(self.cron) as fh:
             self.assertEqual(fh.read().strip(), "0 1 * * * other-job")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
         self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you")))
+        with open(os.path.join(self.home, ".claude", "settings.json")) as fh:
+            self.assertNotIn("needs-you-hook.sh", fh.read())
+        # a new machine can't use it
+        r = self.install(inv, "--yes", "--host", "lin2", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no uses left", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
+
+    def test_dead_link_fails_loudly(self):
+        inv = self.invite()
+        self.hub.store.revoke_invite("srv")
+        r = self.install(inv, "--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("unknown, expired or revoked", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
+
+    def test_help_when_piped(self):
+        r = self.install(self.invite(), "--help")
+        self.assertEqual(r.returncode, 0)
+        for opt in ("--claude-hooks", "--uninstall", "--hub", "--context"):
+            self.assertIn(opt, r.stdout)
+        self.assertEqual(self.hub.store.list_invites()[0]["left"], 1)
+
+    def test_hub_flag_is_saved_first(self):
+        hub = self.make_hub("hub-z", peers=[], public_url="http://hub-z.example.ts.net:8765")
+        hub.store.ensure_token("this-mac", "owner", OWNER)
+        _, inv = request("POST", hub.url + "/v1/invites", OWNER, {"name": "mac", "uses": 1})
+        given = hub.url.replace("127.0.0.1", "localhost")
+        # the link's name doesn't resolve here (the case --hub is for), so fetch the script locally
+        local = dict(inv, join_url=hub.url + "/join/" + inv["code"])
+        r = self.install(local, "--yes", "--no-schedule", "--hub", given, "--host", "my-mac")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # --hub first, then (redeemed from this machine) the loopback URL, then public_url
+        self.assertEqual(self.envfile()["NEEDS_YOU_URLS"],
+                         ",".join([given, hub.url, "http://hub-z.example.ts.net:8765"]))
+        self.assertEqual(self.envfile()["NEEDS_YOU_URL"], given)
+        # the test card carries the --host name, not the real hostname
+        _, items = request("GET", hub.url + "/v1/items", OWNER)
+        card = [i for i in items["items"] if i["key"] == "setup:my-mac:test"][0]
+        self.assertEqual(card["source"]["host"], "my-mac")
 
     def test_reader_invite_points_to_the_mac(self):
         inv = self.invite(role="owner", name="mac")

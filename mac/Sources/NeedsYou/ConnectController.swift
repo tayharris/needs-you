@@ -20,12 +20,17 @@ final class ConnectController: ObservableObject {
     @Published private(set) var invite: InviteResponse?
     @Published private(set) var inviteRole: HubRole = .sender
     @Published private(set) var inviteStatus: Status?
+    /// Settings → Access: what the owner hub lists, and the last list/revoke result.
+    @Published private(set) var accessInvites: [InviteSummary] = []
+    @Published private(set) var accessTokens: [TokenSummary] = []
+    @Published private(set) var accessStatus: Status?
 
     private let settings: AppSettings
     private let model: AppModel
     private let client: InviteClient
     private var connectTask: Task<Void, Never>?
     private var inviteTask: Task<Void, Never>?
+    private var accessTask: Task<Void, Never>?
 
     init(settings: AppSettings, model: AppModel, client: InviteClient = InviteClient()) {
         self.settings = settings
@@ -128,6 +133,58 @@ final class ConnectController: ObservableObject {
             }
             guard let self, !Task.isCancelled else { return }
             self.inviteStatus = .failure((lastError as? LocalizedError)?.errorDescription ?? lastError.localizedDescription)
+        }
+    }
+
+    // MARK: Access (list and revoke invites and tokens)
+
+    func refreshAccess() {
+        runAccess(working: "Loading…", success: nil) { _, _, _ in }
+    }
+
+    func revoke(_ invite: InviteSummary) {
+        runAccess(working: "Revoking invite \(invite.name)…", success: "Revoked invite \(invite.name). Machines it already set up keep their tokens.") { client, hub, token in
+            try await client.revokeInvite(id: invite.id, hub: hub, token: token)
+        }
+    }
+
+    func revoke(_ token: TokenSummary) {
+        runAccess(working: "Revoking \(token.name)…", success: "Revoked \(token.name). That machine can no longer post.") { client, hub, owner in
+            try await client.revokeToken(id: token.id, hub: hub, token: owner)
+        }
+    }
+
+    /// Runs `action` against the first reachable owner hub, then reloads both lists from it.
+    private func runAccess(working: String, success: String?,
+                           _ action: @escaping @Sendable (InviteClient, URL, String) async throws -> Void) {
+        let owners = settings.ownerHubConfigs()
+        guard !owners.isEmpty else {
+            accessStatus = .failure("No owner token: run the hub on this Mac or connect with an owner link.")
+            return
+        }
+        accessTask?.cancel()
+        accessStatus = .working(working)
+        let client = self.client
+        accessTask = Task { [weak self] in
+            var lastError: Error = ConnectError.invalidResponse
+            for hub in owners {
+                do {
+                    try await action(client, hub.baseURL, hub.token)
+                    let invites = try await client.listInvites(hub: hub.baseURL, token: hub.token)
+                    let tokens = try await client.listTokens(hub: hub.baseURL, token: hub.token)
+                    guard let self, !Task.isCancelled else { return }
+                    self.accessInvites = invites
+                    self.accessTokens = tokens.sorted { ($0.current ? 0 : 1, $0.name) < ($1.current ? 0 : 1, $1.name) }
+                    self.accessStatus = success.map { .success($0) }
+                    return
+                } catch {
+                    lastError = error
+                    if case ConnectError.unreachable = error { continue }
+                    break
+                }
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.accessStatus = .failure((lastError as? LocalizedError)?.errorDescription ?? lastError.localizedDescription)
         }
     }
 

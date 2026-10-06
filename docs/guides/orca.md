@@ -16,7 +16,7 @@ Then on each Orca server, paste the agent prompt into an Orca terminal, or run:
 curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --orca
 ```
 
-Each server redeems the same link and gets **its own token**, named `orca-<hostname>` (e.g. `orca-build-1`, `orca-build-2`). Revoke one server without touching the others: `needs-you-admin token revoke orca-build-2` on a server hub, or the bundled admin tool for the Mac's own hub ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)). Running the installer again on a server keeps its token without spending a use, but only while the link is live; give provisioning scripts a link with spare uses and a long enough expiry (up to 90 days).
+Each server redeems the same link and gets **its own token**, named `orca-<hostname>` (e.g. `orca-build-1`, `orca-build-2`). Revoke one server without touching the others: **Settings… → Access** in the Mac app, or `needs-you-admin token revoke orca-build-2` on a server hub ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)). Running the installer again on a server keeps its token without spending a use, until the link expires (also after its last use is spent); give provisioning scripts a link with a long enough expiry (up to 90 days).
 
 What the flags give you:
 

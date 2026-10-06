@@ -97,11 +97,11 @@ public actor DemoFeed: ItemFeed {
                  body: "Reaper found 7 idle `claude` sessions holding 11 GB.",
                  links: [ItemLink(label: "Orca", url: "orca://worktree/devbox")],
                  host: "devbox", agent: "orca:idle-reaper"),
-        Template(key: "personal:hub-b:cert", context: .personal, kind: .needs, priority: .low,
-                 title: "hub-b TLS cert expires in 6 days",
+        Template(key: "personal:blog:cert", context: .personal, kind: .needs, priority: .low,
+                 title: "blog TLS cert expires in 6 days",
                  body: "Renewal hook failed once; it'll retry, but check the DNS token.",
-                 links: [ItemLink(label: "Logs", url: "https://hub-b.example.ts.net/logs")],
-                 host: "hub-b", agent: "cron:certbot"),
+                 links: [ItemLink(label: "Logs", url: "https://blog.example.ts.net/logs")],
+                 host: "blog", agent: "cron:certbot"),
         Template(key: "acme:redo-fixer:last-run", context: .work, kind: .done, priority: .normal,
                  title: "Redo fixer: 2 tickets back in review", body: nil,
                  links: [], host: "devbox", agent: "orca:redo-fixer"),
@@ -149,12 +149,12 @@ public actor DemoFeed: ItemFeed {
                 createdAt: ago(60 * 20)
             ),
             Item(
-                id: "01DEMO00000000000000000004", key: "personal:hub-c:backup", context: .personal,
+                id: "01DEMO00000000000000000004", key: "personal:photos:backup", context: .personal,
                 kind: .needs, priority: .normal,
-                title: "hub-c nightly backup failed",
+                title: "photos nightly backup failed",
                 body: "`restic` exit 1 at 03:00. Disk 97% full.",
-                links: [ItemLink(label: "Logs", url: "https://hub-c.example.ts.net/logs")],
-                source: ItemSource(host: "hub-c", agent: "cron:backup"),
+                links: [ItemLink(label: "Logs", url: "https://photos.example.ts.net/logs")],
+                source: ItemSource(host: "photos", agent: "cron:backup"),
                 createdAt: ago(300)
             ),
             Item(

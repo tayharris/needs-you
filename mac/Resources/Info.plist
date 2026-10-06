@@ -45,7 +45,7 @@
 			<string>Owner</string>
 		</dict>
 	</array>
-	<!-- The hub is plain HTTP on the tailnet (AGENT-GUIDE: http://<hub>.example.ts.net:8765).
+	<!-- The hub is plain HTTP on the tailnet (AGENT-GUIDE: http://<hub>.<tailnet>.ts.net:8765).
 	     Tailscale encrypts the transport; allow HTTP only for MagicDNS names and local networking.
 	     The hub inside the app is http://127.0.0.1:8765 (IP literals are outside ATS;
 	     localhost is listed explicitly). -->
