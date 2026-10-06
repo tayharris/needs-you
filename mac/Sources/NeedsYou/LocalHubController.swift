@@ -100,8 +100,10 @@ final class LocalHubController: ObservableObject {
             return
         }
         do {
-            // With NEEDS_YOU_SUPPORT_DIR (a throwaway profile) the Keychain copy is left alone.
-            let keychain: KeychainTokenStore? = Self.usesCustomSupportDirectory ? nil : AppSettings.localTokenStore
+            // The local hub's token lives only in the mode-600 file. Keychain reads from an
+            // ad-hoc-signed build trigger a "login" keychain password prompt after every rebuild,
+            // so the Keychain copy is not used until builds have a stable signing identity.
+            let keychain: KeychainTokenStore? = nil
             let fileExists = FileManager.default.fileExists(atPath: Self.ownerTokenURL.path)
             let stored = fileExists ? nil : keychain?.read()
             let token = try OwnerToken.loadOrCreate(at: Self.ownerTokenURL, fallback: stored)
