@@ -91,7 +91,7 @@ quit_app() {
 # The app's bundled hub normally exits with the app (--parent-pid), but a hub started by an
 # older build can outlive it and keep port 8765. Stop any hub still running from this bundle.
 stop_bundle_hubs() {
-  local app="$1" pids i
+  local app="$1" pids
   pids="$(pgrep -f "^.*[Pp]ython.* $app/Contents/Resources/hub/needs_you_hub\.py" || true)"
   [[ -n "$pids" ]] || return 0
   echo "==> stopping the old app's hub (pids: $(echo $pids))"
