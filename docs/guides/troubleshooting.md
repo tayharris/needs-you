@@ -28,6 +28,8 @@ tailscale status | head                          # is this machine on the tailne
 
 ## A sender can't reach the hub
 
+Setting up Tailscale, or checking it step by step: [tailscale.md](tailscale.md).
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `curl: (6) Could not resolve host` | MagicDNS off, or the machine isn't on the tailnet | `tailscale up`; enable MagicDNS in the admin console; `tailscale status` should list the hub |
@@ -79,7 +81,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 
 ## Claude Code hooks
 
-Turn on the debug log and simulate an event:
+Setup per environment (SSH, tmux, VS Code Remote-SSH, Orca): [claude-code-everywhere.md](claude-code-everywhere.md). Turn on the debug log and simulate an event:
 
 ```bash
 echo '{"session_id":"t1","cwd":"'"$PWD"'","notification_type":"idle_prompt","message":"test"}' |
@@ -97,7 +99,7 @@ Other checks:
 
 - `/hooks` inside Claude Code lists the active hooks. If ours are missing, re-run `install-hooks.sh` and restart the session.
 - Project-level hooks use `$CLAUDE_PROJECT_DIR/.claude/hooks/needs-you-hook.sh`. If the repo was cloned without `.claude/hooks/`, re-run `install-hooks.sh --project`.
-- A card that doesn't clear: the resolve runs only if this session posted (marker files in `~/.local/state/needs-you/claude-hooks/`). Deleting that directory is safe.
+- A card that doesn't clear: the resolve runs only if this session posted (marker files in `~/.local/state/needs-you/claude-hooks/`). Deleting that directory is safe. A session that was killed is cleared by the next `needs-you flush` once its Claude process is gone (`needs-you doctor` shows whether the flush is scheduled), or 48 hours after its last post.
 - Too noisy? `idle_prompt` fires after about a minute of waiting. Opt in only on machines where agents run unattended.
 
 ## Orca automations
