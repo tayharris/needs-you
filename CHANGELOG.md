@@ -6,7 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Added
 
-- Mac app: Orca cards have a **Terminal** button that brings Orca forward and runs `orca terminal switch` for that agent's terminal (a card that doesn't name its Orca environment tries each paired one). If the switch fails, the command goes on the clipboard. The hook and the Orca prompt block add the link (`needsyou://orca/terminal?handle=…`); the hub accepts the app's own scheme for that path only, and the app validates the handle and environment and runs nothing else.
+- Mac app: Orca cards have a **Terminal** button that runs `orca terminal switch` for that agent's terminal and brings Orca forward (a card that doesn't name its Orca environment tries each paired one). If the switch fails, the command goes on the clipboard. The hook and the Orca prompt block add the link (`needsyou://orca/terminal?handle=…`); the hub accepts the app's own scheme for that path only, and the app validates the handle and environment and runs nothing else.
 
 ### Fixed
 

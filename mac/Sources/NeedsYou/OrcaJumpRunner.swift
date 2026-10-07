@@ -3,26 +3,26 @@ import Foundation
 import NeedsYouCore
 import os
 
-/// Runs a validated `OrcaJump`: brings Orca forward (that activates Orca, never this app;
-/// hard rule 2), then runs `orca terminal switch … --json` from a fixed path (argv, no
-/// shell, 5 s timeout). Orca first, because a switch sent to a background Orca may not
-/// show. A card without an environment that the local Orca calls stale is retried
-/// through each paired environment. If nothing works, the command goes on the clipboard;
-/// the worst case is "opens the right app".
+/// Runs a validated `OrcaJump`: `orca terminal switch … --json` from a fixed path (argv,
+/// no shell, 5 s timeout), then brings Orca forward (that activates Orca, never this app;
+/// hard rule 2). Switch first: Orca navigates in the background, and a reopen event sent
+/// before it (NSWorkspace.openApplication on a running app) pops Orca's dashboard window
+/// and stalls the switch. A running Orca is activated without a reopen. A card without an
+/// environment that the local Orca calls stale is retried through each paired
+/// environment. If nothing works, the command goes on the clipboard; the worst case is
+/// "opens the right app".
 enum OrcaJumpRunner {
     private static let log = Logger(subsystem: "app.needsyou.mac", category: "orca-jump")
 
     static func run(_ jump: OrcaJump) {
-        bringOrcaForward {
-            // Give Orca's window a moment to come up before it navigates.
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3) {
-                let ok = switchTerminal(jump)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = switchTerminal(jump)
+            DispatchQueue.main.async {
                 if !ok {
-                    DispatchQueue.main.async {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(jump.command, forType: .string)
-                    }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(jump.command, forType: .string)
                 }
+                bringOrcaForward()
             }
         }
     }
@@ -82,17 +82,19 @@ enum OrcaJumpRunner {
         return reader.sync { data }
     }
 
-    private static func bringOrcaForward(then next: @escaping () -> Void) {
+    private static func bringOrcaForward() {
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: OrcaJump.bundleID).first {
+            running.activate(options: [])
+            return
+        }
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: OrcaJump.bundleID) else {
             log.error("Orca.app not found")
-            next()
             return
         }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.openApplication(at: app, configuration: config) { _, error in
             if let error { log.error("opening Orca failed: \(error.localizedDescription, privacy: .public)") }
-            next()
         }
     }
 }
