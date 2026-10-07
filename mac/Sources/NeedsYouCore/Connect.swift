@@ -98,6 +98,19 @@ public struct ConnectLink: Equatable, Sendable {
     }
 }
 
+extension ConnectLink {
+    /// What the app asks before redeeming a link that arrived from outside (a browser, chat
+    /// or `open`). Any web page can open a needsyou:// URL; without this a page could connect
+    /// the app to a hub it controls and put its own cards in the panel.
+    public var confirmation: (title: String, message: String) {
+        let name = hub.host ?? hub.absoluteString
+        return ("Connect to \(name)?",
+                "A link asked Needs You to join the hub at \(hub.absoluteString). Its items will "
+                + "show in your panel and it will learn this Mac's name. Connect only if you "
+                + "made or asked for this invite.")
+    }
+}
+
 /// Plain http is fine on the tailnet (Tailscale encrypts) and on this machine; anything
 /// else needs https. Mirrors the bundle's ATS exceptions (Resources/Info.plist).
 public enum HubTransportPolicy {
@@ -448,7 +461,12 @@ public enum HubListMerge {
     /// must not be added (the local hub, which is always listed separately).
     public static func merge(existing: [String], given: URL, returned: [String], exclude: Set<String> = []) -> Result {
         var hubs = existing
-        var known = Set(existing.compactMap(ConnectLink.normalizedHubURL).map(HubName.key))
+        let existingKeys = Set(existing.compactMap(ConnectLink.normalizedHubURL).map(HubName.key))
+        var known = existingKeys
+        // A link to a hub we don't know yet may add hubs, but it can't re-key the ones we
+        // already have: a rogue hub could otherwise name them in `hub_urls` and overwrite
+        // their working tokens with its own. Reconnecting through a known hub still does.
+        let givenIsKnown = existingKeys.contains(HubName.key(given))
         var tokenKeys = Set<String>()
         var tokenHubs: [URL] = []
         var added: [URL] = []
@@ -471,6 +489,7 @@ public enum HubListMerge {
                 continue
             }
             if exclude.contains(HubName.key(url)) { skipped.append(raw); continue }
+            if !givenIsKnown, existingKeys.contains(HubName.key(url)) { skipped.append(raw); continue }
             consider(url, raw: raw)
         }
         return Result(hubs: hubs, tokenHubs: tokenHubs, added: added, skipped: skipped)

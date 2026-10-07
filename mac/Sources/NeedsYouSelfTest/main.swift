@@ -25,6 +25,7 @@ let entries =
     + testEntries(PanelPositionTests.self, PanelPositionTests.allTests)
     + testEntries(PrefsMigrationTests.self, PrefsMigrationTests.allTests)
     + testEntries(OrcaJumpTests.self, OrcaJumpTests.allTests)
+    + testEntries(SecurityAuditTests.self, SecurityAuditTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

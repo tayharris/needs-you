@@ -6,7 +6,7 @@ public enum LimitedMarkdown {
     public static let maxLength = 2_000
 
     public static func render(_ source: String) -> AttributedString {
-        var text = String(source.prefix(maxLength))
+        var text = stripBidiControls(String(source.prefix(maxLength)))
         text = bulletise(text)
 
         let options = AttributedString.MarkdownParsingOptions(
@@ -28,6 +28,21 @@ public enum LimitedMarkdown {
             }
         }
         return attributed
+    }
+
+    /// Removes bidi embedding, override and isolate controls (U+202A to U+202E, U+2066 to
+    /// U+2069). They let text read differently from what it is (a reversed "moc.live" shows
+    /// as "evil.com"); ordinary right-to-left text doesn't need them. The hub refuses them in
+    /// new items; this covers anything older or replicated.
+    public static func stripBidiControls(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: isBidiControl) else { return text }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: text.unicodeScalars.filter { !isBidiControl($0) })
+        return String(scalars)
+    }
+
+    static func isBidiControl(_ s: Unicode.Scalar) -> Bool {
+        (0x202A...0x202E).contains(s.value) || (0x2066...0x2069).contains(s.value)
     }
 
     /// Inline-only parsing keeps list markers as literal text; make them read as bullets.
