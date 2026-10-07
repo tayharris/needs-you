@@ -364,7 +364,7 @@ struct SettingsView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(token.name)
-                        Text("\(token.role?.rawValue ?? "?")\(token.openItems > 0 ? " · \(token.openItems) open" : "")\(token.current ? " · this Mac" : "")")
+                        Text("\(token.role?.rawValue ?? "?")\(token.openItems > 0 ? " · \(token.openItems) open" : "")\(token.current ? " · this Mac" : "")\(token.client["cli"].map { " · CLI \($0)" } ?? "")")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()

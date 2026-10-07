@@ -21,6 +21,7 @@ struct UpdatesSettingsView: View {
             }
             versionSection
             settingsSection
+            SenderRolloutSection(updates: updates, connect: connect)
         }
     }
 
@@ -151,5 +152,46 @@ struct UpdatesSettingsView: View {
             ProgressView().controlSize(.small)
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
+    }
+}
+
+/// "2 of 5 machines out of date": sender tokens seen recently whose CLI is older than this
+/// app (each machine reports its versions on every request; GET /v1/tokens lists them).
+struct SenderRolloutSection: View {
+    @ObservedObject var updates: UpdateController
+    @ObservedObject var connect: ConnectController
+
+    var body: some View {
+        Section {
+            if !connect.canInvite {
+                Text("Needs an owner token (the hub on this Mac has one).").font(.caption).foregroundStyle(.secondary)
+            } else {
+                let status = RolloutStatus(tokens: connect.accessTokens, target: updates.current, now: Date())
+                HStack {
+                    Text(status.summary)
+                    Spacer()
+                    Button("Refresh") { connect.refreshAccess() }
+                }
+                ForEach(status.rows) { row in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.name)
+                            Text(row.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if row.behind {
+                            Text("out of date").font(.caption).foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Sender machines")
+        } footer: {
+            Text("Senders update themselves from this Mac's hub once a day (needs-you update, run by the 5-minute flush). scripts/rollout.sh updates a list of SSH hosts at once.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { if connect.canInvite { connect.refreshAccess() } }
     }
 }
