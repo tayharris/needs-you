@@ -515,6 +515,11 @@ code, pre { font-family: var(--font-mono); }
   line-height: 1.55; min-height: calc(var(--tap) + var(--space-2));
 }
 .doc .copy { top: var(--space-1); transform: none; }
+/* On a phone a guide's code block scrolls sideways, and its text would slide under the Copy
+   button: give the button its own row above the code instead. */
+@media (max-width: 40rem) {
+  .doc .code.has-copy pre { padding-top: calc(var(--tap) + var(--space-2)); padding-right: var(--space-4); }
+}
 .doc .table-wrap { margin: 0 0 var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius); }
 .doc-table { width: 100%; border-collapse: collapse; font-size: var(--size-h6); }
 .doc-table th, .doc-table td {
