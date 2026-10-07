@@ -155,7 +155,7 @@ final class StepsTests: XCTestCase {
         XCTAssertEqual(StepsPolicy.summary(total: 3, ticked: 2), "2 of 3 done")
         XCTAssertEqual(StepsPolicy.number(0), "1.")
         XCTAssertEqual(StepsPolicy.number(9), "10.")
-        XCTAssertEqual(StepsPolicy.linkTitle(ItemLink(label: "  ", url: "https://x")), "Open")
+        XCTAssertEqual(StepsPolicy.linkTitle(ItemLink(label: "  ", url: "https://ci.example.com/run")), "ci.example.com")
         XCTAssertEqual(StepsPolicy.linkTitle(ItemLink(label: "CI", url: "https://x")), "CI")
         let long = StepsPolicy.linkTitle(ItemLink(label: "A very long label for one step", url: "https://x"))
         XCTAssertEqual(long.count, LinkRowPolicy.compactLabelLength)

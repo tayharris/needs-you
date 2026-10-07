@@ -76,12 +76,10 @@ public enum StepsPolicy {
     /// "1.", "2.", ...
     public static func number(_ index: Int) -> String { "\(index + 1)." }
 
-    /// The step link's button title (the label, or "Open" when it's blank), shortened like
-    /// compact link labels.
+    /// The step link's button title, shortened like compact link labels (a blank label
+    /// shows the host, as on the links row). The view adds `LinkRowPolicy.destination`.
     public static func linkTitle(_ link: ItemLink) -> String {
-        let label = link.label.trimmingCharacters(in: .whitespaces)
-        return LinkRowPolicy.label(ItemLink(label: label.isEmpty ? "Open" : label, url: link.url),
-                                   maxLength: LinkRowPolicy.compactLabelLength)
+        LinkRowPolicy.label(link, maxLength: LinkRowPolicy.compactLabelLength)
     }
 
     /// Does the card get a Show more / Show details toggle? Bodies decide as before; steps

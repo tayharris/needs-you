@@ -213,6 +213,14 @@ private struct StepLinkButton: View {
             } label: {
                 HStack(spacing: 3) {
                     Text(StepsPolicy.linkTitle(link)).lineLimit(1)
+                    if let destination = LinkRowPolicy.destination(link) {
+                        // Where it really goes, as on the links row.
+                        Text(destination)
+                            .fontWeight(.regular)
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
                 }
                 .font(.system(size: model.metrics.linkFont, weight: .medium))
