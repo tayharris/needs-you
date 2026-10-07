@@ -54,7 +54,9 @@ Open: is this a hub feature, or just "run one hub per person, and senders post t
 
 ## Jump to the agent's terminal from a card
 
-Today an Orca card's body says `orca terminal switch [--environment <name>] --terminal <handle>`, and you copy it into a terminal. The goal: click the card's **Terminal** button and Orca shows that terminal. Later: the same for Claude sessions in Terminal.app or iTerm on the Mac.
+Status: phase 1 (Orca) is built: `OrcaJump` in `NeedsYouCore`, `OrcaJumpRunner` in the app. Two differences from the plan below: the environment name is checked by its characters (letters, digits, space, `.`, `_`, `-`, not starting with `-`) rather than against `orca environment list`, and Orca is always brought forward after the switch. Phase 2 (local terminals, step 4) is not built.
+
+An Orca card's body says `orca terminal switch [--environment <name>] --terminal <handle>`, and you copy it into a terminal. The goal: click the card's **Terminal** button and Orca shows that terminal. Later: the same for Claude sessions in Terminal.app or iTerm on the Mac.
 
 **Never run commands from item data.** A sender only holds a token, and anything the app executes from an item is remote code execution on the Mac. So the app gets one fixed action with validated arguments:
 

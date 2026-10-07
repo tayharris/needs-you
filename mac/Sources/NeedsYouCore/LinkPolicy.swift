@@ -7,8 +7,8 @@ public enum LinkPolicy {
         "https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord",
     ]
 
-    /// The URL to open, or nil if the string isn't an allowed, well-formed link.
-    public static func openableURL(_ string: String) -> URL? {
+    /// The URL another app opens, or nil if the string isn't an allowed, well-formed link.
+    public static func externalURL(_ string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               // Reject control characters and spaces outright rather than letting
@@ -21,6 +21,14 @@ public enum LinkPolicy {
         // https needs a host; the app schemes may legitimately be host-less.
         if scheme == "https", (url.host ?? "").isEmpty { return nil }
         return url
+    }
+
+    /// The URL to act on, or nil if the string isn't an allowed, well-formed link. The
+    /// app's own scheme counts for one path only, the Orca terminal jump; callers hand
+    /// those to `OrcaJump`, never to NSWorkspace (that would route back to this app).
+    public static func openableURL(_ string: String) -> URL? {
+        if let jump = OrcaJump.parse(string) { return jump.url }
+        return externalURL(string)
     }
 
     public static func isAllowed(_ string: String) -> Bool { openableURL(string) != nil }

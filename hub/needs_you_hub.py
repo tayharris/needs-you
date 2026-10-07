@@ -45,6 +45,10 @@ PATCH_STATUSES = ("resolved", "dismissed")
 ROLES = ("sender", "reader", "owner")
 READ_ROLES = ("reader", "owner")  # owner = reader + may create invites
 LINK_SCHEMES = ("https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord")
+# The Mac app's own scheme, for one fixed action only: the card's Orca terminal jump
+# (needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]). The app validates
+# the handle and environment again before it runs anything.
+APP_LINK_PREFIX = "needsyou://orca/terminal?"
 
 MAX_TITLE = 100
 MAX_BODY = 2000
@@ -225,9 +229,11 @@ def validate_links(links: Any) -> List[Dict[str, str]]:
         url = _str_field(link, "url", MAX_LINK_URL, required=True, path="links[%d].url" % i)
         assert label is not None and url is not None
         scheme = urllib.parse.urlsplit(url).scheme.lower()
-        if scheme not in LINK_SCHEMES:
-            raise _invalid("links[%d].url" % i, "links[%d].url scheme %r is not allowed (allowed: %s)"
-                           % (i, scheme, ", ".join(LINK_SCHEMES)))
+        if scheme == "needsyou" and url.lower().startswith(APP_LINK_PREFIX):
+            pass
+        elif scheme not in LINK_SCHEMES:
+            raise _invalid("links[%d].url" % i, "links[%d].url scheme %r is not allowed (allowed: %s, %s...)"
+                           % (i, scheme, ", ".join(LINK_SCHEMES), APP_LINK_PREFIX))
         if len(url) <= len(scheme) + 1:
             raise _invalid("links[%d].url" % i, "links[%d].url is empty" % i)
         out.append({"label": label, "url": url})

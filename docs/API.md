@@ -123,7 +123,12 @@ Create an item, or update the open item with the same `key`.
 
 Link URLs must use one of these schemes (case-insensitive): `https`, `orca`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`. Anything else, including `http`, `jira`,
-`file` and `javascript`, is a 400. Text strings are trimmed.
+`file` and `javascript`, is a 400. One exception: the Mac app's own scheme for the card's
+**Terminal** button, `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]`
+(nothing else under `needsyou://`). The app checks the handle (`term_` plus 8–64 lowercase
+hex or `-`) and the environment name (letters, digits, space, `.`, `_`, `-`; ≤ 64) and runs
+`orca terminal switch` with them as arguments, never through a shell; anything else does
+nothing. Text strings are trimmed.
 
 Semantics:
 

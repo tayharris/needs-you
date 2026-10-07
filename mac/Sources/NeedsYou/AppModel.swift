@@ -446,7 +446,7 @@ final class AppModel: ObservableObject {
     func activate(_ item: Item) {
         switch MenuItemAction.forItem(item) {
         case .open(let url):
-            NSWorkspace.shared.open(url)
+            if let jump = OrcaJump.parse(url) { OrcaJumpRunner.run(jump) } else { NSWorkspace.shared.open(url) }
         case .showPanel:
             if item.context != context { setContext(item.context) }
             showExpanded()
@@ -473,10 +473,16 @@ final class AppModel: ObservableObject {
 
     // MARK: Links
 
-    /// Opens a link only if it passes the scheme allow-list.
+    /// Opens a link only if it passes the scheme allow-list. The Orca terminal link runs
+    /// its one fixed action instead of going to NSWorkspace.
     @discardableResult
     func open(_ string: String) -> Bool {
-        guard let url = LinkPolicy.openableURL(string) else { return false }
+        if let jump = OrcaJump.parse(string) {
+            OrcaJumpRunner.run(jump)
+            collapse()
+            return true
+        }
+        guard let url = LinkPolicy.externalURL(string) else { return false }
         NSWorkspace.shared.open(url)
         collapse()
         return true
