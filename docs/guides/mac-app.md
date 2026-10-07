@@ -104,6 +104,12 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | The global shortcut | Panel → Keyboard | ⌃⌥Space, or record your own (it must use ⌃, ⌥ or ⌘) |
 | How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
 | How loud normal and low items are | Alerts → **Normal and low items** | Normal, Off, Subtle, Bright |
+| How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
+| Urgent items break through Focus | Alerts → Delivery | On, Off |
+| Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
+| Bypass rules | Alerts → **Bypass rules** | None; up to 50 |
+| Where new items spring out | Alerts → On the work screen | The display you're working on, The pill's display |
+| Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 | The shortcut opens the top card's Terminal / VS Code link | Integrations | Off, On |
 
 The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
