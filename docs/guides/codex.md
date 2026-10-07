@@ -65,9 +65,10 @@ echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.codex/hooks/needs-y
 ## Remove it
 
 ```bash
-integrations/codex/install-codex-hooks.sh --uninstall
+needs-you uninstall-hooks --codex                         # offline: no hub, no checkout
+integrations/codex/install-codex-hooks.sh --uninstall     # or from a checkout
 ```
 
-The invite installer's `--uninstall` removes it too.
+Both take out only the needs-you entries (with a backup of `hooks.json`) and delete the hook copy, and refuse a symlinked `hooks.json` or hook. `needs-you uninstall-hooks` with no option removes every agent's hooks; the invite installer's `--uninstall` runs it.
 
 Not working? [troubleshooting.md](troubleshooting.md#codex-hooks).

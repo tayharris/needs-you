@@ -78,7 +78,7 @@ Never print or echo the token.
 
 ## Automatic alerts
 
-If the needs-you Claude Code hooks are installed, permission prompts, plan approvals, your `AskUserQuestion` questions, "waiting for input" and API-error stops are already posted (key `agent:<host>:<session>`) and resolved for you, and so is a "context is filling up" card (`agent:<host>:<session>:context`). Don't duplicate those; use this skill for the specific blocker and its options.
+If the needs-you Claude Code hooks are installed, permission prompts, plan approvals, your `AskUserQuestion` questions, "waiting for input" and API-error stops are already posted (key `agent:<host>:<session>`) and resolved for you, and so is a "context is filling up" card (`agent:<host>:<session>:context`). Don't duplicate those; use this skill for the specific blocker and its options. While a `needs` item you posted from this session is open, the hooks don't add their generic "Claude is waiting for you" card on top of it, so the person sees one card: yours. Resolve it as soon as it's handled; until then that session gets no "waiting" card.
 
 ## Install this skill
 

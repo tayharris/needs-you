@@ -115,7 +115,13 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
 
    `invite list --all` and `invite revoke <name>` work the same way for links.
 
-2. **Clean up the machine.** Either run a live invite's installer with `--uninstall`, or by hand. First the Claude Code hooks, if they were installed: `integrations/claude-code/install-hooks.sh --uninstall` from a checkout of this repo, or without one:
+2. **Clean up the machine.** Either run a live invite's installer with `--uninstall`, or by hand. First the Claude Code hooks, if they were installed (offline; user level, the current directory's project and every recorded project install):
+
+   ```bash
+   needs-you uninstall-hooks
+   ```
+
+   With a CLI older than `uninstall-hooks`: `integrations/claude-code/install-hooks.sh --uninstall` from a checkout, or fetch it from the hub:
 
    ```bash
    . ~/.config/needs-you/env; d=$(mktemp -d)

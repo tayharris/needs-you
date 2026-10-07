@@ -33,7 +33,9 @@
 #   ORCA_TERMINAL_HANDLE is set       session started by Orca
 # NEEDS_YOU_AGENT_ALERTS=0 turns it off even inside Orca.
 #
-# Optional settings (environment, or lines in ~/.config/needs-you/env):
+# Optional settings (environment, or lines in the sender env file: the same
+# file the CLI reads, $NEEDS_YOU_CONFIG or $XDG_CONFIG_HOME/needs-you/env,
+# by default ~/.config/needs-you/env; NEEDS_YOU_ENV_FILE overrides it here):
 #   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: NEEDS_YOU_DEFAULT_CONTEXT, else work)
 #   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
@@ -88,8 +90,10 @@ esac
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
-# The environment wins over the file.
-env_file="${NEEDS_YOU_ENV_FILE:-$HOME/.config/needs-you/env}"
+# The environment wins over the file. Found the way the CLI finds it
+# (NEEDS_YOU_CONFIG, else $XDG_CONFIG_HOME/needs-you/env, else ~/.config/...),
+# so `--alerts` on a machine with XDG_CONFIG_HOME set isn't silently ignored.
+env_file="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
 file_val() {
   [ -r "$env_file" ] || return 0
   sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$env_file" | tail -n 1 |
@@ -150,6 +154,25 @@ key="agent:$host:$id"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
 ctx_marker="$state_dir/$id.context"
+# Open `needs` items the agent itself posted from this session (`needs-you add` records them
+# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>).
+items_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items/$id"
+
+# own_item_open: true while the agent's own blocker for this session is open and unexpired.
+# Read-only; the CLI prunes expired records.
+own_item_open() {
+  case "$id" in .|..) return 1 ;; esac
+  [ -d "$items_dir" ] || return 1
+  local f exp now
+  now=$(date +%s)
+  for f in "$items_dir"/*; do
+    [ -f "$f" ] || continue
+    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
+    case "$exp" in ''|*[!0-9]*) continue ;; esac
+    [ "$exp" -gt "$now" ] && return 0
+  done
+  return 1
+}
 
 # The Claude process this hook belongs to: the first ancestor that isn't a
 # shell (Claude Code may start hooks through `sh -c`). `needs-you flush`
@@ -680,7 +703,7 @@ def notify():
             "idle_prompt": "Claude is waiting for you",
             "elicitation_dialog": "Claude needs an answer",
             "elicitation_url_dialog": "Claude needs you to sign in",
-            "agent_needs_input": "Agent needs input",
+            "agent_needs_input": "Claude needs your input",
             "quota_auto_resume_disabled": "Claude hit its usage limit",
         }.get(ntype, "Claude needs you")
         msg = oneline(data.get("message"), 400)
@@ -891,9 +914,25 @@ case "$mode" in
       resolve_marker "$ctx_marker"
       [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
     fi
+    # The session is over, so nothing of its waits on input any more. (The agent's own items
+    # stay open on the hub until it, or a later run, resolves them.)
+    case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
     ;;
 
   notify)
+    # One card for one wait: when the agent has posted its own blocker from this session (the
+    # skill), the generic "waiting for input" card would only repeat it. Permission prompts,
+    # questions and errors still post: they are a different thing to act on.
+    # The same wait in each agent: Claude's idle / needs-input notifications, and the "turn
+    # ended" card of Codex (Stop), Gemini (AfterAgent) and opencode (Stop: session idle).
+    case "$agent:$(json_str notification_type):$(json_str hook_event_name)" in
+      claude:idle_prompt:*|claude:agent_needs_input:*|codex::Stop|opencode::Stop|gemini::AfterAgent)
+        if own_item_open; then
+          log "notify $key -> skipped: the agent's own item for this session is open"
+          exit 0
+        fi
+        ;;
+    esac
     # Build the item from the hook JSON and call the CLI with an argv list
     # (no shell quoting of untrusted text). Prints what posted it.
     kind=$(run_py notify)

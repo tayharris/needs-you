@@ -18,7 +18,7 @@ On a sender machine, from a checkout of this repo:
 integrations/opencode/install-opencode-plugin.sh    # ~/.config/opencode/plugins/needs-you.js
 ```
 
-`--uninstall` removes it. No opencode config file is changed.
+`--uninstall` removes it, and so does `needs-you uninstall-hooks --opencode`, which needs no checkout and no hub (it leaves a symlinked plugin alone). No opencode config file is changed.
 
 ## Opt in
 

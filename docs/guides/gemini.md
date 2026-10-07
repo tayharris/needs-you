@@ -18,7 +18,7 @@ On a sender machine, from a checkout of this repo:
 integrations/gemini/install-gemini-hooks.sh     # adds the hooks to ~/.gemini/settings.json
 ```
 
-It backs up `settings.json` and keeps your other settings and hooks. If your `settings.json` has comments, it stops without changing anything; merge `integrations/gemini/gemini-hooks.json` by hand. `--uninstall` removes it.
+It backs up `settings.json` and keeps your other settings and hooks. If your `settings.json` has comments, it stops without changing anything; merge `integrations/gemini/gemini-hooks.json` by hand. `--uninstall` removes it, and so does `needs-you uninstall-hooks --gemini`, which needs no checkout and no hub.
 
 ## Opt in
 

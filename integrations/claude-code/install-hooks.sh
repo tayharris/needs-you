@@ -90,6 +90,10 @@ case "$SCOPE" in
       SETTINGS="$PROJECT_DIR/.claude/settings.json"
     fi
     HOOKS_DIR="$PROJECT_DIR/.claude/hooks"
+    # A repo's .claude is untrusted: never write or delete through a symlink it ships.
+    for p in "$PROJECT_DIR/.claude" "$HOOKS_DIR" "$HOOKS_DIR/needs-you-hook.sh" "$SETTINGS"; do
+      [ ! -L "$p" ] || die "$p is a symlink; not touching it"
+    done
     CMD_PREFIX='"$CLAUDE_PROJECT_DIR/.claude/hooks/needs-you-hook.sh"'
     ;;
   file)
@@ -103,14 +107,44 @@ esac
 echo "settings: $SETTINGS"
 echo "hook:     $HOOKS_DIR/needs-you-hook.sh"
 
-# ---- merge (python3 does the JSON; it prints a status line)
-python3 - "$SETTINGS" "$SNIPPET" "$CMD_PREFIX" "$ACTION" "$DRY_RUN" <<'PY'
-import json, os, sys, tempfile, time, difflib
+# Project installs are recorded here (settings file -> the hooks.json merged into it), so
+# `needs-you doctor`, `needs-you update` and `needs-you uninstall-hooks` can find them.
+PROJECTS_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-projects.json"
 
-settings_path, snippet_path, cmd_prefix, action, dry_run = sys.argv[1:6]
+# ---- merge (python3 does the JSON; it prints a status line)
+python3 - "$SETTINGS" "$SNIPPET" "$CMD_PREFIX" "$ACTION" "$DRY_RUN" "$SCOPE" "$PROJECTS_FILE" <<'PY'
+import hashlib, json, os, sys, tempfile, time, difflib
+
+settings_path, snippet_path, cmd_prefix, action, dry_run, scope, projects_file = sys.argv[1:8]
 dry_run = dry_run == "1"
 MARK = "needs-you-hook.sh"
 USER_SNIPPET_PREFIX = '"$HOME/.claude/hooks/needs-you-hook.sh"'
+
+
+def record():
+    """Remember (or forget) a project install. Best effort: never fails the install."""
+    if scope != "project" or dry_run:
+        return
+    try:
+        try:
+            with open(projects_file, encoding="utf-8") as f:
+                projects = json.load(f)
+            projects = projects if isinstance(projects, dict) else {}
+        except (OSError, ValueError):
+            projects = {}
+        key = os.path.realpath(settings_path)
+        if action == "install":
+            with open(snippet_path, "rb") as f:
+                projects[key] = {"hooks_json_sha256": hashlib.sha256(f.read()).hexdigest()}
+        elif projects.pop(key, None) is None:
+            return
+        os.makedirs(os.path.dirname(projects_file), mode=0o700, exist_ok=True)
+        tmp = projects_file + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(projects, f, indent=1, sort_keys=True)
+        os.replace(tmp, projects_file)
+    except OSError:
+        pass
 
 def ours(hook):
     return isinstance(hook, dict) and MARK in str(hook.get("command", ""))
@@ -186,6 +220,7 @@ else:
 
 if unchanged:
     print("settings: already up to date, not rewritten")
+    record()
     sys.exit(0)
 
 if dry_run:
@@ -212,6 +247,7 @@ with os.fdopen(fd, "w", encoding="utf-8") as f:
     f.write(new_text)
 os.chmod(tmp, mode)
 os.replace(tmp, real)
+record()
 print("settings: %s" % ("needs-you hooks installed" if action == "install" else "needs-you hooks removed"))
 PY
 

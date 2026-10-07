@@ -242,7 +242,18 @@ full (`NEEDS_YOU_CONTEXT_ALERT_PCT`). Install them with the invite installer's
 `--claude-hooks user` (or `project`), or with `integrations/claude-code/install-hooks.sh`. They
 are quiet unless the session is opted in (`--alerts`, which writes `NEEDS_YOU_AGENT_ALERTS=1`,
 or `$ORCA_TERMINAL_HANDLE` set by Orca). An agent that posts its own blockers doesn't need to
-duplicate these. Details: [integrations/claude-code](../integrations/claude-code/README.md).
+duplicate these.
+
+One card for one wait: when an agent posts a `needs` item with the CLI from inside a Claude
+Code session, the CLI notes the key for that session (in
+`~/.local/state/needs-you/session-items/`, by `$ORCA_TERMINAL_HANDLE`, else
+`$CLAUDE_CODE_SESSION_ID`), and while it is open the hooks skip their generic "Claude is
+waiting for you" card for that session (in Orca, also the "turn ended" card of Codex, Gemini
+CLI and opencode; outside Orca those agents have no session id to match). Permission prompts, questions and errors still post.
+`needs-you resolve --key` (from any session or run) or a `done`/`info` with the same key ends
+it; so do the item's `--expires-in` (at most 48 hours) and the session ending. So resolve what
+you post: until you do, the person gets no "waiting" card from that session. Details:
+[integrations/claude-code](../integrations/claude-code/README.md).
 
 ## Codex CLI hooks
 

@@ -285,34 +285,41 @@ path_remove() {
 if [ "$UNINSTALL" -eq 1 ]; then
   schedule_remove
   path_remove
-  if [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
-     command -v curl >/dev/null 2>&1; then
-    tmp=$(mktemp -d)
-    if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh" &&
-       verify install-hooks.sh "$tmp/install-hooks.sh"; then
-      bash "$tmp/install-hooks.sh" --user --uninstall || warn "removing the Claude Code hooks failed"
-    else
-      warn "hub unreachable; remove the hooks with integrations/claude-code/install-hooks.sh --uninstall"
-    fi
-    rm -rf "$tmp"
-  fi
-  # Codex and Gemini CLI: <name> <its directory> <installer's flag for it>
-  for spec in "codex ${CODEX_HOME:-$HOME/.codex} --codex-home" "gemini $HOME/.gemini --gemini-dir"; do
-    set -- $spec
-    if [ -f "$2/hooks/needs-you-hook.sh" ] && command -v curl >/dev/null 2>&1; then
+  # The CLI removes every agent's hooks locally (Claude Code user level, this directory's
+  # project and recorded project installs; Codex, Gemini CLI, the opencode plugin). A CLI
+  # from before `uninstall-hooks` falls back to the installers from the hub.
+  if [ -x "$CLI" ] && "$CLI" uninstall-hooks --help >/dev/null 2>&1; then
+    "$CLI" uninstall-hooks || warn "some agent hooks were left in place (see above)"
+  else
+    if [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
+       command -v curl >/dev/null 2>&1; then
       tmp=$(mktemp -d)
-      if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-$1-hooks.sh" -o "$tmp/install-$1-hooks.sh" &&
-         verify "install-$1-hooks.sh" "$tmp/install-$1-hooks.sh"; then
-        bash "$tmp/install-$1-hooks.sh" "$3" "$2" --uninstall || warn "removing the $1 hooks failed"
+      if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh" &&
+         verify install-hooks.sh "$tmp/install-hooks.sh"; then
+        bash "$tmp/install-hooks.sh" --user --uninstall || warn "removing the Claude Code hooks failed"
       else
-        warn "hub unreachable; remove the $1 hooks with integrations/$1/install-$1-hooks.sh --uninstall"
+        warn "hub unreachable; remove the hooks with integrations/claude-code/install-hooks.sh --uninstall"
       fi
       rm -rf "$tmp"
     fi
-  done
-  OC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
-  rm -f "$OC_DIR/plugins/needs-you.js" "$OC_DIR/hooks/needs-you-hook.sh"
-  rmdir "$OC_DIR/plugins" "$OC_DIR/hooks" 2>/dev/null || true
+    # Codex and Gemini CLI: <name> <its directory> <installer's flag for it>
+    for spec in "codex ${CODEX_HOME:-$HOME/.codex} --codex-home" "gemini $HOME/.gemini --gemini-dir"; do
+      set -- $spec
+      if [ -f "$2/hooks/needs-you-hook.sh" ] && command -v curl >/dev/null 2>&1; then
+        tmp=$(mktemp -d)
+        if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-$1-hooks.sh" -o "$tmp/install-$1-hooks.sh" &&
+           verify "install-$1-hooks.sh" "$tmp/install-$1-hooks.sh"; then
+          bash "$tmp/install-$1-hooks.sh" "$3" "$2" --uninstall || warn "removing the $1 hooks failed"
+        else
+          warn "hub unreachable; remove the $1 hooks with integrations/$1/install-$1-hooks.sh --uninstall"
+        fi
+        rm -rf "$tmp"
+      fi
+    done
+    OC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+    rm -f "$OC_DIR/plugins/needs-you.js" "$OC_DIR/hooks/needs-you-hook.sh"
+    rmdir "$OC_DIR/plugins" "$OC_DIR/hooks" 2>/dev/null || true
+  fi
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"

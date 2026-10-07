@@ -50,6 +50,13 @@ class SetupSender(HubTestCase):
         with open(os.path.join(self.home, ".config", "needs-you", "env")) as fh:
             return fh.read()
 
+    def test_env_file_goes_where_the_cli_and_hooks_look(self):
+        xdg = os.path.join(self.tmp, "xdg")
+        self.run_setup("--alerts", "--no-schedule", "--no-path", XDG_CONFIG_HOME=xdg)
+        with open(os.path.join(xdg, "needs-you", "env")) as fh:
+            self.assertIn("NEEDS_YOU_AGENT_ALERTS=1\n", fh.read())
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
+
     def test_settings_schedule_path_and_rerun(self):
         bashrc = os.path.join(self.home, ".bashrc")
         with open(bashrc, "w") as fh:
