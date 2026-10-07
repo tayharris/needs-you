@@ -26,13 +26,16 @@ While the project is pre-1.0, only the latest release gets fixes.
 What's protected, and how:
 
 - **Tokens.** Every machine has its own token with a role (`sender` posts, `reader` reads, `owner` also manages invites and tokens). Tokens are printed once, when minted, and never logged; hubs store only their sha256. Any token can be revoked on its own (**Settings… → Access** in the Mac app, or `needs-you-admin token revoke`).
-- **Invite links.** A link (`/join/<code>`) mints a token per machine, up to its number of uses, until it expires (at most 90 days) or is revoked. Failed redeem attempts are rate-limited per address.
+- **Invite links.** A link (`/join/<code>`) mints a token per machine, up to its number of uses, until it expires (at most 90 days) or is revoked. Failed redeem attempts are rate-limited per address. The hub's access log never shows the code. When a `needsyou://connect` link is opened from outside the app (any web page can open one), the app asks before it joins that hub, and a hub it didn't know before can't replace the tokens of hubs it already has.
 - **Network.** Hubs listen on `127.0.0.1` and the tailnet address only, and refuse `0.0.0.0` or `::` unless explicitly overridden. Hubs replicate with a shared peer secret.
 - **Links in items.** The hub and the Mac app accept only `https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams` and `discord` links. The one exception is the app's own `needsyou://orca/terminal?handle=…` link: the app validates the handle and environment and runs `orca terminal switch` with them as arguments (no shell), and nothing else.
+- **Item text.** Titles, bodies, labels and sources can't carry control characters or bidi override characters (so a label can't be made to read backwards), and link URLs can't hide spaces or invisible characters. The CLI escapes control characters in anything a hub sends it before printing.
 - **The panel** never takes keyboard focus, so a new item can't capture what you type.
 - **Senders' local files.** `~/.config/needs-you/env` (the token) is mode 600; the Mac app keeps hub tokens in `~/Library/Application Support/NeedsYou/tokens.json`, mode 600.
 
 Expected behavior, not vulnerabilities:
+
+- A link's label is whatever the sender wrote, like any Markdown link: `[GitHub PR](https://…)` can point anywhere on `https`. Check where a link goes before you sign in or approve anything on the page it opens.
 
 - Anyone holding a sender token can post items with any title, body and allowed link, and resolve any open item by key (keys aren't scoped per token). Each token has a cap on open items. Item text is shown, never executed. Revoke a token you don't trust.
 - Anyone on your tailnet who can reach port 8765 can open a join page if they have its code, and can read `/v1/health` (no token needed; it reveals the hub's id, version and item counts). Use Tailscale access rules to limit who reaches the hub ([docs/guides/tailscale.md](docs/guides/tailscale.md)).
