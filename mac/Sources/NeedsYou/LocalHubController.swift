@@ -27,6 +27,9 @@ final class LocalHubController: ObservableObject {
     }
 
     @Published private(set) var state: State = .off
+    /// Settings → This Mac: the loopback and tailnet addresses, and whether Tailscale is
+    /// there. Set from the plan the hub was started with; nil while the hub is off.
+    @Published private(set) var reach: LocalHubReach?
 
     private let settings: AppSettings
     private let model: AppModel
@@ -111,6 +114,7 @@ final class LocalHubController: ObservableObject {
             settings.localHubToken = nil
             model.localHubIssue = nil
             state = .off
+            reach = nil
         }
     }
 
@@ -147,6 +151,9 @@ final class LocalHubController: ObservableObject {
                 self.log.info("network changed (\(current.publicURL, privacy: .public) → \(next.publicURL, privacy: .public)); restarting hub")
                 self.stop()
                 self.launch()
+            } else {
+                // Same addresses; Tailscale may have been installed meanwhile.
+                self.reach = LocalHubReach(plan: current, tailscaleInstalled: TailscaleStatus.isInstalled())
             }
         }
     }
@@ -267,6 +274,7 @@ final class LocalHubController: ObservableObject {
         }
         process = p
         self.plan = plan
+        reach = LocalHubReach(plan: plan, tailscaleInstalled: TailscaleStatus.isInstalled())
         startedAt = Date()
         log.info("hub started pid \(p.processIdentifier) at \(plan.publicURL, privacy: .public)")
         waitUntilReady(publicURL: plan.publicURL, generation: gen)

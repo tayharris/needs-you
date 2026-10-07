@@ -17,6 +17,9 @@ final class ConnectController: ObservableObject {
         didSet { if let status { log.info("connect: \(String(describing: status), privacy: .public)") } }
     }
     private let log = Logger(subsystem: "app.needsyou.mac", category: "connect")
+    /// The link most recently connected with (pasted or opened). Settings → Join a hub
+    /// doesn't offer it again from the clipboard. In memory only, never logged.
+    @Published private(set) var lastLink: ConnectLink?
     @Published private(set) var invite: InviteResponse?
     @Published private(set) var inviteRole: HubRole = .sender
     @Published private(set) var inviteStatus: Status?
@@ -51,6 +54,7 @@ final class ConnectController: ObservableObject {
 
     func connect(_ link: ConnectLink) {
         connectTask?.cancel()
+        lastLink = link
         let hostLabel = AppSettings.displayName(for: link.hub)
         status = .working("Connecting to \(hostLabel)…")
         let host = LocalHubController.localHostName()
