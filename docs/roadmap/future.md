@@ -72,3 +72,7 @@ Spike steps:
 2. `LinkPolicy`: route `needsyou://orca/terminal` to a new `OrcaJump` in `NeedsYouCore` (pure validation, unit tested) and an executor in the app target.
 3. The hook and the Orca block add the link when `$ORCA_TERMINAL_HANDLE` is set. Update `tests/test_orca.py` and the README/installer block together.
 4. Phase 2, local terminals: the hook records `TERM_PROGRAM` and `ITERM_SESSION_ID`, or the tty. iTerm can select a session by id, and Terminal.app a tab by tty, through AppleScript. That needs a one-time Automation permission prompt for NeedsYou, so it's opt-in in Settings, and the request comes from a Settings click (never from the panel).
+
+## Keyboard navigation in the open panel
+
+Owner idea (2026-10-07): with the panel open, arrow keys move between cards and their links, and Enter opens the highlighted one. The panel never takes focus (CLAUDE.md rule 2), so this would need Carbon hotkeys for the arrows and Return armed only while the user opened the panel by hand (the way Escape already works) and released the moment it collapses or the pointer leaves, so they never swallow keys from the app being typed in. Replaces the removed "Hotkey also opens the top card's first link" option.

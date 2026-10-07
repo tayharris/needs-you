@@ -128,7 +128,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         show.state = MenuBarFormat.panelMenuChecked(visibility: model.visibility, now: now) ? .on : .off
         // Shown as a hint only; the global shortcut (Settings → Panel) is what does it.
         let combo = model.settings.hotKey
-        if let key = combo.menuKeyEquivalent, !model.settings.hotKeyOpensTopLink {
+        if let key = combo.menuKeyEquivalent {
             show.keyEquivalent = key
             show.keyEquivalentModifierMask = HotKeyController.menuModifiers(combo)
         }
