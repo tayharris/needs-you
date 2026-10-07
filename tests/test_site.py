@@ -36,6 +36,7 @@ class Page(HTMLParser):
         self.errors = []
         self.ids = set()
         self.links = []
+        self.assets = []  # href of every <link> but data: URIs
         self.anchors = []  # (attrs, text) for every <a>
         self.text = []
         self._a = None
@@ -54,6 +55,8 @@ class Page(HTMLParser):
         for k in ("href", "src"):
             if a.get(k):
                 self.links.append(a[k])
+                if tag == "link" and not a[k].startswith("data:"):
+                    self.assets.append(a[k])
         if tag == "meta" and a.get("name"):
             self.meta[a["name"]] = a.get("content", "")
         if tag == "title":
@@ -163,11 +166,47 @@ class SiteTests(unittest.TestCase):
                     with self.subTest(page=name, link=link[:80]):
                         self.assertIn(m.group(1), LINK_HOSTS, "link to an unexpected host")
 
+    def test_self_hosted_assets(self):
+        # Stylesheets and fonts are same-origin only: no third-party font or CSS hosts.
+        for name, p in self.pages.items():
+            for href in p.assets:
+                with self.subTest(page=name, href=href[:80]):
+                    self.assertNotRegex(href, r"^(?:[a-z]+:)?//", "<link> must be same-origin")
+        csp = re.search(r"Content-Security-Policy: (.*)", read_site("_headers")).group(1)
+        self.assertIn("font-src 'self';", csp)
+        self.assertIn("style-src 'self';", csp)
+
+    def test_fonts(self):
+        css = read_site("styles.css")
+        urls = re.findall(r'url\("([^"]+)"\)', css)
+        self.assertTrue(urls)
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertTrue(url.startswith("fonts/") and url.endswith(".woff2"), url)
+                with open(os.path.join(SITE, url), "rb") as fh:
+                    self.assertEqual(fh.read(4), b"wOF2")
+        self.assertEqual(css.count("font-display: swap"), css.count("@font-face"))
+        self.assertIn("SIL Open Font License", read_site(os.path.join("fonts", "OFL.txt")))
+
+    def test_no_domain_yet(self):
+        # The domain isn't bought yet: canonical/og:url stay commented out until it is.
+        html = re.sub(r"<!--.*?-->", "", read_site("index.html"), flags=re.S)
+        self.assertNotIn('rel="canonical"', html)
+        self.assertNotIn('property="og:url"', html)
+
+    def test_css_hex_only_in_primitives(self):
+        # Like the design tokens it follows: a hex appears only as a primitive
+        # (--name: #hex; at the top of :root); every rule references a variable.
+        for n, line in enumerate(read_site("styles.css").splitlines(), 1):
+            if re.search(r"#[0-9a-fA-F]{3,8}\b", line):
+                with self.subTest(line=n):
+                    self.assertRegex(line, r"^\s*--[\w-]+: #[0-9a-fA-F]{3,8};", line.strip())
+
     def test_no_personal_hostnames(self):
         # Only the documented placeholders: hub-a.example.ts.net, <tailnet>, devbox.
         for name in sorted(os.listdir(SITE)):
             path = os.path.join(SITE, name)
-            if not os.path.isfile(path):
+            if not os.path.isfile(path) or name.endswith(".woff2"):
                 continue
             text = read_site(name)
             with self.subTest(file=name):

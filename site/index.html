@@ -6,28 +6,36 @@
   <title>needs-you</title>
   <meta name="description" content="One inbox for &quot;you have to do something&quot;. Your agents, servers and CI post when they need you; a small pill on your Mac shows it, and it goes away when it's handled.">
   <meta name="color-scheme" content="dark light">
-  <meta name="theme-color" content="#18191a" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="needs-you">
   <meta property="og:title" content="needs-you">
   <meta property="og:description" content="One inbox for &quot;you have to do something&quot;, fed by your agents, servers and CI.">
   <meta name="twitter:card" content="summary">
+  <!-- DOMAIN PLACEHOLDER: no domain is chosen yet (docs/roadmap/site-deploy.md).
+       Once it is, uncomment and set the real origin; add og:image (1200x630 PNG) too.
+  <link rel="canonical" href="https://SITE_DOMAIN/">
+  <meta property="og:url" content="https://SITE_DOMAIN/">
+  -->
 
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2318191a'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23fcd34d' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23fcd34d'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <script src="site.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
 
-  <header class="wrap top">
-    <a class="brand" href="#main"><span class="dot" aria-hidden="true"></span>needs-you</a>
-    <nav aria-label="Primary">
-      <a href="#install">Install</a>
-      <a href="#source">Source</a>
-    </nav>
+  <header class="bar">
+    <div class="wrap top">
+      <a class="brand" href="#main"><span class="dot" aria-hidden="true"></span>needs-you</a>
+      <nav aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#install">Install</a>
+        <a href="#source">Source</a>
+      </nav>
+    </div>
   </header>
 
   <main id="main" class="wrap">
