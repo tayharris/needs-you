@@ -49,7 +49,7 @@ New Swift test classes must be registered in `mac/Sources/NeedsYouSelfTest/main.
 4. **Hubs bind loopback or the tailnet only.** Never `0.0.0.0`/`::` by default; the hub refuses them unless explicitly overridden.
 5. **No personal hostnames or tailnet names outside `docs/PLAN.md`.** Use `hub-a.example.ts.net`, `<tailnet>`, `devbox`.
 6. **API changes update everything in one change:** `docs/API.md`, the hub, the CLI if it's affected, the Mac client (`mac/Sources/NeedsYouCore/HubClient.swift`, `Models.swift`), and tests. Unknown fields stay ignored both ways. Use the `api-change` skill.
-7. **Link scheme allow-list** (`https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`) is enforced in both the hub and `LinkPolicy.swift`. Change both or neither.
+7. **Link scheme allow-list** (`https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`, plus the app's own `needsyou://` action paths) is enforced in both the hub and `LinkPolicy.swift`. Change both or neither.
 8. Senders must never fail the caller's job: the CLI exits 0 when it queues, and hooks always exit 0.
 
 ## In flux
