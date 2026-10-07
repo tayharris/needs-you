@@ -10,6 +10,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- Mac app: **a hub on this Mac that starts but never answers no longer leaves you at "Hub unreachable".** After 30 s the pill says **Hub not answering** and the panel shows a card saying what's wrong with a **Restart hub** button (it restarts in place; nothing takes focus). Settings → Your inbox shows the hub's last output and the same button. If the hub answers later after all, it all clears by itself.
 - Mac app: **with more than 500 open items, the rest never showed up.** The app's full poll got the first 500 and its cursor then skipped the others. It now asks for up to 2,000 at once and follows the hub's `next` for the rest (a hub from 0.1.3 or earlier still stops at 2,000; update it with the Mac).
 
 - Mac app: a card you mark **Done** (or dismiss) right after opening the panel no longer flashes back for a poll. Opening the panel marks cards seen, and a poll that brought the seen version before the Done reached the hub put the card back; now only a change from its sender (new title, body, priority or steps) brings a closed card back.

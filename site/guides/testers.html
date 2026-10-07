@@ -107,6 +107,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <tr><td><em>Port 8765 is already in use by another program</em></td><td>Another copy of Needs You (in another user account, or one you built) or another program holds port 8765. Quit it, then quit and reopen this one.</td></tr>
 </tbody>
 </table></div>
+<p>If it says <strong>Hub not answering</strong>, the hub started but hasn't answered for 30 seconds. Click the pill: the card there has <strong>Restart hub</strong> (so does <strong>Your inbox</strong>, with the hub's last output). If it keeps happening, quit and reopen the app, and send the output of <code>log show --last 10m --predicate 'subsystem == "app.needsyou.mac"'</code> with your report.</p>
 <p>Only want to look around? <strong>General → Demo mode</strong> shows sample items without a hub. Turn it off again before section 6.</p>
 <h2 id="5-tailscale-or-not">5. Tailscale, or not? <a class="anchor" href="#5-tailscale-or-not" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">

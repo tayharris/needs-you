@@ -133,6 +133,9 @@ final class AppModel: ObservableObject {
 
     /// Set by LocalHubController when the bundled hub can't run (no Python, port taken).
     @Published var localHubIssue: String?
+    /// Set by LocalHubController: the bundled hub started but hasn't answered in time
+    /// (`localHubIssue` says so); the panel offers Restart.
+    @Published var localHubNotAnswering = false
     /// Set by LocalHubController: the URL other machines use while the hub on this Mac runs.
     @Published var localHubPublicURL: String? {
         didSet { if localHubPublicURL != oldValue { recordSetupProgress() } }
@@ -202,6 +205,8 @@ final class AppModel: ObservableObject {
         s.hubReachable = lastCheck != nil
         if !settings.runLocalHub || isDemo {
             s.localHub = .off
+        } else if localHubNotAnswering {
+            s.localHub = .notAnswering
         } else if let url = localHubPublicURL {
             s.localHub = .running(loopbackOnly: SetupChecklist.isLoopbackOnly(publicURL: url))
         } else {
@@ -313,6 +318,7 @@ final class AppModel: ObservableObject {
 
     /// Footer / tooltip status: "hub2 · 10:42", "Demo · 10:42", or the error.
     var statusLine: String {
+        if !isConfigured && localHubNotAnswering { return "Hub on this Mac isn't answering" }
         if !isConfigured { return localHubIssue != nil ? "Hub on this Mac can't start · click for Settings" : "No hub set up · click to set up" }
         let time = lastCheck.map { Self.timeFormatter.string(from: $0) } ?? "–"
         if let lastError { return "\(lastError) · \(time)" }
@@ -322,6 +328,7 @@ final class AppModel: ObservableObject {
 
     /// Idle at rest: a short line that keeps the pill findable, so it can be dragged or hidden.
     var idleRestLine: String {
+        if !isConfigured && localHubNotAnswering { return "Hub not answering" }
         if !isConfigured { return localHubIssue != nil ? "Hub can't start" : "Set up Needs You" }
         if lastError != nil { return "Can't reach hub" }
         let tips = setupCards.count

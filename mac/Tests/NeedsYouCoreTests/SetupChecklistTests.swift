@@ -23,7 +23,29 @@ final class SetupChecklistTests: XCTestCase {
         ("testLoopbackDetection", testLoopbackDetection),
         ("testOtherHosts", testOtherHosts),
         ("testClaudeHookDetection", testClaudeHookDetection),
+        ("testHubNotAnsweringOffersARestart", testHubNotAnsweringOffersARestart),
     ]
+
+    func testHubNotAnsweringOffersARestart() {
+        let stuck = state { $0.hasHub = true; $0.localHub = .notAnswering }
+        XCTAssertEqual(SetupChecklist.pending(stuck), [.restartHub])
+        // It's the hub's state, not a tip: setup tips off or an old dismissal don't hide it,
+        // and it's never recorded as done.
+        XCTAssertEqual(SetupChecklist.pending(state { $0.hasHub = true; $0.localHub = .notAnswering; $0.enabled = false }), [.restartHub])
+        XCTAssertEqual(SetupChecklist.pending(state {
+            $0.hasHub = true; $0.localHub = .notAnswering; $0.closed = [SetupTip.restartHub.rawValue]
+        }), [.restartHub])
+        XCTAssertFalse(SetupChecklist.satisfied(freshHub()).contains(.restartHub))
+        XCTAssertFalse(SetupChecklist.pending(freshHub()).contains(.restartHub))
+        XCTAssertEqual(SetupChecklist.pending(state { $0.localHub = .notAnswering; $0.isDemo = true }), [])
+        // It comes first, with a Restart button that runs in place (no focus), and no Dismiss.
+        let cards = SetupChecklist.cards(state: state { $0.hasHub = true; $0.hubReachable = true; $0.canInvite = true
+            $0.localHub = .notAnswering })
+        XCTAssertEqual(cards.first?.tip, .restartHub)
+        XCTAssertEqual(cards.first?.buttons.map(\.action), [.restartLocalHub, .openSettings(.thisMac)])
+        XCTAssertEqual(cards.first?.dismissible, false)
+        XCTAssertEqual(SetupChecklist.card(.connectSender, state: stuck).dismissible, true)
+    }
 
     private func state(_ configure: (inout SetupState) -> Void = { _ in }) -> SetupState {
         var s = SetupState()
