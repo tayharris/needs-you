@@ -1164,10 +1164,57 @@ def _gh() -> Optional[str]:
     return shutil.which("gh")
 
 
+def release_provenance(gh: str, v: str, tarball: str, tarball_sha: str, tmp: str) -> str:
+    """Security audit #17 (c): the release's release-manifest.json must list this server
+    tarball with this sha256, and carry a GitHub build-provenance attestation from
+    RELEASE_REPO's release workflow (`gh attestation verify`). Raises UpdateRefused on any
+    failure (never fails open), except that a private repo can't have attestations (GitHub
+    attests public repos only on this plan, and the release workflow skips the step there):
+    then it returns a note saying so. Returns what was checked."""
+    import subprocess
+    sub = os.path.join(tmp, "manifest")
+    os.makedirs(sub)
+    try:
+        r = subprocess.run([gh, "release", "download", "v" + v, "--repo", RELEASE_REPO,
+                            "--pattern", "release-manifest.json", "--dir", sub],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise UpdateRefused("gh failed (%s)" % type(e).__name__)
+    if r.returncode != 0:
+        raise UpdateRefused("gh couldn't download release-manifest.json of v%s (%s)"
+                            % (v, clean((r.stderr.strip().splitlines() or [""])[-1])))
+    path = os.path.join(sub, "release-manifest.json")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            rm = json.load(fh)
+        listed = {str(a.get("name")): str(a.get("sha256") or "").lower() for a in rm.get("assets") or []}
+        if rm.get("version") != v:
+            raise UpdateRefused("release v%s's release-manifest.json is for another version" % v)
+    except (OSError, ValueError, AttributeError, TypeError):
+        raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
+    if listed.get(tarball) != tarball_sha:
+        raise UpdateRefused("release v%s's release-manifest.json doesn't list this %s" % (v, tarball))
+    try:
+        r = subprocess.run([gh, "attestation", "verify", path, "--repo", RELEASE_REPO],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        if r.returncode == 0:
+            return "build provenance verified"
+        why = clean((r.stderr.strip().splitlines() or ["no output"])[-1])
+        p = subprocess.run([gh, "api", "repos/" + RELEASE_REPO, "--jq", ".private"],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise UpdateRefused("gh attestation verify failed (%s)" % type(e).__name__)
+    if p.returncode == 0 and p.stdout.strip() == "true":
+        return "no build provenance to check (%s is private, so GitHub doesn't attest it)" % RELEASE_REPO
+    raise UpdateRefused("release v%s has no valid build provenance (gh attestation verify: %s); "
+                        "not updating anything" % (v, why))
+
+
 def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, str]], str]:
     """sha256 of each named /dl file as the GitHub release vX.Y.Z of RELEASE_REPO has it,
-    from its server tarball (itself checked against the release's SHA256SUMS). Returns
-    (digests, "") or (None, why the cross-check couldn't run)."""
+    from its server tarball (itself checked against the release's SHA256SUMS, its
+    release-manifest.json and that manifest's build provenance). Returns (digests, what the
+    provenance check found) or (None, why the cross-check couldn't run)."""
     import subprocess
     import tarfile
     import tempfile
@@ -1197,6 +1244,7 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
             tar_path = os.path.join(tmp, tarball)
             if _sha256_file(tar_path) != sums.get(tarball):
                 raise UpdateRefused("the release's %s doesn't match its SHA256SUMS" % tarball)
+            note = release_provenance(gh, v, tarball, sums.get(tarball, ""), tmp)
             out: Dict[str, str] = {}
             with tarfile.open(tar_path, "r:gz") as tf:
                 for name in names:
@@ -1209,7 +1257,7 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
                         member = None
                     if member is not None:
                         out[name] = hashlib.sha256(member.read()).hexdigest()
-            return out, ""
+            return out, note
         except (OSError, ValueError, tarfile.TarError) as e:
             raise UpdateRefused("couldn't read release v%s (%s)" % (v, type(e).__name__))
 
@@ -1241,7 +1289,7 @@ def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, A
         if digests.get(name) != want:
             raise UpdateRefused("%s from the hub doesn't match release v%s on GitHub; not updating anything"
                                 % (name, clean(manifest.get("version"))))
-    return "matches release v%s on GitHub" % clean(manifest.get("version"))
+    return "matches release v%s on GitHub (%s)" % (clean(manifest.get("version")), why)
 
 
 # -- apply, back up, roll back --------------------------------------------------------
