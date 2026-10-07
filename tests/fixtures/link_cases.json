@@ -1,0 +1,549 @@
+{
+ "comment": "Link decisions both sides must make identically: the hub's link_allowed (tests/test_link_mirror.py) and the Mac app's LinkPolicy.isAllowed (LinkCasesTests.swift). Security audit #14. app_stricter: app actions the hub accepts by prefix and the app's parser refuses.",
+ "cases": [
+  {
+   "url": "https://github.com/acme/api/pull/42/files",
+   "allowed": true
+  },
+  {
+   "url": "HTTPS://github.com/acme/api/pull/42",
+   "allowed": true
+  },
+  {
+   "url": "https://a.example/x%20y",
+   "allowed": true
+  },
+  {
+   "url": "https://a.example:8443/p?q=1&r=a%3Ab#frag",
+   "allowed": true
+  },
+  {
+   "url": "https://a.example/search?q=branch%3Amain&x=/y?z",
+   "allowed": true
+  },
+  {
+   "url": "https://acme.atlassian.net/browse/ACME-4170",
+   "allowed": true
+  },
+  {
+   "url": "https://a.example/#/route?x=1",
+   "allowed": true
+  },
+  {
+   "url": "slack://channel?team=T0&id=C0",
+   "allowed": true
+  },
+  {
+   "url": "figma://file/abc",
+   "allowed": true
+  },
+  {
+   "url": "msteams://teams.microsoft.com/l/chat/0/0",
+   "allowed": true
+  },
+  {
+   "url": "discord://discord.com/channels/1/2",
+   "allowed": true
+  },
+  {
+   "url": "linear://acme/issue/ACME-12",
+   "allowed": true
+  },
+  {
+   "url": "LINEAR://acme/issue/ACME-12",
+   "allowed": true
+  },
+  {
+   "url": "linear://acme/issue/ACME-12?comment=abc",
+   "allowed": true
+  },
+  {
+   "url": "vscode://file/home/dev/x.py",
+   "allowed": true
+  },
+  {
+   "url": "vscode://file/Users/me/My%20Project",
+   "allowed": true
+  },
+  {
+   "url": "vscode://file/Users/me/repo/src/app.py:12:3",
+   "allowed": true
+  },
+  {
+   "url": "vscode://file/Users/jos%C3%A9/repo/",
+   "allowed": true
+  },
+  {
+   "url": "vscode://file/Users/me/node_modules/@types/x.d.ts",
+   "allowed": true
+  },
+  {
+   "url": "vscode://file/Users/me/a..b/c.txt",
+   "allowed": true
+  },
+  {
+   "url": "VSCODE://file/home/dev/x.py",
+   "allowed": true
+  },
+  {
+   "url": "cursor://file/x",
+   "allowed": true
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+devbox/home/me/repo",
+   "allowed": true
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+devbox",
+   "allowed": true
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+me@devbox/home/me",
+   "allowed": true
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+hub-a.example.ts.net/srv/app",
+   "allowed": true
+  },
+  {
+   "url": "cursor://vscode-remote/ssh-remote+devbox/home/me/repo",
+   "allowed": true
+  },
+  {
+   "url": "vscode://vscode-remote/tunnel+my-box/home/me",
+   "allowed": true
+  },
+  {
+   "url": "vscode://anthropic.claude-code/open?session=sess-1234-abcd",
+   "allowed": true
+  },
+  {
+   "url": "vscode://anthropic.claude-code/open?session=0f8e6c4a-1b2c-4d5e-8f90-123456789abc",
+   "allowed": true
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_4f261ae3-041a-47c6-872a-cf02e1e40804",
+   "allowed": true
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_ab12cd34&environment=dev%20box",
+   "allowed": true
+  },
+  {
+   "url": "needsyou://terminal/focus?app=wezterm&pane=12",
+   "allowed": true
+  },
+  {
+   "url": "needsyou://terminal/focus?app=tmux&target=work:1.2",
+   "allowed": true
+  },
+  {
+   "url": "https:a.example/x",
+   "allowed": false
+  },
+  {
+   "url": "https:/a.example/x",
+   "allowed": false
+  },
+  {
+   "url": "https:///no-host",
+   "allowed": false
+  },
+  {
+   "url": "https://",
+   "allowed": false
+  },
+  {
+   "url": "https://:443/x",
+   "allowed": false
+  },
+  {
+   "url": "https://user@a.example/x",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example@evil.example/x",
+   "allowed": false
+  },
+  {
+   "url": "https://user:pw@a.example/",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example\\@evil.example/",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example\\x",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/x%",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/x%zz",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/x%2",
+   "allowed": false
+  },
+  {
+   "url": "https://a.ex%ample/",
+   "allowed": false
+  },
+  {
+   "url": "https://xn--a.example/\u00e9",
+   "allowed": false
+  },
+  {
+   "url": "https://gith\u00fcb.com/x",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/x y",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/\"x\"",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/<x>",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/{x}",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/a|b",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/a^b",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/a`b",
+   "allowed": false
+  },
+  {
+   "url": "https://[::1]/x",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/x[1]",
+   "allowed": false
+  },
+  {
+   "url": "https://a.example/#a#b",
+   "allowed": false
+  },
+  {
+   "url": "//a.example/x",
+   "allowed": false
+  },
+  {
+   "url": "http://a.example/x",
+   "allowed": false
+  },
+  {
+   "url": "javascript:alert(1)",
+   "allowed": false
+  },
+  {
+   "url": "javascript://a.example/%0aalert(1)",
+   "allowed": false
+  },
+  {
+   "url": "file:///etc/passwd",
+   "allowed": false
+  },
+  {
+   "url": "data:text/html,x",
+   "allowed": false
+  },
+  {
+   "url": "slack:channel?team=T",
+   "allowed": false
+  },
+  {
+   "url": "linear:acme/issue/ACME-12",
+   "allowed": false
+  },
+  {
+   "url": "linear://u@acme/issue/ACME-12",
+   "allowed": false
+  },
+  {
+   "url": "linear://acme/issue/ACME\\12",
+   "allowed": false
+  },
+  {
+   "url": "linear://acme/issue/ACME-12%",
+   "allowed": false
+  },
+  {
+   "url": "linearx://acme/issue/ACME-12",
+   "allowed": false
+  },
+  {
+   "url": "orca://skills/share/abc123",
+   "allowed": false
+  },
+  {
+   "url": "vscode://settings/editor.fontSize",
+   "allowed": false
+  },
+  {
+   "url": "vscode://ms-python.python/run?x=1",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode.git/clone?url=https://evil.example/r.git",
+   "allowed": false
+  },
+  {
+   "url": "cursor://anysphere.cursor-retrieval/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://File/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://Anthropic.Claude-Code/open?session=sess-1234-abcd",
+   "allowed": false
+  },
+  {
+   "url": "vscode://anthropic%2Eclaude-code/open?session=sess-1234-abcd",
+   "allowed": false
+  },
+  {
+   "url": "vscode://%66ile/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://u@file/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://evil.example@file/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file@evil.example/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file:80/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode:file/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode:/file/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode:///file/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file//server/share",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x?windowId=_blank",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x#L1",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x%0a",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x%00",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x%1b",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x%7F",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/x%2",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a%2Fb",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a%2fb",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a%3Fb",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a%23b",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/%2e%2e/etc/passwd",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a%252Fb",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a%5Cb",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a/../etc/passwd",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a/./b",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a/..",
+   "allowed": false
+  },
+  {
+   "url": "vscode://file/a/..:12",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+devbox/a/../b",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+-oProxyCommand=touch%20x/",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+%2DoProxyCommand=x/",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+7b22686f73744e616d65223a222d6f78227d/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+-x@devbox/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/wsl+Ubuntu/home/me",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/dev-container+7b7d/x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+devbox/x?windowId=_blank",
+   "allowed": false
+  },
+  {
+   "url": "vscode://vscode-remote/ssh-remote+devbox//etc",
+   "allowed": false
+  },
+  {
+   "url": "vscode://anthropic.claude-code/open?prompt=rm%20-rf",
+   "allowed": false
+  },
+  {
+   "url": "vscode://anthropic.claude-code/open?session=sess-1234-abcd&prompt=x",
+   "allowed": false
+  },
+  {
+   "url": "vscode://anthropic.claude-code/open?session=short",
+   "allowed": false
+  },
+  {
+   "url": "vscode://anthropic.claude-code/new?session=sess-1234-abcd",
+   "allowed": false
+  },
+  {
+   "url": "vscode://anthropic.claude-code/open?session=sess-1234-abcd#x",
+   "allowed": false
+  },
+  {
+   "url": "needsyou:orca/terminal?handle=term_ab12cd34",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://u@orca/terminal?handle=term_ab12cd34",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_ab12cd34\\",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_ab12cd34%",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_ab12cd34#a#b",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://connect?hub=x&code=y",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://orca/terminalx?handle=t",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://terminal/focus",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_ab12cd34&environment=\u00e9",
+   "allowed": false
+  }
+ ],
+ "app_stricter": [
+  {
+   "url": "needsyou://orca/terminal?handle=bad",
+   "hub": true,
+   "app": false,
+   "why": "the handle must be term_ plus hex"
+  },
+  {
+   "url": "needsyou://orca/terminal?handle=term_ab12cd34&cmd=rm",
+   "hub": true,
+   "app": false,
+   "why": "unknown parameter"
+  },
+  {
+   "url": "needsyou://terminal/focus?app=wezterm&pane=x",
+   "hub": true,
+   "app": false,
+   "why": "pane must be digits"
+  }
+ ]
+}

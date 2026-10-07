@@ -10,6 +10,7 @@ let entries =
     + testEntries(ItemStoreCountTests.self, ItemStoreCountTests.allTests)
     + testEntries(ItemStoreLaterTests.self, ItemStoreLaterTests.allTests)
     + testEntries(LinkPolicyTests.self, LinkPolicyTests.allTests)
+    + testEntries(LinkCasesTests.self, LinkCasesTests.allTests)
     + testEntries(HubClientTests.self, HubClientTests.allTests)
     + testEntries(SupportTests.self, SupportTests.allTests)
     + testEntries(DemoFeedTests.self, DemoFeedTests.allTests, async: DemoFeedTests.asyncTests)

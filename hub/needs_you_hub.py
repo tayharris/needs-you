@@ -53,20 +53,39 @@ LINK_SCHEMES = ("https", "slack", "vscode", "cursor", "figma", "msteams", "disco
 #   <s>://vscode-remote/ssh-remote+<host>[/<abs path>]  a Remote-SSH window
 #   <s>://vscode-remote/tunnel+<name>[/<abs path>]      a Remote Tunnel (only the user's own)
 #   <s>://anthropic.claude-code/open?session=<id>       the Claude Code extension's session tab
-# Paths take RFC 3986 path characters and %XX escapes, never an escaped control character.
+# Paths take RFC 3986 path characters and %XX escapes, but no escape that decoding would turn
+# into structure or into something to decode again (%2F '/', %3F '?', %23 '#', %2E '.', %25
+# '%', %5C '\') or into a control character (%00-%1F, %7F), and no '.' or '..' segment.
 # Host names start with a letter or digit and take no '%', so no "-oProxyCommand" option
 # injection even after decoding; a name that is all hex starting "7b" ('{' hex-encoded) is
 # refused because Remote-SSH reads that as a JSON host spec. Refused: other authorities
 # (extension handlers, vscode://settings, ...), wsl+ and dev-container+ remotes, userinfo,
 # ports, queries and fragments on file and remote links, any other parameter on the Claude link.
 EDITOR_LINK_PATTERN = (
-    r"(?i:vscode|cursor)://(?:"
-    r"file/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*"
+    r"(?i:vscode|cursor)://(?![^?#]*/\.\.?(?:[/:]|$))(?:"
+    r"file/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff]|2[35EeFf]|3[Ff]|5[Cc])[0-9A-Fa-f]{2})*"
     r"|vscode-remote/(?:ssh-remote\+(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}@)?(?!7[Bb][0-9A-Fa-f]*(?:/|$))"
     r"|tunnel\+)[A-Za-z0-9][A-Za-z0-9._-]{0,252}"
-    r"(?:/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*)?"
+    r"(?:/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff]|2[35EeFf]|3[Ff]|5[Cc])[0-9A-Fa-f]{2})*)?"
     r"|anthropic\.claude-code/open\?session=[A-Za-z0-9-]{8,64})"
 )
+# Every link must first match this raw grammar, on the string itself, before anything parses
+# it, so Python's urlsplit and Foundation's URL never get to read one string two ways.
+# Mirrored byte for byte by LinkPolicy.rawLinkPattern (hard rule 7; tests/test_link_mirror.py
+# compares them and runs tests/fixtures/link_cases.json, which the Swift tests run too).
+# It is a strict subset of RFC 3986 that every URL parser reads the same way: plain ASCII;
+# "<scheme>://" required; the authority has no userinfo '@' and ends at the first '/', '?' or
+# '#'; at most one '#'; every '%' is followed by two hex digits; no whitespace, backslash,
+# quotes, '[]', '<>', '^', '`', '{|}' or controls anywhere. An https link also needs a host
+# (HTTPS_HOST_PATTERN, mirrored as LinkPolicy.httpsHostPattern).
+LINK_RAW_PATTERN = (
+    r"(?i:[a-z][a-z0-9+.-]*)://(?:[A-Za-z0-9._~!$&'()*+,;=:-]|%[0-9A-Fa-f]{2})*"
+    r"(?:[/?](?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*)?"
+    r"(?:#(?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*)?"
+)
+LINK_RAW_RE = re.compile(LINK_RAW_PATTERN)
+HTTPS_HOST_PATTERN = r"(?i:https)://[^/?#:]"
+HTTPS_HOST_RE = re.compile(HTTPS_HOST_PATTERN)
 EDITOR_LINK_RE = re.compile(EDITOR_LINK_PATTERN)
 EDITOR_SCHEMES = ("vscode", "cursor")
 # The Mac app's own scheme, for a fixed set of actions only (mirrored by
@@ -322,11 +341,15 @@ def link_allowed(url: Any) -> bool:
     """The scheme allow-list (mirrored by the Mac app's LinkPolicy.swift)."""
     if not isinstance(url, str) or _URL_BAD_RE.search(url) or _CTRL_RE.search(url):
         return False
-    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if LINK_RAW_RE.fullmatch(url) is None:
+        return False
+    scheme = url.split(":", 1)[0].lower()  # from the raw string, never a parser's split
     if scheme == "needsyou":
         return url.lower().startswith(APP_LINK_PREFIXES)
     if scheme in EDITOR_SCHEMES:
         return EDITOR_LINK_RE.fullmatch(url) is not None
+    if scheme == "https" and HTTPS_HOST_RE.match(url) is None:
+        return False
     return scheme in LINK_SCHEMES
 
 
@@ -350,6 +373,14 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
     if _URL_BAD_RE.search(url):
         raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
     scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if len(url) <= len(scheme) + 1:
+        raise _invalid(path + ".url", "%s.url is empty" % path)
+    if (scheme in LINK_SCHEMES or scheme == "needsyou") and not LINK_RAW_RE.fullmatch(url):
+        raise _invalid(path + ".url", "%s.url is not allowed: links must be plain ASCII "
+                       "<scheme>://..., with no user@ before the host, at most one '#', no "
+                       "backslash, quotes, '[]<>^`{|}', and '%%' only as %%XX" % path)
+    if scheme == "https" and not HTTPS_HOST_RE.match(url):
+        raise _invalid(path + ".url", "%s.url: an https link needs a host" % path)
     if scheme in EDITOR_SCHEMES and not link_allowed(url):
         raise _invalid(path + ".url", "%s.url: %s links may only be %s://file/<abs path>[:line[:col]], "
                        "%s://vscode-remote/ssh-remote+<host>[/<abs path>] (or tunnel+<name>), or "
@@ -359,8 +390,6 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
         raise _invalid(path + ".url", "%s.url scheme %r is not allowed (allowed: %s, %s)"
                        % (path, scheme, ", ".join(LINK_SCHEMES),
                           ", ".join(p + "..." for p in APP_LINK_PREFIXES)))
-    if len(url) <= len(scheme) + 1:
-        raise _invalid(path + ".url", "%s.url is empty" % path)
     return {"label": label, "url": url}
 
 

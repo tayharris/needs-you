@@ -150,6 +150,14 @@ Link URLs must use one of these schemes (case-insensitive): `https`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
 `file`, `javascript` and `orca`, is a 400. Text strings are trimmed.
 
+Before the scheme is even read, every link URL (the app actions below included) must fit a
+strict, parser-neutral subset of RFC 3986, checked on the raw string by the hub and the Mac app
+with the same regex: plain ASCII; `<scheme>://` (so `https:host` and `vscode:/file/x` are
+refused); no userinfo `@` before the host; no backslash, whitespace, quotes, `[ ] < > ^` `` ` ``
+`{ | }` or control characters anywhere; `%` only as `%XX`; at most one `#`. An `https` link
+also needs a host (`https:///x` and `https://:443/` are refused). Percent-encode anything
+else.
+
 `vscode` and `cursor` reach every installed extension's URI handler, so only these shapes are
 accepted (the scheme is case-insensitive, the rest is matched exactly, lowercase):
 
@@ -160,8 +168,10 @@ accepted (the scheme is case-insensitive, the rest is matched exactly, lowercase
 | `vscode://vscode-remote/tunnel+<name>[/<abs path>]` | A Remote Tunnel window (tunnels belong to the user's own account); same name rule |
 | `vscode://anthropic.claude-code/open?session=<id>` | The Claude Code extension's tab for that session. Exactly one parameter, `session`, 8–64 letters, digits or `-` |
 
-The same with `cursor://`. Paths take RFC 3986 path characters and `%XX` escapes, but never an
-escaped control character (`%00`–`%1F`, `%7F`). Everything else is a 400: other authorities
+The same with `cursor://`. Paths take RFC 3986 path characters and `%XX` escapes, but no escape
+that decoding would turn into structure or into something to decode again (`%2F`, `%3F`, `%23`,
+`%2E`, `%25`, `%5C`), no escaped control character (`%00`–`%1F`, `%7F`), and no `.` or `..`
+segment. Everything else is a 400: other authorities
 (`vscode://<publisher.extension>/…`, `vscode://settings/…`), `wsl+`, `dev-container+` and other
 remote kinds, userinfo, ports, queries or fragments on file and remote links, other paths or
 parameters on the Claude link. `orca://` was dropped: Orca's only link
