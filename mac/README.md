@@ -147,6 +147,18 @@ The app keeps nothing on disk except a few `UserDefaults` keys and the files abo
 - Panel positions are remembered for the 10 most recently used display layouts; tokens and their roles are pruned with the hub list.
 - Switching hubs cancels the old poll loop and stream; there's one 15 s UI timer for the app's lifetime.
 
+## Design
+
+The reasons behind the panel's behaviour (the founding decisions are [ADR 0007](../docs/adr/0007-founding-design.md)).
+
+- **Window behaviour, the part menu bar tools usually get wrong.** An `NSPanel` with `.nonactivatingPanel`, so clicking it never steals focus from what you're typing in; `level = .floating` (above normal windows, below system alerts); `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, which keeps it on every Space and over full-screen apps, and out of Mission Control and ⌘Tab. Its position is saved per display layout (keyed by the set of connected screens), so docking and undocking put it back where it belongs.
+- **Idle is faint but findable.** "Nothing needs <you>" at about 35% opacity, so it can always be dragged or hidden. An early 28×10 pt sliver at 10% was too easy to lose.
+- **Arrivals spring out long enough to read.** The preview holds 14 s (an early 4 s was too fast), pointing at it holds it, urgent items pulse twice, and with Reduce Motion it fades instead.
+- **A way back.** An agent app has no Dock icon, so snoozing and hiding need the global shortcut and the menu bar icon to bring it back. Urgent items break through a snooze by default, as one pulse.
+- **Cards** carry limited markdown (bold, italic, code, lists, links; no HTML, no remote images) and link buttons that open through `NSWorkspace` only for allowed schemes, because agents write these links.
+- **Look.** A HUD-style `NSVisualEffectView`, 14 pt corners and a hairline border; SF Pro Text with SF Mono for keys and hashes; priority colours urgent = red 400, normal = amber 300, low = slate 400, and the glow and ring take the highest open priority's colour. No sound.
+- **Work and personal.** A schedule (weekdays 7:00–18:00 work by default) picks the context; the other side's count shows faintly (`3 · 1`), so nothing is fully hidden. On weekdays at 7:30 the panel opens once with the open work items, oldest first, or on the first wake after 7:30.
+
 ## Develop
 
 ```bash
@@ -181,7 +193,7 @@ To try a link by hand: `open 'needsyou://connect?hub=http%3A%2F%2F127.0.0.1%3A9&
 
 **Layout.**
 
-- `Sources/NeedsYouCore`: model, hub client, failover, demo feed, merge/count rules, link policy, limited markdown, snooze/schedule maths, panel geometry and free positioning, `FloatingPanel`, connect links and invites (`Connect.swift`), the local hub's command line and network detection (`LocalHub.swift`), bounded prefs and `prefsVersion` migrations (`Prefs.swift`), the `tokens.json` store (`TokenStore.swift`), menu bar rules and text (`MenuBar.swift`), setup tips (`SetupChecklist.swift`: which local setup cards apply, their text and guide links). Unit-tested.
+- `Sources/NeedsYouCore`: model, hub client, failover, demo feed, merge/count rules, link policy, limited markdown, snooze/schedule maths, panel geometry and free positioning, `FloatingPanel`, connect links and invites (`Connect.swift`), the local hub's command line and network detection (`LocalHub.swift`), bounded prefs and `prefsVersion` migrations (`Prefs.swift`), the `tokens.json` store (`TokenStore.swift`), menu bar rules and text (`MenuBar.swift`), the bundle id (`AppIdentity.swift`), setup tips (`SetupChecklist.swift`: which local setup cards apply, their text and guide links). Unit-tested.
 - `Sources/NeedsYou`: the app (AppKit `NSPanel` + SwiftUI). `LocalHubController` runs the hub child; `ConnectController` redeems links and creates invites; `MenuBarController` owns the status item. `Phase3/` holds the new-item preview, work/personal schedule, 7:30 summary and SSE. It plugs in through `AppModel` hooks and can be removed.
 - `Resources/Info.plist`: bundle metadata (`app.needsyou.mac`, display name "Needs You", `LSUIElement`, the `needsyou` URL scheme, ATS exceptions).
 

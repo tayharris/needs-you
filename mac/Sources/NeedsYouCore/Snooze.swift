@@ -1,6 +1,6 @@
 import Foundation
 
-/// Snooze durations from PLAN.md ("Snoozed / hidden" and per-card snooze).
+/// Snooze durations (the panel snooze and the per-card snooze).
 public enum SnoozeOption: String, CaseIterable, Identifiable, Sendable {
     case minutes15, minutes30, hour1, hours3, tomorrow
 
@@ -54,7 +54,7 @@ public enum PanelVisibility: Equatable, Sendable {
 }
 
 /// Decides whether a new arrival should break through a panel snooze/hide
-/// (PLAN.md open decision 2; a setting that defaults to on).
+/// (a setting that defaults to on).
 public enum SnoozeBreakthrough {
     /// Any new or re-escalated urgent `needs` item breaks through, in either context:
     /// AGENT-GUIDE defines urgent as "broken now / someone blocked today".

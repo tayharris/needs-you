@@ -179,9 +179,9 @@ class HookOrcaBodyTests(unittest.TestCase):
 
     def test_terminal_link_for_a_real_handle(self):
         h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
-        argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="ACME Sandbox")
+        argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="Work Sandbox")
         self.assertEqual(self.links(argv),
-                         ["Terminal=needsyou://orca/terminal?handle=%s&environment=ACME%%20Sandbox" % h])
+                         ["Terminal=needsyou://orca/terminal?handle=%s&environment=Work%%20Sandbox" % h])
         argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="-bad;env")
         self.assertEqual(self.links(argv), ["Terminal=needsyou://orca/terminal?handle=" + h])
 

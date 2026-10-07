@@ -1,7 +1,7 @@
 // swift-tools-version:5.9
 import PackageDescription
 
-// NeedsYou: the macOS reader for the needs-you hub (see docs/PLAN.md, "Mac app design").
+// NeedsYou: the macOS reader for the needs-you hub (see mac/README.md, "Design").
 //
 // Targets:
 //   NeedsYouCore      Model, hub client, demo source, merge/count logic, link policy,

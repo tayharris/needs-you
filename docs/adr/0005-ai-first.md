@@ -5,7 +5,7 @@
 
 ## Context
 
-needs-you exists because agents get blocked on people and have no good way to say so ([PLAN.md, "Why"](../PLAN.md#why)). Its senders are mostly AI agents and automations, and much of its setup will be done by agents too: a person clicks "Invite a machine" and pastes a prompt into Claude Code, which installs the CLI and configures itself. The code itself is also largely written by coding agents working in parallel worktrees.
+needs-you exists because agents get blocked on people and have no good way to say so ([0007](0007-founding-design.md#context)). Its senders are mostly AI agents and automations, and much of its setup will be done by agents too: a person clicks "Invite a machine" and pastes a prompt into Claude Code, which installs the CLI and configures itself. The code itself is also largely written by coding agents working in parallel worktrees.
 
 If agents are the main users and contributors, the parts they read are product surface, not documentation afterthoughts.
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Which URLs the app is willing to open (PLAN.md, "Cards"). Agents write these links,
+/// Which URLs the app is willing to open (mac/README.md, "Design"). Agents write these links,
 /// so anything outside the allow-list is shown as plain text and is never opened.
 public enum LinkPolicy {
     public static let allowedSchemes: Set<String> = [

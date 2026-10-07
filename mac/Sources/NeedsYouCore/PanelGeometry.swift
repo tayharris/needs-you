@@ -121,7 +121,7 @@ public enum PanelGeometry {
     }
 
     /// A key for the set of connected screens, independent of their order, so docking and
-    /// undocking each restore their own placement (PLAN.md, "Display").
+    /// undocking each restore their own placement (mac/README.md, "Design").
     public static func configurationKey(_ screens: [CGRect]) -> String {
         screens.map(screenID).sorted().joined(separator: "|")
     }

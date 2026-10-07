@@ -35,7 +35,7 @@ VERSION = "0.1.1"
 API_VERSION = "v1"
 
 # ---------------------------------------------------------------------------
-# Limits and enums (docs/PLAN.md "Data model" / "API (v1)")
+# Limits and enums (docs/API.md "The item" and "Endpoints")
 # ---------------------------------------------------------------------------
 
 CONTEXTS = ("work", "personal")

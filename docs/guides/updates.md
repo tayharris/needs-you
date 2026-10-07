@@ -23,7 +23,7 @@ tag vX.Y.Z → CI tests → draft release (+ release-manifest.json) → you publ
 
 **Check now** checks at once. When an update passes the checks, **Download and install now** (or **Restart to update** once it's downloaded) installs it straight away, and **Skip X.Y.Z** skips that version.
 
-What it checks before installing anything: the release is published (not a draft); it is newer than this app; it carries `release-manifest.json`, which only the release job writes, after the tests passed; the zip matches the SHA-256 in both the manifest and `SHA256SUMS`, and its size; the release workflow run named in the manifest concluded `success` on the same commit (when the token can read Actions); this Mac meets the manifest's `min_macos`; the unpacked app has the same bundle id, the promised version, a valid seal (`codesign --verify --deep --strict`), the same signing team as this app (when this app has one), no symlink pointing outside the bundle, and a bundled `install.sh`. Downloads come from GitHub's own hosts over https only, redirects included, from the repo fixed in the app. Once a release signing key is pinned in the app, a valid Ed25519 signature over the manifest is required too (owner steps: [release-signing.md](../security/release-signing.md)).
+What it checks before installing anything: the release is published (not a draft); it is newer than this app; it carries `release-manifest.json`, which only the release job writes, after the tests passed; the zip matches the SHA-256 in both the manifest and `SHA256SUMS`, and its size; the release workflow run named in the manifest concluded `success` on the same commit (when the token can read Actions); this Mac meets the manifest's `min_macos`; the unpacked app has the same bundle id (`app.needsyou.mac`), the promised version, a valid seal (`codesign --verify --deep --strict`), the same signing team as this app (when this app has one), no symlink pointing outside the bundle, and a bundled `install.sh`. Downloads come from GitHub's own hosts over https only, redirects included, from the repo fixed in the app. Once a release signing key is pinned in the app, a valid Ed25519 signature over the manifest is required too (owner steps: [release-signing.md](../security/release-signing.md)).
 
 **Installing** runs the app's bundled `install.sh`: it quits the app, swaps `/Applications/NeedsYou.app` (keeping `NeedsYou.app.previous`), relaunches in the background, and puts the previous version back if the new one doesn't stay running. A version that was rolled back is skipped from then on. Settings says "Updated to X.Y.Z" after a successful update. The log is `~/Library/Application Support/NeedsYou/Updates/install.log`. To go back by hand: `/Applications/NeedsYou.app/Contents/Resources/scripts/install.sh --rollback`.
 
@@ -32,6 +32,16 @@ After an update, if the macOS firewall asks whether `python3` may accept incomin
 **While the repo is private** the app needs a GitHub credential. It uses, in order: the GitHub CLI's token (`gh auth token`, from `/opt/homebrew/bin/gh` or `/usr/local/bin/gh`, so run `gh auth login` once), then a fine-grained token (Contents: read and Actions: read, on this repo only) in `~/Library/Application Support/NeedsYou/github.token` with mode 600. The token stays in memory, goes only to `api.github.com`, and is never logged or shown; Settings shows only where it came from.
 
 **Testing without a release:** `mac/scripts/make-test-feed.sh --version 0.1.2` builds a feed in `/tmp/needsyou-feed`; `defaults write app.needsyou.mac updateFeedURL file:///tmp/needsyou-feed/` points the app at it (or `NEEDS_YOU_UPDATE_FEED`). Settings then shows a **Test update source** warning, and nothing from it installs automatically. `defaults delete app.needsyou.mac updateFeedURL` goes back to GitHub.
+
+### Upgrade note: the bundle id moved to `app.needsyou.mac`
+
+0.1.x had a different bundle id. From the next release the app is `app.needsyou.mac`, so macOS treats it as a new app:
+
+- **Settings reset once** (they live in the bundle id's defaults domain). To keep them, quit the app and, before the new one's first launch, run `defaults export <old id> - | defaults import app.needsyou.mac -`. After an `install.sh` update the old id is in `/Applications/NeedsYou.app.previous/Contents/Info.plist` (`CFBundleIdentifier`).
+- **Hub data, tokens and update state stay put.** `~/Library/Application Support/NeedsYou` is named after the app, not the bundle id.
+- **Open at login has to be turned on again** in Settings → General. Remove the stale entry in System Settings → General → Login Items if one is left.
+- **The firewall may ask again** whether `python3` may accept incoming connections: choose **Allow**.
+- **How to get it:** 0.1.1 has no in-app updater, so install the new zip by hand, or run `mac/scripts/install.sh --app <new NeedsYou.app>`. It finds the running app by its path, quits it, and swaps it at the same `/Applications/NeedsYou.app`; `install.sh --rollback` goes back. A build with the updater but the old id refuses an update with the new id; install that one update the same way, and later ones are automatic again.
 
 ## Sender machines
 

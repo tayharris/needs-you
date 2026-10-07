@@ -16,7 +16,7 @@ final class ConnectController: ObservableObject {
     @Published private(set) var status: Status? {
         didSet { if let status { log.info("connect: \(String(describing: status), privacy: .public)") } }
     }
-    private let log = Logger(subsystem: "app.needsyou.mac", category: "connect")
+    private let log = Logger(subsystem: AppIdentity.logSubsystem, category: "connect")
     /// The link most recently connected with (pasted or opened). Settings → Other hubs
     /// doesn't offer it again from the clipboard. In memory only, never logged.
     @Published private(set) var lastLink: ConnectLink?

@@ -19,8 +19,10 @@ from support import ROOT
 SITE = os.path.join(ROOT, "site")
 DONATE_PLACEHOLDER = "#donate-tbd"
 RELEASE = os.environ.get("NEEDS_YOU_SITE_RELEASE") == "1"
+# The site's own origin (canonical and og:url).
+SITE_ORIGIN = "https://needsyou.app/"
 # Hosts the site may link to. Anything else (a personal domain, a tailnet name) fails.
-LINK_HOSTS = {"github.com"}
+LINK_HOSTS = {"github.com", "needsyou.app"}
 REPO_LINK = re.compile(r"^https://github\.com/tayharris/needs-you/(?:blob|tree)/main/(.+?)/?(?:#.*)?$")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
         "source", "track", "wbr", "path", "circle", "rect", "line", "polyline", "polygon",
@@ -170,6 +172,8 @@ class SiteTests(unittest.TestCase):
         # Stylesheets and fonts are same-origin only: no third-party font or CSS hosts.
         for name, p in self.pages.items():
             for href in p.assets:
+                if href == SITE_ORIGIN:   # rel="canonical", not an asset
+                    continue
                 with self.subTest(page=name, href=href[:80]):
                     self.assertNotRegex(href, r"^(?:[a-z]+:)?//", "<link> must be same-origin")
         csp = re.search(r"Content-Security-Policy: (.*)", read_site("_headers")).group(1)
@@ -188,11 +192,11 @@ class SiteTests(unittest.TestCase):
         self.assertEqual(css.count("font-display: swap"), css.count("@font-face"))
         self.assertIn("SIL Open Font License", read_site(os.path.join("fonts", "OFL.txt")))
 
-    def test_no_domain_yet(self):
-        # The domain isn't bought yet: canonical/og:url stay commented out until it is.
+    def test_site_domain(self):
+        # The site lives at https://needsyou.app: canonical and og:url name it.
         html = re.sub(r"<!--.*?-->", "", read_site("index.html"), flags=re.S)
-        self.assertNotIn('rel="canonical"', html)
-        self.assertNotIn('property="og:url"', html)
+        self.assertIn('<link rel="canonical" href="%s">' % SITE_ORIGIN, html)
+        self.assertIn('<meta property="og:url" content="%s">' % SITE_ORIGIN, html)
 
     def test_css_hex_only_in_primitives(self):
         # Like the design tokens it follows: a hex appears only as a primitive

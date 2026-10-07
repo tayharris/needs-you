@@ -2,7 +2,7 @@ import Foundation
 
 /// Where items come from: the real hub, or the demo fixture.
 public protocol ItemFeed: Sendable {
-    /// Open items; with `since`, only those updated at or after it (PLAN.md, "API (v1)").
+    /// Open items; with `since`, only those updated at or after it (docs/API.md, `GET /v1/items`).
     func fetchOpen(since: Date?) async throws -> [Item]
     /// PATCH /v1/items/{id}.
     func patch(id: String, _ patch: ItemPatch) async throws
@@ -83,7 +83,7 @@ public enum HubError: Error, LocalizedError, Equatable {
     }
 }
 
-/// Client for the hub's v1 API, as specified in docs/PLAN.md.
+/// Client for the hub's v1 API, as specified in docs/API.md.
 public final class HubClient: ItemFeed, @unchecked Sendable {
     public let config: HubConfig
     private let session: URLSession

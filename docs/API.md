@@ -1,7 +1,7 @@
 # needs-you hub API (v1): wire contract
 
 This is the exact contract implemented by `hub/needs_you_hub.py`. The design rationale is in
-`PLAN.md`; how senders should behave is in `AGENT-GUIDE.md`; running hubs is in `HUB.md`.
+`adr/0007-founding-design.md`; how senders should behave is in `AGENT-GUIDE.md`; running hubs is in `HUB.md`.
 
 ## Conventions
 

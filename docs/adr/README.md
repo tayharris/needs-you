@@ -10,6 +10,7 @@ Short records of decisions that shape the code: Context, Decision, Consequences,
 | [0004](0004-always-on-hub.md) | How to provide an always-on hub | Proposed |
 | [0005](0005-ai-first.md) | AI-first repo and product | Accepted |
 | [0006](0006-security-tightening-2026-10.md) | Tighten link validation and add a Host check in `/v1` (audit #14, #16) | Accepted |
+| [0007](0007-founding-design.md) | Founding design: one inbox, senders post, the Mac pulls | Accepted |
 
 Template:
 

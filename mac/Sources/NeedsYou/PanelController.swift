@@ -289,7 +289,7 @@ final class PanelController {
         let m = model.metrics
         switch display {
         case .idle:
-            // PLAN.md: a faint "Nothing needs <you>" pill; on hover "all clear" and the last check.
+            // mac/README.md "Design": a faint "Nothing needs <you>" pill; on hover "all clear" and the last check.
             let text = (model.hovering ? model.idleHoverLine : model.idleRestLine) as NSString
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
                 + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot

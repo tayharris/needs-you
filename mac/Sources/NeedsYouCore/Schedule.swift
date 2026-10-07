@@ -1,7 +1,7 @@
 import Foundation
 
-// Phase 3: the work/personal schedule and the start-of-day summary (PLAN.md,
-// "Work and personal" and "Start of day").
+// Phase 3: the work/personal schedule and the start-of-day summary (mac/README.md,
+// "Design").
 
 /// Default: weekdays 7:00–18:00 = work, everything else = personal.
 public struct WorkSchedule: Equatable, Sendable {

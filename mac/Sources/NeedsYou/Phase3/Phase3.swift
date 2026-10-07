@@ -2,7 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
-// Phase 3 (PLAN.md build order): the springy new-item preview, the work/personal
+// Phase 3 (the build order in docs/adr/0007-founding-design.md): the springy new-item preview, the work/personal
 // schedule, the 7:30 start-of-day summary, and the optional SSE stream.
 //
 // Everything lives in this folder and plugs into AppModel's hooks. To build phase 2

@@ -22,16 +22,11 @@ Status: plan only. `site/` exists and previews locally (`python3 -m http.server 
 
 Alternative to Git integration: `wrangler pages deploy site --project-name needs-you` from CI on `main` (a `CLOUDFLARE_API_TOKEN` secret with Pages:Edit). Prefer Git integration until CI exists.
 
-## Domain options
+## Domain
 
-| Option | Notes |
-|---|---|
-| `needs-you.pages.dev` | Free, immediate, fine for a soft launch |
-| `needsyou.dev` / `needs-you.dev` | `.dev` is HSTS-preloaded (HTTPS-only), good fit for a dev tool. Check availability |
-| `needsyou.app` | Also HSTS-preloaded; matches `NeedsYou.app` |
-| A subdomain of an existing domain | No purchase; less brandable |
+The domain is **`needsyou.app`** (HSTS-preloaded, so HTTPS-only; it matches `NeedsYou.app` and the app's bundle id `app.needsyou.mac`). `index.html` already names `https://needsyou.app/` as `canonical` and `og:url`.
 
-With a custom domain on Cloudflare: add it under the Pages project → Custom domains; redirect `www` to the apex with a Bulk Redirect; then add `og:url` and an `og:image` (1200×630 PNG in `site/`) to `index.html`.
+On Cloudflare: add it under the Pages project → Custom domains; redirect `www` to the apex with a Bulk Redirect; then add an `og:image` (1200×630 PNG in `site/`) to `index.html`. Until the domain points at Pages, `needs-you.pages.dev` serves the same site.
 
 ## Docs hosting
 

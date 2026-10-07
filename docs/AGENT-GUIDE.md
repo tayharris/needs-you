@@ -2,7 +2,7 @@
 
 Give this file to any machine, automation or agent that should tell a person something. A
 short version is served on every invite page (`/join/<code>`) and ships as the Claude Code
-skill. The design is in `PLAN.md`.
+skill. The design is in `adr/0007-founding-design.md`.
 
 ## What it's for
 

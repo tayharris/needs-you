@@ -19,7 +19,7 @@ import os
 /// This activates the terminal, never Needs You (hard rule 2). If a CLI switch fails, its
 /// command goes on the clipboard. Worst case: the wrong tab or just the right app.
 enum TerminalJumpRunner {
-    private static let log = Logger(subsystem: "app.needsyou.mac", category: "terminal-jump")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "terminal-jump")
 
     static func run(_ jump: TerminalJump, appleScript enabled: Bool) {
         let plan = TerminalJumpPlan.plan(jump, appleScriptEnabled: enabled)

@@ -344,7 +344,8 @@ final class UpdaterTests: XCTestCase {
         XCTAssertNotNil(UpdateGate.verifyDownload(sha256: zipSum, size: 999, candidate: c))
         XCTAssertNotNil(UpdateGate.verifyDownload(sha256: String(repeating: "0", count: 64), size: 1000, candidate: c))
 
-        let id = "app.needsyou.mac"
+        let id = AppIdentity.bundleID
+        XCTAssertEqual(id, "app.needsyou.mac")
         XCTAssertNil(UpdateGate.verifyBundle(info: ["CFBundleIdentifier": id, "CFBundleShortVersionString": "0.2.0"], expectedID: id, version: c.version))
         XCTAssertNotNil(UpdateGate.verifyBundle(info: ["CFBundleIdentifier": "com.evil", "CFBundleShortVersionString": "0.2.0"], expectedID: id, version: c.version))
         XCTAssertNotNil(UpdateGate.verifyBundle(info: ["CFBundleIdentifier": id, "CFBundleShortVersionString": "0.1.9"], expectedID: id, version: c.version))

@@ -133,7 +133,7 @@ final class AppSettings: ObservableObject {
     @Published var demoMode: Bool {
         didSet { defaults.set(demoMode, forKey: Key.demoMode) }
     }
-    /// PLAN.md open decision 2: urgent items break through a snooze. Default on.
+    /// Urgent items break through a snooze (mac/README.md, "Design"). Default on.
     @Published var urgentBreaksSnooze: Bool {
         didSet { defaults.set(urgentBreaksSnooze, forKey: Key.urgentBreaksSnooze) }
     }

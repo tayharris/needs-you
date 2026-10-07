@@ -1,6 +1,6 @@
 import Foundation
 
-// The item shape from docs/PLAN.md "Data model". Decoding is lenient about values the
+// The item shape from docs/API.md "The item". Decoding is lenient about values the
 // app doesn't know yet (a newer hub adding a kind or priority must not break polling).
 
 public enum ItemContext: String, Codable, CaseIterable, Sendable {
@@ -253,7 +253,7 @@ public enum HubJSON {
         return f.string(from: date)
     }
 
-    /// The hub's list response isn't pinned down in PLAN.md: accept either a bare array
+    /// Tolerant of the hub's list response shape: accept either a bare array
     /// or an object wrapping it as `items`.
     public static func decodeItemList(_ data: Data) throws -> [Item] {
         let decoder = makeDecoder()

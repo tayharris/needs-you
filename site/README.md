@@ -44,4 +44,4 @@ Not deployed yet. The plan is in [docs/roadmap/site-deploy.md](../docs/roadmap/s
 | Root directory | *(repo root)* |
 | Production branch | `main` |
 
-Once the domain is chosen, uncomment the `SITE_DOMAIN` placeholder block in `index.html` (`canonical` and `og:url`) with the real origin and add an `og:image` (a 1200×630 PNG; most crawlers ignore SVG). `tests/test_site.py` fails if either is live before then.
+The site's domain is **https://needsyou.app** (`canonical` and `og:url` in `index.html`; `tests/test_site.py` checks them). Still to do: an `og:image` (a 1200×630 PNG; most crawlers ignore SVG).

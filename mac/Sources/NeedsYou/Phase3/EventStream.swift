@@ -1,8 +1,8 @@
 import Foundation
 import NeedsYouCore
 
-/// Optional `GET /v1/stream` (server-sent events). PLAN.md doesn't define the event
-/// payload, so any event is treated as a nudge to poll now; polling stays the source of
+/// Optional `GET /v1/stream` (server-sent events). The event payload isn't part of
+/// the contract, so any event is treated as a nudge to poll now; polling stays the source of
 /// truth. A 404 means the hub has no stream, and it stops trying until restarted.
 final class EventStream: @unchecked Sendable {
     private var task: Task<Void, Never>?
