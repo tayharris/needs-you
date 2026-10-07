@@ -69,10 +69,10 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 | [Words](docs/guides/concepts.md) | Hub, sender, reader, owner, invite link, server hub, tailnet, and the Settings page for each |
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
-| [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting", plus a skill |
+| [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting" and the skill: what gets installed, what each hook posts, checking and uninstalling |
 | [Claude Code everywhere](docs/guides/claude-code-everywhere.md) | Alerts from local, SSH, tmux, VS Code Remote-SSH and Orca sessions |
 | [Tailscale](docs/guides/tailscale.md) | Putting the Mac and servers on one tailnet, checking reachability |
-| [Orca](docs/guides/orca.md) | Orca agents and automations, on one or many servers |
+| [Orca](docs/guides/orca.md) | Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example |
 | [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
