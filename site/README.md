@@ -55,13 +55,34 @@ python3 -m http.server -d site 8000
 
 ## Deploy
 
-`.github/workflows/site.yml` deploys on every push to `main` that touches `docs/`, `site/`, `README.md` or the generator (or by hand: Actions → site → Run workflow). On the self-hosted Linux runner (`vars.CI_LINUX_RUNNER`) it rebuilds the guides, runs the site tests, then:
+`.github/workflows/site.yml` deploys on every push to `main` that touches `docs/`, `site/`, `README.md` or the generator (or by hand: Actions → site → Run workflow). It never runs on pull requests, so code from a fork or a PR can't reach the self-hosted runner while it holds the deploy key. On the self-hosted Linux runner (`vars.CI_LINUX_RUNNER`), in the GitHub Environment `site`, it rebuilds the guides and runs the site tests with no secrets in reach, then, in a separate step that runs only `rsync` and `ssh`:
 
 ```bash
 rsync -a --exclude README.md --exclude _headers site/ "$SITE_DEPLOY_TARGET"
 ```
 
-`SITE_DEPLOY_TARGET` is a repo variable (`user@host:path/`), so no host name lives in the repo; without it the job is skipped. The runner's user must already be able to `ssh` to that host (key and `known_hosts`). rsync doesn't delete: a page removed from the site stays on the server until removed there.
+with a key used only for this deploy, written to a mode-600 temp file and deleted afterwards, and the server's host key pinned (`StrictHostKeyChecking=yes`, no `ssh-keyscan`). rsync doesn't delete: a page removed from the site stays on the server until removed there.
+
+**Setting it up (owner, once).** No host name lives in the repo; it all comes from repo settings:
+
+1. Make a key for this deploy only, on any machine: `ssh-keygen -t ed25519 -N '' -C needsyou-site-deploy -f site-deploy`.
+2. On the web server, restrict it to writing into the site directory, one line in the deploy user's `~/.ssh/authorized_keys` (`rrsync` ships with rsync; on Debian/Ubuntu it may be `/usr/share/doc/rsync/scripts/rrsync`, copy it onto `PATH`):
+
+   ```
+   command="rrsync -wo ~/sites/needsyou.app",restrict ssh-ed25519 AAAA... needsyou-site-deploy
+   ```
+
+3. Set the repo's settings (with `rrsync` the destination path is relative to that directory, so the target ends in `:`):
+
+   ```bash
+   gh secret set SITE_DEPLOY_KEY < site-deploy                       # then delete site-deploy
+   gh variable set SITE_DEPLOY_KNOWN_HOSTS --body "$(ssh-keyscan -t ed25519 <host>)"   # check the fingerprint
+   gh variable set SITE_DEPLOY_TARGET --body '<user>@<host>:'
+   ```
+
+   Optionally add protection rules (required reviewers, `main` only) to the `site` environment under Settings → Environments.
+
+Without `SITE_DEPLOY_TARGET` the deploy job is skipped; with it but without the key or known hosts it fails with a message.
 
 ## Cloudflare Pages
 

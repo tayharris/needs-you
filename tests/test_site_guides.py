@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sys
 import unittest
 
@@ -125,6 +126,42 @@ class RenderTests(unittest.TestCase):
         self.assertIn('<td class="ta-right"><strong>2</strong></td>', out)
         self.assertIn('<div class="table-wrap">', out)
         self.assertIn("<blockquote>\n<p><strong>Note:</strong> quoted</p>\n</blockquote>", out)
+
+
+class DeployWorkflowTests(unittest.TestCase):
+    """.github/workflows/site.yml runs on a self-hosted runner holding a deploy key: never for PRs."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, ".github", "workflows", "site.yml"), encoding="utf-8") as fh:
+            cls.text = fh.read()
+        cls.code = "\n".join(l.split(" #", 1)[0] for l in cls.text.splitlines() if not l.lstrip().startswith("#"))
+
+    def test_only_push_to_main(self):
+        on = re.search(r"^on:\n((?:[ ].*\n|\n)+)", self.code, re.M).group(1)
+        self.assertNotIn("pull_request", on)
+        self.assertNotIn("workflow_run", on)
+        self.assertRegex(on, r"push:\n\s+branches: \[main\]")
+        self.assertIn("github.ref == 'refs/heads/main'", self.code)
+        self.assertIn("environment: site", self.code)
+
+    def test_ssh_is_pinned_and_the_key_is_handled(self):
+        self.assertNotRegex(self.code, r"StrictHostKeyChecking[= ]*(?:no|accept-new)")
+        self.assertIn("StrictHostKeyChecking=yes", self.code)
+        self.assertNotIn("ssh-keyscan", self.code)
+        self.assertNotIn("set -x", self.code)
+        self.assertIn("persist-credentials: false", self.code)
+        self.assertRegex(self.code, r"(?m)^permissions:\n  contents: read$")
+        self.assertIn("if: always()", self.code)
+        # The key is only in the deploy step's env, after everything that runs repo code.
+        self.assertEqual(self.code.count("secrets."), 1)
+        self.assertLess(self.code.index("build_site_guides.py"), self.code.index("secrets.SITE_DEPLOY_KEY"))
+        self.assertLess(self.code.index("unittest"), self.code.index("secrets.SITE_DEPLOY_KEY"))
+
+    def test_no_host_in_the_workflow(self):
+        # Rule 5: the server comes from repo variables, never the file.
+        self.assertIn("vars.SITE_DEPLOY_TARGET", self.code)
+        self.assertNotRegex(self.code, r"\b[\w-]+@[\w.-]+:")
 
 
 if __name__ == "__main__":

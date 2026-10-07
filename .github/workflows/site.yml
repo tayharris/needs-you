@@ -1,11 +1,17 @@
 # Deploys needsyou.app on every push to main that touches the site or the docs it publishes.
-# Builds site/guides/ from docs/ (scripts/build_site_guides.py), runs the site tests, then
-# rsyncs site/ to the web server, the same as a deploy by hand.
+# Builds site/guides/ from docs/ (scripts/build_site_guides.py) and runs the site tests with no
+# secrets in reach, then rsyncs site/ to the web server over ssh with a dedicated deploy key.
 #
-# Needs, set once by the owner (nothing host-specific lives in the repo):
-#   repo variable SITE_DEPLOY_TARGET  rsync destination, e.g. user@web-host:sites/needsyou.app/
-#   repo variable CI_LINUX_RUNNER     the self-hosted Linux runner (shared with ci.yml), whose
-#                                     user can already ssh to that host (key and known_hosts)
+# Runs only on push to main (and by hand); never on pull requests, so code from a fork or a PR
+# never runs on the self-hosted runner that holds the deploy key. The deploy job is in the
+# GitHub Environment "site", where the owner can add protection rules.
+#
+# Set once by the owner (nothing host-specific lives in the repo; see site/README.md, Deploy):
+#   variable SITE_DEPLOY_TARGET       rsync destination, e.g. deploy@web-host:  (the path is
+#                                     fixed on the server by rrsync in authorized_keys)
+#   variable SITE_DEPLOY_KNOWN_HOSTS  the server's host key line(s), as in ~/.ssh/known_hosts
+#   secret   SITE_DEPLOY_KEY          private half of a key used only for this deploy
+#   variable CI_LINUX_RUNNER          the self-hosted Linux runner (shared with ci.yml)
 # Without SITE_DEPLOY_TARGET the deploy job is skipped.
 name: site
 
@@ -30,19 +36,43 @@ concurrency:
 
 jobs:
   deploy:
-    if: vars.SITE_DEPLOY_TARGET != ''
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target' && vars.SITE_DEPLOY_TARGET != ''
+    environment: site
     runs-on: ${{ fromJSON(vars.CI_LINUX_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # No secrets in these two steps: they run code from the checkout.
       - name: Build the guides
         run: /usr/bin/python3 scripts/build_site_guides.py
       - name: Site tests
         run: /usr/bin/python3 -m unittest discover -s tests -p 'test_site*.py'
+
+      # Only rsync and ssh from here on; nothing from the checkout runs with the key around.
       - name: Deploy
         env:
+          DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ vars.SITE_DEPLOY_KNOWN_HOSTS }}
           TARGET: ${{ vars.SITE_DEPLOY_TARGET }}
         run: |
-          rsync -a --exclude README.md --exclude _headers --exclude '__pycache__' \
-            -e 'ssh -o BatchMode=yes -o ConnectTimeout=15' site/ "$TARGET"
+          set +x
+          if [ -z "$DEPLOY_KEY" ] || [ -z "$KNOWN_HOSTS" ]; then
+            echo "::error::Set the SITE_DEPLOY_KEY secret and the SITE_DEPLOY_KNOWN_HOSTS variable (site/README.md, Deploy)."
+            exit 1
+          fi
+          umask 077
+          dir="$RUNNER_TEMP/site-deploy"
+          rm -rf "$dir"; mkdir -m 700 "$dir"
+          printf '%s\n' "$DEPLOY_KEY" > "$dir/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$dir/known_hosts"
+          chmod 600 "$dir/key" "$dir/known_hosts"
+          unset DEPLOY_KEY
+          rsync -a --exclude README.md --exclude _headers --exclude __pycache__ \
+            -e "ssh -F /dev/null -i $dir/key -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$dir/known_hosts -o ConnectTimeout=15" \
+            site/ "$TARGET"
+
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/site-deploy"
