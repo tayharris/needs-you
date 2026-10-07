@@ -501,9 +501,11 @@ final class AppModel: ObservableObject {
         if visibility.isHidden(at: Date()) && !peeking { visibility = .shown }
         isExpanded = true
         markVisibleSeen()
+        settings.pillLastOpenedAt = Date()   // the pill's "N new" starts over
     }
 
     func collapse() {
+        if isExpanded { settings.pillLastOpenedAt = Date() }   // what arrived while open was seen
         isExpanded = false
         summarySince = nil
         peeking = false
