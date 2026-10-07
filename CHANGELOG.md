@@ -14,6 +14,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Hub: a link URL with an unbalanced `[` in its host (`https://[x/y`) is a `400 invalid` naming the field, not a `500 internal`.
 - CLI: a hub URL that answers with something other than HTTP (another service on that port) or cuts its response short no longer crashes the CLI with a traceback and exit 1. It counts as an unreachable hub: the CLI tries the next URL, or queues and exits 0.
 - CLI: an outbox file that is valid JSON but not a queued request (`[]`, `null`, a missing `path`) no longer makes every later `needs-you` command crash while flushing; it moves to `outbox/failed/` like an unreadable one. A queued file another invocation already pruned is no longer an error either.
+- Hub: replication to a peer no longer stops for good when that peer's URL answers with something other than HTTP, cuts a response short, or sends JSON of the wrong shape. The per-peer thread used to die on these (until the hub restarted); now it records the error in `/v1/health` `peers[].last_error` and retries with backoff.
 
 ## [0.1.2] - 2026-10-07
 

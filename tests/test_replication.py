@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import unittest
 
-from support import (PEER_SECRET, HubTestCase, hubmod, request, snapshot, token_snapshot,
+from support import (PEER_SECRET, HubTestCase, garbage_server, hubmod, request, snapshot, token_snapshot,
                      wait_until)
 
 
@@ -37,6 +37,33 @@ class Mesh(HubTestCase):
                 print(h.hub_id, [(i["id"][-6:], i["key"], i["status"], i["title"]) for i in snapshot(h)],
                       [h.peer_status(p) for p in h.cfg["peers"]])
         self.assertTrue(ok, "hubs did not converge")
+
+
+class WorkerSurvives(Mesh):
+    def test_broken_peer_responses_dont_kill_the_worker(self):
+        """A peer URL that speaks something other than HTTP, cuts a response short, or answers
+        with JSON of the wrong shape raises outside (OSError, ValueError). The per-peer thread
+        must log it and retry, not die (replication to that peer would stop until restart)."""
+        payloads = {
+            "not http": b"SSH-2.0-OpenSSH_9.6\r\n",
+            "truncated": b"HTTP/1.0 200 OK\r\nContent-Length: 500\r\n\r\n{\"ok\"",
+            "json list": b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n[]",
+            "null max_seq": (b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n"
+                             b"{\"hub_id\": \"hub-z\", \"epoch\": \"\", \"max_seq\": null}"),
+        }
+        urls = {name: garbage_server(self, p) for name, p in payloads.items()}
+        a = self.make_hub("hub-a", start=False)
+        a.set_peers(list(urls.values()))
+        a.start()
+        sender, _ = self.tokens(a)
+        request("POST", a.url + "/v1/items", sender, {"key": "k", "title": "t"})
+        for name, url in urls.items():
+            with self.subTest(name):
+                w = a.workers[url]
+                self.assertTrue(wait_until(lambda: a.store.peer_state(url)["last_error"]
+                                           or a.store.peer_state(url)["last_push_ok"], 10))
+                time.sleep(0.5)  # a few more rounds of push and pull
+                self.assertTrue(w.is_alive(), "worker for %s died" % name)
 
 
 class Convergence(Mesh):

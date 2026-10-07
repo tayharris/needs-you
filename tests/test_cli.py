@@ -2,40 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import subprocess
-import threading
 import time
 import sys
 
-from support import CLI, HubTestCase, free_port, request
-
-
-def garbage_server(test, payload):
-    """A loopback TCP server that answers every connection with `payload` and hangs up.
-    Returns its URL; it is closed when the test ends."""
-    srv = socket.socket()
-    srv.bind(("127.0.0.1", 0))
-    srv.listen(16)
-
-    def serve():
-        while True:
-            try:
-                conn, _ = srv.accept()
-            except OSError:
-                return
-            try:
-                conn.settimeout(2)
-                conn.recv(65536)
-                conn.sendall(payload)
-            except OSError:
-                pass
-            finally:
-                conn.close()
-
-    threading.Thread(target=serve, daemon=True).start()
-    test.addCleanup(srv.close)
-    return "http://127.0.0.1:%d" % srv.getsockname()[1]
+from support import CLI, HubTestCase, free_port, garbage_server, request
 
 
 class CliTestCase(HubTestCase):
