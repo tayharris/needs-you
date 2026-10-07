@@ -313,6 +313,12 @@ def parse_client_header(raw: Any) -> Dict[str, str]:
     return out
 
 
+def _vtuple(v: Any) -> Optional[Tuple[int, int, int]]:
+    """"X.Y.Z" -> (X, Y, Z); None for anything else ("none", "unknown", "")."""
+    m = re.match(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$", v) if isinstance(v, str) else None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
 def file_version(data: bytes) -> Optional[str]:
     m = FILE_VERSION_RE.search(data[:16384].decode("utf-8", "replace"))
     return m.group(1) if m else None
@@ -689,6 +695,16 @@ CREATE TABLE IF NOT EXISTS token_clients (
   token_id TEXT PRIMARY KEY,
   client TEXT NOT NULL DEFAULT '{}',
   last_seen_at INTEGER NOT NULL
+);
+""",
+    # 5: "please update" requests from the owner (POST /v1/tokens/<id>/request-update). Local to
+    #    this hub like token_clients. `cli` is the CLI version the machine had reported when the
+    #    request was made ('' when unknown); the request clears itself once that changes.
+    """
+CREATE TABLE IF NOT EXISTS token_update_requests (
+  token_id TEXT PRIMARY KEY,
+  requested_at INTEGER NOT NULL,
+  cli TEXT NOT NULL DEFAULT ''
 );
 """,
 ]
@@ -1318,6 +1334,8 @@ class Store:
             for i in dead:
                 c.execute("DELETE FROM invites WHERE id = ?", (i,))
             out["invites"] = len(dead)
+            c.execute("DELETE FROM token_update_requests WHERE token_id NOT IN "
+                      "(SELECT id FROM tokens WHERE revoked_at IS NULL)")
         return out
 
     def compact(self, full: bool = False) -> Dict[str, Any]:
@@ -1483,6 +1501,74 @@ class Store:
                 "INSERT INTO token_clients(token_id, client, last_seen_at) VALUES(?, ?, ?) "
                 "ON CONFLICT(token_id) DO UPDATE SET client = excluded.client, last_seen_at = excluded.last_seen_at",
                 (token_id, json.dumps(merged, sort_keys=True), now))
+            return True
+
+    def request_update(self, name_or_id: str) -> Optional[Dict[str, Any]]:
+        """Mark an active sender token "update requested" on this hub (now; again refreshes the
+        time). Returns the token with `update_requested_at`, or None when there is no active
+        token by that id or name. Raises ApiError 400 for a non-sender token."""
+        now = self.now_ms()
+        with self.tx() as c:
+            row = c.execute("SELECT * FROM tokens WHERE (id = ? OR name = ?) AND revoked_at IS NULL "
+                            "ORDER BY id = ? DESC LIMIT 1", (name_or_id, name_or_id, name_or_id)).fetchone()
+            if row is None:
+                return None
+            rec = dict(row)
+            if rec["role"] != "sender":
+                raise ApiError(400, "invalid", "only sender tokens run the CLI; this one is %s" % rec["role"])
+            cli = ""
+            seen = c.execute("SELECT client FROM token_clients WHERE token_id = ?", (rec["id"],)).fetchone()
+            if seen is not None:
+                try:
+                    v = json.loads(seen["client"]).get("cli")
+                except (ValueError, AttributeError):
+                    v = None
+                cli = v if isinstance(v, str) and _vtuple(v) else ""
+            c.execute("INSERT INTO token_update_requests(token_id, requested_at, cli) VALUES(?, ?, ?) "
+                      "ON CONFLICT(token_id) DO UPDATE SET requested_at = excluded.requested_at, cli = excluded.cli",
+                      (rec["id"], now, cli))
+            rec["update_requested_at"] = now
+            return rec
+
+    def clear_update_request(self, name_or_id: str) -> Optional[Dict[str, Any]]:
+        """Withdraw the request (idempotent). None when there is no active token by that id or name."""
+        with self.tx() as c:
+            row = c.execute("SELECT * FROM tokens WHERE (id = ? OR name = ?) AND revoked_at IS NULL "
+                            "ORDER BY id = ? DESC LIMIT 1", (name_or_id, name_or_id, name_or_id)).fetchone()
+            if row is None:
+                return None
+            rec = dict(row)
+            c.execute("DELETE FROM token_update_requests WHERE token_id = ?", (rec["id"],))
+            rec["update_requested_at"] = None
+            return rec
+
+    def update_requests(self) -> Dict[str, int]:
+        """token id -> requested_at, for every pending request on this hub."""
+        with self.lock:
+            rows = self.conn.execute("SELECT token_id, requested_at FROM token_update_requests").fetchall()
+        return {r["token_id"]: int(r["requested_at"]) for r in rows}
+
+    def update_pending(self, token_id: str, client: Dict[str, str]) -> bool:
+        """Called on every sender request with what it reported. True while an update request
+        for this token stands. The request clears itself when the reported CLI version differs
+        from the one recorded with the request, or is at least this hub's version (what its
+        /dl serves). A request made before the machine reported anything adopts its first
+        report as the baseline."""
+        with self.lock:
+            row = self.conn.execute("SELECT cli FROM token_update_requests WHERE token_id = ?",
+                                    (token_id,)).fetchone()
+            if row is None:
+                return False
+            reported = client.get("cli") or ""
+            now_v, base_v = _vtuple(reported), _vtuple(row["cli"])
+            if now_v is None:
+                return True
+            if (base_v is not None and now_v != base_v) or now_v >= (_vtuple(VERSION) or (0, 0, 0)):
+                self.conn.execute("DELETE FROM token_update_requests WHERE token_id = ?", (token_id,))
+                return False
+            if base_v is None:
+                self.conn.execute("UPDATE token_update_requests SET cli = ? WHERE token_id = ?",
+                                  (reported, token_id))
             return True
 
     def token_clients(self) -> Dict[str, Dict[str, Any]]:
@@ -1860,7 +1946,13 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers ---------------------------------------------------------
 
+    # Set by _note_client when the calling sender token has an update request pending on this
+    # hub; reset per request (a keep-alive connection reuses the handler).
+    _update_requested = False
+
     def _send(self, status: int, body: Any, headers: Optional[Dict[str, str]] = None) -> None:
+        if self._update_requested and 200 <= status < 300 and isinstance(body, dict):
+            body = dict(body, update_requested=True)
         data = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -1921,7 +2013,9 @@ class Handler(BaseHTTPRequestHandler):
         if rec.get("role") != "sender":
             return
         try:
-            self.hub.store.note_client(rec["id"], parse_client_header(self.headers.get(CLIENT_HEADER)))
+            client = parse_client_header(self.headers.get(CLIENT_HEADER))
+            self.hub.store.note_client(rec["id"], client)
+            self._update_requested = self.hub.store.update_pending(rec["id"], client)
         except sqlite3.Error:
             pass  # bookkeeping only: never fail the request over it
 
@@ -1948,6 +2042,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(401, "unauthorized", "bad peer secret")
 
     def _route(self, method: str) -> None:
+        self._update_requested = False
         try:
             parsed = urllib.parse.urlsplit(self.path)
             path = parsed.path.rstrip("/") or "/"
@@ -1988,6 +2083,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._revoke_invite(urllib.parse.unquote(path[len("/v1/invites/"):]))
             if path == "/v1/tokens" and method == "GET":
                 return self._list_tokens()
+            if path.startswith("/v1/tokens/") and path.endswith("/request-update") and method in ("POST", "DELETE"):
+                return self._request_update(urllib.parse.unquote(path[len("/v1/tokens/"):-len("/request-update")]),
+                                            method == "POST")
             if path.startswith("/v1/tokens/") and method == "DELETE":
                 return self._revoke_token(urllib.parse.unquote(path[len("/v1/tokens/"):]))
             if path.startswith("/join/") and method in ("GET", "HEAD"):
@@ -2089,6 +2187,7 @@ class Handler(BaseHTTPRequestHandler):
     def _list_tokens(self) -> None:
         me = self._auth("owner")
         clients = self.hub.store.token_clients()
+        requests = self.hub.store.update_requests()
         out = []
         for r in self.hub.store.list_tokens():
             if r["revoked_at"] is not None:
@@ -2097,8 +2196,20 @@ class Handler(BaseHTTPRequestHandler):
             out.append({"id": r["id"], "name": r["name"], "role": r["role"],
                         "created_at": fmt_ts(r["created_at"]), "open_items": int(r["open_items"]),
                         "current": r["id"] == me["id"], "client": seen.get("client") or {},
-                        "last_seen_at": fmt_ts(seen.get("last_seen_at"))})
+                        "last_seen_at": fmt_ts(seen.get("last_seen_at")),
+                        "update_requested_at": fmt_ts(requests.get(r["id"]))})
         self._send(200, {"tokens": out})
+
+    def _request_update(self, name_or_id: str, on: bool) -> None:
+        self._auth("owner")
+        if not name_or_id or "/" in name_or_id:
+            raise ApiError(404, "not_found", "no such endpoint")
+        st = self.hub.store
+        rec = st.request_update(name_or_id) if on else st.clear_update_request(name_or_id)
+        if rec is None:
+            raise ApiError(404, "not_found", "no active token with that id or name")
+        self._send(200, {"id": rec["id"], "name": rec["name"],
+                         "update_requested_at": fmt_ts(rec["update_requested_at"])})
 
     def _revoke_token(self, name_or_id: str) -> None:
         me = self._auth("owner")

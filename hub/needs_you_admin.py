@@ -8,6 +8,8 @@
     needs_you_admin.py token add ci-myrepo --role sender     # a bare token, printed once
     needs_you_admin.py token list
     needs_you_admin.py token revoke ci-myrepo
+    needs_you_admin.py token request-update devbox           # ask that machine to update
+    needs_you_admin.py token clear-update devbox             # withdraw the request
 
 Config: --config, else $NEEDS_YOU_HUB_CONFIG, else ~/.config/needs-you/hub.json (user
 install), else /etc/needs-you/hub.json (system install). --db overrides the database path.
@@ -66,6 +68,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     tsub.add_parser("list", help="list tokens (never shows the secret)")
     rev = tsub.add_parser("revoke", help="revoke a token by name or id")
     rev.add_argument("name_or_id")
+    ru = tsub.add_parser("request-update", help="ask a sender machine to update (this hub only)")
+    ru.add_argument("name_or_id")
+    cu = tsub.add_parser("clear-update", help="withdraw an update request")
+    cu.add_argument("name_or_id")
 
     inv = sub.add_parser("invite", help="manage invite links")
     isub = inv.add_subparsers(dest="cmd")
@@ -118,17 +124,38 @@ def token_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         return 0
     if args.cmd == "list":
         rows = store.list_tokens()
+        requests = store.update_requests()
         if args.json:
             print(json.dumps([{"id": r["id"], "name": r["name"], "role": r["role"],
                                "created_at": hubmod.fmt_ts(r["created_at"]),
                                "revoked_at": hubmod.fmt_ts(r["revoked_at"]),
-                               "open_items": r["open_items"]} for r in rows], indent=2))
+                               "open_items": r["open_items"],
+                               "update_requested_at": hubmod.fmt_ts(requests.get(r["id"]))} for r in rows], indent=2))
             return 0
         print("%-26s  %-28s  %-6s  %-8s  %-5s  %s" % ("ID", "NAME", "ROLE", "STATE", "OPEN", "CREATED"))
         for r in rows:
-            print("%-26s  %-28s  %-6s  %-8s  %-5d  %s" % (
+            print("%-26s  %-28s  %-6s  %-8s  %-5d  %s%s" % (
                 r["id"], r["name"], r["role"], "revoked" if r["revoked_at"] else "active",
-                r["open_items"], hubmod.fmt_ts(r["created_at"])))
+                r["open_items"], hubmod.fmt_ts(r["created_at"]),
+                "  update requested" if r["id"] in requests and not r["revoked_at"] else ""))
+        return 0
+    if args.cmd in ("request-update", "clear-update"):
+        try:
+            rec = (store.request_update(args.name_or_id) if args.cmd == "request-update"
+                   else store.clear_update_request(args.name_or_id))
+        except hubmod.ApiError as e:
+            sys.stderr.write("error: %s\n" % e.message)
+            return 1
+        if rec is None:
+            sys.stderr.write("no active token named or with id %r\n" % args.name_or_id)
+            return 1
+        if args.json:
+            print(json.dumps({"id": rec["id"], "name": rec["name"],
+                              "update_requested_at": hubmod.fmt_ts(rec["update_requested_at"])}))
+        elif rec["update_requested_at"]:
+            print("update requested for %s (%s); it sees the request on its next call to this hub" % (rec["name"], rec["id"]))
+        else:
+            print("cleared the update request for %s (%s)" % (rec["name"], rec["id"]))
         return 0
     if args.cmd == "revoke":
         recs = store.revoke_token(args.name_or_id)

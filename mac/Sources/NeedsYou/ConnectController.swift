@@ -165,8 +165,25 @@ final class ConnectController: ObservableObject {
         }
     }
 
-    /// Runs `action` against the first reachable owner hub, then reloads both lists from it.
-    private func runAccess(working: String, success: String?,
+    /// Request update: every owner hub records it (requests are per hub, and the machine may
+    /// talk to any of them first); the machine updates, or is reminded, on its next call.
+    func requestUpdate(_ token: TokenSummary) {
+        runAccess(working: "Asking \(token.name) to update…",
+                  success: "Asked \(token.name) to update. It sees the request the next time it posts or flushes (within about 5 minutes).",
+                  everyHub: true) { client, hub, owner in
+            try await client.requestUpdate(id: token.id, hub: hub, token: owner)
+        }
+    }
+
+    func clearUpdateRequest(_ token: TokenSummary) {
+        runAccess(working: "Withdrawing the update request for \(token.name)…", success: nil, everyHub: true) { client, hub, owner in
+            try await client.clearUpdateRequest(id: token.id, hub: hub, token: owner)
+        }
+    }
+
+    /// Runs `action` against the first reachable owner hub (with `everyHub`, against every
+    /// owner hub, needing one to succeed), then reloads both lists from the first reachable one.
+    private func runAccess(working: String, success: String?, everyHub: Bool = false,
                            _ action: @escaping @Sendable (InviteClient, URL, String) async throws -> Void) {
         let owners = settings.ownerHubConfigs()
         guard !owners.isEmpty else {
@@ -178,9 +195,22 @@ final class ConnectController: ObservableObject {
         let client = self.client
         accessTask = Task { [weak self] in
             var lastError: Error = ConnectError.invalidResponse
+            var done = false
+            if everyHub {
+                var errors: [Error] = []
+                for hub in owners {
+                    do { try await action(client, hub.baseURL, hub.token) } catch { errors.append(error) }
+                }
+                if errors.count == owners.count, let first = errors.first {
+                    guard let self, !Task.isCancelled else { return }
+                    self.accessStatus = .failure((first as? LocalizedError)?.errorDescription ?? first.localizedDescription)
+                    return
+                }
+                done = true
+            }
             for hub in owners {
                 do {
-                    try await action(client, hub.baseURL, hub.token)
+                    if !done { try await action(client, hub.baseURL, hub.token) }
                     let invites = try await client.listInvites(hub: hub.baseURL, token: hub.token)
                     let tokens = try await client.listTokens(hub: hub.baseURL, token: hub.token)
                     guard let self, !Task.isCancelled else { return }

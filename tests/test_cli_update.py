@@ -15,7 +15,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from support import CLI, ROOT, HubTestCase, free_port, hubmod
+from support import CLI, ROOT, HubTestCase, free_port, hubmod, wait_until
 
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
 HOOKS_JSON = os.path.join(ROOT, "integrations", "claude-code", "hooks.json")
@@ -37,6 +37,7 @@ class FakeHub:
         self.bad = set(bad)
         self.bad_shape = False
         self.redirect = False
+        self.update_requested = False
         self.headers = []
         self.hosts = []
         owner = self
@@ -70,6 +71,14 @@ class FakeHub:
                 if self.path.startswith("/dl/") and name in owner.files:
                     return self.reply(200, owner.files[name])
                 self.reply(404, b'{"error":"not_found"}')
+
+            def do_POST(self):
+                owner.headers.append((self.path, self.headers.get("X-Needs-You-Client")))
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                body = {"id": "01TEST", "created": True, "changed": True}
+                if owner.update_requested:
+                    body["update_requested"] = True
+                self.reply(201, json.dumps(body).encode())
 
             def reply(self, status, data):
                 self.send_response(status)
@@ -665,6 +674,95 @@ class RealHub(HubTestCase):
         subprocess.run([sys.executable, cli, "health"], env=env, capture_output=True, text=True, timeout=60)
         tid = hub.store.token_by_secret(sender)["id"]
         self.assertEqual(hub.store.token_clients()[tid]["client"]["cli"], hubmod.VERSION)
+
+
+
+
+class RequestedUpdate(UpdateCase):
+    """A hub response with `update_requested` (the Mac's Request update): a reminder on stderr
+    once a day, or with NEEDS_YOU_AUTO_UPDATE=1 the verified update, detached. Never the exit code."""
+
+    REMINDER = "asked this machine to update: run `needs-you update`"
+
+    def state(self):
+        with open(os.path.join(self.home, ".local", "state", "needs-you", "update.json")) as fh:
+            return json.load(fh)
+
+    def age_state(self, key, seconds):
+        path = os.path.join(self.home, ".local", "state", "needs-you", "update.json")
+        st = self.state()
+        st[key] -= seconds
+        with open(path, "w") as fh:
+            json.dump(st, fh)
+
+    def add(self, h, *extra, **kw):
+        return self.run_cli(*(list(extra) + ["add", "--key", "k", "--title", "t"]), urls=[h.url], **kw)
+
+    def manifest_fetches(self, h):
+        return sum(1 for path, _ in h.headers if path == "/dl/manifest.json")
+
+    def test_no_flag_no_reminder(self):
+        h = self.hub()
+        r = self.add(h)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(self.REMINDER, r.stderr)
+
+    def test_reminder_at_most_once_a_day(self):
+        h = self.hub()
+        h.update_requested = True
+        r = self.add(h, "-q")                      # quiet: no reminder, and it isn't used up
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        r = self.add(h)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("needs-you: 127.0.0.1 " + self.REMINDER, r.stderr)
+        self.assertEqual(r.stderr.count(self.REMINDER), 1)
+        r = self.add(h)
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn(self.REMINDER, r.stderr)
+        self.age_state("requested_update_noted_at", 24 * 3600 + 1)
+        self.assertIn(self.REMINDER, self.add(h).stderr)
+        self.assertEqual(self.manifest_fetches(h), 0)   # never updates on its own without opt-in
+
+    def test_stderr_to_dev_null_does_not_use_up_the_reminder(self):
+        h = self.hub()
+        h.update_requested = True
+        e = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_URLS": h.url,
+             "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_GH": "none"}
+        r = subprocess.run([sys.executable, self.cli, "resolve", "--key", "k"], env=e,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn(self.REMINDER, self.add(h).stderr)
+
+    def test_auto_update_runs_detached_and_rate_limited(self):
+        h = self.hub()
+        h.update_requested = True
+        env = {"NEEDS_YOU_AUTO_UPDATE": "1", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "0"}
+        r = self.add(h, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(self.REMINDER, r.stderr)
+        self.assertIn("created", r.stdout)
+        # The background `update --auto` fetches the manifest and replaces the 0.0.1 CLI.
+        self.assertTrue(wait_until(lambda: read(self.cli) == read(CLI), timeout=30))
+        self.assertEqual(self.manifest_fetches(h), 1)
+        ran_at = self.state()["requested_update_run_at"]
+        # Within 6 hours: no second run, even if the machine is still behind.
+        with open(self.cli, "wb") as fh:
+            fh.write(self.old_cli)
+        self.assertEqual(self.add(h, env=env).returncode, 0)
+        self.assertEqual(self.state()["requested_update_run_at"], ran_at)
+        self.assertEqual(self.manifest_fetches(h), 1)
+        self.age_state("requested_update_run_at", 6 * 3600 + 1)
+        self.assertEqual(self.add(h, env=env).returncode, 0)
+        self.assertTrue(wait_until(lambda: read(self.cli) == read(CLI), timeout=30))
+
+    def test_a_failing_background_update_never_reaches_the_caller(self):
+        h = self.hub(bad={"needs-you"})
+        h.update_requested = True
+        r = self.add(h, env={"NEEDS_YOU_AUTO_UPDATE": "1", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "0"})
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stderr, "")
+        self.assertTrue(wait_until(lambda: self.manifest_fetches(h) == 1, timeout=30))
+        self.assertEqual(read(self.cli), self.old_cli)
 
 
 if __name__ == "__main__":

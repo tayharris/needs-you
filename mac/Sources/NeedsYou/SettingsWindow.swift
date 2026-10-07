@@ -630,7 +630,7 @@ struct SettingsView: View {
                 Text("Press Refresh to list them.").font(.caption).foregroundStyle(.secondary)
             }
             ForEach(connect.accessTokens) { token in
-                MachineRow(token: token) { pendingRevoke = .token(token) }
+                MachineRow(token: token, connect: connect) { pendingRevoke = .token(token) }
             }
             statusText(connect.accessStatus)
         } header: {
@@ -1256,6 +1256,7 @@ private struct HowItWorksStep: View {
 /// Kept on its own so per-machine buttons slot in before Revoke.
 private struct MachineRow: View {
     let token: TokenSummary
+    @ObservedObject var connect: ConnectController
     let revoke: () -> Void
 
     var body: some View {
@@ -1267,6 +1268,7 @@ private struct MachineRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
+            MachineUpdateButton(token: token, connect: connect)
             if !token.current {
                 Button("Revoke", role: .destructive, action: revoke)
             }

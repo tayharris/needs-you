@@ -53,6 +53,27 @@ needs-you update --rollback  # put back the files the last update replaced
 
 **Automatic (opt-in).** With `NEEDS_YOU_AUTO_UPDATE=1` in `~/.config/needs-you/env` (the installer's `--auto-update` writes it), the 5-minute `needs-you flush` runs the same update once a day, at a time that differs per machine, quietly and without ever failing the flush. It is off by default: an update is code. It also needs `gh` (logged in, able to read the repo) on the sender for the release cross-check, unless `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`.
 
+**Asked from the Mac (Request update).** In **Settings → Access** (the machine list), a sender
+whose CLI is older than the Mac app, or hasn't reported a version, has a **Request update**
+button. It marks that machine's token "update requested" on each of your owner hubs, and the
+machine's next post, resolve, flush or token-checked health call gets `"update_requested": true`
+back. Then:
+
+- with `NEEDS_YOU_AUTO_UPDATE=1`, the CLI starts its own `needs-you update --auto` in the
+  background (detached, output discarded, at most once every 6 hours), the same verified update
+  as above, from the same update hub. The command it was running finishes and exits as usual;
+- otherwise it prints, at most once a day, `needs-you: <hub> asked this machine to update: run
+  `needs-you update``, to stderr. Not with `-q`/`--json`, and not when stderr goes to
+  `/dev/null` (the Claude Code hook), which doesn't use up the day's reminder.
+
+The row shows "Update requested 5m ago" with **Cancel** until the machine reports a different
+CLI version (or one at least the hub's), when the hub clears the request by itself and the row
+says "Up to date". "Up to date" means at least the Mac app's own version: that is what its hub
+serves, so it's the newest the machine can get from it. The request is a flag, never a URL or a
+command, and is kept per hub, not replicated (the app sends it to every owner hub it has). From
+a server hub's shell: `needs-you-admin token request-update <name>` and `token clear-update
+<name>`. Why this is safe: [request-update.md](../security/request-update.md).
+
 **Every request** a sender makes carries `X-Needs-You-Client: cli=…; hook=…; skill=…; orca=…`, so **Settings → Updates → Sender machines** on the Mac shows each machine's versions, when it was last seen, and "N of M machines out of date". `needs-you doctor` has an `update` line with the local versions against the hub's.
 
 **Orca prompts** point at `~/.config/needs-you/orca-snippet.md` instead of carrying a copy ([integrations/orca](../../integrations/orca/README.md#prompt-block)), so an update reaches every automation on its next run. Prompts pasted before this change carry the old full text: replace them with the pointer once.

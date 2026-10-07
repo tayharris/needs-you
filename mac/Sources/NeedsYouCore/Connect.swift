@@ -9,6 +9,8 @@ import Foundation
 //                            → 200 {token, role, name, hub_urls, hub_id} | 404
 //   GET /v1/invites, DELETE /v1/invites/<id>, GET /v1/tokens, DELETE /v1/tokens/<id>
 //                            (Bearer owner) list and revoke
+//   POST|DELETE /v1/tokens/<id>/request-update
+//                            (Bearer owner) ask a sender machine to update, or withdraw it
 
 /// A token's role on the hub. `owner` = reader + may create invites.
 public enum HubRole: String, Codable, CaseIterable, Sendable {
@@ -282,15 +284,19 @@ public struct TokenSummary: Decodable, Equatable, Identifiable, Sendable {
     public var client: [String: String]
     /// When this hub last saw a call from it. Nil from older hubs, or never.
     public var lastSeenAt: Date?
+    /// When the owner asked this machine to update (Request update), while the request
+    /// stands. The hub clears it once the machine reports another CLI version.
+    public var updateRequestedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id, name, role, current, client
         case openItems = "open_items"
         case lastSeenAt = "last_seen_at"
+        case updateRequestedAt = "update_requested_at"
     }
 
     public init(id: String, name: String, role: HubRole?, openItems: Int = 0, current: Bool = false,
-                client: [String: String] = [:], lastSeenAt: Date? = nil) {
+                client: [String: String] = [:], lastSeenAt: Date? = nil, updateRequestedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.role = role
@@ -298,6 +304,7 @@ public struct TokenSummary: Decodable, Equatable, Identifiable, Sendable {
         self.current = current
         self.client = client
         self.lastSeenAt = lastSeenAt
+        self.updateRequestedAt = updateRequestedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -312,6 +319,42 @@ public struct TokenSummary: Decodable, Equatable, Identifiable, Sendable {
         client = (raw ?? [:]).compactMapValues(\.string)
         let seen = (try? c.decodeIfPresent(String.self, forKey: .lastSeenAt)) ?? nil
         lastSeenAt = seen.flatMap(HubJSON.parseDate)
+        let requested = (try? c.decodeIfPresent(String.self, forKey: .updateRequestedAt)) ?? nil
+        updateRequestedAt = requested.flatMap(HubJSON.parseDate)
+    }
+}
+
+/// What the machine list shows for a token's CLI (Settings → Access / Machines): a
+/// **Request update** button while it is behind or unknown, the pending request, or that
+/// it's current. "Current" means at least `target`, the version this app carries, which is
+/// what its hub serves on /dl and so the newest `needs-you update` can install from it.
+public enum MachineUpdateState: Equatable, Sendable {
+    /// Not a sender (the Mac, a reader), or no target to compare with (a dev build) and a
+    /// known version: nothing to show.
+    case notApplicable
+    case current
+    /// Older than the target, or never reported (`reported` nil, or "unknown").
+    case outdated(reported: String?)
+    case requested(Date)
+
+    public init(token: TokenSummary, target: SemVer?) {
+        guard token.role == .sender else { self = .notApplicable; return }
+        if let at = token.updateRequestedAt { self = .requested(at); return }
+        let reported = token.client["cli"]
+        guard let version = reported.flatMap(SemVer.init) else { self = .outdated(reported: reported); return }
+        guard let target else { self = .notApplicable; return }
+        self = version < target ? .outdated(reported: reported) : .current
+    }
+
+    public var canRequest: Bool {
+        if case .outdated = self { return true }
+        return false
+    }
+
+    /// "Update requested 5m ago" / "Update requested just now".
+    public static func requestedLabel(_ at: Date, now: Date) -> String {
+        let age = now.timeIntervalSince(at)
+        return age < 60 ? "Update requested just now" : "Update requested \(CardAge.short(age)) ago"
     }
 }
 
@@ -439,12 +482,35 @@ public struct InviteClient: Sendable {
         _ = try await ownerRequest("DELETE", path: "v1/tokens/" + id, hub: hub, token: token)
     }
 
-    private func ownerRequest(_ method: String, path: String, hub: URL, token: String) async throws -> Data {
+    /// POST /v1/tokens/<id>/request-update: the machine's next calls to this hub carry
+    /// `update_requested`. Returns when the hub recorded it.
+    @discardableResult
+    public func requestUpdate(id: String, hub: URL, token: String) async throws -> Date? {
+        try await updateRequest("POST", id: id, hub: hub, token: token)
+    }
+
+    /// DELETE /v1/tokens/<id>/request-update (idempotent).
+    public func clearUpdateRequest(id: String, hub: URL, token: String) async throws {
+        _ = try await updateRequest("DELETE", id: id, hub: hub, token: token)
+    }
+
+    private func updateRequest(_ method: String, id: String, hub: URL, token: String) async throws -> Date? {
+        struct Body: Decodable {
+            var at: String?
+            enum CodingKeys: String, CodingKey { case at = "update_requested_at" }
+        }
+        let data = try await ownerRequest(method, path: "v1/tokens/" + id + "/request-update", hub: hub, token: token,
+                                          notFound: .http(status: 404, message: "not on this hub, or the hub is too old to request updates"))
+        return (try? JSONDecoder().decode(Body.self, from: data))?.at.flatMap(HubJSON.parseDate)
+    }
+
+    private func ownerRequest(_ method: String, path: String, hub: URL, token: String,
+                              notFound: ConnectError? = nil) async throws -> Data {
         guard HubTransportPolicy.allows(hub) else { throw ConnectError.httpNotAllowed(host: hub.host ?? hub.absoluteString) }
         let request = HubClient.makeRequest(url: hub.appendingPathComponent(path), method: method, token: token)
-        let notFound: ConnectError = method == "GET"
+        let notFound: ConnectError = notFound ?? (method == "GET"
             ? .http(status: 404, message: "this hub can't list or revoke yet; update it")
-            : .http(status: 404, message: "already revoked, or not on this hub")
+            : .http(status: 404, message: "already revoked, or not on this hub"))
         return try await send(request, hub: hub, notFound: notFound)
     }
 
