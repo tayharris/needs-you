@@ -29,9 +29,11 @@ SITE = os.path.join(ROOT, "site")
 OUT_DIR = "guides"  # under site/
 ORIGIN = "https://needsyou.app/"
 
-# What's published, in index order:
-# (group, markdown source, page name, short title, one-line summary).
-GUIDES = [
+# The guides index, in order: (group, markdown source, page name, short title, one-line summary).
+# An entry whose source doesn't exist yet is skipped. Every other docs/guides/*.md is published
+# too, under "More guides" (title from its "# " line, summary from its first paragraph), so a
+# new guide is on the site as soon as it's merged; add it here to place and describe it.
+CURATED = [
     ("Get started", "docs/guides/testers.md", "testers", "Testers",
      "Trying needs-you: download, first run, what to try and how to report problems, on one page."),
     ("Get started", "docs/guides/quickstart.md", "quickstart", "Quickstart",
@@ -48,10 +50,18 @@ GUIDES = [
      "Claude Code hooks for \"agent is waiting\" cards, and the skill: what gets installed and what each hook posts."),
     ("Connect machines and agents", "docs/guides/claude-code-everywhere.md", "claude-code-everywhere", "Claude Code everywhere",
      "Alerts from Claude Code sessions on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca."),
+    ("Connect machines and agents", "docs/guides/codex.md", "codex", "Codex CLI",
+     "OpenAI Codex CLI hooks: a card when a session wants approval or is waiting for your next message."),
+    ("Connect machines and agents", "docs/guides/gemini.md", "gemini", "Gemini CLI",
+     "Gemini CLI hooks: a card when a session wants approval or is waiting for your next message."),
+    ("Connect machines and agents", "docs/guides/opencode.md", "opencode", "opencode",
+     "An opencode plugin: a card when a session asks for permission, asks a question or goes idle."),
     ("Connect machines and agents", "docs/guides/orca.md", "orca", "Orca",
      "Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example."),
     ("Connect machines and agents", "docs/guides/github.md", "github", "GitHub",
      "Review requests, deploy approvals, failed CI and your PRs' state, from one poller."),
+    ("Connect machines and agents", "docs/guides/custom-connector.md", "custom-connector", "Custom connector",
+     "Connect any agent or tool: the exact item format, and which fields are required or optional."),
     ("Run it", "docs/HUB.md", "hub", "Server hubs",
      "Optional always-on server hubs: install, two-hub setup, backups, upgrades, resource use."),
     ("Run it", "docs/guides/updates.md", "updates", "Keeping up to date",
@@ -63,6 +73,32 @@ GUIDES = [
     ("Reference", "docs/API.md", "api", "API",
      "The hub's HTTP API (v1): every endpoint, field, status code and the replication format."),
 ]
+MORE = "More guides"
+
+
+def published():
+    """CURATED entries that exist, then any other docs/guides/*.md under MORE."""
+    out = [g for g in CURATED if os.path.isfile(os.path.join(ROOT, g[1]))]
+    listed = {g[1] for g in CURATED}
+    gdir = os.path.join(ROOT, "docs", "guides")
+    for name in sorted(os.listdir(gdir)):
+        src = "docs/guides/" + name
+        if not name.endswith(".md") or src in listed:
+            continue
+        with open(os.path.join(gdir, name), encoding="utf-8") as fh:
+            text = fh.read()
+        m = re.search(r"^# (.+)$", text, re.M)
+        title = m.group(1).strip() if m else name[:-3]
+        para = next((b for b in re.split(r"\n\s*\n", text[m.end():] if m else text)
+                     if b.strip() and not re.match(r"\s*(?:[#|<>`-]|\d+\.)", b)), "")
+        summary = re.sub(r"[`*_]|\[([^\]]*)\]\([^)]*\)", lambda x: x.group(1) or "", " ".join(para.split()))
+        if len(summary) > 200:
+            summary = summary[:197].rsplit(" ", 1)[0] + "..."
+        out.append((MORE, src, name[:-3], title, summary or title))
+    return out
+
+
+GUIDES = published()
 PAGE_OF = {src: name for _, src, name, _, _ in GUIDES}
 SHORT = {name: short for _, _, name, short, _ in GUIDES}
 
@@ -356,7 +392,8 @@ class Doc:
             while body and body[-1] == "":
                 body.pop()
                 trailing += 1
-            if trailing and i < n and LIST_ITEM.match(lines[i]):
+            nxt = LIST_ITEM.match(lines[i]) if i < n else None
+            if trailing and nxt and nxt.group(2)[0].isdigit() == ordered and nxt.group(2)[-1] == kind:
                 loose = True
             if has_blank_between_blocks(body):
                 loose = True
