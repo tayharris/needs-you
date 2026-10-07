@@ -228,6 +228,105 @@ class Failures(DoctorTestCase):
         self.assertIn("io.needs-you.flush", checks["flush schedule"]["detail"])
 
 
+class NextSteps(DoctorTestCase):
+    """Every WARN or FAIL says one next step: a command to run, or what to ask the person for."""
+
+    def assert_steps(self, checks, token=None):
+        for c in checks.values():
+            if c["status"] in ("WARN", "FAIL"):
+                self.assertTrue(c["hint"].strip(), "%s has no next step: %s" % (c["check"], c))
+                self.assertNotIn("\n", c["hint"])
+                if token:
+                    self.assertNotIn(token, c["hint"])
+
+    def test_not_set_up(self):
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks)
+        self.assertIn("Connect a machine", checks["config"]["hint"])
+        self.assertTrue(checks["config"]["hint"].endswith(
+            "then run: curl -fsSL <invite link>/install.sh | bash -s -- --yes"), checks["config"]["hint"])
+        self.assertIn("config check above", checks["hubs"]["hint"])
+
+    def test_rejected_token_asks_for_a_new_link(self):
+        bogus = "nyt_bogus_SECRET_VALUE_0123456789abcdef"
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % bogus])
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks, bogus)
+        hint = checks["hub 1"]["hint"]
+        self.assertIn("ask the person for a new invite link", hint)
+        self.assertIn("curl -fsSL <invite link>/install.sh | bash -s -- --yes --force", hint)
+        self.assertEqual(checks["hubs"]["hint"], hint)  # the summary repeats the first hub's step
+
+    def test_reader_token_asks_for_a_sender_link(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.reader])
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks, self.reader)
+        self.assertIn("reader token", checks["hub 1"]["hint"])
+        self.assertIn("sender invite link", checks["hub 1"]["hint"])
+
+    def test_unreachable_and_not_a_hub(self):
+        self.write_env(["NEEDS_YOU_URLS=%s,%s/nothere" % (self.dead, self.hub.url),
+                        "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks, self.sender)
+        want = "open -a NeedsYou" if sys.platform == "darwin" else "systemctl --user start needs-you-hub"
+        self.assertIn(want, checks["hub 1"]["hint"])
+        self.assertIn("curl -sS %s/nothere/v1/health" % self.hub.url, checks["hub 2"]["hint"])
+        self.assertEqual(checks["hubs"]["status"], "FAIL")
+        self.assertEqual(checks["hubs"]["hint"], checks["hub 1"]["hint"])
+
+    def test_only_fallback_points_at_the_first_hub(self):
+        self.write_env(["NEEDS_YOU_URLS=%s,%s" % (self.dead, self.hub.url), "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r, data, checks = self.doctor_json()
+        self.assertEqual(checks["hubs"]["status"], "WARN")
+        self.assertEqual(checks["hubs"]["hint"], checks["hub 1"]["hint"])
+
+    def test_outbox_steps(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        failed = os.path.join(self.outbox, "failed")
+        os.makedirs(failed)
+        with open(os.path.join(failed, "1-1.json"), "w") as fh:
+            fh.write("{}")
+        r, data, checks = self.doctor_json()
+        self.assertIn("cat ~/.local/state/needs-you/outbox/failed/*.json", checks["outbox"]["hint"])
+        self.assertIn("rm ~/.local/state/needs-you/outbox/failed/*.json", checks["outbox"]["hint"])
+        with open(os.path.join(self.outbox, "%020d-00001.json" % time.time_ns()), "w") as fh:
+            fh.write("{}")
+        r, data, checks = self.doctor_json()
+        self.assertTrue(checks["outbox"]["hint"].startswith("run: needs-you flush"), checks["outbox"]["hint"])
+
+    def test_path_and_profile(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r, data, checks = self.doctor_json(extra_env={"SHELL": "/bin/zsh"})
+        hint = checks["path"]["hint"]
+        self.assertIn("ln -sf ", hint)
+        self.assertIn("""echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc""", hint)
+        os.makedirs(os.path.join(self.home, ".local", "bin"))
+        os.symlink(CLI, os.path.join(self.home, ".local", "bin", "needs-you"))
+        r, data, checks = self.doctor_json(extra_env={"SHELL": "/bin/bash"})
+        self.assertIn(">> ~/.bashrc", checks["path"]["hint"])
+        self.assertIn("~/.local/bin/needs-you by its full path", checks["path"]["hint"])
+
+    def test_hooks_rerun_the_installer_with_their_flag(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        self.install_claude(hook_text="#!/bin/bash\nexit 0\n")
+        r, data, checks = self.doctor_json()
+        self.assertIn("bash -s -- --yes --claude-hooks user", checks["claude hooks"]["hint"])
+
+    def test_plain_output_prints_the_step_under_its_line(self):
+        r = self.doctor()
+        lines = r.stdout.splitlines()
+        i = next(n for n, line in enumerate(lines) if line.startswith("FAIL  config"))
+        self.assertIn("-> this machine isn't set up", lines[i + 1])
+
+    def test_unreachable_hint_by_kind_of_url(self):
+        cli = load_cli()
+        d = cli.Doctor(cli.Config())
+        self.assertIn("tailscale ping devbox.example.ts.net", d.unreachable_hint("http://devbox.example.ts.net:8765"))
+        self.assertIn("tailscale ping 100.101.102.103", d.unreachable_hint("http://100.101.102.103:8765"))
+        self.assertIn("curl -sS https://hub.example.com/v1/health", d.unreachable_hint("https://hub.example.com"))
+
+
 class ClaudeAndOrca(DoctorTestCase):
     def setUp(self):
         super().setUp()
@@ -295,6 +394,7 @@ class ClaudeAndOrca(DoctorTestCase):
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertEqual(checks["claude project hooks"]["status"], "WARN")
         self.assertIn("not installed from this machine", checks["claude project hooks"]["detail"])
+        self.assertIn("install-hooks.sh --project %s --local" % proj, checks["claude project hooks"]["hint"])
         state = os.path.join(self.home, ".local", "state", "needs-you")
         os.makedirs(state, exist_ok=True)
         with open(os.path.join(state, "claude-projects.json"), "w") as fh:
@@ -309,7 +409,7 @@ class ClaudeAndOrca(DoctorTestCase):
         line = checks["claude project hooks"]
         self.assertEqual(line["status"], "WARN")
         self.assertIn("not executable", line["detail"])
-        self.assertIn("--local", line["hint"])
+        self.assertEqual(line["hint"], "run: cd %s && needs-you update" % proj)  # recorded: update reinstalls
         os.remove(hook)
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertIn("is missing", checks["claude project hooks"]["detail"])

@@ -2335,6 +2335,37 @@ def _is_loopback(url: str) -> bool:
     return host in ("127.0.0.1", "localhost", "::1")
 
 
+# Every WARN or FAIL hint is one next step an agent can run or relay as is: a command, or
+# exactly what to ask the person for. "<invite link>" is the only placeholder.
+INVITE_LINK_HINT = "Mac app: Settings > Connect a machine > Create invite"
+
+
+def _installer(flags: str = "", force: bool = False) -> str:
+    """The invite installer's one line. Re-running it keeps this machine's token (unless
+    --force) and works until the link expires, also with no uses left."""
+    return ("curl -fsSL <invite link>/install.sh | bash -s -- --yes%s%s"
+            % (" --force" if force else "", " " + flags if flags else ""))
+
+
+def _new_invite(force: bool = False) -> str:
+    return ("ask the person for a new invite link (%s), then run: %s" % (INVITE_LINK_HINT, _installer(force=force)))
+
+
+def _rerun(flags: str) -> str:
+    return ("re-run the installer: %s (the invite link this machine was set up with; if it expired, "
+            "ask the person for a new one)" % _installer(flags))
+
+
+def _profile() -> str:
+    shell = os.path.basename(os.environ.get("SHELL") or "")
+    return {"zsh": "~/.zshrc", "bash": "~/.bashrc"}.get(shell, "~/.profile")
+
+
+def _host_of(url: str) -> str:
+    import urllib.parse
+    return urllib.parse.urlsplit(url).hostname or url
+
+
 class Doctor:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
@@ -2362,7 +2393,7 @@ class Doctor:
                 step()
             except Exception as e:  # a broken check must not hide the others
                 self.add(step.__name__, "WARN", "check crashed: %s" % type(e).__name__,
-                         "report this as a needs-you bug")
+                         "a needs-you bug: tell the person, with the output of needs-you doctor --json")
         return self.checks
 
     # -- config ------------------------------------------------------------
@@ -2377,10 +2408,14 @@ class Doctor:
         if st is None:
             parts.append("%s not found" % shown)
             if not self.cfg.ok:
-                status, hint = "FAIL", "set this machine up with an invite link from the Mac app (or scripts/setup-sender.sh)"
+                status, hint = "FAIL", ("this machine isn't set up: ask the person for an invite link (%s), "
+                                        "then run: %s" % (INVITE_LINK_HINT, _installer()))
             else:
                 status = "WARN"
-                hint = "the settings come from the environment only; cron, LaunchAgents and hooks won't see them"
+                hint = ("the settings come from the environment only, so cron, LaunchAgents and hooks won't see "
+                        "them; save them: (umask 077; mkdir -p %s && printf 'NEEDS_YOU_URLS=%%s\\nNEEDS_YOU_TOKEN=%%s\\n' "
+                        "\"${NEEDS_YOU_URLS:-$NEEDS_YOU_URL}\" \"$NEEDS_YOU_TOKEN\" > %s)"
+                        % (_tilde(os.path.dirname(p)), shown))
         else:
             mode = st.st_mode & 0o777
             parts.append("%s (mode %o)" % (shown, mode))
@@ -2390,7 +2425,8 @@ class Doctor:
         if hooks_file and os.path.abspath(os.path.expanduser(hooks_file)) != os.path.abspath(p):
             parts.append("hooks read NEEDS_YOU_ENV_FILE=%s instead" % _tilde(hooks_file))
             if status == "OK":
-                status, hint = "WARN", "point NEEDS_YOU_ENV_FILE and the CLI at the same file, or unset it"
+                status, hint = "WARN", ("unset NEEDS_YOU_ENV_FILE (and remove it from your shell profile) so "
+                                        "the hooks read %s like the CLI" % shown)
         urls, where = self.setting("NEEDS_YOU_URLS")
         if not urls:
             urls, where = self.setting("NEEDS_YOU_URL")
@@ -2403,7 +2439,7 @@ class Doctor:
         else:
             parts.append("NEEDS_YOU_URLS not set")
             status = "FAIL"
-            hint = hint if st is None else "add NEEDS_YOU_URLS=<hub url>[,<hub url>...] to %s" % shown
+            hint = hint if st is None else _rerun("")
         tok, where = self.setting("NEEDS_YOU_TOKEN")
         if tok:
             parts.append("NEEDS_YOU_TOKEN set (%d chars, %s)" % (len(tok), where))
@@ -2411,7 +2447,7 @@ class Doctor:
             parts.append("NEEDS_YOU_TOKEN not set")
             status = "FAIL"
             if st is not None:
-                hint = "re-run the invite installer with --force to get a token for this machine"
+                hint = _new_invite(force=True)
         self.add("config", status, "; ".join(parts), hint)
 
     # -- PATH --------------------------------------------------------------
@@ -2422,7 +2458,7 @@ class Doctor:
         on_path = os.path.realpath(local_bin) in entries
         found = shutil.which("needs-you")
         installed = os.path.join(local_bin, "needs-you")
-        hint_line = 'add export PATH="$HOME/.local/bin:$PATH" to your shell profile'
+        hint_line = "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> %s" % _profile()
         if found:
             detail = "needs-you -> %s" % _tilde(found)
             me = os.path.realpath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
@@ -2432,69 +2468,92 @@ class Doctor:
             self.add("path", "OK", detail)
         elif os.path.exists(installed):
             self.add("path", "WARN", "needs-you is not on PATH; ~/.local/bin/needs-you exists",
-                     hint_line + "; until then call ~/.local/bin/needs-you by its full path")
+                     "run: %s (new shells); in this one, call ~/.local/bin/needs-you by its full path" % hint_line)
         else:
             self.add("path", "WARN", "needs-you is not on PATH%s" % ("" if on_path else "; ~/.local/bin not on PATH"),
-                     "install the CLI to ~/.local/bin (the invite installer does) and " + hint_line)
+                     "run: mkdir -p ~/.local/bin && ln -sf %s ~/.local/bin/needs-you && %s"
+                     % (_tilde(cli_path()), hint_line))
 
     # -- hubs --------------------------------------------------------------
     def hubs(self) -> None:
         urls = self.cfg.urls
         if not urls:
-            self.add("hubs", "FAIL", "no hub URL configured", "set NEEDS_YOU_URLS in %s" % _tilde(self.env_path))
+            self.add("hubs", "FAIL", "no hub URL configured", "fix the config check above first")
             return
         timeout = min(self.cfg.timeout, 3.0)
         answered: List[int] = []
         usable: List[int] = []
+        hints: Dict[int, str] = {}
         for i, url in enumerate(urls):
             name = "hub %d" % (i + 1)
             try:
                 status, body = _call(url, self.cfg.token, "GET", "/v1/health", None, timeout)
             except (OSError, ValueError) as e:
-                self.add(name, "WARN", "%s unreachable (%s)" % (url, getattr(e, "reason", e)),
-                         "is the hub up, and this machine on the tailnet? see docs/guides/troubleshooting.md")
+                hints[i] = self.unreachable_hint(url)
+                self.add(name, "WARN", "%s unreachable (%s)" % (url, getattr(e, "reason", e)), hints[i])
                 continue
             if status != 200:
-                hint = ("the hub doesn't answer to this host name: use its public URL or tailnet IP, or add "
-                        "the name to the hub's allowed_hosts" if status == 421 else "is that a needs-you hub URL?")
-                self.add(name, "WARN", "%s answered HTTP %d" % (url, status), hint)
+                if status == 421:
+                    hints[i] = ("the hub doesn't answer to the name %s: on the hub, add it with --allowed-host %s "
+                                "(the Mac app: launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS %s, then restart it), "
+                                "or put the hub's public URL in NEEDS_YOU_URLS in %s"
+                                % (_host_of(url), _host_of(url), _host_of(url), _tilde(self.env_path)))
+                else:
+                    hints[i] = ("not a needs-you hub: run curl -sS %s/v1/health (a hub prints {\"ok\": true, ...}), "
+                                "then fix NEEDS_YOU_URLS in %s" % (url, _tilde(self.env_path)))
+                self.add(name, "WARN", "%s answered HTTP %d" % (url, status), hints[i])
                 continue
             answered.append(i)
             hub_v = clean(body.get("version") or "?")
             base = "%s hub=%s version %s" % (url, clean(body.get("hub_id", "?")), hub_v)
             vhint = ""
             if hub_v not in ("?", VERSION):
-                vhint = "CLI is %s; needs-you update fetches the hub's copy" % VERSION
+                vhint = "CLI is %s; to match the hub, run: needs-you update" % VERSION
             tok = body.get("token")
             if body.get("token_error") or not isinstance(tok, dict):
                 why = (clean(body["token_error"]) if body.get("token_error")
                        else "no token sent" if not self.cfg.token else "token not recognised")
-                self.add(name, "FAIL", "%s; token rejected: %s" % (base, why),
-                         "get a new invite link and re-run its installer with --force")
+                hints[i] = _new_invite(force=True)
+                self.add(name, "FAIL", "%s; token rejected: %s" % (base, why), hints[i])
                 continue
             role = clean(tok.get("role", "?"))
             detail = "%s token=%s role=%s" % (base, clean(tok.get("name", "?")), role)
             if role not in ("sender", "owner"):
-                self.add(name, "WARN", detail + " (this role can't post)", "use a sender token on this machine")
+                hints[i] = ("this is a %s token, which can't post: ask the person for a sender invite link (%s), "
+                            "then run: %s" % (role, INVITE_LINK_HINT, _installer(force=True)))
+                self.add(name, "WARN", detail + " (this role can't post)", hints[i])
                 continue
             usable.append(i)
             self.add(name, "OK", detail, vhint)
         n = len(urls)
         summary = "%d configured, %d answered, %d accept the token" % (n, len(answered), len(usable))
         if not usable:
-            self.add("hubs", "FAIL", summary,
-                     "items will queue in the outbox until a hub accepts the token; see docs/guides/troubleshooting.md")
+            self.add("hubs", "FAIL", summary + "; items queue in the outbox until one does",
+                     hints.get(0) or next(iter(hints.values()), ""))
         elif 0 not in usable:
-            self.add("hubs", "WARN", summary + "; only a fallback hub works (%s)" % urls[usable[0]],
-                     "check the first hub %s; every post waits for it to time out first" % urls[0])
+            self.add("hubs", "WARN", summary + "; only a fallback hub works (%s), so every post waits for %s first"
+                     % (urls[usable[0]], urls[0]), hints.get(0, ""))
         else:
             self.add("hubs", "OK", summary)
         if sys.platform == "darwin":
             loop = [i for i, u in enumerate(urls) if _is_loopback(u)]
             if loop and loop[0] != 0:
+                order = [urls[loop[0]]] + [u for j, u in enumerate(urls) if j != loop[0]]
                 self.add("hub order", "WARN", "%s is #%d in NEEDS_YOU_URLS" % (urls[loop[0]], loop[0] + 1),
-                         "on the Mac that runs the hub, list %s first so local agents don't depend on Tailscale"
-                         % urls[loop[0]])
+                         "if this Mac runs the hub, list it first so local agents don't depend on Tailscale: "
+                         "set NEEDS_YOU_URLS=%s in %s" % (",".join(order), _tilde(self.env_path)))
+
+    def unreachable_hint(self, url: str) -> str:
+        host = _host_of(url)
+        if _is_loopback(url):
+            if sys.platform == "darwin":
+                return "start the Mac app, whose hub this is: open -a NeedsYou (then re-run needs-you doctor)"
+            return ("start the hub on this machine: systemctl --user start needs-you-hub "
+                    "(a system-wide install: sudo systemctl start needs-you-hub)")
+        if host.endswith(".ts.net") or _tailnet_ip(host):
+            return ("check the hub's machine is awake and on the tailnet: tailscale ping %s "
+                    "(posts queue and go out once it answers)" % host)
+        return "check the hub answers from here: curl -sS %s/v1/health" % url
 
     # -- outbox ------------------------------------------------------------
     def outbox(self) -> None:
@@ -2508,22 +2567,21 @@ class Doctor:
             if t is not None:
                 parts[0] += ", oldest %s" % _age(now - t)
         parts.append("%d failed" % len(failed))
-        status, hints = "OK", []
-        if queued:
-            status = "WARN"
-            hints.append("needs-you flush (sends them once a hub answers)")
+        status, hint = "OK", ""
         if failed:
-            status = "WARN"
-            hints.append("a hub rejected the entries in %s; read them, then delete them"
-                         % _tilde(os.path.join(d, "failed")))
-        self.add("outbox", status, "%s (%s)" % (", ".join(parts), _tilde(d)), "; ".join(hints))
+            f = _tilde(os.path.join(d, "failed"))
+            status, hint = "WARN", ("a hub refused these for good; see why, then delete them: cat %s/*.json "
+                                    "&& rm %s/*.json" % (f, f))
+        if queued:  # first: sending them is the step that matters
+            status, hint = "WARN", "run: needs-you flush (sends them once a hub accepts the token; see the hub checks)"
+        self.add("outbox", status, "%s (%s)" % (", ".join(parts), _tilde(d)), hint)
 
     # -- Claude Code hooks -------------------------------------------------
     def hooks(self) -> None:
         claude = os.path.join(self.home, ".claude")
         hook = os.path.join(claude, "hooks", "needs-you-hook.sh")
         settings = os.path.join(claude, "settings.json")
-        installer = "integrations/claude-code/install-hooks.sh (or the invite installer with --claude-hooks user)"
+        installer = _rerun("--claude-hooks user")
         if not os.path.isdir(claude):
             self.add("claude hooks", "INFO", "~/.claude not found; Claude Code isn't set up for this user")
             return
@@ -2535,7 +2593,7 @@ class Doctor:
         exists = os.path.isfile(hook)
         if not exists and not referenced:
             self.add("claude hooks", "INFO", "not installed (optional: cards when a session waits on you)",
-                     "run " + installer)
+                     "to install: " + _installer("--claude-hooks user --skill --alerts"))
             return
         problems, parts = [], []
         if not exists:
@@ -2574,8 +2632,7 @@ class Doctor:
         if link:
             parts.append("agent link %s (%s)" % ("off" if link.strip().lower() == "none" else "template", where))
         if problems:
-            hint = "re-run the installer: " + installer
-            self.add("claude hooks", "WARN", "; ".join(problems + parts), hint)
+            self.add("claude hooks", "WARN", "; ".join(problems + parts), installer)
         else:
             hint = ""
             if "alerts off until opted in" in parts:
@@ -2589,12 +2646,11 @@ class Doctor:
         home = os.environ.get("CODEX_HOME") or os.path.join(self.home, ".codex")
         hook = os.path.join(home, "hooks", "needs-you-hook.sh")
         hooks_json = os.path.join(home, "hooks.json")
-        installer = ("integrations/codex/install-codex-hooks.sh (or the invite installer with "
-                     "--codex-hooks user)")
+        installer = _rerun("--codex-hooks user")
         if not os.path.isdir(home):
             if shutil.which("codex"):
                 self.add("codex hooks", "INFO", "%s not found; Codex hasn't run for this user yet" % _tilde(home),
-                         "after a first Codex run: " + installer)
+                         "after a first Codex run: " + _installer("--codex-hooks user --alerts"))
             return
         doc: Any = None
         try:
@@ -2610,7 +2666,7 @@ class Doctor:
         exists = os.path.isfile(hook)
         if not exists and not referenced:
             self.add("codex hooks", "INFO", "not installed (optional: cards when a Codex session waits on you)",
-                     "run " + installer)
+                     "to install: " + _installer("--codex-hooks user --alerts"))
             return
         problems, parts, hints = [], [_tilde(hooks_json)], []
         if doc is None:
@@ -2668,7 +2724,7 @@ class Doctor:
             parts.append("alerts off until opted in")
         if problems:
             if not hints:
-                hints.append("re-run the installer: " + installer)
+                hints.append(installer)
             self.add("codex hooks", "WARN", "; ".join(problems + parts), "; ".join(hints))
             return
         hint = "Codex runs a new hook only after you trust it: open /hooks in Codex once"
@@ -2682,12 +2738,11 @@ class Doctor:
         home = os.path.join(self.home, ".gemini")
         hook = os.path.join(home, "hooks", "needs-you-hook.sh")
         settings = os.path.join(home, "settings.json")
-        installer = ("integrations/gemini/install-gemini-hooks.sh (or the invite installer with "
-                     "--gemini-hooks user)")
+        installer = _rerun("--gemini-hooks user")
         if not os.path.isdir(home):
             if shutil.which("gemini"):
                 self.add("gemini hooks", "INFO", "%s not found; Gemini CLI hasn't run for this user yet"
-                         % _tilde(home), "after a first run: " + installer)
+                         % _tilde(home), "after a first run: " + _installer("--gemini-hooks user --alerts"))
             return
         doc: Any = {}
         try:
@@ -2703,7 +2758,7 @@ class Doctor:
         exists = os.path.isfile(hook)
         if not exists and not referenced:
             self.add("gemini hooks", "INFO", "not installed (optional: cards when a Gemini CLI session waits on you)",
-                     "run " + installer)
+                     "to install: " + _installer("--gemini-hooks user --alerts"))
             return
         problems, parts = [], [_tilde(settings)]
         if not exists:
@@ -2733,7 +2788,7 @@ class Doctor:
         else:
             parts.append("alerts off until opted in")
         if problems:
-            self.add("gemini hooks", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            self.add("gemini hooks", "WARN", "; ".join(problems + parts), installer)
             return
         hint = ""
         if "alerts off until opted in" in parts:
@@ -2747,13 +2802,12 @@ class Doctor:
         d = os.path.join(base, "opencode")
         plugin = os.path.join(d, "plugins", "needs-you.js")
         hook = os.path.join(d, "hooks", "needs-you-hook.sh")
-        installer = ("integrations/opencode/install-opencode-plugin.sh (or the invite installer with "
-                     "--opencode-plugin)")
+        installer = _rerun("--opencode-plugin")
         if not os.path.isdir(d) and not shutil.which("opencode"):
             return
         if not os.path.isfile(plugin) and not os.path.isfile(hook):
             self.add("opencode plugin", "INFO", "not installed (optional: cards when an opencode session waits on you)",
-                     "run " + installer)
+                     "to install: " + _installer("--opencode-plugin --alerts"))
             return
         problems, parts = [], [_tilde(plugin)]
         if not os.path.isfile(plugin):
@@ -2777,7 +2831,7 @@ class Doctor:
         else:
             parts.append("alerts off until opted in")
         if problems:
-            self.add("opencode plugin", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            self.add("opencode plugin", "WARN", "; ".join(problems + parts), installer)
             return
         hint = "restart opencode after installing or updating it"
         if "alerts off until opted in" in parts:
@@ -2806,15 +2860,21 @@ class Doctor:
             if not current:
                 problems.append("old hook")
         recorded = claude_projects()
-        if not any(os.path.realpath(p) in recorded for p in hook_settings(project)):
+        is_recorded = any(os.path.realpath(p) in recorded for p in hook_settings(project))
+        if not is_recorded:
             problems.append("not installed from this machine (install-hooks.sh --project didn't record it), "
                             "so needs-you update leaves it alone")
         detail = "installed in %s; %s" % (where, _tilde(hook))
         if problems:
-            self.add("claude project hooks", "WARN", "; ".join(problems) + "; " + detail,
-                     "in %s: needs-you update (or integrations/claude-code/install-hooks.sh --project%s)"
-                     % (_tilde(os.path.dirname(project)),
-                        " --local" if where.endswith("settings.local.json") else ""))
+            top = _tilde(os.path.dirname(project))
+            if is_recorded:
+                hint = "run: cd %s && needs-you update" % top
+            elif where.endswith("settings.local.json"):
+                hint = ("from a needs-you checkout, run: integrations/claude-code/install-hooks.sh --project %s --local"
+                        % top)
+            else:
+                hint = "run: cd %s && %s" % (top, _installer("--claude-hooks project"))
+            self.add("claude project hooks", "WARN", "; ".join(problems) + "; " + detail, hint)
         else:
             alerts, src = self.setting("NEEDS_YOU_AGENT_ALERTS")
             if alerts.lower() in _ON:
@@ -2832,7 +2892,7 @@ class Doctor:
             self.add("claude skill", "OK", _tilde(p))
         else:
             self.add("claude skill", "INFO", "%s not installed (optional)" % _tilde(p),
-                     "copy integrations/claude-code/skill/needs-you to ~/.claude/skills/ (or the invite installer's --skill)")
+                     "to install: " + _installer("--skill"))
 
     # -- Orca --------------------------------------------------------------
     def orca(self) -> None:
@@ -2861,26 +2921,25 @@ class Doctor:
                 with open(plist, "rb") as fh:
                     data = plistlib.load(fh)
             except OSError:
-                self.add("flush schedule", "WARN", "no LaunchAgent %s" % _tilde(plist),
-                         "re-run the invite installer (without --no-schedule) so queued items go out every 5 minutes")
+                self.add("flush schedule", "WARN", "no LaunchAgent %s, so queued items wait for the next post"
+                         % _tilde(plist), _rerun(""))
                 return
             except Exception:
-                self.add("flush schedule", "WARN", "%s is not a valid plist" % _tilde(plist),
-                         "re-run the invite installer")
+                self.add("flush schedule", "WARN", "%s is not a valid plist" % _tilde(plist), _rerun(""))
                 return
             args = data.get("ProgramArguments") or []
             prog = args[0] if args else ""
             if prog and not os.path.exists(prog):
                 self.add("flush schedule", "WARN", "%s runs %s, which doesn't exist" % (_tilde(plist), _tilde(prog)),
-                         "re-run the invite installer")
+                         _rerun(""))
                 return
             self.add("flush schedule", "OK", "LaunchAgent %s (every %ss)" % (FLUSH_LABEL, data.get("StartInterval", "?")))
             return
         import shutil
         import subprocess
         if not shutil.which("crontab"):
-            self.add("flush schedule", "WARN", "no crontab on this machine",
-                     "run `needs-you -q flush` every few minutes some other way (e.g. a systemd timer)")
+            self.add("flush schedule", "WARN", "no crontab on this machine, so queued items wait for the next post",
+                     "run `%s -q flush` every 5 minutes some other way (a systemd timer)" % _tilde(cli_path()))
             return
         try:
             r = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
@@ -2890,8 +2949,9 @@ class Doctor:
         if crontab_has_flush(text):
             self.add("flush schedule", "OK", "crontab line tagged %s" % CRON_TAG)
         else:
-            self.add("flush schedule", "WARN", "no crontab line tagged %s" % CRON_TAG,
-                     "re-run the invite installer (without --no-schedule) so queued items go out every 5 minutes")
+            self.add("flush schedule", "WARN", "no crontab line tagged %s, so queued items wait for the next post"
+                     % CRON_TAG, "run: (crontab -l 2>/dev/null; echo '*/5 * * * * \"%s\" -q flush >/dev/null 2>&1 %s') "
+                     "| crontab -" % (cli_path(), CRON_TAG))
 
 
 def _doctor_update(self: "Doctor") -> None:
@@ -2918,12 +2978,13 @@ def _doctor_update(self: "Doctor") -> None:
     try:
         changes, notes = plan_update(manifest)
     except UpdateRefused as e:
-        self.add("update", "WARN", local + tail + "; the hub's manifest is refused: %s" % e)
+        self.add("update", "WARN", local + tail + "; the hub's manifest is refused: %s" % e,
+                 "tell the person, and don't force it; needs-you update --check shows the details")
         return
     detail = "%s; hub %s serves %s%s" % (local, hub.url, clean(manifest.get("version")), tail)
     if changes:
         self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c.get("label") or c["file"] for c in changes),
-                 "needs-you update")
+                 "run: needs-you update")
     else:
         self.add("update", "OK", detail + ("; " + "; ".join(notes) if notes else ""))
 
