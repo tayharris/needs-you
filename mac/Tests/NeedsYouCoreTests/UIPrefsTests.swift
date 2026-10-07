@@ -14,6 +14,7 @@ final class UIPrefsTests: XCTestCase {
         ("testRoundTrip", testRoundTrip),
         ("testUnknownValuesFallBack", testUnknownValuesFallBack),
         ("testSaveOnlyWritesChanges", testSaveOnlyWritesChanges),
+        ("testPillOptions", testPillOptions),
     ]
 
     private var suite = ""
@@ -72,5 +73,25 @@ final class UIPrefsTests: XCTestCase {
         new.textSize = .large
         new.save(to: store, previous: old)
         XCTAssertEqual(storedKeys, [UIPrefs.Key.textSize])
+    }
+
+    func testPillOptions() {
+        XCTAssertEqual(UIPrefs.defaults.pillOptions, PillOptions.defaults)
+        var p = UIPrefs()
+        p.pillSize = .large
+        p.pillDetail = .topItem
+        p.pillSplit = .priority
+        p.pillShowNew = false
+        p.save(to: store, previous: UIPrefs())
+        XCTAssertEqual(storedKeys, [UIPrefs.Key.pillSize, UIPrefs.Key.pillDetail, UIPrefs.Key.pillSplit, UIPrefs.Key.pillShowNew])
+        XCTAssertEqual(store.string(forKey: UIPrefs.Key.pillSplit), "priority")
+        XCTAssertEqual(UIPrefs.load(from: store), p)
+        XCTAssertEqual(p.pillOptions, PillOptions(size: .large, detail: .topItem, split: .priority, showNew: false))
+        XCTAssertEqual(p.pillMetrics, PillMetrics.make(PanelStyle.regular, size: .large))
+        // Unknown values fall back.
+        store.set("huge", forKey: UIPrefs.Key.pillSize)
+        store.set("everything", forKey: UIPrefs.Key.pillDetail)
+        XCTAssertEqual(UIPrefs.load(from: store).pillSize, .medium)
+        XCTAssertEqual(UIPrefs.load(from: store).pillDetail, .count)
     }
 }

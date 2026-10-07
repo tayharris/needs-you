@@ -69,7 +69,7 @@ struct RootView: View {
     private func shape(_ display: PanelDisplay) -> RoundedRectangle {
         switch display {
         case .idle: return RoundedRectangle(cornerRadius: model.hovering ? 11 : 9, style: .continuous)
-        case .waiting: return RoundedRectangle(cornerRadius: 11, style: .continuous)
+        case .waiting: return RoundedRectangle(cornerRadius: model.pillCornerRadius, style: .continuous)
         case .preview, .digest, .expanded: return RoundedRectangle(cornerRadius: 14, style: .continuous)
         }
     }
@@ -180,44 +180,6 @@ struct IdlePill: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
         .help(model.focusSummary.map { "Focus: \($0) · \(model.statusLine)" } ?? model.statusLine)
-    }
-}
-
-struct CountPill: View {
-    @ObservedObject var model: AppModel
-
-    var body: some View {
-        HStack(spacing: 3) {
-            if model.isFocused {
-                Image(systemName: "moon.fill")
-                    .font(.system(size: model.metrics.countFont - 3))
-                    .foregroundStyle(Theme.muted)
-                if model.focusSetByLink {
-                    // Set by a needsyou://focus link, not by hand.
-                    Image(systemName: "link")
-                        .font(.system(size: model.metrics.countFont - 4, weight: .semibold))
-                        .foregroundStyle(Theme.normal.opacity(0.9))
-                }
-            }
-            Text("\(model.count)")
-                .foregroundStyle(.white.opacity(model.count > 0 ? 0.95 : 0.5))
-            if model.otherCount > 0 {
-                // Out-of-context items show as a faint second number ("3 · 1").
-                Text("· \(model.otherCount)")
-                    .foregroundStyle(Theme.faint)
-            }
-            if model.laterCount > 0 {
-                // Held under Later (not counted): "2 +3".
-                Text("+\(model.laterCount)")
-                    .foregroundStyle(Theme.faint.opacity(0.8))
-            }
-        }
-        .font(.system(size: model.metrics.countFont, weight: .semibold, design: .rounded).monospacedDigit())
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .pillInteraction(model)
-        .help("\(model.needsLabel): \(model.count) \(model.context.rawValue) item\(model.count == 1 ? "" : "s")"
-              + (model.laterCount > 0 ? ", \(model.laterCount) under Later" : "")
-              + (model.focusSummary.map { " · Focus: \($0)" } ?? "") + " · \(model.statusLine)")
     }
 }
 

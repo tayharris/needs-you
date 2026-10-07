@@ -37,6 +37,7 @@ final class AppSettings: ObservableObject {
         static let hotKeyOpensTopLink = "hotKeyOpensTopLink"
         static let allowFocusLinks = "allowFocusLinks"
         static let terminalAppleScript = "terminalAppleScript"
+        static let pillLastOpenedAt = "pillLastOpenedAt"
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -86,6 +87,17 @@ final class AppSettings: ObservableObject {
     /// Default off: the button only brings the app forward.
     @Published var terminalAppleScript: Bool {
         didSet { defaults.set(terminalAppleScript, forKey: Key.terminalAppleScript) }
+    }
+    /// When the panel was last open (set on expand and on collapse), for the pill's
+    /// "N new". Stored as seconds since 1970; local to this Mac.
+    @Published var pillLastOpenedAt: Date? {
+        didSet {
+            if let pillLastOpenedAt {
+                defaults.set(pillLastOpenedAt.timeIntervalSince1970, forKey: Key.pillLastOpenedAt)
+            } else {
+                defaults.removeObject(forKey: Key.pillLastOpenedAt)
+            }
+        }
     }
     /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
     @Published var focus: FocusState {
@@ -193,6 +205,13 @@ final class AppSettings: ObservableObject {
         focus = FocusState.load(from: defaults)
         allowFocusLinks = defaults.bool(forKey: Key.allowFocusLinks)
         terminalAppleScript = defaults.bool(forKey: Key.terminalAppleScript)
+        // First launch: start counting "new" from now rather than calling everything new.
+        if let seconds = defaults.object(forKey: Key.pillLastOpenedAt) as? NSNumber {
+            pillLastOpenedAt = Date(timeIntervalSince1970: seconds.doubleValue)
+        } else {
+            pillLastOpenedAt = Date()
+            defaults.set(Date().timeIntervalSince1970, forKey: Key.pillLastOpenedAt)
+        }
         previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard
         edgeGlow = defaults.string(forKey: EdgeGlowMode.defaultsKey).flatMap(EdgeGlowMode.init(rawValue:)) ?? .standard
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))

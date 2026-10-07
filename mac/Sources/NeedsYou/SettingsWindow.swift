@@ -166,6 +166,7 @@ struct SettingsView: View {
             tabForm {
                 youSection
                 lookSection
+                PillSettingsSection(settings: settings)
                 visibilitySection
                 keyboardSection
                 extra[.panel]
