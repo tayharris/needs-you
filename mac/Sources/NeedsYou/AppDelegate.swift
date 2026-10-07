@@ -162,6 +162,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let jump = OrcaJump.parse(url) { OrcaJumpRunner.run(jump) }
             return
         }
+        if url.host?.lowercased() == FocusLink.host {
+            // needsyou://focus?level=…&minutes=… from Shortcuts or a script: set the focus,
+            // never show a window. Anything that doesn't parse does nothing.
+            if let link = FocusLink.parse(url) {
+                model.setFocus(link.state(now: Date()))
+            } else {
+                NSLog("NeedsYou: ignored a needsyou://focus link that doesn't parse")
+            }
+            yieldActivation()
+            return
+        }
         settingsWindow.show(tab: .hubs)
         guard let link = ConnectLink.parse(url.absoluteString) else {
             connect.connect(url.absoluteString)   // shows why the link isn't usable
@@ -175,6 +186,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Connect")
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { connect.connect(link) }
+    }
+
+    /// Opening a URL without `open -g` (Shortcuts' Open URLs) can make Launch Services
+    /// activate this app. A focus link must not take focus from what the person is doing,
+    /// so hand activation back unless the Settings window is up.
+    private func yieldActivation() {
+        func handBack() {
+            let settingsFront = NSApp.windows.contains { $0.isVisible && $0.title.hasSuffix("Settings") }
+            if NSApp.isActive && !settingsFront { NSApp.deactivate() }
+        }
+        handBack()
+        DispatchQueue.main.async { MainActor.assumeIsolated { handBack() } }
     }
 
     /// Accessory apps have no visible menu bar, but text fields still need an Edit menu

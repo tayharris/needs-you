@@ -38,6 +38,7 @@ let entries =
     + testEntries(FocusStateTests.self, FocusStateTests.allTests)
     + testEntries(BypassRuleTests.self, BypassRuleTests.allTests)
     + testEntries(NoisySenderGuardTests.self, NoisySenderGuardTests.allTests)
+    + testEntries(FocusLinkTests.self, FocusLinkTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
