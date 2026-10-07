@@ -116,7 +116,10 @@ final class AppModel: ObservableObject {
     /// The answering hub's `server_time` from the last poll: the next `since`.
     private var pollCursor: Date?
     private var hasSynced = false
-    private var isPolling = false
+    /// The feed generation a poll is running for, if any.
+    private var pollingGeneration: Int?
+    /// A poll was asked for while one ran.
+    private var pollAgain = false
     private var feedGeneration = 0
     private var pollTask: Task<Void, Never>?
     private var injectTask: Task<Void, Never>?
@@ -425,14 +428,27 @@ final class AppModel: ObservableObject {
     }
 
     private func pollOnce() async {
-        guard !isPolling else { return }
+        // One poll at a time per feed. A request that comes in meanwhile (a live-update
+        // nudge, Refresh, wake) runs once more right after, so its change isn't left for
+        // the next interval; a poll of a replaced feed doesn't hold up the new one.
+        guard pollingGeneration != feedGeneration else {
+            pollAgain = true
+            return
+        }
+        let generation = feedGeneration
+        pollingGeneration = generation
+        defer { if pollingGeneration == generation { pollingGeneration = nil } }
+        repeat {
+            pollAgain = false
+            await pollFeed(generation: generation)
+        } while pollAgain && generation == feedGeneration
+    }
+
+    private func pollFeed(generation: Int) async {
         guard let feed else {
             lastError = nil
             return
         }
-        isPolling = true
-        defer { isPolling = false }
-        let generation = feedGeneration
         // The hub's own cursor (docs/API.md); feeds without one fall back to the newest updated_at.
         let since = planner.nextSince(latest: pollCursor ?? store.latestUpdatedAt)
         do {

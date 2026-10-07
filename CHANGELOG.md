@@ -14,6 +14,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Mac app: an item a sender resolves or dismisses (`needs-you resolve`, a hook) now leaves the panel on the next poll, or at once with live updates. It used to stay up to 5 minutes, until the next full poll, because incremental polls threw away closed items. Polls also use the hub's `server_time` cursor and follow `more`, as `docs/API.md` describes, so an item stored in the same millisecond as a poll isn't missed.
 - Mac app: a card held under **Later** (by a focus or snooze) that its sender re-posts as done or info leaves Later. It used to show both under Later and in Recent, and count in the "N waited" peek.
 - Mac app: opening a snoozed panel with the shortcut, or the 7:30 start-of-day summary opening it, ends the snooze like End Snooze does: what waited under **Later** joins the list. It used to stay under Later until the next day.
+- Mac app: a live update, **Refresh** or a wake that arrives while a poll is running is no longer dropped (its change waited up to 30 s for the next poll), and after changing hubs in Settings the new list loads at once even while a poll of the old hub was still waiting on it (it could show nothing for 30 s).
 
 ## [0.1.2] - 2026-10-07
 
