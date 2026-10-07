@@ -5,7 +5,7 @@ Thanks for helping. needs-you is small on purpose: a stdlib-only Python hub and 
 ## Before you start
 
 - Open an issue first for anything bigger than a fix, so we can agree on the shape.
-- The project has no license yet; one will be chosen before public launch. Until then, contributions come from invited collaborators.
+- The project is licensed under [Apache-2.0](LICENSE); contributions are accepted under the same license. For now, contributions come from invited collaborators.
 
 ## Setup
 
