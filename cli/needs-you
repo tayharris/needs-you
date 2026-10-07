@@ -907,39 +907,84 @@ def _tailnet_ip(ip: str) -> bool:
     return a in ipaddress.ip_network("fd7a:115c:a1e0::/48")
 
 
-def update_transport_ok(url: str, resolve: Any = None) -> Tuple[bool, str]:
-    """Updates are code, so they only travel over https, loopback, or the tailnet (Tailscale
-    encrypts it): a tailnet IP, or a *.ts.net name that resolves into the tailnet ranges.
-    Plain http to anything else is refused."""
+class UpdateTarget:
+    """The update hub, parsed once. Every update request connects to `connect_host` (for
+    plain http: the one address checked, so a second DNS answer can't change it) and sends
+    `host_header`; redirects are never followed."""
+
+    def __init__(self, scheme: str, host: str, port: int, base_path: str, connect_host: str, why: str) -> None:
+        self.scheme, self.host, self.port, self.base_path = scheme, host, port, base_path
+        self.connect_host, self.why = connect_host, why
+
+    @property
+    def host_header(self) -> str:
+        h = "[%s]" % self.host if ":" in self.host else self.host
+        default = 443 if self.scheme == "https" else 80
+        return h if self.port == default else "%s:%d" % (h, self.port)
+
+    @property
+    def url(self) -> str:
+        return "%s://%s%s" % (self.scheme, self.host_header, self.base_path)
+
+
+def resolve_update_target(url: str, resolve: Any = None) -> UpdateTarget:
+    """Updates are code, so they only travel over https (certificate checked against the
+    name), loopback, or the tailnet (Tailscale encrypts it): an address in 100.64.0.0/10 or
+    fd7a:115c:a1e0::/48, or a *.ts.net name whose one resolution lands there. Raises
+    UpdateRefused for anything else, including URL forms that could mean two things."""
     import ipaddress
     import urllib.parse
-    parts = urllib.parse.urlsplit(url)
-    host = (parts.hostname or "").lower().rstrip(".")
-    if parts.scheme == "https" and host:
-        return True, "https"
-    if parts.scheme != "http" or not host:
-        return False, "not an http(s) URL"
-    if host == "localhost":
-        return True, "loopback"
+    raw = url.strip()
+    if any(ord(c) < 0x21 or ord(c) > 0x7e for c in raw) or "\\" in raw:
+        raise UpdateRefused("the hub URL has spaces, control or non-ASCII characters")
     try:
-        a = ipaddress.ip_address(host)
-        if a.is_loopback:
-            return True, "loopback"
-        if _tailnet_ip(host):
-            return True, "tailnet address"
-        return False, "plain http to %s, which isn't loopback or the tailnet" % host
+        parts = urllib.parse.urlsplit(raw)
+        port = parts.port
     except ValueError:
-        pass
-    if host.endswith(".ts.net"):
-        try:
-            addrs = (resolve or socket.getaddrinfo)(host, parts.port or 80, 0, socket.SOCK_STREAM)
-        except OSError:
-            return False, "%s doesn't resolve" % host
-        ips = {str(a[4][0]) for a in addrs}
-        if ips and all(_tailnet_ip(ip) for ip in ips):
-            return True, "tailnet name"
-        return False, "%s resolves outside the tailnet" % host
-    return False, "plain http to %s, which isn't loopback or the tailnet" % host
+        raise UpdateRefused("the hub URL doesn't parse")
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https"):
+        raise UpdateRefused("not an http(s) URL")
+    if "@" in parts.netloc or parts.username is not None or parts.password is not None:
+        raise UpdateRefused("the hub URL has a user part (@)")
+    if parts.query or parts.fragment:
+        raise UpdateRefused("the hub URL has a query or fragment")
+    host = (parts.hostname or "").lower()
+    if not host or host.endswith(".") or ".." in host or host.startswith("xn--") or ".xn--" in host:
+        raise UpdateRefused("the hub URL's host %r isn't a plain name or address" % host)
+    port = port or (443 if scheme == "https" else 80)
+    base = parts.path.rstrip("/")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if scheme == "https":
+        return UpdateTarget(scheme, host, port, base, host, "https")
+    if ip is not None:
+        if ip.is_loopback:
+            return UpdateTarget(scheme, host, port, base, host, "loopback")
+        if _tailnet_ip(str(ip)):
+            return UpdateTarget(scheme, host, port, base, host, "tailnet address")
+        raise UpdateRefused("plain http to %s, which isn't loopback or the tailnet" % host)
+    if host == "localhost":
+        return UpdateTarget(scheme, host, port, base, "127.0.0.1", "loopback")
+    if not host.endswith(".ts.net"):
+        raise UpdateRefused("plain http to %s, which isn't loopback or the tailnet" % host)
+    try:
+        addrs = (resolve or socket.getaddrinfo)(host, port, 0, socket.SOCK_STREAM)
+    except OSError:
+        raise UpdateRefused("%s doesn't resolve" % host)
+    ips = sorted({str(a[4][0]).split("%", 1)[0] for a in addrs})
+    if not ips or not all(_tailnet_ip(i) for i in ips):
+        raise UpdateRefused("%s resolves outside the tailnet (%s)" % (host, ", ".join(ips) or "nothing"))
+    return UpdateTarget(scheme, host, port, base, ips[0], "tailnet name (%s)" % ips[0])
+
+
+def update_transport_ok(url: str, resolve: Any = None) -> Tuple[bool, str]:
+    try:
+        return True, resolve_update_target(url, resolve).why
+    except UpdateRefused as e:
+        return False, str(e)
 
 
 def update_hub(cfg: Config) -> str:
@@ -949,40 +994,66 @@ def update_hub(cfg: Config) -> str:
     return explicit or (cfg.urls[0] if cfg.urls else "")
 
 
-def _get_bytes(url: str, timeout: float) -> bytes:
-    req = urllib.request.Request(url, method="GET")
-    req.add_header("User-Agent", "needs-you-cli/" + VERSION)
-    req.add_header("X-Needs-You-Client", client_header())
-    with OPENER.open(req, timeout=timeout) as resp:
-        return resp.read(8 * 1024 * 1024)
+MAX_UPDATE_BYTES = 8 * 1024 * 1024
 
 
-def fetch_manifest(cfg: Config, errors: List[str]) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """(hub url, manifest) from the update hub, or None with the reason in `errors`."""
+def pinned_get(t: UpdateTarget, path: str, timeout: float, token: str = "") -> bytes:
+    """GET t.base_path + path on exactly t.connect_host:t.port. Anything but 200 (a redirect
+    included) raises."""
+    import http.client
+    import ssl
+    if t.scheme == "https":
+        conn: Any = http.client.HTTPSConnection(t.host, t.port, timeout=timeout, context=ssl.create_default_context())
+    else:
+        conn = http.client.HTTPConnection(t.connect_host, t.port, timeout=timeout)
+    try:
+        conn.putrequest("GET", t.base_path + path, skip_host=True, skip_accept_encoding=True)
+        conn.putheader("Host", t.host_header)
+        conn.putheader("User-Agent", "needs-you-cli/" + VERSION)
+        conn.putheader("X-Needs-You-Client", client_header())
+        if token:
+            conn.putheader("Authorization", "Bearer " + token)
+        conn.endheaders()
+        resp = conn.getresponse()
+        if resp.status != 200:
+            raise UpdateRefused("%s answered HTTP %d for %s%s" % (t.url, resp.status, path,
+                                " (redirects aren't followed)" if 300 <= resp.status < 400 else
+                                " (hub older than 0.1.2)" if resp.status == 404 and path == "/dl/manifest.json" else ""))
+        data = resp.read(MAX_UPDATE_BYTES + 1)
+        if len(data) > MAX_UPDATE_BYTES:
+            raise UpdateRefused("%s sent more than %d bytes for %s" % (t.url, MAX_UPDATE_BYTES, path))
+        return data
+    finally:
+        conn.close()
+
+
+def fetch_manifest(cfg: Config, errors: List[str]) -> Optional[Tuple[UpdateTarget, Dict[str, Any]]]:
+    """(update hub, manifest), or None with the reason in `errors`."""
     url = update_hub(cfg)
     if not url:
         errors.append("NEEDS_YOU_URLS is not set (%s)" % config_path())
         return None
-    ok, why = update_transport_ok(url)
-    if not ok:
-        errors.append("%s: refusing to update over %s; use the hub's https or tailnet URL "
-                      "(or set NEEDS_YOU_UPDATE_HUB)" % (url, why))
-        return None
     try:
-        status, body = _call(url, cfg.token, "GET", "/v1/health", None, cfg.timeout)
-        if status != 200 or not body.get("ok"):
-            raise ValueError("HTTP %d" % status)
-        raw = _get_bytes(url + "/dl/manifest.json", max(cfg.timeout, 10))
-        manifest = json.loads(raw.decode("utf-8"))
+        t = resolve_update_target(url)
+    except UpdateRefused as e:
+        errors.append("%s: refusing to update: %s; use the hub's https or tailnet URL "
+                      "(or set NEEDS_YOU_UPDATE_HUB)" % (clean(url), e))
+        return None
+    timeout = max(cfg.timeout, 10)
+    try:
+        health = json.loads(pinned_get(t, "/v1/health", cfg.timeout, cfg.token).decode("utf-8"))
+        if not isinstance(health, dict) or not health.get("ok"):
+            raise ValueError("not a healthy hub")
+        manifest = json.loads(pinned_get(t, "/dl/manifest.json", timeout).decode("utf-8"))
         if not isinstance(manifest, dict) or not isinstance(manifest.get("files"), dict):
             raise ValueError("not a manifest")
-    except urllib.error.HTTPError as e:
-        errors.append("%s: HTTP %d for /dl/manifest.json%s" % (url, e.code, " (hub older than 0.1.2)" if e.code == 404 else ""))
+    except UpdateRefused as e:
+        errors.append(str(e))
         return None
     except (OSError, ValueError) as e:
-        errors.append("%s: %s" % (url, clean(getattr(e, "reason", e))))
+        errors.append("%s: %s" % (t.url, clean(getattr(e, "reason", e))))
         return None
-    return url, manifest
+    return t, manifest
 
 
 def _valid_cli(data: bytes) -> bool:
@@ -1021,7 +1092,9 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
     changes: List[Dict[str, Any]] = []
     hub_v = _vtuple(manifest.get("version"))
     mine = _vtuple(VERSION)
-    if hub_v is None or (mine is not None and hub_v < mine and not allow_downgrade):
+    if hub_v is None:
+        raise UpdateRefused("the hub's manifest has no X.Y.Z version")
+    if mine is not None and hub_v < mine and not allow_downgrade:
         notes.append("the hub serves %s, this CLI is %s: not downgrading (--allow-downgrade to do it anyway)"
                      % (clean(manifest.get("version")), VERSION))
         return changes, notes
@@ -1032,9 +1105,8 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         if name != "needs-you" and not os.path.isfile(path):
             continue  # never install a piece that isn't here
         want = str(entry.get("sha256") or "").lower()
-        if len(want) != 64:
-            notes.append("the hub's manifest has no checksum for %s" % name)
-            continue
+        if len(want) != 64 or any(c not in "0123456789abcdef" for c in want):
+            raise UpdateRefused("the hub's manifest has no valid checksum for %s" % name)
         have = _sha256_file(path)
         if have != want:
             changes.append({"file": name, "path": path, "sha256": want, "size": entry.get("size"),
@@ -1049,7 +1121,9 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
     except OSError:
         referenced = False
     hj = files.get("hooks.json")
-    if referenced and isinstance(hj, dict) and isinstance(files.get("install-hooks.sh"), dict):
+    if referenced and isinstance(hj, dict):
+        if not isinstance(files.get("install-hooks.sh"), dict):
+            raise UpdateRefused("the hub's manifest lists hooks.json without install-hooks.sh")
         applied = _read_state().get("hooks_json_sha256")
         if applied != hj.get("sha256") or any(c["file"] == "needs-you-hook.sh" for c in changes):
             changes.append({"file": "hooks.json", "path": settings, "sha256": str(hj.get("sha256") or ""),
@@ -1098,7 +1172,7 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
     if not gh:
         return None, "gh isn't installed"
     if _vtuple(version) is None:
-        return None, "the hub's version %s isn't X.Y.Z" % clean(version)
+        raise UpdateRefused("the hub's version %s isn't X.Y.Z" % clean(version))
     v = "%d.%d.%d" % _vtuple(version)  # type: ignore[str-format]
     tarball = "needs-you-server-%s.tar.gz" % v
     with tempfile.TemporaryDirectory(prefix="needs-you-release-") as tmp:
@@ -1107,9 +1181,9 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
                                 "--pattern", "SHA256SUMS", "--pattern", tarball, "--dir", tmp],
                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.SubprocessError) as e:
-            return None, "gh failed (%s)" % type(e).__name__
+            raise UpdateRefused("gh failed (%s)" % type(e).__name__)
         if r.returncode != 0:
-            return None, "gh couldn't download release v%s (%s)" % (v, clean((r.stderr.strip().splitlines() or [""])[-1]))
+            raise UpdateRefused("gh couldn't download release v%s (%s)" % (v, clean((r.stderr.strip().splitlines() or [""])[-1])))
         sums: Dict[str, str] = {}
         try:
             with open(os.path.join(tmp, "SHA256SUMS"), "r", encoding="utf-8") as fh:
@@ -1133,22 +1207,31 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
                     if member is not None:
                         out[name] = hashlib.sha256(member.read()).hexdigest()
             return out, ""
-        except (OSError, tarfile.TarError) as e:
-            return None, "couldn't read release v%s (%s)" % (v, type(e).__name__)
+        except (OSError, ValueError, tarfile.TarError) as e:
+            raise UpdateRefused("couldn't read release v%s (%s)" % (v, type(e).__name__))
 
 
-def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, Any]]) -> str:
+def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, Any]], auto: bool = False) -> str:
     """Every file about to be installed must match the GitHub release of the hub's version.
     Raises UpdateRefused on a mismatch; returns a note when the check couldn't run (and
     raises instead with NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1)."""
     names = sorted({c["file"] for c in changes} | ({"install-hooks.sh", "needs-you-hook.sh"}
                                                   if any(c["file"] == "hooks.json" for c in changes) else set()))
-    digests, why = release_digests(str(manifest.get("version") or ""), names)
+    try:
+        digests, why = release_digests(str(manifest.get("version") or ""), names)
+    except UpdateRefused:
+        raise
+    except Exception as e:  # noqa: BLE001 - any failure of the check refuses (never fail open)
+        raise UpdateRefused("the GitHub release check failed (%s)" % type(e).__name__)
     if digests is None:
-        if _setting(cfg, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH").strip().lower() in _ON:
-            raise UpdateRefused("can't check against the GitHub release (%s) and "
-                                "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH is on" % why)
-        return "not checked against the GitHub release: %s" % why
+        # Only "gh isn't installed" gets here. Automatic updates need the match unless it
+        # is explicitly turned off; a manual update goes ahead with a warning.
+        req = _setting(cfg, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH").strip().lower()
+        if req in _ON or (auto and req not in _OFF):
+            raise UpdateRefused("can't check against the GitHub release (%s), and %s" % (
+                why, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH is on" if req in _ON else
+                "automatic updates need it (install and log in to gh, or set NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0)"))
+        return "WARNING: not checked against the GitHub release (%s); only the hub's checksums were checked" % why
     files = manifest.get("files") or {}
     for name in names:
         want = str((files.get(name) or {}).get("sha256") or "").lower()
@@ -1179,9 +1262,9 @@ def _backup(name: str, path: str) -> None:
     _write_state(backups=backups)
 
 
-def _download_verified(hub: str, name: str, manifest: Dict[str, Any], timeout: float) -> bytes:
+def _download_verified(hub: UpdateTarget, name: str, manifest: Dict[str, Any], timeout: float) -> bytes:
     entry = (manifest.get("files") or {}).get(name) or {}
-    data = _get_bytes(hub + "/dl/" + name, timeout)
+    data = pinned_get(hub, "/dl/" + name, timeout)
     if hashlib.sha256(data).hexdigest() != str(entry.get("sha256") or "").lower():
         raise ValueError("%s doesn't match the hub's checksum" % name)
     if isinstance(entry.get("size"), int) and entry["size"] != len(data):
@@ -1189,7 +1272,7 @@ def _download_verified(hub: str, name: str, manifest: Dict[str, Any], timeout: f
     return data
 
 
-def _apply(hub: str, manifest: Dict[str, Any], change: Dict[str, Any], timeout: float) -> str:
+def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], timeout: float) -> str:
     name = change["file"]
     if name == "hooks.json":
         import subprocess
@@ -1252,7 +1335,7 @@ def rollback(quiet: bool, as_json: bool) -> int:
 
 
 def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = False, as_json: bool = False,
-           allow_downgrade: bool = False) -> int:
+           allow_downgrade: bool = False, from_flush: bool = False) -> int:
     """`needs-you update`. Exit 0 when up to date or updated (always with --auto); 1 when the
     update hub couldn't serve one, it was refused, or a file couldn't be replaced."""
     result: Dict[str, Any] = {"ok": False, "cli": VERSION, "hub": None, "hub_version": None,
@@ -1273,22 +1356,31 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
             warn("no update: %s" % "; ".join(errors))
         return finish(1)
     hub, manifest = got
-    result["hub"], result["hub_version"] = hub, manifest.get("version")
-    changes, notes = plan_update(manifest, allow_downgrade=allow_downgrade)
+    result["hub"], result["hub_version"] = hub.url, manifest.get("version")
+    try:
+        changes, notes = plan_update(manifest, allow_downgrade=allow_downgrade)
+    except UpdateRefused as e:
+        result["errors"].append(str(e))
+        if not quiet:
+            warn("update refused: %s" % e)
+        return finish(1)
     result["notes"] = notes
     result["changes"] = [{k: c[k] for k in ("file", "from", "to")} for c in changes]
     for n in notes:
         say("needs-you update: %s" % n)
     if not changes:
-        say("needs-you %s is already up to date (%s)" % (VERSION, hub))
+        say("needs-you %s is already up to date (%s)" % (VERSION, hub.url))
         return finish(0)
-    say("from %s (hub %s):" % (hub, clean(manifest.get("version"))))
+    say("from %s (hub %s, %s):" % (hub.url, clean(manifest.get("version")), hub.why))
     for c in changes:
         say("  %s %s (%s -> %s)" % ("would update" if check else "update", c["file"], c["from"] or "?", c["to"]))
     try:
-        note = cross_check(cfg, manifest, changes)
+        note = cross_check(cfg, manifest, changes, auto=auto or from_flush)
         result["notes"].append(note)
-        say("  " + note)
+        if note.startswith("WARNING") and not quiet and not as_json:
+            warn(note)
+        else:
+            say("  " + note)
     except UpdateRefused as e:
         result["errors"].append(str(e))
         if not quiet:
@@ -1303,13 +1395,13 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         try:
             msg = _apply(hub, manifest, c, timeout)
             result["applied"].append(c["file"])
-            say(msg)
+            say(msg + " (from %s)" % hub.url)
         except Exception as e:  # noqa: BLE001 - never a traceback for the caller
             failed = True
             result["errors"].append("%s: %s" % (c["file"], clean(getattr(e, "reason", e))))
             if not quiet:
                 warn("couldn't update %s" % result["errors"][-1])
-    _write_state(last_update_at=int(time.time()), last_update_hub=hub)
+    _write_state(last_update_at=int(time.time()), last_update_hub=hub.url)
     if result["applied"]:
         say("needs-you update --rollback puts the previous files back")
     return finish(1 if failed else 0)
@@ -1330,7 +1422,7 @@ def auto_update(cfg: Config) -> None:
         if now - float(st.get("auto_tried_at") or 0) < AUTO_UPDATE_RETRY:
             return
         _write_state(auto_tried_at=int(now))
-        if update(cfg, quiet=True) == 0:
+        if update(cfg, quiet=True, from_flush=True) == 0:
             _write_state(auto_ok_at=int(now))
     except Exception:  # noqa: BLE001 - flush must never fail because of this
         pass
@@ -1753,8 +1845,12 @@ def _doctor_update(self: "Doctor") -> None:
         self.add("update", "INFO", local + tail + "; no hub served /dl/manifest.json (%s)" % "; ".join(errors)[:200])
         return
     hub, manifest = got
-    changes, notes = plan_update(manifest)
-    detail = "%s; hub %s serves %s%s" % (local, hub, clean(manifest.get("version")), tail)
+    try:
+        changes, notes = plan_update(manifest)
+    except UpdateRefused as e:
+        self.add("update", "WARN", local + tail + "; the hub's manifest is refused: %s" % e)
+        return
+    detail = "%s; hub %s serves %s%s" % (local, hub.url, clean(manifest.get("version")), tail)
     if changes:
         self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c["file"] for c in changes),
                  "needs-you update")

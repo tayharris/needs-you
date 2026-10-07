@@ -34,7 +34,10 @@ class FakeHub:
         self.version = version or self.cli_version()
         self.manifest = manifest
         self.bad = set(bad)
+        self.bad_shape = False
+        self.redirect = False
         self.headers = []
+        self.hosts = []
         owner = self
 
         class H(BaseHTTPRequestHandler):
@@ -43,8 +46,15 @@ class FakeHub:
 
             def do_GET(self):
                 owner.headers.append((self.path, self.headers.get("X-Needs-You-Client")))
+                owner.hosts.append(self.headers.get("Host"))
                 if self.path == "/v1/health":
                     return self.reply(200, json.dumps({"ok": True, "version": owner.version}).encode())
+                if self.path == "/dl/manifest.json" and owner.redirect:
+                    self.send_response(302)
+                    self.send_header("Location", "http://127.0.0.1:9/evil")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 if self.path == "/dl/manifest.json" and owner.manifest:
                     files = {}
                     for name, data in owner.files.items():
@@ -52,6 +62,8 @@ class FakeHub:
                         if name in owner.bad:
                             digest = "0" * 64
                         files[name] = {"sha256": digest, "size": len(data)}
+                        if owner.bad_shape and name == "needs-you":
+                            del files[name]["sha256"]
                     return self.reply(200, json.dumps({"version": owner.version, "files": files}).encode())
                 name = self.path[len("/dl/"):]
                 if self.path.startswith("/dl/") and name in owner.files:
@@ -127,7 +139,7 @@ class Update(UpdateCase):
         r = self.run_cli("update", urls=[h.url, dead])
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("from %s" % h.url, r.stdout)
-        self.assertIn("not checked against the GitHub release: gh isn't installed", r.stdout)
+        self.assertIn("WARNING: not checked against the GitHub release (gh isn't installed)", r.stderr)
         self.assertEqual(read(self.cli), read(CLI))
         self.assertEqual(os.stat(self.cli).st_mode & 0o777, 0o755)
         self.assertEqual(read(skill), read(SKILL))
@@ -204,7 +216,7 @@ class Update(UpdateCase):
         for url in ("http://10.0.0.5:8765", "http://hub.example.com:8765", "ftp://127.0.0.1/"):
             r = self.run_cli("update", urls=[url])
             self.assertEqual(r.returncode, 1, url)
-            self.assertIn("refusing to update over", r.stderr, url)
+            self.assertIn("refusing to update:", r.stderr, url)
         self.assertEqual(read(self.cli), self.old_cli)
 
     def test_rollback_restores_the_previous_files(self):
@@ -316,22 +328,53 @@ class ReleaseCrossCheck(UpdateCase):
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         self.assertEqual(read(self.cli), self.old_cli)
 
-    def test_require_match_refuses_when_the_check_cannot_run(self):
+    def test_a_gh_that_fails_refuses(self):
+        # Installed but failing (no such release, not logged in, a timeout): never fail open.
         h = self.hub()
         gh, _ = self.fake_gh(current_files(), h.version, fail=True)
         r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
-        self.assertEqual(r.returncode, 0, r.stderr)            # not required: installs, says so
-        self.assertIn("not checked against the GitHub release: gh couldn't download", r.stdout)
-        with open(self.cli, "wb") as fh:
-            fh.write(self.old_cli)
-        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "1"})
         self.assertEqual(r.returncode, 1)
-        self.assertIn("NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH", r.stderr)
+        self.assertIn("gh couldn't download release", r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+
+    def test_a_broken_release_refuses(self):
+        h = self.hub()
+        gh, _ = self.fake_gh(current_files(), h.version)
+        with open(os.path.join(self.tmp, "release", "SHA256SUMS"), "w") as fh:
+            fh.write("garbage\n")
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("doesn't match its SHA256SUMS", r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+
+    def test_without_gh(self):
+        h = self.hub()
+        # Required: refused.
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "1"})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH is on", r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+        # Automatic updates require it by default.
+        r = self.run_cli("-q", "flush", urls=[h.url], env={"NEEDS_YOU_AUTO_UPDATE": "1"})
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+        self.assertEqual(read(self.cli), self.old_cli)
+        # By hand: goes ahead, with a warning.
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("WARNING: not checked against the GitHub release", r.stderr)
+        self.assertEqual(read(self.cli), read(CLI))
+
+    def test_manifest_without_a_checksum_refuses(self):
+        h = self.hub()
+        h.bad_shape = True
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no valid checksum", r.stderr)
         self.assertEqual(read(self.cli), self.old_cli)
 
 
 class Transport(unittest.TestCase):
-    """update_transport_ok, called directly (the CLI file loaded as a module)."""
+    """resolve_update_target and pinned_get, called directly (the CLI loaded as a module)."""
 
     @classmethod
     def setUpClass(cls):
@@ -342,25 +385,70 @@ class Transport(unittest.TestCase):
         cls.cli = importlib.util.module_from_spec(spec)
         loader.exec_module(cls.cli)
 
-    def ok(self, url, ips=None):
-        resolve = (lambda *a: [(None, None, None, None, (ip, 80)) for ip in ips]) if ips is not None else None
-        return self.cli.update_transport_ok(url, resolve)[0]
+    def resolver(self, *answers):
+        """Each call returns the next answer: a rebinding DNS server."""
+        calls = []
+        def resolve(host, port, *a):
+            calls.append(host)
+            ips = answers[min(len(calls) - 1, len(answers) - 1)]
+            return [(None, None, None, None, (ip, port)) for ip in ips]
+        return resolve, calls
 
-    def test_table(self):
-        self.assertTrue(self.ok("https://hub.example.com"))
-        self.assertTrue(self.ok("http://127.0.0.1:8765"))
-        self.assertTrue(self.ok("http://localhost:8765"))
-        self.assertTrue(self.ok("http://[::1]:8765"))
-        self.assertTrue(self.ok("http://100.101.102.103:8765"))
-        self.assertTrue(self.ok("http://[fd7a:115c:a1e0::1]:8765"))
-        self.assertTrue(self.ok("http://mac.tail1.ts.net:8765", ips=["100.64.0.7"]))
-        self.assertFalse(self.ok("http://mac.tail1.ts.net:8765", ips=["203.0.113.5"]))
-        self.assertFalse(self.ok("http://mac.tail1.ts.net:8765", ips=["100.64.0.7", "203.0.113.5"]))
-        self.assertFalse(self.ok("http://100.128.0.1:8765"))      # just outside 100.64.0.0/10
-        self.assertFalse(self.ok("http://10.0.0.5:8765"))
-        self.assertFalse(self.ok("http://hub.example.com"))
-        self.assertFalse(self.ok("http://evil.ts.net.example.com", ips=["100.64.0.7"]))
-        self.assertFalse(self.ok("file:///etc/passwd"))
+    def target(self, url, *answers):
+        resolve, calls = self.resolver(*(answers or (["100.64.0.7"],)))
+        return self.cli.resolve_update_target(url, resolve), calls
+
+    def refused(self, url, *answers):
+        with self.assertRaises(self.cli.UpdateRefused, msg=url):
+            self.target(url, *answers)
+
+    def test_allowed(self):
+        t, _ = self.target("https://hub.example.com/needs/")
+        self.assertEqual((t.scheme, t.host, t.port, t.base_path, t.connect_host), ("https", "hub.example.com", 443, "/needs", "hub.example.com"))
+        t, _ = self.target("http://127.0.0.1:8765")
+        self.assertEqual((t.connect_host, t.port, t.host_header), ("127.0.0.1", 8765, "127.0.0.1:8765"))
+        t, _ = self.target("http://localhost:8765")
+        self.assertEqual(t.connect_host, "127.0.0.1")
+        t, _ = self.target("http://[::1]:8765")
+        self.assertEqual((t.connect_host, t.host_header), ("::1", "[::1]:8765"))
+        self.assertEqual(self.target("http://100.101.102.103:8765")[0].connect_host, "100.101.102.103")
+        self.assertEqual(self.target("http://[fd7a:115c:a1e0::1]:8765")[0].connect_host, "fd7a:115c:a1e0::1")
+        t, calls = self.target("http://MAC.Tail1.TS.NET:8765", ["100.64.0.7"])
+        self.assertEqual((t.host, t.connect_host, t.host_header), ("mac.tail1.ts.net", "100.64.0.7", "mac.tail1.ts.net:8765"))
+        self.assertEqual(calls, ["mac.tail1.ts.net"])
+
+    def test_bypass_shapes_are_refused(self):
+        for url in ("http://10.0.0.5:8765", "http://hub.example.com", "http://100.128.0.1:8765", "ftp://127.0.0.1/",
+                    "file:///etc/passwd", "http://127.0.0.1@evil.example.com/", "http://user@127.0.0.1:8765",
+                    "http://u:p@mac.tail1.ts.net", "http://mac.tail1.ts.net.:8765", "http://127.0.0.1.:8765",
+                    "http://xn--mc-uia.tail1.ts.net", "http://m\u00e4c.tail1.ts.net", "http://evil.ts.net.example.com",
+                    "http://127.0.0.1:8765/?x=1", "http://127.0.0.1:8765/#x", "http://127.0.0.1:99999",
+                    "http://127.0.0.1 :8765", "http://[::ffff:10.0.0.5]:8765", "http://a..ts.net",
+                    "http://127.0.0.1\\@evil.example.com", "http://"):
+            self.refused(url)
+        # *.ts.net that resolves outside the tailnet, partly or entirely.
+        self.refused("http://mac.tail1.ts.net:8765", ["203.0.113.5"])
+        self.refused("http://mac.tail1.ts.net:8765", ["100.64.0.7", "203.0.113.5"])
+        self.refused("http://mac.tail1.ts.net:8765", [])
+
+    def test_resolves_once_and_connects_to_that_address(self):
+        # DNS rebinding: the first answer is checked and used; a second lookup would say evil.
+        t, calls = self.target("http://mac.tail1.ts.net:8765", ["100.64.0.7"], ["203.0.113.5"])
+        self.assertEqual(calls, ["mac.tail1.ts.net"])
+        self.assertEqual(t.connect_host, "100.64.0.7")
+
+    def test_pinned_get_sends_the_host_header_and_refuses_redirects(self):
+        h = FakeHub(current_files())
+        self.addCleanup(h.stop)
+        port = h.server.server_address[1]
+        t = self.cli.UpdateTarget("http", "mac.tail1.ts.net", port, "", "127.0.0.1", "tailnet name")
+        self.assertEqual(json.loads(self.cli.pinned_get(t, "/v1/health", 5))["ok"], True)
+        self.assertEqual(h.hosts[-1], "mac.tail1.ts.net:%d" % port)
+        h.redirect = True
+        with self.assertRaises(self.cli.UpdateRefused) as e:
+            self.cli.pinned_get(t, "/dl/manifest.json", 5)
+        self.assertIn("redirects aren't followed", str(e.exception))
+        self.assertEqual([p for p in h.hosts if p != "mac.tail1.ts.net:%d" % port], [])  # nothing went elsewhere
 
 
 class ClientHeader(UpdateCase):
@@ -395,7 +483,7 @@ class AutoUpdate(UpdateCase):
 
     def test_flush_updates_once_a_day(self):
         h = self.hub()
-        r = self.run_cli("-q", "flush", urls=[h.url], env={"NEEDS_YOU_AUTO_UPDATE": "1"})
+        r = self.run_cli("-q", "flush", urls=[h.url], env={"NEEDS_YOU_AUTO_UPDATE": "1", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "0"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout, "")
         self.assertEqual(read(self.cli), read(CLI))
@@ -403,7 +491,7 @@ class AutoUpdate(UpdateCase):
         self.assertIn("auto_ok_at", st)
         # The next flush (5 minutes later) doesn't ask again.
         n = len(h.headers)
-        self.run_cli("-q", "flush", urls=[h.url], env={"NEEDS_YOU_AUTO_UPDATE": "1"})
+        self.run_cli("-q", "flush", urls=[h.url], env={"NEEDS_YOU_AUTO_UPDATE": "1", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "0"})
         self.assertFalse([p for p, _ in h.headers[n:] if p == "/dl/manifest.json"])
 
     def test_opt_out_and_hub_down(self):
@@ -413,7 +501,7 @@ class AutoUpdate(UpdateCase):
         self.assertEqual(read(self.cli), self.old_cli)
         self.assertEqual(self.state(), {})
         dead = "http://127.0.0.1:%d" % free_port()
-        r = self.run_cli("-q", "flush", urls=[dead], env={"NEEDS_YOU_AUTO_UPDATE": "1"})
+        r = self.run_cli("-q", "flush", urls=[dead], env={"NEEDS_YOU_AUTO_UPDATE": "1", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": "0"})
         self.assertEqual(r.returncode, 0)
         self.assertNotIn("auto_ok_at", self.state())
         self.assertIn("auto_tried_at", self.state())   # retried after an hour, not every flush
@@ -423,7 +511,7 @@ class AutoUpdate(UpdateCase):
         conf = os.path.join(self.home, ".config", "needs-you")
         os.makedirs(conf)
         with open(os.path.join(conf, "env"), "w") as fh:
-            fh.write("NEEDS_YOU_AUTO_UPDATE=1\n")
+            fh.write("NEEDS_YOU_AUTO_UPDATE=1\nNEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0\n")
         self.run_cli("-q", "flush", urls=[h.url])
         self.assertEqual(read(self.cli), read(CLI))   # opted in through the env file
 

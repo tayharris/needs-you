@@ -46,11 +46,12 @@ needs-you update --rollback  # put back the files the last update replaced
 - asks only the hub this machine was invited by: the first URL in `NEEDS_YOU_URLS`, or `NEEDS_YOU_UPDATE_HUB` if you set one. Never a failover hub, never a URL a hub sends;
 - talks to it only over https, loopback or the tailnet (a `100.64.0.0/10` or `fd7a:115c:a1e0::/48` address, or a `*.ts.net` name that resolves into them). Plain http to anything else is refused;
 - checks every file against the hub's `/dl/manifest.json` (sha256 and size), and the CLI also compiles;
-- when `gh` is installed and can read the repo, checks every file against the GitHub release of that version (its server tarball, itself checked against `SHA256SUMS`). A mismatch refuses the whole update. With `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1` it also refuses when that check can't run;
+- talks to exactly the address it checked: the URL is parsed once (no `user@`, trailing dots, punycode, queries), a `*.ts.net` name is resolved once and the connection goes to that address with the name in the `Host` header, and redirects are never followed;
+- when `gh` is installed, checks every file against the GitHub release of that version (its server tarball, itself checked against `SHA256SUMS`). A mismatch, or a `gh` that fails (no such release, not logged in, a timeout), refuses the whole update. Any check that errors refuses; nothing fails open. Without `gh`, a manual update goes ahead with a warning; an automatic one is refused unless you set `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`, and `=1` refuses manual ones too;
 - never downgrades unless you pass `--allow-downgrade`;
 - keeps the replaced files in `~/.local/state/needs-you/backup/` for `--rollback`.
 
-**Automatic (opt-in).** With `NEEDS_YOU_AUTO_UPDATE=1` in `~/.config/needs-you/env` (the installer's `--auto-update` writes it), the 5-minute `needs-you flush` runs the same update once a day, at a time that differs per machine, quietly and without ever failing the flush. It is off by default: an update is code, and the checks above trust the invite hub.
+**Automatic (opt-in).** With `NEEDS_YOU_AUTO_UPDATE=1` in `~/.config/needs-you/env` (the installer's `--auto-update` writes it), the 5-minute `needs-you flush` runs the same update once a day, at a time that differs per machine, quietly and without ever failing the flush. It is off by default: an update is code. It also needs `gh` (logged in, able to read the repo) on the sender for the release cross-check, unless `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`.
 
 **Every request** a sender makes carries `X-Needs-You-Client: cli=…; hook=…; skill=…; orca=…`, so **Settings → Updates → Sender machines** on the Mac shows each machine's versions, when it was last seen, and "N of M machines out of date". `needs-you doctor` has an `update` line with the local versions against the hub's.
 
