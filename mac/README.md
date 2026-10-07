@@ -48,13 +48,22 @@ Hide it from the menu bar (**Show Floating Panel**), the pill's right-click menu
 
 ## Settings
 
-Settings has five tabs. Each setting has a one-line explanation under it.
+Settings is a sidebar of short pages, like System Settings (a `NavigationSplitView`; the page list is `SettingsTab` in `NeedsYouCore/SettingsPages.swift`). Each page has a title and a one-line summary, each setting a one-line explanation, and every page scrolls. The window opens at 760 × 520 (smaller on a short screen; at least 640 × 420).
 
-- **Hubs and access**: the hub on this Mac, Connect with link, Invite a machine, Access, and the manual hub list.
-- **Panel**: your name; **Collapsed pill** (with sample pills) — Pill size (small / medium / large, on top of Size), Shows (count only / count and top item / minimal dot), Split (none / work | personal / by priority), New since last opened (on); **Look** (with a live sample card) — Size (compact / regular / large: the pill, the cards' type and the open panel's width), Card text size (small / default / large / extra large, body text only), Card text (full / first 3 lines / title only), Compact links, Cards before scrolling (as many as fit / 2 / 3 / 5 / 8), Opacity (100–60 % when not hovered); Show floating panel, menu bar icon and count, Snap to corners; **Open panel**: Collapse when clicking elsewhere (off by default), and the list height set by dragging the panel's edge, with **Automatic** to undo it; **Keyboard**: the global shortcut with **Change…** (records the next key press in the Settings window; Esc cancels) and whether it registered.
+- **General**: a first-run welcome (when no hub is set up), your name, **Open at login**, demo mode.
+- **Hubs**:
+  - **This Mac**: **Run hub on this Mac** and its two addresses with **Copy**: *On this Mac* (`http://127.0.0.1:8765`) and *From your other machines (Tailscale)* (`http://<name>.<tailnet>.ts.net:8765`, or the 100.x address). Without Tailscale it says why other machines can't reach the hub and links to the Tailscale guide.
+  - **Join a hub**: join someone else's hub with a link made for this Mac (see [Join a hub with a link](#join-a-hub-with-a-link)).
+  - **Invite a machine**: see [below](#invite-a-machine). Without an owner token it says how to get one.
+  - **Access**: open invites and machines, with **Revoke** (only with an owner token).
+  - **Hubs (manual)**: the hand-entered hub list (the This Mac row also shows its tailnet URL).
+- **Panel**: **Collapsed pill** (with sample pills) — Pill size (small / medium / large, on top of Size), Shows (count only / count and top item / minimal dot), Split (none / work | personal / by priority), New since last opened (on); **Look** (with a live sample card) — Size (compact / regular / large: the pill, the cards' type and the open panel's width), Card text size (small / default / large / extra large, body text only), Card text (full / first 3 lines / title only), Compact links, Cards before scrolling (as many as fit / 2 / 3 / 5 / 8), Opacity (100–60 % when not hovered); Show floating panel, menu bar icon and count, Snap to corners; **Open panel**: Collapse when clicking elsewhere (off by default), and the list height set by dragging the panel's edge, with **Automatic** to undo it; **Keyboard**: the global shortcut with **Change…** (records the next key press in the Settings window; Esc cancels) and whether it registered.
 - **Alerts**: Urgent items and Normal and low items, each Off / Subtle / Normal / Bright (the glow, how many times it pulses, the ring, and a tint at Bright). Urgent never goes below Subtle. The preview pills play the style when it changes. **Arrivals**: how long the new-item preview (and the "3 waited" Later peek) stays out, 14 s by default. Also: urgent breaks through a snooze, urgent shows a hidden panel, the work/personal schedule and the morning summary. **Delivery**: the tier (Interrupt / Ambient / Later) for normal, low, done/info and other-context items, Urgent items break through Focus, Allow focus links from other apps, and a table of what each focus level does. **Bypass rules** (key prefix, agent prefix or host; at most 50). **On the work screen**: where previews spring out, and the urgent edge glow. Focus itself is in the right-click and menu bar menus, or `needsyou://focus` ([docs/guides/mac-app.md](../docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).
 - **Integrations**: **Hotkey also opens the top card's first link** (off by default): the shortcut runs the top card's Terminal jump or opens its VS Code window (or first allowed link) instead of showing or hiding the panel, and shows or hides as usual when there's nothing to open. Live updates (SSE).
-- **Advanced**: demo mode, open at login, **Reset to defaults** for the look and alerts.
+- **Updates**: see [docs/guides/updates.md](../docs/guides/updates.md).
+- **Advanced**: **Reset to defaults** for the look and alerts.
+
+Menu items and links open a given page with `SettingsWindowController.show(tab:)`: **Invite a Machine…** opens Invite a machine, a `needsyou://connect` link opens Join a hub.
 
 Every default is the original look, except two deliberate changes: arrivals stay out 14 s (was 4 s) and the open panel no longer collapses on a click elsewhere. The values are plain keys in `defaults read app.needsyou.mac` (`panelSize`, `cardTextSize`, `cardBodies`, `compactLinks`, `maxVisibleCards`, `panelOpacity`, `pillSize`, `pillDetail` (`count`, `topItem`, `dot`), `pillSplit` (`none`, `context`, `priority`), `pillShowNew`, `pillLastOpenedAt` (seconds since 1970, set when the panel opens and closes), `alertStyleUrgent`, `alertStyleOther`, `hotKey` as `control+option+space`, `hotKeyOpensTopLink`, `tierNormal`, `tierLow`, `tierDoneInfo`, `tierOtherContext`, `urgentBreaksFocus`, `allowFocusLinks`, `bypassRules` (JSON), `previewDisplay`, `edgeGlow`, `previewSeconds` (0 = until clicked or pointed at), `collapseOnClickOutside`, `expandedListHeight` (points, 0 = automatic), and the current focus as `focusLevel`/`focusUntil`/`focusSource`); an unknown or invalid value falls back to the default. The size and alert tables are in `NeedsYouCore` (`PanelStyle.swift`, `PillContent.swift`, `AlertStyle.swift`, `CardLayout.swift`, `HotKeyCombo.swift`, `Delivery.swift`, `BypassRules.swift`, `FocusLink.swift`, `WorkDisplay.swift`, `PanelBehavior.swift`) with tests.
 
@@ -62,7 +71,7 @@ A shortcut needs ⌃, ⌥ or ⌘, and ones macOS or every app owns (⌘Space, �
 
 ## The hub on this Mac (default)
 
-**Run hub on this Mac** is on by default (Settings → Hubs and access → This Mac). At launch the app starts the bundled hub (`Contents/Resources/hub/needs_you_hub.py`) as a child process:
+**Run hub on this Mac** is on by default (Settings → This Mac). At launch the app starts the bundled hub (`Contents/Resources/hub/needs_you_hub.py`) as a child process:
 
 - It listens on `127.0.0.1:8765` and, if the Mac is on a tailnet, on its Tailscale address (100.64.0.0/10). Never on `0.0.0.0`.
 - Other machines are told to use the Mac's MagicDNS name (from `tailscale status --json`), else its Tailscale IP, else `http://127.0.0.1:8765`.
@@ -74,7 +83,7 @@ If Settings says Python isn't available, install Apple's command line tools (`xc
 
 ## Invite a machine
 
-In Settings → **Invite a machine** (shown when you have an owner token, which the local hub gives you): enter a name, pick a role (**Sender** for a server or agent, **Another Mac** = reader, or **Owner** = reader that can invite too), the number of uses (1–20) and an expiry, then **Create invite**. Copy one of:
+In Settings → **Invite a machine** (it needs an owner token, which the local hub gives you; without one the page says how to get one): enter a name, pick a role (**Sender** for a server or agent, **Another Mac** = reader, or **Owner** = reader that can invite too), the number of uses (1–20) and an expiry, then **Create invite**. Copy one of:
 
 - **Agent prompt**: paste into an agent (Claude Code, etc.) on the new machine: "Set up needs-you alerts on this machine: read <join_url> and follow it."
 - **Shell one-liner**: run on the new machine: `curl -fsSL <join_url>/install.sh | bash -s -- --yes`.
@@ -82,24 +91,24 @@ In Settings → **Invite a machine** (shown when you have an owner token, which 
 
 Tailscale is recommended: the join URL uses the hub's MagicDNS name (`…ts.net`). Any https URL also works.
 
-## Connect with a link
+## Join a hub with a link
 
-To read from someone else's hub (or your own always-on hub), get a Mac invite link from its owner and either:
+This is the receiving side: to read from someone else's hub (or your own always-on hub), get a Mac invite link made for this Mac. It comes from another Mac's Settings → **Invite a machine** (role **Another Mac** or **Owner**, then **Mac link**), or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`, which prints the link). Then either:
 
-- click/open the `needsyou://connect?hub=…&code=…` link (the app opens Settings and shows the result), or
-- paste it, or an `http(s)://<hub>/join/<code>` URL, into Settings → **Connect with link**.
+- click/open the `needsyou://connect?hub=…&code=…` link (the app asks first, opens Settings → **Join a hub** and shows the result), or
+- paste it, or an `http(s)://<hub>/join/<code>` URL, into Settings → **Join a hub**. When the page opens and the clipboard holds a join link, it's filled in for you ("Found a link on your clipboard"); **Paste** does the same by hand. Only text `ConnectLink.parse` accepts goes into the field, and a link for this Mac's own hub is never prefilled (`ConnectLinkClipboard` in Core). The clipboard is read only while that page is open.
 
 The app redeems the code (sending this Mac's host name), adds every hub URL the hub returns to your list (deduplicated, after this Mac), and stores the token and its role in `tokens.json` for each. Tokens replicate between hubs, so one token works on all of them. A used or expired link, an unreachable hub, or a plain `http://` URL that isn't on Tailscale each get a clear message.
 
 ## Manual setup (fallback)
 
-Under **Hubs**, add a hub URL, e.g. `http://hub.example.ts.net:8765`, and a read/patch token you were given. Press **Test**, then **Save & Connect**. Hubs are polled in order (this Mac first): the first reachable one is used and the next takes over on errors or timeouts. A failed hub is retried after 2 minutes. The hover line shows which one is in use. Hand-entered tokens have no known role, so they don't enable inviting.
+In Settings → **Hubs (manual)**, add a hub URL, e.g. `http://hub-a.example.ts.net:8765`, and a read/patch token you were given. Press **Test**, then **Save & Connect**. Hubs are polled in order (this Mac first): the first reachable one is used and the next takes over on errors or timeouts. A failed hub is retried after 2 minutes. The hover line shows which one is in use. Hand-entered tokens have no known role, so they don't enable inviting.
 
 Tokens are stored in `tokens.json` (see [Where config lives](#where-config-lives)). Hub URLs and other settings are in `defaults read app.needsyou.mac`.
 
 Plain `http://` is allowed for `*.ts.net` (Tailscale MagicDNS), `localhost`, IP addresses and local network names; Tailscale encrypts the traffic. Any other host needs `https://`.
 
-**Just looking?** Click **Try demo mode** in Settings to see fixture items, with a new one arriving every 45 s. Demo mode doesn't run the hub.
+**Just looking?** Click **Try demo mode** in Settings → General (or turn on **Demo mode** there) to see fixture items, with a new one arriving every 45 s. Demo mode doesn't run the hub.
 
 ## Where config lives
 
@@ -114,7 +123,7 @@ Nothing is kept in the Keychain. Everything is in two places:
 
 - If `tokens.json` doesn't parse, it's moved aside to `tokens.json.corrupt-<time>` and the app starts with no remote tokens (re-connect with a link). Nothing is deleted.
 - Prefs carry a `prefsVersion`. Migrations only move forward and never delete keys, so rolling back to an older build loses nothing.
-- **Upgrading from a build that used the Keychain:** remote hub tokens used to be in the login Keychain. This build deliberately never reads it (on a Mac whose login keychain password is out of sync, every access prompts, endlessly). Re-connect each remote hub once with a Mac link from its owner (Settings → **Connect with link**), or paste its token under **Hubs**; Settings points out which hubs need it. The hub on this Mac needs nothing: its token was already file-only. The old Keychain items are harmless; delete them in Keychain Access (search "NeedsYou") if you like.
+- **Upgrading from a build that used the Keychain:** remote hub tokens used to be in the login Keychain. This build deliberately never reads it (on a Mac whose login keychain password is out of sync, every access prompts, endlessly). Re-connect each remote hub once with a Mac link from its owner (Settings → **Join a hub**), or paste its token under **Hubs (manual)**; Settings points out which hubs need it. The hub on this Mac needs nothing: its token was already file-only. The old Keychain items are harmless; delete them in Keychain Access (search "NeedsYou") if you like.
 
 ## Updating
 

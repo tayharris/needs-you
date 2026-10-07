@@ -20,7 +20,7 @@ A faint pill appears in a corner of the screen. That's the idle state.
 
 ## 2. Local Claude Code (2 minutes)
 
-Make an invite: right-click the pill → **Settings…**, then in the **Invite a machine** section enter a machine name, keep the role **Sender**, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and two copy buttons, **Agent prompt** and **Shell one-liner**. The agent prompt reads:
+Make an invite: right-click the pill → **Settings…**, then on the **Invite a machine** page (under **Hubs** in the sidebar) enter a machine name, keep the role **Sender**, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and two copy buttons, **Agent prompt** and **Shell one-liner**. The agent prompt reads:
 
 ```
 Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it.

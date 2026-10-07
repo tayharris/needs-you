@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(model: model, connect: connect, localHub: localHub, hotKeys: hotKeys)
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
-        model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .hubs) }
+        model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .invite) }
         if let phase3 {
             settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
         }
@@ -222,7 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        settingsWindow.show(tab: .hubs)
+        settingsWindow.show(tab: .joinHub)
         guard let link = ConnectLink.parse(url.absoluteString) else {
             connect.connect(url.absoluteString)   // shows why the link isn't usable
             return

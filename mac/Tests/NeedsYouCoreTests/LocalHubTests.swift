@@ -17,7 +17,50 @@ final class LocalHubTests: XCTestCase {
         ("testTailscaleStatusParsing", testTailscaleStatusParsing),
         ("testPythonProbeClassification", testPythonProbeClassification),
         ("testOwnerTokenFile", testOwnerTokenFile),
+        ("testReachShowsTailnetURLOnlyWithATailnetAddress", testReachShowsTailnetURLOnlyWithATailnetAddress),
+        ("testTailscaleInstalledCheck", testTailscaleInstalledCheck),
     ]
+
+    func testReachShowsTailnetURLOnlyWithATailnetAddress() {
+        let named = LocalHubReach(magicDNSName: "my-mac.example.ts.net", tailnetIP: "100.64.0.7",
+                                  tailscaleInstalled: true, loopbackOnly: false, port: 8765)
+        XCTAssertEqual(named.localURL, "http://127.0.0.1:8765")
+        XCTAssertEqual(named.tailnetURL, "http://my-mac.example.ts.net:8765")
+        XCTAssertEqual(named.tailscale, .connected)
+        XCTAssertTrue(named.reachableFromOtherMachines)
+
+        // MagicDNS off: the 100.x address.
+        let ipOnly = LocalHubReach(magicDNSName: nil, tailnetIP: "100.64.0.7", tailscaleInstalled: true, loopbackOnly: false, port: 8765)
+        XCTAssertEqual(ipOnly.tailnetURL, "http://100.64.0.7:8765")
+
+        // A name without a tailnet address isn't bound by the hub, so it isn't offered.
+        let noIP = LocalHubReach(magicDNSName: "my-mac.example.ts.net", tailnetIP: nil, tailscaleInstalled: true, loopbackOnly: false)
+        XCTAssertNil(noIP.tailnetURL)
+        XCTAssertEqual(noIP.tailscale, .notConnected)
+        XCTAssertFalse(noIP.reachableFromOtherMachines)
+
+        let lanIP = LocalHubReach(magicDNSName: nil, tailnetIP: "192.168.1.4", tailscaleInstalled: false, loopbackOnly: false)
+        XCTAssertNil(lanIP.tailnetURL)
+        XCTAssertEqual(lanIP.tailscale, .notInstalled)
+        XCTAssertTrue(lanIP.note.contains("Tailscale wasn't found"))
+
+        let loopback = LocalHubReach(magicDNSName: "my-mac.example.ts.net", tailnetIP: "100.64.0.7", tailscaleInstalled: true, loopbackOnly: true)
+        XCTAssertNil(loopback.tailnetURL)
+        XCTAssertEqual(loopback.tailscale, .loopbackOnly)
+
+        // Same answer as the URL the hub is started with.
+        let plan = LocalHubPlan(script: "/x/hub.py", dbPath: "/x/hub.db", ownerTokenPath: "/x/owner.token", hubID: "my-mac",
+                                tailnetIP: "100.64.0.7", magicDNSName: "my-mac.example.ts.net", parentPID: 1)
+        XCTAssertEqual(LocalHubReach(plan: plan, tailscaleInstalled: true, loopbackOnly: false).tailnetURL, plan.publicURL)
+        XCTAssertEqual(LocalHubReach.tailscaleGuideURL.host, "github.com")
+        XCTAssertTrue(LocalHubReach.tailscaleGuideURL.path.hasSuffix("/docs/guides/tailscale.md"))
+    }
+
+    func testTailscaleInstalledCheck() {
+        XCTAssertTrue(TailscaleStatus.isInstalled(path: "/usr/bin") { $0 == "/opt/homebrew/bin/tailscale" })
+        XCTAssertTrue(TailscaleStatus.isInstalled(path: "/custom/bin") { $0 == "/custom/bin/tailscale" })
+        XCTAssertFalse(TailscaleStatus.isInstalled(path: "/usr/bin") { _ in false })
+    }
 
     func testTailnetAddressDetection() {
         XCTAssertTrue(TailnetAddress.isTailnetIPv4("100.64.0.1"))

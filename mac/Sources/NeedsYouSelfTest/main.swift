@@ -48,6 +48,8 @@ let entries =
     + testEntries(PillMetricsTests.self, PillMetricsTests.allTests)
     + testEntries(PillNewCountTests.self, PillNewCountTests.allTests)
     + testEntries(PanelBehaviorTests.self, PanelBehaviorTests.allTests)
+    + testEntries(SettingsPagesTests.self, SettingsPagesTests.allTests)
+    + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

@@ -3,9 +3,10 @@ import NeedsYouCore
 import ServiceManagement
 import SwiftUI
 
-/// The Settings window, in tabs: Hubs and access (the hub on this Mac, connecting with a
-/// link, inviting machines, the manual hub list), Panel (name, look with a live preview,
-/// visibility, the shortcut), Alerts, Integrations and Advanced.
+/// The Settings window: a sidebar of short pages, like System Settings. General; the Hubs
+/// group (This Mac, Join a hub, Invite a machine, Access, Hubs (manual)); then Panel,
+/// Alerts, Integrations, Updates and Advanced. The page list is `SettingsTab` in Core
+/// (SettingsPages.swift). Each page is a grouped form that scrolls.
 ///
 /// Focus rule: `show()` is the ONLY place the app activates or makes a window key, and it
 /// is only called from an explicit user action (the Settings menu item / gear button,
@@ -19,7 +20,8 @@ final class SettingsWindowController {
     private let localHub: LocalHubController
     private let hotKeys: HotKeyController
     private let navigation = SettingsNavigation()
-    /// Extra Settings sections per tab (phase 3 adds its schedule and stream options).
+    /// Extra Settings sections per page (phase 3 adds its schedule and stream options;
+    /// Updates is filled entirely this way).
     var extraSettings: [SettingsTab: () -> AnyView] = [:]
 
     init(model: AppModel, connect: ConnectController, localHub: LocalHubController, hotKeys: HotKeyController) {
@@ -29,20 +31,26 @@ final class SettingsWindowController {
         self.hotKeys = hotKeys
     }
 
-    /// `tab` switches to that tab (Invite a Machine and connect links open Hubs and access);
-    /// nil keeps the last one.
+    /// Smallest window: the sidebar plus a page narrow enough for a 13" laptop.
+    static let minSize = NSSize(width: 640, height: 420)
+    /// First-open size, shrunk to fit short screens.
+    static let preferredSize = NSSize(width: 760, height: 520)
+
+    /// `tab` switches to that page (Invite a Machine… opens `.invite`, connect links open
+    /// `.joinHub`); nil keeps the last one.
     func show(tab: SettingsTab? = nil) {
         if let tab { navigation.tab = tab }
+        navigation.shown += 1
         if window == nil {
             let view = SettingsView(model: model, settings: model.settings, connect: connect, localHub: localHub,
                                     hotKeys: hotKeys, navigation: navigation, extra: extraSettings.mapValues { $0() },
                                     close: { [weak self] in self?.window?.performClose(nil) })
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
-            w.title = "Needs You Settings"
+            w.title = "Needs You Settings"   // AppDelegate's focus checks look for the "Settings" suffix
             w.styleMask = [.titled, .closable, .resizable]
-            w.setContentSize(NSSize(width: 600, height: 640))
-            w.contentMinSize = NSSize(width: 560, height: 460)
+            w.setContentSize(Self.fittingSize(on: NSScreen.main))
+            w.contentMinSize = Self.minSize
             w.isReleasedWhenClosed = false
             w.appearance = NSAppearance(named: .darkAqua)
             w.center()
@@ -53,28 +61,23 @@ final class SettingsWindowController {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
-}
 
-/// The Settings tabs.
-enum SettingsTab: String, CaseIterable, Hashable {
-    case hubs, panel, alerts, integrations, updates, advanced
-
-    var title: String {
-        switch self {
-        case .hubs: return "Hubs and access"
-        case .panel: return "Panel"
-        case .alerts: return "Alerts"
-        case .integrations: return "Integrations"
-        case .updates: return "Updates"
-        case .advanced: return "Advanced"
-        }
+    /// The preferred size, but never taller or wider than the screen's usable area (less a
+    /// margin), and never below the minimum.
+    private static func fittingSize(on screen: NSScreen?) -> NSSize {
+        guard let visible = screen?.visibleFrame.size else { return preferredSize }
+        return NSSize(width: max(minSize.width, min(preferredSize.width, visible.width - 80)),
+                      height: max(minSize.height, min(preferredSize.height, visible.height - 80)))
     }
 }
 
-/// Which tab is showing, so menu items can open a given one.
+/// Which page is showing, so menu items and links can open a given one.
 @MainActor
 final class SettingsNavigation: ObservableObject {
-    @Published var tab: SettingsTab = .hubs
+    @Published var tab: SettingsTab = .general
+    /// Bumped every time the window is shown, so a page can react to being opened again
+    /// (Join a hub looks at the clipboard).
+    @Published var shown = 0
 }
 
 /// One editable hub row.
@@ -140,169 +143,356 @@ struct SettingsView: View {
     @State private var inviteRole: HubRole = .sender
     @State private var inviteUses = 1
     @State private var inviteExpiry: InviteExpiry = .day
-    @State private var copied: String?
     @State private var visibilityMessage: String?
     @State private var pendingRevoke: PendingRevoke?
     @State private var automationStatus: String?
+    /// Join a hub: "Found a link on your clipboard", or why Paste did nothing.
+    @State private var clipboardNote: String?
+    @State private var pasteProblem: String?
+    /// The pasteboard's changeCount when Join a hub last looked, so the same clipboard is
+    /// offered once, not every time the page shows.
+    @State private var clipboardChangeCount = -1
 
     /// Only when nothing works out of the box (the local hub is off and no hubs are set).
     private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo }
 
+    /// An owner token (the local hub gives one) and not in demo mode.
+    private var canInvite: Bool { connect.canInvite && !settings.isDemo }
+
+    /// The page to show (Access falls back to Invite a machine without an owner token).
+    private var page: SettingsTab { navigation.tab.resolved(canInvite: canInvite) }
+
     var body: some View {
-        TabView(selection: $navigation.tab) {
-            tabForm {
-                if isFirstRun { welcome }
-                thisMacSection
-                connectSection
-                if connect.canInvite && !settings.isDemo {
-                    inviteSection
-                    accessSection
-                }
-                hubsSection
-            }
-            .tabItem { Label(SettingsTab.hubs.title, systemImage: "network") }
-            .tag(SettingsTab.hubs)
-
-            tabForm {
-                youSection
-                lookSection
-                PillSettingsSection(settings: settings)
-                visibilitySection
-                OpenPanelSettingsSection(settings: settings)
-                keyboardSection
-                extra[.panel]
-            }
-            .tabItem { Label(SettingsTab.panel.title, systemImage: "rectangle.on.rectangle") }
-            .tag(SettingsTab.panel)
-
-            tabForm {
-                alertStyleSection
-                ArrivalSettingsSection(settings: settings)
-                DeliverySection(settings: settings)
-                breakthroughSection
-                BypassRulesSection(settings: settings)
-                WorkScreenSection(settings: settings)
-                extra[.alerts]
-            }
-            .tabItem { Label(SettingsTab.alerts.title, systemImage: "bell.badge") }
-            .tag(SettingsTab.alerts)
-
-            tabForm {
-                shortcutActionSection
-                terminalJumpSection
-                extra[.integrations]
-                sendersSection
-            }
-            .tabItem { Label(SettingsTab.integrations.title, systemImage: "puzzlepiece.extension") }
-            .tag(SettingsTab.integrations)
-
-            // Filled by the app delegate (UpdatesSettingsView).
-            tabForm {
-                extra[.updates]
-            }
-            .tabItem { Label(SettingsTab.updates.title, systemImage: "arrow.down.circle") }
-            .tag(SettingsTab.updates)
-
-            tabForm {
-                advancedSection
-                extra[.advanced]
-            }
-            .tabItem { Label(SettingsTab.advanced.title, systemImage: "gearshape.2") }
-            .tag(SettingsTab.advanced)
+        // The sidebar can't be collapsed: there's no toolbar button to bring it back.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            sidebar
+        } detail: {
+            detail
         }
-        .frame(minWidth: 560, idealWidth: 600, minHeight: 460, idealHeight: 640)
+        .frame(minWidth: SettingsWindowController.minSize.width, idealWidth: SettingsWindowController.preferredSize.width,
+               minHeight: SettingsWindowController.minSize.height, idealHeight: SettingsWindowController.preferredSize.height)
         .onAppear(perform: load)
         .onChange(of: settings.hubURLStrings) { _, _ in load() }
     }
 
-    /// One tab: a grouped form that scrolls when it's taller than the window.
-    private func tabForm<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        Form { content() }
-            .formStyle(.grouped)
+    private var sidebar: some View {
+        List(selection: Binding<SettingsTab?>(
+            get: { page },
+            set: { if let tab = $0 { navigation.tab = tab } }
+        )) {
+            ForEach(SettingsSidebarGroup.allCases) { group in
+                Section {
+                    ForEach(group.pages(canInvite: canInvite), id: \.self) { tab in
+                        Label(tab.title, systemImage: tab.symbol).tag(tab)
+                    }
+                } header: {
+                    if let title = group.title { Text(title) }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
     }
 
-    // MARK: Sections
+    /// The page's title and one-line summary, then its grouped form, which scrolls.
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsPageHeader(tab: page)
+            Form { pageContent(page) }
+                .formStyle(.grouped)
+                .id(page)   // each page starts scrolled to the top
+        }
+    }
+
+    /// Each page's sections, in order. `extra[page]` is where the app delegate plugs in
+    /// sections from elsewhere (phase 3, Updates).
+    @ViewBuilder
+    private func pageContent(_ page: SettingsTab) -> some View {
+        switch page {
+        case .general:
+            if isFirstRun { welcome }
+            youSection
+            startupSection
+            demoSection
+            extra[.general]
+        case .thisMac:
+            thisMacSection
+            if settings.runLocalHub && !settings.isDemo && localHubRunning, let reach = localHub.reach {
+                addressesSection(reach)
+            }
+            extra[.thisMac]
+        case .joinHub:
+            connectSection
+            linkSourcesSection
+            extra[.joinHub]
+        case .invite:
+            if canInvite {
+                if let warning = inviteReachWarning { inviteWarningSection(warning) }
+                inviteSection
+            } else {
+                inviteUnavailableSection
+            }
+            extra[.invite]
+        case .access:
+            accessSection
+            extra[.access]
+        case .hubs:
+            hubsSection
+            extra[.hubs]
+        case .panel:
+            lookSection
+            PillSettingsSection(settings: settings)
+            visibilitySection
+            OpenPanelSettingsSection(settings: settings)
+            keyboardSection
+            extra[.panel]
+        case .alerts:
+            alertStyleSection
+            ArrivalSettingsSection(settings: settings)
+            DeliverySection(settings: settings)
+            breakthroughSection
+            BypassRulesSection(settings: settings)
+            WorkScreenSection(settings: settings)
+            extra[.alerts]
+        case .integrations:
+            shortcutActionSection
+            terminalJumpSection
+            extra[.integrations]
+            sendersSection
+        case .updates:
+            // Filled by the app delegate (UpdatesSettingsView).
+            if let updates = extra[.updates] {
+                updates
+            } else {
+                Section { Text("Updates aren't available in this build.").foregroundStyle(.secondary) }
+            }
+        case .advanced:
+            advancedSection
+            extra[.advanced]
+        }
+    }
+
+    private var localHubRunning: Bool {
+        if case .running = localHub.state { return true }
+        return false
+    }
+
+    // MARK: General
 
     private var welcome: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Welcome to Needs You").font(.headline)
-                Text("Needs You shows the things your machines, projects and agents need from you, as a small floating pill that stays out of the way until something's waiting.")
+                Text("Needs You shows what your machines, projects and agents need from you, in a small floating pill. It stays out of the way until something is waiting.")
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Turn on “Run hub on this Mac”, paste a connect link from another Mac, or add a hub by hand below. Just looking? Try demo mode.")
+                Text("To start, pick one. You can change it later under Hubs.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Try demo mode") {
-                    settings.demoMode = true
-                    localHub.apply()
-                    model.restartFeed()
-                    close()
+                HStack {
+                    Button("Run a hub on this Mac") {
+                        settings.runLocalHub = true
+                        localHub.apply()
+                        model.restartFeed()
+                        navigation.tab = .thisMac
+                    }
+                    Button("Join a hub with a link") { navigation.tab = .joinHub }
+                    Button("Try demo mode") {
+                        settings.demoMode = true
+                        localHub.apply()
+                        model.restartFeed()
+                        close()
+                    }
                 }
             }
             .padding(.vertical, 4)
         }
     }
 
+    private var startupSection: some View {
+        Section {
+            Toggle(isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) })) {
+                LabelWithDetail("Open at login", "Starts Needs You when you log in. Move the app to /Applications first.")
+            }
+            if let loginMessage {
+                Text(loginMessage).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Startup")
+        }
+    }
+
+    private var demoSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { settings.demoMode },
+                set: { settings.demoMode = $0; localHub.apply(); model.restartFeed() }
+            )) {
+                LabelWithDetail("Demo mode", "Shows sample items, with a new one now and then. No hub runs, so real alerts don't arrive.")
+            }
+            .disabled(settings.demoForcedByEnvironment)
+            if settings.demoForcedByEnvironment {
+                Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Demo")
+        }
+    }
+
+    // MARK: Hubs → This Mac
+
     private var thisMacSection: some View {
         Section {
-            Toggle("Run hub on this Mac", isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { settings.runLocalHub },
                 set: { on in
                     settings.runLocalHub = on
                     localHub.apply()
                     model.restartFeed()
                 }
-            ))
+            )) {
+                LabelWithDetail("Run hub on this Mac", "Your agents and servers send alerts to it. Nothing else to install.")
+            }
             .disabled(settings.isDemo)
-            if settings.runLocalHub && !settings.isDemo {
+            if settings.isDemo {
+                Text("Demo mode is on, so the hub isn't running. Turn demo mode off in General.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else if settings.runLocalHub {
                 switch localHub.state {
                 case .off:
                     EmptyView()
                 case .starting:
-                    Text("Starting…").font(.caption).foregroundStyle(.secondary)
-                case .running(let url):
-                    HStack {
-                        Text("Running. Agents and servers post to ").font(.caption).foregroundStyle(.secondary)
-                            + Text(url).font(.caption.monospaced())
-                        Spacer()
-                        copyButton("Copy URL", url)
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Starting…").font(.caption).foregroundStyle(.secondary)
                     }
+                case .running:
+                    Label("Running", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
                 case .failed(let text):
                     Text(text).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                 }
+            } else {
+                Text("Off. To get alerts, join someone's hub with a link (Join a hub) or add one by hand (Hubs (manual)).")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         } header: {
-            Text("This Mac")
+            Text("Hub on this Mac")
         } footer: {
-            Text("The hub listens on 127.0.0.1 and this Mac's Tailscale address only. Items live in ~/Library/Application Support/NeedsYou/hub.db.")
+            Text("The hub only listens on this Mac (127.0.0.1) and on its Tailscale address, never on the open network. Its items are kept in ~/Library/Application Support/NeedsYou/hub.db.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
+
+    /// Both addresses of the running hub, each with Copy; or why other machines can't
+    /// reach it.
+    private func addressesSection(_ reach: LocalHubReach) -> some View {
+        Section {
+            AddressRow(title: "On this Mac", url: reach.localURL,
+                       detail: "For agents and scripts running on this Mac.")
+            if let tailnet = reach.tailnetURL {
+                AddressRow(title: "From your other machines (Tailscale)", url: tailnet, detail: reach.note)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Other machines can't reach this hub", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(reach.note)
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if reach.tailscale != .loopbackOnly {
+                        Link("Tailscale setup guide", destination: LocalHubReach.tailscaleGuideURL)
+                            .font(.caption)
+                    }
+                }
+            }
+            if canInvite {
+                HStack {
+                    Text("To connect a server, an agent or another Mac, make an invite link.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Invite a machine…") { navigation.tab = .invite }
+                }
+            }
+        } header: {
+            Text("Addresses")
+        } footer: {
+            Text("Invite links already contain the right address, so you rarely need to copy these by hand.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Hubs → Join a hub
 
     private var connectSection: some View {
         Section {
+            Text("Use this on the Mac that should show the alerts. Paste an invite link that was made for this Mac, then press Join.")
+                .font(.callout).fixedSize(horizontal: false, vertical: true)
             HStack {
-                TextField("Link", text: $linkDraft, prompt: Text("needsyou://connect?… or https://hub/join/…"))
+                TextField("Link", text: $linkDraft, prompt: Text("needsyou://connect?… or http://…/join/…"))
+                    .labelsHidden()
                     .onSubmit(connectWithLink)
-                Button("Connect", action: connectWithLink)
+                Button("Paste", action: pasteLink)
+                    .help("Paste a join link from the clipboard")
+                Button("Join", action: connectWithLink)
                     .disabled(linkDraft.trimmingCharacters(in: .whitespaces).isEmpty || isWorking(connect.status))
+            }
+            if let clipboardNote {
+                Label(clipboardNote, systemImage: "doc.on.clipboard").font(.caption).foregroundStyle(.secondary)
+            }
+            if let pasteProblem {
+                Text(pasteProblem).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             statusText(connect.status)
         } header: {
-            Text("Connect with link")
+            Text("Join a hub with a link")
         } footer: {
-            Text("Tailscale recommended: use the hub's MagicDNS name (…ts.net). Any https URL also works.")
+            Text("Needs You asks that hub for a token, saves it, and adds the hub to your list. Its items then show in your panel.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .onAppear(perform: offerClipboardLink)
+        .onChange(of: navigation.shown) { _, _ in offerClipboardLink() }
+        .onChange(of: connect.lastLink) { _, link in
+            // Joined (pasted, or opened as a needsyou:// link): don't leave it in the field.
+            if let link, ConnectLink.parse(linkDraft) == link {
+                linkDraft = ""
+                clipboardNote = nil
+            }
+        }
+    }
+
+    private var linkSourcesSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("**From another Mac:** on that Mac, open Settings → Invite a machine, pick “Another Mac”, press Create invite, then Mac link to copy it. Send it to yourself and paste it here.")
+                Text("**From a server hub:** its admin runs `needs-you-admin invite create my-mac --role owner` and sends you the link it prints. (`--role reader` if this Mac shouldn't invite others.)")
+                Text("**Clicked a needsyou://connect link?** Then there's nothing to paste: Needs You opens this page, asks first, and joins by itself.")
+            }
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+            if canInvite {
+                HStack {
+                    Text("Want another machine to send alerts to this Mac instead? Make a link for it.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Invite a machine…") { navigation.tab = .invite }
+                }
+            }
+        } header: {
+            Text("Where links come from")
+        } footer: {
+            Text("A link works a set number of times, then expires. Links use a Tailscale name (…ts.net) or https://. Plain http:// only works over Tailscale or on your local network.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
+    // MARK: Hubs → Invite a machine
+
     private var inviteSection: some View {
         Section {
-            TextField("Machine name", text: $inviteName, prompt: Text("build-box"))
-            Picker("Role", selection: $inviteRole) {
+            TextField("Machine name", text: $inviteName, prompt: Text("devbox"))
+            Picker(selection: $inviteRole) {
                 Text("Sender (a server or agent)").tag(HubRole.sender)
                 Text("Another Mac (reader)").tag(HubRole.reader)
                 Text("Owner (can invite too)").tag(HubRole.owner)
+            } label: {
+                LabelWithDetail("Role", Self.roleDetail(inviteRole))
             }
             Stepper("Uses: \(inviteUses)", value: $inviteUses, in: InviteRequest.usesRange)
             Picker("Expires after", selection: $inviteExpiry) {
@@ -326,29 +516,74 @@ struct SettingsView: View {
                             copyButton("Mac link", mac)
                         }
                     }
-                    if let copied {
-                        Text("Copied \(copied).").font(.caption).foregroundStyle(.secondary)
-                    }
                 }
             }
         } header: {
-            Text("Invite a machine")
+            Text("New invite")
         } footer: {
-            Text("Paste the agent prompt into an agent on the new machine, or run the one-liner there. Send the Mac link to another Mac.")
+            Text("Then, on the new machine: paste the agent prompt into Claude Code (or another agent), or run the shell one-liner in a terminal. For another Mac, open the Mac link there, or paste it into its Settings → Join a hub.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
+    private static func roleDetail(_ role: HubRole) -> String {
+        switch role {
+        case .sender: return "A server, CI job or agent. It sends alerts but can't see your items."
+        case .reader: return "Another Mac with Needs You. It shows the same items."
+        case .owner: return "Another Mac that can also make invites."
+        }
+    }
+
+    /// Links from this Mac's hub carry its address; without Tailscale that's 127.0.0.1.
+    private var inviteReachWarning: String? {
+        guard settings.runLocalHub, !settings.isDemo, let reach = localHub.reach, !reach.reachableFromOtherMachines else { return nil }
+        return "This Mac isn't on Tailscale, so links made here point at 127.0.0.1 and only work on this Mac."
+    }
+
+    private func inviteWarningSection(_ warning: String) -> some View {
+        Section {
+            HStack(alignment: .top) {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("This Mac…") { navigation.tab = .thisMac }
+            }
+        }
+    }
+
+    private var inviteUnavailableSection: some View {
+        Section {
+            if settings.isDemo {
+                Text("Demo mode is on, so there's no hub to invite machines to. Turn demo mode off in General.")
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Making invites needs an owner token. The hub on this Mac gives you one: turn on “Run hub on this Mac”.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("To invite machines to someone else's hub, ask its owner for an Owner invite, then join with it.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("This Mac…") { navigation.tab = .thisMac }
+                    Button("Join a hub…") { navigation.tab = .joinHub }
+                }
+            }
+        } header: {
+            Text("Not available yet")
+        }
+    }
+
+    // MARK: Hubs → Access
+
     private var accessSection: some View {
         Section {
             HStack {
-                Text("Invites").bold()
+                Text("Open invites").bold()
                 Spacer()
                 Button("Refresh") { connect.refreshAccess() }
                     .disabled(isWorking(connect.accessStatus))
             }
             if connect.accessInvites.isEmpty {
-                Text("No open invites.").font(.caption).foregroundStyle(.secondary)
+                Text("None. Links you make in Invite a machine show here until they're used up or expire.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(connect.accessInvites) { invite in
                 HStack {
@@ -363,7 +598,7 @@ struct SettingsView: View {
             }
             Text("Machines").bold()
             if connect.accessTokens.isEmpty {
-                Text("Press Refresh to list the tokens on this hub.").font(.caption).foregroundStyle(.secondary)
+                Text("Press Refresh to list the machines that can use this hub.").font(.caption).foregroundStyle(.secondary)
             }
             ForEach(connect.accessTokens) { token in
                 HStack {
@@ -380,9 +615,9 @@ struct SettingsView: View {
             }
             statusText(connect.accessStatus)
         } header: {
-            Text("Access")
+            Text("Invites and machines")
         } footer: {
-            Text("Revoking an invite stops new machines from using its link; machines it set up keep their own tokens. Revoking a machine's token stops it from posting.")
+            Text("Revoke an invite to stop its link from working; machines it already set up keep working. Revoke a machine to stop it from using this hub.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onAppear { connect.refreshAccess() }
@@ -402,7 +637,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Panel tab
+    // MARK: General → You (shown on the General page)
 
     private var youSection: some View {
         Section {
@@ -410,9 +645,11 @@ struct SettingsView: View {
         } header: {
             Text("You")
         } footer: {
-            Text("The panel reads “\(settings.needsLabel)”.").font(.caption).foregroundStyle(.secondary)
+            Text("The pill reads “Nothing \(settings.needsLabel)” when all is clear.").font(.caption).foregroundStyle(.secondary)
         }
     }
+
+    // MARK: Panel
 
     private var lookSection: some View {
         Section {
@@ -447,6 +684,9 @@ struct SettingsView: View {
             }
         } header: {
             Text("Look")
+        } footer: {
+            Text("The sample card above shows your choices as you make them.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -483,7 +723,7 @@ struct SettingsView: View {
         } header: {
             Text("Panel and menu bar")
         } footer: {
-            Text("Drag the pill anywhere. Reset Position is in the menu bar and right-click menus.")
+            Text("Drag the pill anywhere. To put it back in the top-right corner, use Reset Position in the menu bar or right-click menu.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -494,12 +734,12 @@ struct SettingsView: View {
         } header: {
             Text("Keyboard")
         } footer: {
-            Text("Works in every app and never takes focus from what you're typing. Needs ⌃, ⌥ or ⌘.")
+            Text("Shows or hides the pill from any app, without taking focus from what you're typing. A shortcut needs ⌃, ⌥ or ⌘.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    // MARK: Alerts tab
+    // MARK: Alerts
 
     private var alertStyleSection: some View {
         Section {
@@ -517,7 +757,7 @@ struct SettingsView: View {
         } header: {
             Text("New items")
         } footer: {
-            Text("How loud an arrival is: the glow and how many times it pulses, and the ring on the count. Bright also tints the pill. Reduce Motion makes the pulses gentler.")
+            Text("How loud a new item is: the glow, how many times it pulses, and the ring on the count. Bright also tints the pill. With Reduce Motion on, pulses are gentler.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -532,10 +772,13 @@ struct SettingsView: View {
             }
         } header: {
             Text("Snoozed or hidden")
+        } footer: {
+            Text("Snooze from the moon button or by right-clicking the pill. Everything else waits until the snooze ends.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    // MARK: Integrations tab
+    // MARK: Integrations
 
     private var shortcutActionSection: some View {
         Section {
@@ -589,57 +832,55 @@ struct SettingsView: View {
 
     private var sendersSection: some View {
         Section {
-            Text("Claude Code hooks, Orca automations, CI jobs and scripts post to a hub; set a machine up from Hubs and access → Invite a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
+            Text("Claude Code hooks, Orca automations, CI jobs and scripts send alerts to a hub. To set up a machine, make a link for it in Invite a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if canInvite {
+                HStack {
+                    Spacer()
+                    Button("Invite a machine…") { navigation.tab = .invite }
+                }
+            }
         } header: {
             Text("Senders")
         }
     }
 
-    // MARK: Advanced tab
+    // MARK: Advanced
 
     private var advancedSection: some View {
         Section {
-            Toggle(isOn: Binding(
-                get: { settings.demoMode },
-                set: { settings.demoMode = $0; localHub.apply(); model.restartFeed() }
-            )) {
-                LabelWithDetail("Demo mode", "Fixture items and no hub, to try the app.")
-            }
-            .disabled(settings.demoForcedByEnvironment)
-            if settings.demoForcedByEnvironment {
-                Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
-            }
-            Toggle(isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) })) {
-                LabelWithDetail("Open at login", "Starts Needs You when you log in. Run it from /Applications first.")
-            }
-            if let loginMessage {
-                Text(loginMessage).font(.caption).foregroundStyle(.secondary)
-            }
             HStack {
-                LabelWithDetail("Look and alerts", "Size, text, cards, opacity and alert styles back to the original.")
+                LabelWithDetail("Look and alerts", "The pill, the cards' size and text, opacity and alert styles, back to how they started.")
                 Spacer()
                 Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
                     .disabled(settings.ui == UIPrefs.defaults)
             }
         } header: {
-            Text("Advanced")
+            Text("Reset")
         } footer: {
-            Text("Settings live in `defaults read app.needsyou.mac`; tokens and the hub's data in ~/Library/Application Support/NeedsYou/.")
+            Text("Settings are kept in `defaults read app.needsyou.mac`. Tokens and the hub's data are in ~/Library/Application Support/NeedsYou/.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
+    // MARK: Hubs → Hubs (manual)
+
     private var hubsSection: some View {
         Section {
             if settings.tokensNeedReconnect && !settings.hubsMissingTokens.isEmpty {
-                Text("Hub tokens are no longer kept in the Keychain. Re-connect \(settings.hubsMissingTokens.map(HubName.short).joined(separator: ", ")) once with a link from its owner (Connect with link), or paste its token below.")
+                Text("Hub tokens are no longer kept in the Keychain. Re-connect \(settings.hubsMissingTokens.map(HubName.short).joined(separator: ", ")) once with a link from its owner (Join a hub), or paste its token below.")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             if settings.runLocalHub && !settings.isDemo {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("This Mac").bold()
-                    Text(LocalHub.clientURL.absoluteString).foregroundStyle(.secondary).font(.callout.monospaced())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(LocalHub.clientURL.absoluteString).foregroundStyle(.secondary).font(.callout.monospaced())
+                        if let tailnet = localHub.reach?.tailnetURL {
+                            Text("Other machines: \(tailnet)").foregroundStyle(.secondary).font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
                     Spacer()
                     Text("owner").font(.caption).foregroundStyle(.secondary)
                 }
@@ -664,7 +905,7 @@ struct SettingsView: View {
         } header: {
             Text("Hubs")
         } footer: {
-            Text("Manual setup, if you have a hub URL and token instead of a link. Polled in order (this Mac first): the first reachable hub is used and the next takes over on errors. Tokens are stored in ~/Library/Application Support/NeedsYou/tokens.json (mode 600).")
+            Text("Only if you were given a hub URL and a token instead of a link; Join a hub is easier. Hubs are tried in order, this Mac first: the first one that answers is used, and the next takes over if it fails. Tokens are saved in ~/Library/Application Support/NeedsYou/tokens.json (mode 600).")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -688,12 +929,7 @@ struct SettingsView: View {
     }
 
     private func copyButton(_ title: String, _ text: String) -> some View {
-        Button {
-            connect.copy(text)
-            copied = title.lowercased()
-        } label: {
-            Label(title, systemImage: "doc.on.doc")
-        }
+        CopyButton(title: title, text: text)
     }
 
     private func isWorking(_ status: ConnectController.Status?) -> Bool {
@@ -706,8 +942,42 @@ struct SettingsView: View {
     private func connectWithLink() {
         let text = linkDraft
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        clipboardNote = nil
+        pasteProblem = nil
         connect.connect(text)
         if ConnectLink.parse(text) != nil { linkDraft = "" }
+    }
+
+    /// Join a hub → Paste. Only a join link goes into the field; anything else on the
+    /// clipboard (a password, a token) is left alone.
+    private func pasteLink() {
+        clipboardNote = nil
+        switch ConnectLinkClipboard.paste(NSPasteboard.general.string(forType: .string)) {
+        case .link(let text):
+            linkDraft = text
+            pasteProblem = nil
+        case .notALink:
+            pasteProblem = "The clipboard doesn't hold a join link. It starts with needsyou://connect, or has /join/ in it."
+        case .empty:
+            pasteProblem = "The clipboard is empty. Copy the link first."
+        }
+    }
+
+    /// When Join a hub opens (the person opened Settings, so reading the clipboard is
+    /// expected): prefill a join link from the clipboard, once per clipboard change.
+    private func offerClipboardLink() {
+        guard navigation.tab == .joinHub, !isWorking(connect.status) else { return }
+        let pasteboard = NSPasteboard.general
+        guard pasteboard.changeCount != clipboardChangeCount else { return }
+        clipboardChangeCount = pasteboard.changeCount
+        var own = [LocalHub.clientURL]
+        if let tailnet = localHub.reach?.tailnetURL, let url = URL(string: tailnet) { own.append(url) }
+        guard let text = ConnectLinkClipboard.suggestion(clipboard: pasteboard.string(forType: .string), draft: linkDraft,
+                                                         ownHubs: own, ignoring: connect.lastLink.map { [$0] } ?? [])
+        else { return }
+        linkDraft = text
+        pasteProblem = nil
+        clipboardNote = "Found a link on your clipboard. Check it, then press Join."
     }
 
     private func load() {
@@ -886,5 +1156,69 @@ private struct HubRowView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// The top of each page: its icon, title and one-line summary (from `SettingsTab`).
+private struct SettingsPageHeader: View {
+    let tab: SettingsTab
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tab.symbol)
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tab.title).font(.title2.weight(.semibold))
+                Text(tab.summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 2)
+    }
+}
+
+/// A Copy button that says "Copied" for a moment after a click.
+private struct CopyButton: View {
+    let title: String
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+        } label: {
+            Label(copied ? "Copied" : title, systemImage: copied ? "checkmark" : "doc.on.doc")
+        }
+    }
+}
+
+/// One address of the hub on this Mac: what it's for, the URL (selectable) and Copy.
+private struct AddressRow: View {
+    let title: String
+    let url: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                Text(url).font(.callout.monospaced()).textSelection(.enabled)
+                Text(detail)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            CopyButton(title: "Copy", text: url)
+        }
     }
 }

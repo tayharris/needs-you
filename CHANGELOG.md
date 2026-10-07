@@ -4,6 +4,13 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- Mac app: **Settings is a sidebar of short pages**, like System Settings, instead of long tabs, and the window fits a laptop screen (every page scrolls). Pages: General (your name, open at login, demo mode); Hubs: This Mac, Join a hub, Invite a machine, Access, Hubs (manual); Panel, Alerts, Integrations, Updates, Advanced. **Invite a Machine…** opens Invite a machine; a `needsyou://connect` link opens Join a hub.
+- Mac app: **This Mac** shows both addresses of the hub with **Copy**: *On this Mac* (`http://127.0.0.1:8765`) and *From your other machines (Tailscale)* (the MagicDNS name). Without Tailscale it says other machines can't reach the hub and links to the Tailscale guide; Invite a machine warns that its links would only work on this Mac.
+- Mac app: **Connect with link is now Join a hub**, with plain words on where links come from (another Mac's Invite a machine, or a server hub's `needs-you-admin invite create`), a **Paste** button, and a join link on the clipboard filled in when the page opens.
+- Mac app: Settings copy reviewed for first-time users: every page has a one-line summary, and sections explain themselves in short sentences.
+
 ### Added
 
 - Mac app: **Settings → Panel → Collapsed pill** customizes the collapsed pill: its own size (small, medium, large, on top of the panel size); what it shows (count only, count and the top card's title, or a minimal dot in the top priority's colour with the count on hover); a split (none, work | personal side by side with the current side brighter, or urgent, normal and low counts in their colours); and **New since last opened** (on by default), a small `2 new` badge for items that arrived, changed or became `needs` since you last opened the panel. Sample pills show each choice; the other defaults are the original pill.

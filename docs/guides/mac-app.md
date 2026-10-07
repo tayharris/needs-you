@@ -9,13 +9,13 @@ Build, install and signing details live with the code: **[mac/README.md](../../m
 1. Download `NeedsYou-X.Y.Z.dmg` (or `NeedsYou-X.Y.Z-macos.zip`) from the repository's **Releases** page, plus `SHA256SUMS` if you want to check it (`shasum -a 256 -c SHA256SUMS`), and check its build provenance with `gh attestation verify NeedsYou-X.Y.Z.dmg --repo tayharris/needs-you` ([release-signing.md](../security/release-signing.md)). Or build it per [mac/README.md](../../mac/README.md).
 2. Drag `NeedsYou.app` to `/Applications` and open it. It's ad-hoc signed, not notarized, so macOS blocks the first launch once: on macOS 14 and earlier, right-click → **Open** → **Open**; on macOS 15 and later, double-click, then **System Settings → Privacy & Security → Open Anyway**. Or: `xattr -dr com.apple.quarantine /Applications/NeedsYou.app`. On a managed work Mac, endpoint security (e.g. SentinelOne) may flag ad-hoc signed builds; ask IT.
 3. The built-in hub needs `/usr/bin/python3` (Apple's Command Line Tools). If **Settings…** says *Python 3 isn't available on this Mac*, run `xcode-select --install`, then quit and reopen the app.
-4. Optional: **Settings… → Behaviour → Open at login**.
+4. Optional: **Settings… → General → Open at login**.
 
 ## Its own hub
 
-The app runs a hub itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; **Settings… → This Mac** shows the URL servers use). It provisions its own `owner` token, so there's nothing to configure. The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
+The app runs a hub itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; **Settings… → This Mac** shows the URL servers use, next to the `127.0.0.1` one). It provisions its own `owner` token, so there's nothing to configure. The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
 
-- **Invite a machine** (right-click the pill → **Settings…**) makes an invite link plus a prompt to paste into an agent ([add-a-sender.md](add-a-sender.md)). **Access** (just below) lists open invites and every machine's token, with a **Revoke** button for each ([Removing a sender](add-a-sender.md#removing-a-sender)).
+- **Invite a machine** (right-click the pill → **Settings…**) makes an invite link plus a prompt to paste into an agent ([add-a-sender.md](add-a-sender.md)). **Access** (the next page in the sidebar) lists open invites and every machine's token, with a **Revoke** button for each ([Removing a sender](add-a-sender.md#removing-a-sender)).
 - **Server hubs (optional):** open a `needsyou://connect?hub=...&code=...` link from a server hub's owner invite, and the app adds that hub (its token goes in `~/Library/Application Support/NeedsYou/tokens.json`, mode 600; nothing is kept in the Keychain) and fails over between hubs.
 
 While the Mac sleeps its hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on [server hubs](../HUB.md) avoid the wait.
@@ -150,16 +150,17 @@ If a CLI switch fails (the pane is gone), the command goes on the clipboard. Log
 
 ## Settings
 
-Right-click the pill (or the menu bar icon) → **Settings…**. The look, alerts and shortcut are under **Make it yours** above; the rest:
+Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a sidebar of short pages, like System Settings. The look, alerts and shortcut are under **Make it yours** above; the pages:
 
-- **You:** your name, shown as "needs &lt;name&gt;".
-- **This Mac:** **Run hub on this Mac** (on by default) and the URL agents and servers post to.
-- **Connect with link:** paste a `needsyou://connect?...` or `/join/...` link from another hub.
-- **Invite a machine** and **Access:** see above.
-- **Hubs:** server hubs added by hand (URL and token), polled in order.
-- **Menu bar and panel:** the menu bar icon and count, hide the floating panel, urgent items show a hidden panel, snap to corners.
-- **Behaviour:** demo mode, urgent items break through a snooze, open at login.
+- **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.
+- **Hubs → This Mac:** **Run hub on this Mac** (on by default) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
+- **Hubs → Join a hub:** the receiving side. Paste a `needsyou://connect?...` or `/join/...` link that someone made for this Mac, and it joins their hub. The link comes from another Mac's **Settings → Invite a machine** (role **Another Mac**) or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`). If the clipboard already holds such a link when the page opens, it's filled in for you; **Paste** does the same by hand. Opening a `needsyou://connect` link does all of this by itself, after asking.
+- **Hubs → Invite a machine** and **Access:** see above. Access shows only when you have an owner token.
+- **Hubs → Hubs (manual):** server hubs added by hand (URL and token), tried in order. The This Mac row shows its Tailscale URL too.
+- **Panel:** look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.
+- **Alerts:** how loud new items are, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
 - **Integrations:** the hotkey opens the top card's link; **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
+- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts).
 
 Built in, not settings yet:
 
