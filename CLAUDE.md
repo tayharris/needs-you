@@ -58,7 +58,7 @@ Invites are being built on `tay/hub-invites-cleanup` and `tay/mac-connect-invite
 
 ## Git
 
-- Branches: `tay/<slug>` (or `tay/ACME-1234-slug` when there's a ticket). Use a name you're given byte for byte.
+- Branches: `tay/<slug>` (or `tay/ACME-123-slug` when there's a ticket). Use a name you're given byte for byte.
 - One worktree per branch. Don't push or open PRs unless asked.
 - Commit in small, reviewable chunks. No AI or model attribution in commits or PRs: no `Co-Authored-By` trailers, no "Generated with" lines.
 - License: Apache-2.0 (`LICENSE`). Changing it needs the owner's decision.

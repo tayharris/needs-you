@@ -81,7 +81,7 @@ Not gates (don't build): `SubagentStop`, `TaskCompleted`, every `Stop`, every fa
 
 ## Recommendation
 
-Do 1, 4, 2+3 in that order: they're all sender-side, need no API or Mac change, and cover the two places Tay actually gets blocked (an agent waiting for a decision, GitHub waiting for a review or approval). Then 5. Then 6 as part of the next Mac pass, together with [focus-tiers.md](focus-tiers.md), because both decide *how loudly* and *where* a card appears.
+Do 1, 4, 2+3 in that order: they're all sender-side, need no API or Mac change, and cover the two places a person actually gets blocked (an agent waiting for a decision, GitHub waiting for a review or approval). Then 5. Then 6 as part of the next Mac pass, together with [focus-tiers.md](focus-tiers.md), because both decide *how loudly* and *where* a card appears.
 
 Keys follow AGENT-GUIDE rule 1: `agent:<host>:<session-or-handle>` (the hook's existing key, so a `PermissionRequest` card and a later `idle_prompt` card upsert the same item), `work:gh:<owner>/<repo>#<n>:<reason>`, `work:gh:deploy:<owner>/<repo>:<run-id>`, `<context>:<host>:run:<name>`.
 

@@ -24,8 +24,8 @@ final class OrcaJumpTests: XCTestCase {
         let j = OrcaJump.parse("needsyou://orca/terminal?handle=\(handle)")
         XCTAssertEqual(j?.handle, handle)
         XCTAssertNil(j?.environment)
-        let e = OrcaJump.parse("NEEDSYOU://ORCA/terminal?handle=\(handle)&environment=ACME%20Sandbox")
-        XCTAssertEqual(e?.environment, "ACME Sandbox")
+        let e = OrcaJump.parse("NEEDSYOU://ORCA/terminal?handle=\(handle)&environment=Work%20Sandbox")
+        XCTAssertEqual(e?.environment, "Work Sandbox")
         XCTAssertNil(OrcaJump.parse("needsyou://orca/terminal?handle=\(handle)&environment=")?.environment)
         XCTAssertNotNil(OrcaJump.parse("needsyou://orca/terminal?handle=\(handle)&environment="))
     }
@@ -47,7 +47,7 @@ final class OrcaJumpTests: XCTestCase {
             let q = e.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
             XCTAssertNil(OrcaJump.parse("needsyou://orca/terminal?handle=\(handle)&environment=\(q)"), e)
         }
-        for e in ["local", "ACME Sandbox", "build-1", "dev_box.2"] {
+        for e in ["local", "Work Sandbox", "build-1", "dev_box.2"] {
             XCTAssertNotNil(OrcaJump(handle: handle, environment: e), e)
         }
     }
@@ -74,13 +74,13 @@ final class OrcaJumpTests: XCTestCase {
     }
 
     func testArgumentsCommandAndRoundTrip() {
-        let j = OrcaJump(handle: handle, environment: "ACME Sandbox")!
-        XCTAssertEqual(j.arguments, ["terminal", "switch", "--terminal", handle, "--json", "--environment", "ACME Sandbox"])
-        XCTAssertEqual(j.command, "orca terminal switch --terminal \(handle) --environment 'ACME Sandbox'")
+        let j = OrcaJump(handle: handle, environment: "Work Sandbox")!
+        XCTAssertEqual(j.arguments, ["terminal", "switch", "--terminal", handle, "--json", "--environment", "Work Sandbox"])
+        XCTAssertEqual(j.command, "orca terminal switch --terminal \(handle) --environment 'Work Sandbox'")
         XCTAssertEqual(OrcaJump.parse(j.url), j)
         let local = OrcaJump(handle: handle)!
         XCTAssertEqual(local.arguments, ["terminal", "switch", "--terminal", handle, "--json"])
-        XCTAssertEqual(local.via("ACME Sandbox"), j)
+        XCTAssertEqual(local.via("Work Sandbox"), j)
         XCTAssertNil(local.via("--json"))
         XCTAssertEqual(local.url.absoluteString, "needsyou://orca/terminal?handle=\(handle)")
     }
@@ -106,8 +106,8 @@ final class OrcaJumpTests: XCTestCase {
         XCTAssertTrue(OrcaJump.switchSucceeded(Data(ok.utf8)))
         XCTAssertFalse(OrcaJump.switchSucceeded(Data(stale.utf8)))
         XCTAssertFalse(OrcaJump.switchSucceeded(Data("not json".utf8)))
-        let list = #"{"ok":true,"result":{"environments":[{"name":"ACME Sandbox"},{"name":"-x"},{"name":"build-1"},{"id":"no-name"}]}}"#
-        XCTAssertEqual(OrcaJump.environmentNames(Data(list.utf8)), ["ACME Sandbox", "build-1"])
+        let list = #"{"ok":true,"result":{"environments":[{"name":"Work Sandbox"},{"name":"-x"},{"name":"build-1"},{"id":"no-name"}]}}"#
+        XCTAssertEqual(OrcaJump.environmentNames(Data(list.utf8)), ["Work Sandbox", "build-1"])
         XCTAssertEqual(OrcaJump.environmentNames(Data("{}".utf8)), [])
     }
 }
