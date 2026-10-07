@@ -8,20 +8,22 @@ struct RootView: View {
     @ObservedObject var model: AppModel
     @State private var glow: Double = 0
     @State private var glowColor: Color = Theme.normal
+    @State private var glowLook = AlertStyle.look(.normal, priority: .normal)
 
     var body: some View {
         let display = model.display
         content(display)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tint(display))
             .clipShape(shape(display))
             .overlay(ring(display))
             .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: 0.5))
             .background(
                 // Soft glow outside the edge; only visible while a pulse runs.
                 shape(display)
-                    .stroke(glowColor.opacity(glow * 0.9), lineWidth: 2)
-                    .shadow(color: glowColor.opacity(glow), radius: 7)
-                    .shadow(color: glowColor.opacity(glow * 0.6), radius: 3)
+                    .stroke(glowColor.opacity(glow * glowLook.glowPeak * 0.9), lineWidth: glowLook.strokeWidth)
+                    .shadow(color: glowColor.opacity(glow * glowLook.glowPeak), radius: glowLook.glowRadius)
+                    .shadow(color: glowColor.opacity(glow * glowLook.glowPeak * 0.6), radius: glowLook.glowRadius * 0.43)
             )
             .padding(PanelController.glowPadding)
             .environment(\.colorScheme, .dark)
@@ -66,8 +68,26 @@ struct RootView: View {
     private func ring(_ display: PanelDisplay) -> some View {
         switch display {
         case .waiting, .preview:
-            // Thin ring in the colour of the highest open priority.
-            shape(display).strokeBorder(Theme.color(model.highestPriority ?? previewPriority(display)).opacity(model.count > 0 ? 0.9 : 0.25), lineWidth: 1.25)
+            // Thin ring in the colour of the highest open priority; Settings → Alerts sets how strong.
+            let priority = model.highestPriority ?? previewPriority(display)
+            let look = model.alertLook(priority ?? .low)
+            shape(display).strokeBorder(Theme.color(priority).opacity(model.count > 0 ? look.ringOpacity : AlertStyle.otherContextRingOpacity),
+                                        lineWidth: look.ringWidth)
+        default:
+            EmptyView()
+        }
+    }
+
+    /// Bright alerts tint the count pill and preview in the priority colour.
+    @ViewBuilder
+    private func tint(_ display: PanelDisplay) -> some View {
+        switch display {
+        case .waiting, .preview:
+            let priority = model.highestPriority ?? previewPriority(display)
+            let look = model.alertLook(priority ?? .low)
+            if model.count > 0 || previewPriority(display) != nil, look.fillOpacity > 0 {
+                Theme.color(priority).opacity(look.fillOpacity)
+            }
         default:
             EmptyView()
         }
@@ -79,14 +99,17 @@ struct RootView: View {
     }
 
     private func runPulse(_ request: PulseRequest) {
+        var look = model.alertLook(request.priority, basePulses: request.times)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { look = look.reducedMotion() }
+        guard look.pulses > 0 else { return }   // Alerts → Off (never for urgent: it has a floor)
         glowColor = Theme.color(request.priority)
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        glowLook = look
         Task { @MainActor in
-            for _ in 0..<max(1, request.times) {
-                withAnimation(.easeOut(duration: reduceMotion ? 0.4 : 0.35)) { glow = 1 }
-                try? await Task.sleep(nanoseconds: 450_000_000)
-                withAnimation(.easeIn(duration: reduceMotion ? 0.6 : 0.5)) { glow = 0 }
-                try? await Task.sleep(nanoseconds: 550_000_000)
+            for _ in 0..<look.pulses {
+                withAnimation(.easeOut(duration: look.riseSeconds)) { glow = 1 }
+                try? await Task.sleep(nanoseconds: UInt64(look.holdSeconds * 1_000_000_000))
+                withAnimation(.easeIn(duration: look.fallSeconds)) { glow = 0 }
+                try? await Task.sleep(nanoseconds: UInt64(look.gapSeconds * 1_000_000_000))
             }
         }
     }

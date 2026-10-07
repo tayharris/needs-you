@@ -48,7 +48,11 @@ final class UIPrefsTests: XCTestCase {
         var p = UIPrefs()
         p.panelSize = .large
         p.textSize = .extraLarge
+        p.alertUrgent = .bright
+        p.alertOther = .off
         p.save(to: store)
+        XCTAssertEqual(store.string(forKey: UIPrefs.Key.alertUrgent), "bright")
+        XCTAssertEqual(store.string(forKey: UIPrefs.Key.alertOther), "off")
         XCTAssertEqual(UIPrefs.load(from: store), p)
         XCTAssertEqual(store.string(forKey: UIPrefs.Key.panelSize), "large")
         XCTAssertEqual(store.string(forKey: UIPrefs.Key.textSize), "extraLarge")

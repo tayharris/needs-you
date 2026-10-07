@@ -372,6 +372,12 @@ struct SettingsView: View {
             Picker("Card text size", selection: $settings.ui.textSize) {
                 ForEach(TextSize.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            Picker("Urgent alerts", selection: $settings.ui.alertUrgent) {
+                ForEach(AlertIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            Picker("Other alerts", selection: $settings.ui.alertOther) {
+                ForEach(AlertIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             if let visibilityMessage {
                 Text(visibilityMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }

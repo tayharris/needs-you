@@ -126,6 +126,11 @@ final class AppModel: ObservableObject {
     /// Card body text size in points (Settings → Panel → Text size).
     var bodyFont: CGFloat { settings.ui.bodyFont }
 
+    /// Glow, ring and tint for a priority (Settings → Alerts; urgent has a floor).
+    func alertLook(_ priority: ItemPriority, basePulses: Int = 1) -> AlertLook {
+        settings.ui.alertLook(for: priority, basePulses: basePulses)
+    }
+
     /// Footer / tooltip status: "hub2 · 10:42", "Demo · 10:42", or the error.
     var statusLine: String {
         if !isConfigured { return localHubIssue != nil ? "Hub on this Mac can't start · click for Settings" : "No hub set up · click to set up" }

@@ -27,6 +27,7 @@ let entries =
     + testEntries(OrcaJumpTests.self, OrcaJumpTests.allTests)
     + testEntries(PanelStyleTests.self, PanelStyleTests.allTests)
     + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
+    + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
