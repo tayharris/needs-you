@@ -26,11 +26,22 @@ struct CardView: View {
                     .lineLimit(1)
 
                 if let body = item.body, !body.isEmpty {
-                    Text(LimitedMarkdown.render(body))
-                        .font(Theme.body(model.bodyFont))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .tint(Theme.normal)
-                        .fixedSize(horizontal: false, vertical: true)
+                    let mode = model.settings.ui.cardBodies
+                    let expanded = model.expandedCards.contains(item.id)
+                    if CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                        Text(LimitedMarkdown.render(body))
+                            .font(Theme.body(model.bodyFont))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .tint(Theme.normal)
+                            .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if CardBodyPolicy.canExpand(body: body, mode: mode) {
+                        Button(CardBodyPolicy.toggleTitle(mode, expanded: expanded)) { model.toggleCardExpanded(item) }
+                            .buttonStyle(.plain)
+                            .font(Theme.meta(m))
+                            .foregroundStyle(Theme.muted)
+                    }
                 }
 
                 if !item.links.isEmpty {
@@ -45,6 +56,11 @@ struct CardView: View {
         .padding(m.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.cardFill))
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: CardBottomsKey.self, value: [proxy.frame(in: .named(CardBottomsKey.space)).maxY])
+            }
+        )
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
     }
 }
@@ -54,21 +70,21 @@ struct LinkRow: View {
     let item: Item
     @ObservedObject var model: AppModel
 
-    private var links: [ItemLink] { item.links }
-
     var body: some View {
-        FlowLayout(spacing: 6, lineSpacing: 6) {
-            ForEach(Array(links.prefix(6).enumerated()), id: \.offset) { _, link in
+        let compact = model.settings.ui.compactLinks
+        let plan = LinkRowPolicy.plan(item.links, compact: compact, expanded: model.expandedCards.contains(item.id))
+        FlowLayout(spacing: compact ? 4 : 6, lineSpacing: compact ? 4 : 6) {
+            ForEach(Array(plan.shown.enumerated()), id: \.offset) { _, link in
                 if LinkPolicy.isAllowed(link.url) {
                     Button {
                         model.open(link.url, from: item)
                     } label: {
                         HStack(spacing: 3) {
-                            Text(link.label.isEmpty ? link.url : link.label).lineLimit(1)
+                            Text(LinkRowPolicy.label(link, maxLength: plan.maxLabelLength)).lineLimit(1)
                             Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
                         }
                         .font(.system(size: model.metrics.linkFont, weight: .medium))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .padding(.horizontal, compact ? 6 : 8).padding(.vertical, compact ? 2 : 3)
                         .background(Capsule().fill(Color.white.opacity(0.10)))
                         .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
                         .foregroundStyle(.white.opacity(0.9))
@@ -84,6 +100,14 @@ struct LinkRow: View {
                         .truncationMode(.middle)
                         .help("Not opened: link scheme isn't on the allow-list")
                 }
+            }
+            if plan.overflow > 0 {
+                Button("+\(plan.overflow)") { model.toggleCardExpanded(item) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: model.metrics.linkFont, weight: .medium))
+                    .foregroundStyle(Theme.muted)
+                    .padding(.vertical, 2)
+                    .help("Show all links")
             }
         }
     }

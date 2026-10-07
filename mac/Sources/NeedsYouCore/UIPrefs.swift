@@ -15,6 +15,10 @@ public struct UIPrefs: Equatable, Sendable {
         public static let textSize = "cardTextSize"
         public static let alertUrgent = "alertStyleUrgent"
         public static let alertOther = "alertStyleOther"
+        public static let panelOpacity = "panelOpacity"
+        public static let maxVisibleCards = "maxVisibleCards"
+        public static let cardBodies = "cardBodies"
+        public static let compactLinks = "compactLinks"
     }
 
     public var panelSize: PanelSize = .regular
@@ -23,6 +27,13 @@ public struct UIPrefs: Equatable, Sendable {
     public var alertUrgent: AlertIntensity = .normal
     /// How loud normal and low items are.
     public var alertOther: AlertIntensity = .normal
+    /// Count pill, preview and open panel opacity when not hovered (one of PanelOpacity.choices).
+    public var panelOpacity: Double = PanelOpacity.standard
+    /// Cards shown before the list scrolls; 0 = as many as fit.
+    public var maxVisibleCards: Int = 0
+    public var cardBodies: CardBodyMode = .full
+    /// At most three short link labels per card.
+    public var compactLinks = false
 
     public init() {}
 
@@ -34,6 +45,12 @@ public struct UIPrefs: Equatable, Sendable {
         if let raw = store.string(forKey: Key.textSize), let v = TextSize(rawValue: raw) { p.textSize = v }
         if let raw = store.string(forKey: Key.alertUrgent), let v = AlertIntensity(rawValue: raw) { p.alertUrgent = v }
         if let raw = store.string(forKey: Key.alertOther), let v = AlertIntensity(rawValue: raw) { p.alertOther = v }
+        if let v = store.object(forKey: Key.panelOpacity) as? NSNumber { p.panelOpacity = PanelOpacity.nearestChoice(v.doubleValue) }
+        if let v = store.object(forKey: Key.maxVisibleCards) as? NSNumber, ListHeightPolicy.choices.contains(v.intValue) {
+            p.maxVisibleCards = v.intValue
+        }
+        if let raw = store.string(forKey: Key.cardBodies), let v = CardBodyMode(rawValue: raw) { p.cardBodies = v }
+        if let v = store.object(forKey: Key.compactLinks) as? NSNumber { p.compactLinks = v.boolValue }
         return p
     }
 
@@ -43,6 +60,10 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.textSize != textSize { store.set(textSize.rawValue, forKey: Key.textSize) }
         if previous?.alertUrgent != alertUrgent { store.set(alertUrgent.rawValue, forKey: Key.alertUrgent) }
         if previous?.alertOther != alertOther { store.set(alertOther.rawValue, forKey: Key.alertOther) }
+        if previous?.panelOpacity != panelOpacity { store.set(panelOpacity, forKey: Key.panelOpacity) }
+        if previous?.maxVisibleCards != maxVisibleCards { store.set(maxVisibleCards, forKey: Key.maxVisibleCards) }
+        if previous?.cardBodies != cardBodies { store.set(cardBodies.rawValue, forKey: Key.cardBodies) }
+        if previous?.compactLinks != compactLinks { store.set(compactLinks, forKey: Key.compactLinks) }
     }
 
     public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }

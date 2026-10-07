@@ -253,7 +253,9 @@ final class PanelController {
         case .preview:
             return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:
-            let list = min(max(model.expandedContentHeight, m.minListHeight), maxListHeight(m))
+            let list = ListHeightPolicy.height(content: model.expandedContentHeight, cardBottoms: model.cardBottoms,
+                                               maxCards: model.settings.ui.maxVisibleCards,
+                                               cap: maxListHeight(m), minimum: m.minListHeight)
             return CGSize(width: m.expandedWidth, height: m.headerHeight + list + m.footerHeight)
         }
     }
@@ -280,8 +282,11 @@ final class PanelController {
     private func alpha(for display: PanelDisplay) -> CGFloat {
         switch display {
         case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
-        case .waiting: return model.hovering ? 1.0 : 0.85
-        case .preview, .expanded: return 1.0
+        case .waiting:
+            return CGFloat(PanelOpacity.alpha(base: model.hovering ? 1.0 : 0.85, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
+        case .preview, .expanded:
+            // Settings → Panel → Opacity; hovering always shows it at full strength.
+            return CGFloat(PanelOpacity.alpha(base: 1.0, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
         }
     }
 

@@ -49,6 +49,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var now = Date()
     /// Height of the expanded card list as laid out by SwiftUI.
     @Published var expandedContentHeight: CGFloat = 0
+    /// Each card's bottom edge in the list (for Settings → Panel → Cards before scrolling).
+    @Published var cardBottoms: [CGFloat] = []
+    /// Cards whose full body and links are shown (Show more / Show details / +N). Cleared
+    /// when the panel collapses.
+    @Published private(set) var expandedCards: Set<String> = []
     /// Phase 3: the new-item preview currently shown, if any.
     @Published var previewItem: Item?
     /// Phase 3: set while the start-of-day summary is open; items created after this
@@ -359,6 +364,11 @@ final class AppModel: ObservableObject {
         isExpanded = false
         summarySince = nil
         peeking = false
+        if !expandedCards.isEmpty { expandedCards = [] }
+    }
+
+    func toggleCardExpanded(_ item: Item) {
+        if expandedCards.contains(item.id) { expandedCards.remove(item.id) } else { expandedCards.insert(item.id) }
     }
 
     func setContext(_ context: ItemContext) {

@@ -28,6 +28,7 @@ let entries =
     + testEntries(PanelStyleTests.self, PanelStyleTests.allTests)
     + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
     + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)
+    + testEntries(CardLayoutTests.self, CardLayoutTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

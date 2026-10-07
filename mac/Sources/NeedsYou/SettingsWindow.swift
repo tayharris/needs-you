@@ -378,6 +378,16 @@ struct SettingsView: View {
             Picker("Other alerts", selection: $settings.ui.alertOther) {
                 ForEach(AlertIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            Picker("Opacity", selection: $settings.ui.panelOpacity) {
+                ForEach(PanelOpacity.choices, id: \.self) { Text("\(Int(($0 * 100).rounded()))%").tag($0) }
+            }
+            Picker("Cards before scrolling", selection: $settings.ui.maxVisibleCards) {
+                ForEach(ListHeightPolicy.choices, id: \.self) { Text(ListHeightPolicy.title($0)).tag($0) }
+            }
+            Picker("Card bodies", selection: $settings.ui.cardBodies) {
+                ForEach(CardBodyMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            Toggle("Compact links", isOn: $settings.ui.compactLinks)
             if let visibilityMessage {
                 Text(visibilityMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }

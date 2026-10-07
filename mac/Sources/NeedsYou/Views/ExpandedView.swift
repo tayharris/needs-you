@@ -19,11 +19,16 @@ struct ExpandedView: View {
                             Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
                         }
                     )
+                    .coordinateSpace(name: CardBottomsKey.space)
             }
             .scrollIndicators(.automatic)
             .frame(maxHeight: .infinity)
             .onPreferenceChange(ContentHeightKey.self) { height in
                 if abs(model.expandedContentHeight - height) > 0.5 { model.expandedContentHeight = height }
+            }
+            .onPreferenceChange(CardBottomsKey.self) { bottoms in
+                let rounded = bottoms.map { $0.rounded() }.sorted()
+                if rounded != model.cardBottoms { model.cardBottoms = rounded }
             }
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
             footer.frame(height: model.metrics.footerHeight - 0.5)
@@ -56,6 +61,13 @@ struct ExpandedView: View {
 private struct ContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Every card's bottom edge in the list, for ListHeightPolicy.
+struct CardBottomsKey: PreferenceKey {
+    static let space = "cardList"
+    static var defaultValue: [CGFloat] = []
+    static func reduce(value: inout [CGFloat], nextValue: () -> [CGFloat]) { value.append(contentsOf: nextValue()) }
 }
 
 struct ExpandedHeader: View {
