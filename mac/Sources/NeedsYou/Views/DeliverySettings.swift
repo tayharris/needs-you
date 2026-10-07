@@ -82,6 +82,31 @@ struct TierPreviewTable: View {
     }
 }
 
+/// Where an arrival shows: the display you're working on, and the optional urgent edge glow.
+struct WorkScreenSection: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Section {
+            Picker(selection: $settings.previewDisplay) {
+                ForEach(PreviewDisplay.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("New items spring out on", "The display with the app you're using (else the pointer's). The pill goes back home after.")
+            }
+            Picker(selection: $settings.edgeGlow) {
+                ForEach(EdgeGlowMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Edge glow", "A few seconds of red glow around that display's edge when an urgent item arrives. Clicks go through it.")
+            }
+        } header: {
+            Text("On the work screen")
+        } footer: {
+            Text("Uses only window positions, no Screen Recording or Accessibility permission. Neither takes focus from what you're typing.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
 /// The bypass list: per key prefix, sender agent or host; checked top to bottom.
 struct BypassRulesSection: View {
     @ObservedObject var settings: AppSettings

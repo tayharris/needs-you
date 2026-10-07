@@ -50,6 +50,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var peeking = false
     /// One brief pulse of the menu bar icon (an urgent arrival while the panel is hidden).
     @Published private(set) var menuBarPulse: UUID?
+    /// The urgent edge glow on the work display (Settings → Alerts, off by default).
+    @Published private(set) var edgeGlowRequest: UUID?
     @Published var hovering = false
     @Published private(set) var lastCheck: Date?
     @Published private(set) var lastError: String?
@@ -381,6 +383,8 @@ final class AppModel: ObservableObject {
         }
         store = updated
         let interrupts = decided.filter { $0.decision.tier == .interrupt }.map(\.item)
+        let urgentInterrupt = interrupts.contains { $0.kind == .needs && $0.priority == .urgent }
+        let glow = urgentInterrupt && settings.edgeGlow == .urgent
 
         if visibility.isHidden(at: date) && !peeking {
             // Out of sight: the menu bar count updates by itself; an urgent item pulses the
@@ -399,11 +403,13 @@ final class AppModel: ObservableObject {
                 }
                 pulse = PulseRequest(times: 1, priority: interrupts.map(\.priority).min() ?? .urgent)
                 menuBarPulse = UUID()
+                if glow { edgeGlowRequest = UUID() }
                 if wasSnoozed { releaseLater(.snoozeEnded, peek: false) }
             }
             return
         }
 
+        if glow { edgeGlowRequest = UUID() }
         guard !isExpanded else { return }
         if !interrupts.isEmpty {
             digest = nil

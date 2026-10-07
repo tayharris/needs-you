@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localHub: LocalHubController!
     private var connect: ConnectController!
     private var menuBar: MenuBarController!
+    private var edgeGlow: EdgeGlowController!
     private var termSource: DispatchSourceSignal?
     /// needsyou:// URLs that arrived before launch finished.
     private var pendingURLs: [URL] = []
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         panel = PanelController(model: model)
         menuBar = MenuBarController(model: model)
+        edgeGlow = EdgeGlowController(model: model)
         installTerminationSignal()
 
         // Focus-rule tripwire: activation is only legitimate right after the user opens

@@ -176,6 +176,7 @@ struct SettingsView: View {
                 DeliverySection(settings: settings)
                 breakthroughSection
                 BypassRulesSection(settings: settings)
+                WorkScreenSection(settings: settings)
                 extra[.alerts]
             }
             .tabItem { Label(SettingsTab.alerts.title, systemImage: "bell.badge") }

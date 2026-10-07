@@ -66,6 +66,14 @@ final class AppSettings: ObservableObject {
             defaults.set(data, forKey: RuleBook.defaultsKey)
         }
     }
+    /// Where the arrival preview springs out: the display you're working on (default) or the pill's.
+    @Published var previewDisplay: PreviewDisplay {
+        didSet { defaults.set(previewDisplay.rawValue, forKey: PreviewDisplay.defaultsKey) }
+    }
+    /// A click-through glow around the work display's edge for urgent arrivals. Default off.
+    @Published var edgeGlow: EdgeGlowMode {
+        didSet { defaults.set(edgeGlow.rawValue, forKey: EdgeGlowMode.defaultsKey) }
+    }
     /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
     @Published var focus: FocusState {
         didSet { if focus != oldValue { focus.save(to: defaults) } }
@@ -168,6 +176,8 @@ final class AppSettings: ObservableObject {
         delivery = DeliveryDefaults.load(from: defaults)
         bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))
         focus = FocusState.load(from: defaults)
+        previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard
+        edgeGlow = defaults.string(forKey: EdgeGlowMode.defaultsKey).flatMap(EdgeGlowMode.init(rawValue:)) ?? .standard
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))
         hotKeyOpensTopLink = defaults.bool(forKey: Key.hotKeyOpensTopLink)
         // Stored prefs that hide both the icon and the panel: keep the icon.

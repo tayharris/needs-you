@@ -65,6 +65,8 @@ final class PanelController {
     private var isDragging = false
     private var lastDisplay: PanelDisplay?
     private var syncScheduled = false
+    /// The work display the current arrival peek is on (nil: the pill's home).
+    private var peekScreenID: String?
 
     init(model: AppModel) {
         self.model = model
@@ -136,10 +138,23 @@ final class PanelController {
         }
 
         let display = model.display
+        // Arrival peeks spring out on the display you're working on (Settings → Alerts),
+        // then the pill goes back home. Chosen once per peek.
+        if display.isPeek {
+            if !(lastDisplay?.isPeek ?? false) {
+                peekScreenID = model.settings.previewDisplay == .work
+                    ? WorkDisplayProbe.screen().map { PanelGeometry.screenID($0.frame) } : nil
+            }
+        } else {
+            peekScreenID = nil
+        }
         let size = panelSize(for: display)
         let target = frame(forPanelSize: size)
         let changedShape = display != lastDisplay
         lastDisplay = display
+        let screenFrames = NSScreen.screens.map(\.frame)
+        let changesScreen = PanelGeometry.bestScreen(for: panel.frame, screens: screenFrames)
+            != PanelGeometry.bestScreen(for: target, screens: screenFrames)
 
         if !panel.isVisible {
             panel.setFrame(target, display: false)
@@ -147,8 +162,8 @@ final class PanelController {
             panel.orderFrontRegardless()
             animated ? fade(to: alpha(for: display)) : (panel.alphaValue = alpha(for: display))
         } else if !isDragging, panel.frame != target {
-            if animated, changedShape, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-                // Reduce Motion: fade between shapes instead of springing.
+            if animated, changedShape, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || changesScreen {
+                // Reduce Motion, or a jump to another display: fade between shapes instead of springing.
                 panel.alphaValue = 0
                 panel.setFrame(target, display: true)
                 fade(to: alpha(for: display))
@@ -325,7 +340,8 @@ final class PanelController {
     /// The panel frame for `size`: anchored at the placement's corner (so it grows away
     /// from the nearest screen edges) and clamped to the screen. Default: top right.
     private func frame(forPanelSize size: CGSize) -> CGRect {
-        guard let screen = currentScreen() else { return CGRect(origin: .zero, size: size) }
+        let peek = peekScreenID.flatMap { id in NSScreen.screens.first { PanelGeometry.screenID($0.frame) == id } }
+        guard let screen = peek ?? currentScreen() else { return CGRect(origin: .zero, size: size) }
         let placement = placement ?? PanelPlacement(corner: .topRight, screenID: PanelGeometry.screenID(screen.frame))
         return PanelGeometry.frame(size: size, placement: placement, in: bounds(of: screen), margin: Self.edgeMargin)
     }
