@@ -44,3 +44,4 @@ outbox/
 
 # Local scratch: session prompts and notes, never committed
 temp/
+.playwright-mcp/
