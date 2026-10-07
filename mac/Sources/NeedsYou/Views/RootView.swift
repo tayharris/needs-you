@@ -140,7 +140,7 @@ private struct PillInteraction: ViewModifier {
                     .onChanged { _ in model.dragHandler?(.changed) }
                     .onEnded { _ in model.dragHandler?(.ended) }
             )
-            .onTapGesture { model.isConfigured ? model.toggleExpanded() : model.openSettings() }
+            .onTapGesture { model.pillOpensSettings ? model.openSettings() : model.toggleExpanded() }
     }
 }
 

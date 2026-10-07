@@ -206,6 +206,10 @@ final class AppModel: ObservableObject {
     /// The setup cards to show, in order. Not in the store, the count or the menu bar.
     var setupCards: [SetupCard] { SetupChecklist.cards(state: setupState) }
 
+    /// The "set up" pill's click: straight to Settings, unless a setup card explains what
+    /// to do (then it opens the panel, and the card's button opens Settings).
+    var pillOpensSettings: Bool { !isConfigured && setupCards.isEmpty }
+
     func setupCard(for item: Item) -> SetupCard? {
         guard let tip = SetupChecklist.tip(forItemID: item.id) else { return nil }
         return setupCards.first { $0.tip == tip }
