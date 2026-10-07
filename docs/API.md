@@ -9,6 +9,14 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   `public_url`: a MagicDNS name (`http://<hub>.<tailnet>.ts.net:8765`), or
   `http://127.0.0.1:8765` for a hub on the same machine. Request and response bodies are JSON
   (UTF-8), except the `/join` pages and `/dl` files.
+- **Host check (DNS rebinding):** every endpoint answers only when the `Host` header is an IP
+  literal, `localhost`, a bind name, the `public_url` host (and, for a `*.ts.net` name, its
+  short form and `<that label>.<any tailnet>.ts.net`), the machine's host name (full, short,
+  `<short>.local`, `<short>.<tailnet>.ts.net`), or a name in the hub's `allowed_hosts`. Any
+  other name gets **421** `misdirected`, a malformed `Host` **400**; no `Host` at all (HTTP/1.0)
+  is accepted. `allowed_hosts` comes from the config, `--allowed-host NAME` (repeatable) and
+  `NEEDS_YOU_HUB_ALLOWED_HOSTS` (comma-separated; the Mac app's hub inherits it from the app's
+  environment); `*` turns the check off.
 - **Timestamps:** the hub always emits RFC 3339 UTC with exactly three fractional digits:
   `2026-10-06T17:04:05.123Z`. These sort correctly as strings. On input the hub accepts
   ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset, or no
@@ -44,6 +52,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 403 | `forbidden` | Valid token, wrong role for the endpoint |
   | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
   | 409 | `self` | A hub tried to replicate to itself (replication only) |
+  | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
   | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default) |

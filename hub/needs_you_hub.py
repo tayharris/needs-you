@@ -13,6 +13,7 @@ import argparse
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import random
@@ -475,8 +476,60 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     cfg.setdefault("peer_timeout_seconds", 5.0)
     cfg.setdefault("allow_any_interface", False)
     cfg.setdefault("freebind", False)
+    # Extra Host names this hub answers to (security audit #16), from the config, --allowed-host
+    # and NEEDS_YOU_HUB_ALLOWED_HOSTS (comma-separated; how the Mac app's hub gets them). "*"
+    # turns the check off.
+    hosts = cfg.get("allowed_hosts") or []
+    hosts = hosts.split(",") if isinstance(hosts, str) else list(hosts)
+    hosts += (os.environ.get("NEEDS_YOU_HUB_ALLOWED_HOSTS") or "").split(",")
+    cfg["allowed_hosts"] = [h for h in (str(x).strip().lower().rstrip(".") for x in hosts) if h]
     cfg["peers"] = [str(p).rstrip("/") for p in cfg["peers"] if str(p).strip()]
     return cfg
+
+
+_HOST_HEADER_RE = re.compile(r"\[([0-9a-f:.]+)\](?::[0-9]{1,5})?|([a-z0-9._-]+?)\.?(?::[0-9]{1,5})?")
+
+
+def host_header_name(value: str) -> Optional[str]:
+    """The host in a Host header, lowercased, without port, brackets or a trailing dot.
+    None when it isn't a plain DNS name or IP literal."""
+    m = _HOST_HEADER_RE.fullmatch(value.strip().lower())
+    if not m:
+        return None
+    return m.group(1) or m.group(2)
+
+
+def _is_ip(name: str) -> bool:
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        return False
+
+
+def known_host_names(cfg: Dict[str, Any]) -> Tuple[set, set]:
+    """(names, magic_labels): the DNS names this hub answers to, and the first labels for
+    which any `<label>.<tailnet>.ts.net` MagicDNS name is accepted. IP literals are always
+    accepted (a rebinding page's Host is its own DNS name, never an IP)."""
+    names = {"localhost"}
+    labels = set()
+    host = (urllib.parse.urlsplit(cfg.get("public_url") or "").hostname or "").lower().rstrip(".")
+    if host and not _is_ip(host):
+        names.add(host)
+        if host.endswith(".ts.net"):  # MagicDNS: the short name works through the search domain
+            labels.add(host.split(".")[0])
+            names.add(host.split(".")[0])
+    me = socket.gethostname().lower().rstrip(".")
+    if me:
+        short = me.split(".")[0]
+        names.update({me, short, short + ".local"})
+        labels.add(short)
+    for b in normalise_binds(cfg.get("bind")):
+        b = b.strip().lower().rstrip(".")
+        if b and not _is_ip(b) and b not in ANY_INTERFACE:
+            names.add(b)
+    names.update(h for h in cfg.get("allowed_hosts") or [] if h != "*")
+    return names, labels
 
 
 def normalise_binds(bind: Any) -> List[str]:
@@ -1870,6 +1923,14 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlsplit(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            ok = self.hub.host_allowed(self.headers.get("Host"))
+            if ok is None:
+                raise ApiError(400, "invalid", "malformed Host header")
+            if not ok:
+                raise ApiError(421, "misdirected",
+                               "this hub doesn't answer to that host name (DNS rebinding protection); "
+                               "use its tailnet name or IP, or add the name to allowed_hosts "
+                               "(--allowed-host, NEEDS_YOU_HUB_ALLOWED_HOSTS)")
             if path == "/v1/health" and method in ("GET", "HEAD"):
                 return self._health()
             if path == "/v1/items" and method == "POST":
@@ -2319,6 +2380,8 @@ class Hub:
             self.servers.append(srv)
         self.server = self.servers[0]
         self.port = port
+        self.host_names, self.magic_labels = known_host_names(cfg)
+        self.host_check = "*" not in (cfg.get("allowed_hosts") or [])
         self.threads: List[threading.Thread] = []
         self.thread: Optional[threading.Thread] = None
         self._last_vacuum = time.monotonic()
@@ -2356,6 +2419,19 @@ class Hub:
             if host.startswith("127.") or host == "::1":
                 return "http://%s:%d" % ("[::1]" if host == "::1" else host, self.port)
         return None
+
+    def host_allowed(self, value: Optional[str]) -> Optional[bool]:
+        """Security audit #16 (DNS rebinding): True when the Host header names this hub
+        (loopback, an IP literal, a bind name, public_url, this machine's names and MagicDNS
+        names, allowed_hosts) or is absent; False for any other name; None when malformed."""
+        if not self.host_check or value is None:
+            return True
+        name = host_header_name(value)
+        if name is None:
+            return None
+        if _is_ip(name) or name in self.host_names:
+            return True
+        return name.endswith(".ts.net") and name.split(".")[0] in self.magic_labels
 
     def is_local_client(self, ip: str) -> bool:
         """Did the request come from this machine (loopback, or one of our own bind addresses)?"""
@@ -2652,6 +2728,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="allow binding to 0.0.0.0 / :: (not recommended)")
     p.add_argument("--freebind", action="store_true", default=None,
                    help="Linux: bind before the address exists (tailscaled not up yet)")
+    p.add_argument("--allowed-host", dest="allowed_hosts", action="append", metavar="NAME",
+                   help="another Host name this hub answers to (repeatable; '*' turns the "
+                        "DNS-rebinding check off). Also NEEDS_YOU_HUB_ALLOWED_HOSTS")
     p.add_argument("--quiet", action="store_true", default=None, help="no access log")
     p.add_argument("--set", action="append", metavar="KEY=VALUE", default=[],
                    help="any other config key (VALUE is JSON if it parses, else a string)")
@@ -2659,7 +2738,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     overrides = _parse_set(args.set)
     for k in ("port", "db", "hub_id", "public_url", "peer_secret_file", "owner_token_file",
               "owner_token_name", "parent_pid", "install_dir", "retention_days",
-              "allow_any_interface", "freebind", "quiet"):
+              "allow_any_interface", "freebind", "quiet", "allowed_hosts"):
         if getattr(args, k) is not None:
             overrides[k] = getattr(args, k)
     if args.bind:

@@ -36,6 +36,7 @@ Setting up Tailscale, or checking it step by step: [tailscale.md](tailscale.md).
 | `curl: (7) Failed to connect` / timeout | Hub down, or listening on a different address/port | On the hub: `systemctl status needs-you-hub`, `journalctl -u needs-you-hub -n 50` (see [HUB.md](../HUB.md) for the unit name) |
 | Times out only from some machines | Tailscale ACL | Allow those machines (or their tag) to reach the hub's tag on `tcp:8765` |
 | Works by IP, not by name | DNS | Use the full MagicDNS name, `<hub>.<tailnet>.ts.net` |
+| `HTTP 421` "doesn't answer to that host name" | The URL uses a name the hub doesn't know as its own (a custom DNS name or alias); this is its DNS-rebinding protection | Use the hub's public URL (MagicDNS name) or tailnet IP, or add the name to the hub's `allowed_hosts` (`--allowed-host`, or `NEEDS_YOU_HUB_ALLOWED_HOSTS` for the Mac app's hub, [HUB.md](../HUB.md)) |
 | `HTTP 401` / `403` | Wrong, revoked, or Mac-only token | Get a new invite link and re-run its installer with `--force` |
 | Times out only while the Mac sleeps | The Mac's own hub is asleep | Expected: items queue and the 5-minute flush sends them after it wakes. Add a [server hub](../HUB.md) to avoid the wait. |
 | Times out from servers, works on the Mac | Tailscale is down on the Mac (the app's hub then listens only on `127.0.0.1`), or the macOS firewall blocks it | Bring Tailscale up on the Mac; the hub picks up the tailnet address by itself (Settings… → This Mac shows the URL). Allow `python3` in System Settings → Network → Firewall |

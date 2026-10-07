@@ -16,7 +16,16 @@ final class HubClientTests: XCTestCase {
         ("testLenientDecoding", testLenientDecoding),
         ("testDateFormats", testDateFormats),
         ("testPollPlannerAlternatesFullAndIncremental", testPollPlannerAlternatesFullAndIncremental),
+        ("testMisdirectedErrorNamesTheHostCheck", testMisdirectedErrorNamesTheHostCheck),
     ]
+
+    // Security audit #16: a 421 from the hub's Host check says what to change.
+    func testMisdirectedErrorNamesTheHostCheck() {
+        let text = HubError.misdirected.errorDescription ?? ""
+        XCTAssertTrue(text.contains("421"), text)
+        XCTAssertTrue(text.contains("allowed_hosts"), text)
+        XCTAssertNotEqual(HubError.misdirected, HubError.http(status: 421))
+    }
 
     func testListURL() {
         let base = URL(string: "http://hub.example.ts.net:8765")!

@@ -259,7 +259,8 @@ def _sha256_file(path: str) -> Optional[str]:
 
 def send(cfg: Config, method: str, path: str, body: Optional[Dict[str, Any]]) -> Tuple[str, int, Dict[str, Any]]:
     """Try each hub in order. 2xx -> result. 4xx -> Rejected (no failover: every hub
-    would say the same). Network errors, timeouts and 5xx -> next hub; none -> Unreachable."""
+    would say the same), except 421. Network errors, timeouts, 421 and 5xx -> next hub;
+    none -> Unreachable."""
     errors = []
     for url in cfg.urls:
         try:
@@ -269,7 +270,9 @@ def send(cfg: Config, method: str, path: str, body: Optional[Dict[str, Any]]) ->
             continue
         if 200 <= status < 300:
             return url, status, parsed
-        if 400 <= status < 500:
+        # 421: that hub doesn't answer to this URL's host name (its DNS-rebinding check);
+        # a URL problem, not a request problem, so the next hub may well take it.
+        if 400 <= status < 500 and status != 421:
             raise Rejected(status, parsed)
         errors.append("%s: HTTP %d" % (url, status))
     raise Unreachable("; ".join(errors) or "no hub URL configured")
@@ -1630,7 +1633,9 @@ class Doctor:
                          "is the hub up, and this machine on the tailnet? see docs/guides/troubleshooting.md")
                 continue
             if status != 200:
-                self.add(name, "WARN", "%s answered HTTP %d" % (url, status), "is that a needs-you hub URL?")
+                hint = ("the hub doesn't answer to this host name: use its public URL or tailnet IP, or add "
+                        "the name to the hub's allowed_hosts" if status == 421 else "is that a needs-you hub URL?")
+                self.add(name, "WARN", "%s answered HTTP %d" % (url, status), hint)
                 continue
             answered.append(i)
             hub_v = clean(body.get("version") or "?")

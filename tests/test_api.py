@@ -426,7 +426,7 @@ class VolumeGuard(ApiTestCase):
 class Stream(ApiTestCase):
     def test_sse_delivers_new_items(self):
         sock = socket.create_connection(("127.0.0.1", self.hub.port), timeout=5)
-        sock.sendall(("GET /v1/stream HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\n\r\n"
+        sock.sendall(("GET /v1/stream HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer %s\r\n\r\n"
                       % self.reader).encode())
         f = sock.makefile("rb")
         self.assertIn(b"200", f.readline())
