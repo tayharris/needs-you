@@ -79,7 +79,7 @@ The body is one JSON object (UTF-8, at most 64 KiB). Only `title` is required. A
 |---|---|---|---|---|---|---|
 | `title` | **yes** | string | 1–100 characters; one line: no newlines, tabs or other control characters | | `--title` | The card's headline, and its entry in the menu bar menu |
 | `key` | no | string | at most 200 characters from `A-Z a-z 0-9 . _ : - / @ # + =`; `""` is refused (leave it out instead) | the new item's id, so nothing dedupes | `--key` (required by the CLI) | Same key while open = the same card, updated in place. Settings → Alerts rules can match "Key starts with" |
-| `body` | no | string | at most 2,000 characters; markdown; newlines and tabs allowed, other control characters not | empty (returned as `null`) | `--body`, `--body-file PATH` (`-` = stdin) | Rendered below the title: bold, italic, code, simple lists and allow-listed links. No HTML, no images |
+| `body` | no | string | at most 2,000 characters; markdown; newlines (`\n`, `\r`) and tabs allowed, other control characters not | empty (returned as `null`) | `--body`, `--body-file PATH` (`-` = stdin) | Rendered below the title: bold, italic, code, simple lists and allow-listed links. No HTML, no images |
 | `kind` | no | string | `needs`, `done` or `info` (any case) | `needs` | `--kind` on `add`, or the `done` / `info` subcommands | `needs` counts in the pill; `done` and `info` are FYIs |
 | `priority` | no | string | `urgent`, `normal` or `low` (any case) | `normal` | `--priority` | Sort order; `urgent` breaks through snooze |
 | `context` | no | string | `work` or `personal` (any case) | `work` | `--context` (default `NEEDS_YOU_DEFAULT_CONTEXT`, else `work`) | Which side of the pill it counts on, and when it's prominent (work hours or not) |

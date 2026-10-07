@@ -145,17 +145,19 @@ Create an item, or update the open item with the same `key`.
 
 | Field | Type | Rule | Default |
 |---|---|---|---|
-| `key` | string | ≤ 200 chars, only `A-Z a-z 0-9 . _ : - / @ # + =` | the new item's id (so no dedupe) |
+| `key` | string | ≤ 200 chars, only `A-Z a-z 0-9 . _ : - / @ # + =`; `""` is a 400 (leave it out, or send `null`, for no key) | the new item's id (so no dedupe) |
 | `title` | string | required, 1–100 chars after trimming, no control characters (see below) | |
-| `body` | string | ≤ 2,000 chars, markdown; newlines and tabs allowed | empty |
+| `body` | string | ≤ 2,000 chars, markdown; newlines (`\n`, `\r`) and tabs allowed | empty |
 | `context` | string | `work` or `personal` (case-insensitive) | `work` |
-| `kind` | string | `needs`, `done` or `info` | `needs` |
-| `priority` | string | `urgent`, `normal` or `low` | `normal` |
+| `kind` | string | `needs`, `done` or `info` (case-insensitive) | `needs` |
+| `priority` | string | `urgent`, `normal` or `low` (case-insensitive) | `normal` |
 | `links` | array | ≤ 6 of `{"label": ≤ 80 chars, "url": ≤ 2,000 chars}` | `[]` |
 | `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
 | `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |
-| `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h; `needs`: none |
-| `status` | | **rejected** (use resolve or PATCH) | |
+| `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h (the hub's `default_expiry_hours`, see [HUB.md](HUB.md)); `needs`: none |
+| `status` | | **rejected** whenever the key is present, even `"status": null` (use resolve or PATCH) | |
+
+An optional field sent as `null` counts as left out (it gets its default).
 
 Link URLs must use one of these schemes (case-insensitive): `https`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
@@ -265,7 +267,12 @@ Closes the open item with that key (or that id) as `resolved`. Always `200` and 
 ```
 
 If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),
-the response is `{"resolved": 0, "items": []}`. A body with neither or both of `key`/`id` is a 400.
+the response is `{"resolved": 0, "items": []}`. A body with neither or both of `key`/`id` is a
+400, and so is a `key` or `id` that isn't a string (`"id/key must be a string"`).
+
+Resolve doesn't check who posted the item: any `sender` token can resolve any item on the hub,
+by key or id. This is intended: the senders of one inbox are trusted alike (they are one
+person's machines and agents), and a resolve only closes a card, it can't read or change one.
 
 ### `PATCH /v1/items/{id}` (reader)
 
