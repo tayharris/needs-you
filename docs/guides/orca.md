@@ -51,12 +51,12 @@ Agents on the Mac's own Orca need nothing; the command has no `--environment`.
 
 ## Automations: add the prompt block
 
-Automations are agent prompts on a schedule, so the change is text: paste the block from `--orca` into each automation prompt (or the template they're rendered from). It posts with stable keys (`work:<TICKET>:<reason>`), links the Jira ticket, the PR and the branch, names the worktree and the `orca terminal switch` command in the body, and resolves the same key once it's handled. To add it to an automation you already have:
+Automations are agent prompts on a schedule, so the change is text: paste the short block `--orca` prints into each automation prompt (or the template they're rendered from). It tells the agent to read and follow `~/.config/needs-you/orca-snippet.md`, which `needs-you update` keeps current, so new rules reach every automation without editing prompts again. The rules in that file post with stable keys (`work:<TICKET>:<reason>`), links the Jira ticket, the PR and the branch, names the worktree and the `orca terminal switch` command in the body, and resolves the same key once it's handled. To add it to an automation you already have:
 
 ```bash
 orca automations list
 orca automations show <id>        # copy the current prompt
-orca automations edit <id> --prompt "$(cat current-prompt.md ~/.config/needs-you/orca-snippet.md)"
+orca automations edit <id> --prompt "$(cat current-prompt.md; printf '\n## Telling the user (needs-you)\n\nBefore you post to or resolve anything in needs-you, read\n`~/.config/needs-you/orca-snippet.md` and follow it.\n')"
 ```
 
 [integrations/orca/README.md](../../integrations/orca/README.md) has the block and per-automation versions:

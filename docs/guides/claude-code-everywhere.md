@@ -6,9 +6,9 @@ A card on your Mac whenever a Claude Code session stops to wait for you (a permi
 
 You need the Mac app running ([quickstart.md](quickstart.md) step 1). For machines other than the Mac, they and the Mac must be on one tailnet ([tailscale.md](tailscale.md)).
 
-**On the Mac:** right-click the pill → **Settings…** → **Invite a machine**: a name (e.g. `claude`), role **Sender**, **Uses** = the number of machines you'll set up, **Create invite**, then **Shell one-liner**. It copies a line like `curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes`.
+**On the Mac:** right-click the pill → **Settings…** → **Invite a machine**: a name (e.g. `claude`), role **Sender**, **Uses** = the number of machines you'll set up, **Create invite**, then **Shell one-liner**. It copies a line like `curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`.
 
-**On each machine where Claude Code runs** (the Mac itself included), paste that line with the Claude options added. That's the whole setup:
+**On each machine where Claude Code runs** (the Mac itself included), paste that line. That's the whole setup (add `--auto-update` to let the machine update itself daily, see [Keeping up to date](updates.md)):
 
 ```bash
 curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts
@@ -22,7 +22,7 @@ On a server you reach from the Mac over SSH (or VS Code Remote-SSH), add `--ssh-
 
 Re-running the line is safe: it keeps the token and every setting you don't pass again. To check, open a new shell and run `needs-you doctor`: it should show `OK  claude hooks  installed in ~/.claude/settings.json; ...; alerts on (NEEDS_YOU_AGENT_ALERTS=1 in env file); context alert at 80%` and `OK  claude skill`. Every `WARN` or `FAIL` line has its fix under it.
 
-Prefer to let an agent do it? Click **Agent prompt** instead and paste it into Claude Code on that machine, then add: *"Use --claude-hooks user --skill --alerts."*
+Prefer to let an agent do it? Click **Agent prompt** instead and paste it into Claude Code on that machine. The prompt already says to use `--claude-hooks user --skill --alerts` when the machine runs Claude Code.
 
 Check it without waiting for a real prompt:
 

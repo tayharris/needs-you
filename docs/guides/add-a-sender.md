@@ -52,7 +52,7 @@ Notes:
 
 - An expired, revoked or unknown link fails with exit 1 and `needs-you install: This invite link is unknown, expired or revoked.` on stderr.
 - After the link expires, remove things by hand (below).
-- Update the CLI later with `needs-you self-update`.
+- Update the CLI, hook, skill and Orca snippet later with `needs-you update` (or add `--auto-update` to the one-liner for a daily update). See [Keeping up to date](updates.md).
 
 ## Manually (no invite link)
 

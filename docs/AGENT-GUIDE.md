@@ -90,7 +90,8 @@ crashed or skipped it.
 else `work`. When no hub answers, the CLI writes to `~/.local/state/needs-you/outbox/` and
 sends on its next call or the 5-minute flush. The command still exits 0, so a down or sleeping
 hub never fails your job; don't retry in a loop. The outbox keeps at most 500 requests and 7
-days. `needs-you self-update` replaces the CLI with the hub's current copy.
+days. `needs-you update` updates the CLI, hook, skill and Orca snippet from the invite hub
+(sha256-checked; see docs/guides/updates.md).
 
 ### Wrapping a command: `needs-you run`
 
