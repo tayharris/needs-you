@@ -3,9 +3,9 @@ import NeedsYouCore
 import ServiceManagement
 import SwiftUI
 
-/// The Settings window: your name, the hub on this Mac, connecting with a link, inviting
-/// machines, the manual hub list (URLs in UserDefaults, one token per hub in tokens.json),
-/// demo mode, snooze breakthrough, open at login.
+/// The Settings window, in tabs: Hubs and access (the hub on this Mac, connecting with a
+/// link, inviting machines, the manual hub list), Panel (name, look with a live preview,
+/// visibility, the shortcut), Alerts, Integrations and Advanced.
 ///
 /// Focus rule: `show()` is the ONLY place the app activates or makes a window key, and it
 /// is only called from an explicit user action (the Settings menu item / gear button,
@@ -17,26 +17,32 @@ final class SettingsWindowController {
     private let model: AppModel
     private let connect: ConnectController
     private let localHub: LocalHubController
-    private let hotKeyStatus: () -> Bool
-    /// Extra Settings sections (phase 3 adds its schedule options here).
-    var extraSettings: (() -> AnyView)?
+    private let hotKeys: HotKeyController
+    private let navigation = SettingsNavigation()
+    /// Extra Settings sections per tab (phase 3 adds its schedule and stream options).
+    var extraSettings: [SettingsTab: () -> AnyView] = [:]
 
-    init(model: AppModel, connect: ConnectController, localHub: LocalHubController, hotKeyStatus: @escaping () -> Bool) {
+    init(model: AppModel, connect: ConnectController, localHub: LocalHubController, hotKeys: HotKeyController) {
         self.model = model
         self.connect = connect
         self.localHub = localHub
-        self.hotKeyStatus = hotKeyStatus
+        self.hotKeys = hotKeys
     }
 
-    func show() {
+    /// `tab` switches to that tab (Invite a Machine and connect links open Hubs and access);
+    /// nil keeps the last one.
+    func show(tab: SettingsTab? = nil) {
+        if let tab { navigation.tab = tab }
         if window == nil {
             let view = SettingsView(model: model, settings: model.settings, connect: connect, localHub: localHub,
-                                    hotKeyRegistered: hotKeyStatus(), extra: extraSettings?(),
+                                    hotKeys: hotKeys, navigation: navigation, extra: extraSettings.mapValues { $0() },
                                     close: { [weak self] in self?.window?.performClose(nil) })
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
             w.title = "Needs You Settings"
-            w.styleMask = [.titled, .closable]
+            w.styleMask = [.titled, .closable, .resizable]
+            w.setContentSize(NSSize(width: 600, height: 640))
+            w.contentMinSize = NSSize(width: 560, height: 460)
             w.isReleasedWhenClosed = false
             w.appearance = NSAppearance(named: .darkAqua)
             w.center()
@@ -47,6 +53,27 @@ final class SettingsWindowController {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
+}
+
+/// The Settings tabs.
+enum SettingsTab: String, CaseIterable, Hashable {
+    case hubs, panel, alerts, integrations, advanced
+
+    var title: String {
+        switch self {
+        case .hubs: return "Hubs and access"
+        case .panel: return "Panel"
+        case .alerts: return "Alerts"
+        case .integrations: return "Integrations"
+        case .advanced: return "Advanced"
+        }
+    }
+}
+
+/// Which tab is showing, so menu items can open a given one.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    @Published var tab: SettingsTab = .hubs
 }
 
 /// One editable hub row.
@@ -98,8 +125,9 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var connect: ConnectController
     @ObservedObject var localHub: LocalHubController
-    let hotKeyRegistered: Bool
-    var extra: AnyView?
+    @ObservedObject var hotKeys: HotKeyController
+    @ObservedObject var navigation: SettingsNavigation
+    var extra: [SettingsTab: AnyView] = [:]
     var close: () -> Void
 
     @State private var rows: [HubRow] = []
@@ -119,50 +147,62 @@ struct SettingsView: View {
     private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo }
 
     var body: some View {
-        Form {
-            if isFirstRun { welcome }
-
-            Section("You") {
-                TextField("Your name", text: $settings.userName, prompt: Text("you"))
-                Text("The panel reads “\(settings.needsLabel)”.").font(.caption).foregroundStyle(.secondary)
-            }
-
-            thisMacSection
-            connectSection
-            if connect.canInvite && !settings.isDemo {
-                inviteSection
-                accessSection
-            }
-            hubsSection
-            menuBarSection
-
-            Section("Behaviour") {
-                Toggle("Demo mode (fixture items, no hub)", isOn: Binding(
-                    get: { settings.demoMode },
-                    set: { settings.demoMode = $0; localHub.apply(); model.restartFeed() }
-                ))
-                .disabled(settings.demoForcedByEnvironment)
-                if settings.demoForcedByEnvironment {
-                    Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
+        TabView(selection: $navigation.tab) {
+            tabForm {
+                if isFirstRun { welcome }
+                thisMacSection
+                connectSection
+                if connect.canInvite && !settings.isDemo {
+                    inviteSection
+                    accessSection
                 }
-                Toggle("Urgent items break through a snooze", isOn: $settings.urgentBreaksSnooze)
-                Toggle("Open at login", isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) }))
-                if let loginMessage {
-                    Text(loginMessage).font(.caption).foregroundStyle(.secondary)
-                }
-                LabeledContent("Show / hide shortcut") {
-                    Text(hotKeyRegistered ? "⌃⌥Space" : "⌃⌥Space (unavailable: taken by another app or input-source switching)")
-                        .foregroundStyle(hotKeyRegistered ? .primary : .secondary)
-                }
+                hubsSection
             }
+            .tabItem { Label(SettingsTab.hubs.title, systemImage: "network") }
+            .tag(SettingsTab.hubs)
 
-            if let extra { extra }
+            tabForm {
+                youSection
+                lookSection
+                visibilitySection
+                keyboardSection
+                extra[.panel]
+            }
+            .tabItem { Label(SettingsTab.panel.title, systemImage: "rectangle.on.rectangle") }
+            .tag(SettingsTab.panel)
+
+            tabForm {
+                alertStyleSection
+                breakthroughSection
+                extra[.alerts]
+            }
+            .tabItem { Label(SettingsTab.alerts.title, systemImage: "bell.badge") }
+            .tag(SettingsTab.alerts)
+
+            tabForm {
+                shortcutActionSection
+                extra[.integrations]
+                sendersSection
+            }
+            .tabItem { Label(SettingsTab.integrations.title, systemImage: "puzzlepiece.extension") }
+            .tag(SettingsTab.integrations)
+
+            tabForm {
+                advancedSection
+                extra[.advanced]
+            }
+            .tabItem { Label(SettingsTab.advanced.title, systemImage: "gearshape.2") }
+            .tag(SettingsTab.advanced)
         }
-        .formStyle(.grouped)
-        .frame(width: 540)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 560, idealWidth: 600, minHeight: 460, idealHeight: 640)
         .onAppear(perform: load)
         .onChange(of: settings.hubURLStrings) { _, _ in load() }
+    }
+
+    /// One tab: a grouped form that scrolls when it's taller than the window.
+    private func tabForm<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        Form { content() }
+            .formStyle(.grouped)
     }
 
     // MARK: Sections
@@ -346,33 +386,194 @@ struct SettingsView: View {
         }
     }
 
-    private var menuBarSection: some View {
+    // MARK: Panel tab
+
+    private var youSection: some View {
         Section {
-            Toggle("Show menu bar icon", isOn: Binding(
-                get: { settings.showMenuBarIcon },
-                set: { on in
-                    visibilityMessage = model.setShowMenuBarIcon(on) ? nil
-                        : "The floating panel is hidden, so the menu bar icon stays. Show the panel first."
-                }
-            ))
-            Toggle("Show count in menu bar", isOn: $settings.showMenuBarCount)
-                .disabled(!settings.showMenuBarIcon)
-            Toggle("Show floating panel", isOn: Binding(
+            TextField("Your name", text: $settings.userName, prompt: Text("you"))
+        } header: {
+            Text("You")
+        } footer: {
+            Text("The panel reads “\(settings.needsLabel)”.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var lookSection: some View {
+        Section {
+            PanelPreview(model: model, settings: settings)
+            Picker(selection: $settings.ui.panelSize) {
+                ForEach(PanelSize.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Size", "Scales the pill, the cards' type and the open panel's width.")
+            }
+            Picker(selection: $settings.ui.textSize) {
+                ForEach(TextSize.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Card text size", "Body text only, so agents' step-by-step instructions are easy to read.")
+            }
+            Picker(selection: $settings.ui.cardBodies) {
+                ForEach(CardBodyMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Card text", "All of it, the first \(CardBodyPolicy.previewLines) lines, or none until you click Show details.")
+            }
+            Toggle(isOn: $settings.ui.compactLinks) {
+                LabelWithDetail("Compact links", "At most \(LinkRowPolicy.compactLinks) short links per card; +N shows the rest.")
+            }
+            Picker(selection: $settings.ui.maxVisibleCards) {
+                ForEach(ListHeightPolicy.choices, id: \.self) { Text(ListHeightPolicy.title($0)).tag($0) }
+            } label: {
+                LabelWithDetail("Cards before scrolling", "How many cards the open panel shows before its list scrolls.")
+            }
+            Picker(selection: $settings.ui.panelOpacity) {
+                ForEach(PanelOpacity.choices, id: \.self) { Text("\(Int(($0 * 100).rounded()))%").tag($0) }
+            } label: {
+                LabelWithDetail("Opacity", "While the pointer isn't over the pill or the open panel. Hovering shows it fully.")
+            }
+        } header: {
+            Text("Look")
+        }
+    }
+
+    private var visibilitySection: some View {
+        Section {
+            Toggle(isOn: Binding(
                 get: { model.visibility != .hidden },
                 set: { on in
                     if on { model.showPanel(); visibilityMessage = nil }
                     else if !model.hidePanel() { visibilityMessage = "Turn on the menu bar icon first: the panel and the icon can't both be hidden." }
                 }
-            ))
-            Toggle("Urgent items show the panel even when hidden", isOn: $settings.urgentShowsHiddenPanel)
-            Toggle("Snap to corners", isOn: $settings.snapToCorners)
+            )) {
+                LabelWithDetail("Show floating panel", "While it's hidden, new items only update the menu bar.")
+            }
+            Toggle(isOn: Binding(
+                get: { settings.showMenuBarIcon },
+                set: { on in
+                    visibilityMessage = model.setShowMenuBarIcon(on) ? nil
+                        : "The floating panel is hidden, so the menu bar icon stays. Show the panel first."
+                }
+            )) {
+                LabelWithDetail("Show menu bar icon", "The count and the top five items. It stays on while the panel is hidden.")
+            }
+            Toggle(isOn: $settings.showMenuBarCount) {
+                LabelWithDetail("Show count in menu bar", "The number next to the icon, in the highest priority's colour.")
+            }
+            .disabled(!settings.showMenuBarIcon)
+            Toggle(isOn: $settings.snapToCorners) {
+                LabelWithDetail("Snap to corners", "A dropped pill snaps to the nearest corner instead of staying where you drop it.")
+            }
             if let visibilityMessage {
                 Text(visibilityMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         } header: {
-            Text("Menu bar and panel")
+            Text("Panel and menu bar")
         } footer: {
-            Text("While the panel is hidden, new items only update the menu bar; an urgent one pulses the icon once. ⌃⌥Space shows or hides the panel. Drag the pill anywhere; Reset Position is in the menu bar and right-click menus.")
+            Text("Drag the pill anywhere. Reset Position is in the menu bar and right-click menus.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var keyboardSection: some View {
+        Section {
+            ShortcutRecorder(hotKeys: hotKeys)
+        } header: {
+            Text("Keyboard")
+        } footer: {
+            Text("Works in every app and never takes focus from what you're typing. Needs ⌃, ⌥ or ⌘.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Alerts tab
+
+    private var alertStyleSection: some View {
+        Section {
+            AlertPreview(settings: settings)
+            Picker(selection: $settings.ui.alertUrgent) {
+                ForEach(AlertIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Urgent items", "Never fully off: urgent always pulses at least once, \(AlertStyle.urgentFloor.title.lowercased()).")
+            }
+            Picker(selection: $settings.ui.alertOther) {
+                ForEach(AlertIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Normal and low items", "Off: no pulse, just a faint ring on the count.")
+            }
+        } header: {
+            Text("New items")
+        } footer: {
+            Text("How loud an arrival is: the glow and how many times it pulses, and the ring on the count. Bright also tints the pill. Reduce Motion makes the pulses gentler.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var breakthroughSection: some View {
+        Section {
+            Toggle(isOn: $settings.urgentBreaksSnooze) {
+                LabelWithDetail("Urgent items break through a snooze", "An urgent arrival ends a panel snooze and shows the panel.")
+            }
+            Toggle(isOn: $settings.urgentShowsHiddenPanel) {
+                LabelWithDetail("Urgent items show the panel even when hidden", "Instead of one pulse of the menu bar icon.")
+            }
+        } header: {
+            Text("Snoozed or hidden")
+        }
+    }
+
+    // MARK: Integrations tab
+
+    private var shortcutActionSection: some View {
+        Section {
+            Toggle(isOn: $settings.hotKeyOpensTopLink) {
+                LabelWithDetail("Hotkey also opens the top card's first link",
+                                "\(settings.hotKey.display) runs the top card's Terminal jump or opens its VS Code window (or first link) instead of showing or hiding the panel. With nothing to open it shows or hides as usual.")
+            }
+        } header: {
+            Text("Go to the top card")
+        } footer: {
+            Text("The panel still never takes focus; only the app the link opens comes forward.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var sendersSection: some View {
+        Section {
+            Text("Claude Code hooks, Orca automations, CI jobs and scripts post to a hub; set a machine up from Hubs and access → Invite a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        } header: {
+            Text("Senders")
+        }
+    }
+
+    // MARK: Advanced tab
+
+    private var advancedSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { settings.demoMode },
+                set: { settings.demoMode = $0; localHub.apply(); model.restartFeed() }
+            )) {
+                LabelWithDetail("Demo mode", "Fixture items and no hub, to try the app.")
+            }
+            .disabled(settings.demoForcedByEnvironment)
+            if settings.demoForcedByEnvironment {
+                Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
+            }
+            Toggle(isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) })) {
+                LabelWithDetail("Open at login", "Starts Needs You when you log in. Run it from /Applications first.")
+            }
+            if let loginMessage {
+                Text(loginMessage).font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                LabelWithDetail("Look and alerts", "Size, text, cards, opacity and alert styles back to the original.")
+                Spacer()
+                Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
+                    .disabled(settings.ui == UIPrefs.defaults)
+            }
+        } header: {
+            Text("Advanced")
+        } footer: {
+            Text("Settings live in `defaults read app.needsyou.mac`; tokens and the hub's data in ~/Library/Application Support/NeedsYou/.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -553,6 +754,50 @@ struct SettingsView: View {
         if SMAppService.mainApp.status == .requiresApproval {
             loginMessage = "Approve Needs You in System Settings → General → Login Items."
         }
+    }
+}
+
+/// The shortcut and its recorder. Lives in the Settings window only (never the panel):
+/// recording listens for the next key press in this window.
+private struct ShortcutRecorder: View {
+    @ObservedObject var hotKeys: HotKeyController
+    @State private var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent("Show / hide shortcut") {
+                HStack(spacing: 8) {
+                    Text(hotKeys.isRecording ? "Type a shortcut… (Esc cancels)" : hotKeys.combo.display)
+                        .font(hotKeys.isRecording ? .body : .body.monospaced())
+                        .foregroundStyle(hotKeys.isRecording ? .secondary : .primary)
+                    if hotKeys.isRecording {
+                        Button("Cancel") { hotKeys.stopRecording() }
+                    } else {
+                        Button("Change…") {
+                            message = nil
+                            hotKeys.startRecording { message = $0 }
+                        }
+                        if hotKeys.combo != .standard {
+                            Button("Reset") { message = hotKeys.change(to: .standard) }
+                                .help("Back to \(HotKeyCombo.standard.display)")
+                        }
+                    }
+                }
+            }
+            if hotKeys.isRecording {
+                EmptyView()
+            } else if hotKeys.isRegistered {
+                Label("Registered", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+            } else {
+                Label("Not registered: another app or macOS (input-source switching?) has \(hotKeys.combo.display). Pick another.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            if let message {
+                Text(message).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onDisappear { hotKeys.stopRecording() }
     }
 }
 

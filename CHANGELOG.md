@@ -6,6 +6,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Added
 
+- Mac app: make the panel yours. **Settings → Panel**: size (compact, regular, large) for the pill, the cards' type and the open panel; a separate card text size (small to extra large) for long agent instructions; card text in full, the first 3 lines or title only; compact links; how many cards show before the list scrolls; opacity. A sample card shows each change. The defaults are the original look.
+- Mac app: **Settings → Alerts** sets how loud new items are (off, subtle, normal, bright), separately for urgent and for other items. Urgent never goes below subtle. The preview pills play each style.
+- Mac app: record your own global shortcut in **Settings → Panel → Keyboard** (it must use ⌃, ⌥ or ⌘; system shortcuts are refused, and a shortcut another app holds keeps the old one). Settings shows whether it registered. New, off by default: **Hotkey also opens the top card's first link** (Settings → Integrations), which runs the top card's Terminal jump or opens its VS Code window instead of showing or hiding the panel.
+- Mac app: cards waiting 4 hours or more show their age next to the title (`5 h`, `2 d`, amber after 2 days), and a card's **…** menu has **Dismiss All from <host>** for a machine that went away without resolving its cards.
+
 - Mac app: Orca cards have a **Terminal** button that runs `orca terminal switch` for that agent's terminal and brings Orca forward (a card that doesn't name its Orca environment tries each paired one). Clicking it marks the card done. If the switch fails, the command goes on the clipboard. The hook and the Orca prompt block add the link (`needsyou://orca/terminal?handle=…`); the hub accepts the app's own scheme for that path only, and the app validates the handle and environment and runs nothing else.
 
 - Agent cards say where the session runs: the tmux pane (`kube:2.1`), VS Code, or SSH.
@@ -17,6 +22,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Changed
 
+- Mac app: Settings is in tabs (Hubs and access, Panel, Alerts, Integrations, Advanced), with a one-line explanation for each setting.
 - Releases include `NeedsYou-X.Y.Z.dmg` (open it, drag the app onto Applications) next to the zip, and in `SHA256SUMS`. The release workflow has a manual dry run that builds everything without creating a release.
 - needs-you is licensed under Apache-2.0 (`LICENSE`).
 - The Orca prompt block, the skill and the agent guide tell scheduled senders to post with `--expires-in` of about twice their interval, so a blocker a run stops reporting drops off even if its resolve is missed.

@@ -126,8 +126,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             if !model.toggleVisibility() { NSSound.beep() }
         }
         show.state = MenuBarFormat.panelMenuChecked(visibility: model.visibility, now: now) ? .on : .off
-        show.keyEquivalent = " "
-        show.keyEquivalentModifierMask = [.control, .option]   // shown as a hint; ⌃⌥Space is the global hotkey
+        // Shown as a hint only; the global shortcut (Settings → Panel) is what does it.
+        let combo = model.settings.hotKey
+        if let key = combo.menuKeyEquivalent, !model.settings.hotKeyOpensTopLink {
+            show.keyEquivalent = key
+            show.keyEquivalentModifierMask = HotKeyController.menuModifiers(combo)
+        }
         menu.addItem(show)
 
         let snooze = NSMenuItem(title: "Snooze", action: nil, keyEquivalent: "")

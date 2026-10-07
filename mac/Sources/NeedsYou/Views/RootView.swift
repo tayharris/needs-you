@@ -8,20 +8,19 @@ struct RootView: View {
     @ObservedObject var model: AppModel
     @State private var glow: Double = 0
     @State private var glowColor: Color = Theme.normal
+    @State private var glowLook = AlertStyle.look(.normal, priority: .normal)
 
     var body: some View {
         let display = model.display
         content(display)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tint(display))
             .clipShape(shape(display))
             .overlay(ring(display))
             .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: 0.5))
             .background(
                 // Soft glow outside the edge; only visible while a pulse runs.
-                shape(display)
-                    .stroke(glowColor.opacity(glow * 0.9), lineWidth: 2)
-                    .shadow(color: glowColor.opacity(glow), radius: 7)
-                    .shadow(color: glowColor.opacity(glow * 0.6), radius: 3)
+                GlowEdge(shape: shape(display), color: glowColor, glow: glow, look: glowLook)
             )
             .padding(PanelController.glowPadding)
             .environment(\.colorScheme, .dark)
@@ -41,7 +40,7 @@ struct RootView: View {
         case .waiting:
             CountPill(model: model)
         case .preview(let item):
-            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel)
+            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel, metrics: model.metrics)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 3, coordinateSpace: .global)
@@ -66,8 +65,26 @@ struct RootView: View {
     private func ring(_ display: PanelDisplay) -> some View {
         switch display {
         case .waiting, .preview:
-            // Thin ring in the colour of the highest open priority.
-            shape(display).strokeBorder(Theme.color(model.highestPriority ?? previewPriority(display)).opacity(model.count > 0 ? 0.9 : 0.25), lineWidth: 1.25)
+            // Thin ring in the colour of the highest open priority; Settings → Alerts sets how strong.
+            let priority = model.highestPriority ?? previewPriority(display)
+            let look = model.alertLook(priority ?? .low)
+            shape(display).strokeBorder(Theme.color(priority).opacity(model.count > 0 ? look.ringOpacity : AlertStyle.otherContextRingOpacity),
+                                        lineWidth: look.ringWidth)
+        default:
+            EmptyView()
+        }
+    }
+
+    /// Bright alerts tint the count pill and preview in the priority colour.
+    @ViewBuilder
+    private func tint(_ display: PanelDisplay) -> some View {
+        switch display {
+        case .waiting, .preview:
+            let priority = model.highestPriority ?? previewPriority(display)
+            let look = model.alertLook(priority ?? .low)
+            if model.count > 0 || previewPriority(display) != nil, look.fillOpacity > 0 {
+                Theme.color(priority).opacity(look.fillOpacity)
+            }
         default:
             EmptyView()
         }
@@ -79,15 +96,13 @@ struct RootView: View {
     }
 
     private func runPulse(_ request: PulseRequest) {
+        var look = model.alertLook(request.priority, basePulses: request.times)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { look = look.reducedMotion() }
+        guard look.pulses > 0 else { return }   // Alerts → Off (never for urgent: it has a floor)
         glowColor = Theme.color(request.priority)
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        glowLook = look
         Task { @MainActor in
-            for _ in 0..<max(1, request.times) {
-                withAnimation(.easeOut(duration: reduceMotion ? 0.4 : 0.35)) { glow = 1 }
-                try? await Task.sleep(nanoseconds: 450_000_000)
-                withAnimation(.easeIn(duration: reduceMotion ? 0.6 : 0.5)) { glow = 0 }
-                try? await Task.sleep(nanoseconds: 550_000_000)
-            }
+            await PulseRunner.run(look) { glow = $0 }
         }
     }
 }
@@ -125,7 +140,7 @@ struct IdlePill: View {
                 .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
                 .frame(width: 5, height: 5)
             Text(model.hovering ? model.idleHoverLine : model.idleRestLine)
-                .font(Theme.meta)
+                .font(.system(size: model.metrics.idleFont))
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
         }
@@ -150,7 +165,7 @@ struct CountPill: View {
                     .foregroundStyle(Theme.faint)
             }
         }
-        .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+        .font(.system(size: model.metrics.countFont, weight: .semibold, design: .rounded).monospacedDigit())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
         .help("\(model.needsLabel): \(model.count) \(model.context.rawValue) item\(model.count == 1 ? "" : "s") · \(model.statusLine)")
@@ -162,18 +177,19 @@ struct PreviewPill: View {
     let item: Item
     let now: Date
     let needsLabel: String
+    let metrics: PanelMetrics
 
     var body: some View {
         HStack(spacing: 10) {
             Circle().fill(Theme.color(item.priority)).frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .font(Theme.title)
+                    .font(Theme.title(metrics))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 (Text(needsLabel).foregroundStyle(Theme.color(item.priority).opacity(0.9))
                  + Text(" · " + Format.meta(item, now: now)).foregroundStyle(Theme.muted))
-                    .font(Theme.meta)
+                    .font(Theme.meta(metrics))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)

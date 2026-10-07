@@ -49,6 +49,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var now = Date()
     /// Height of the expanded card list as laid out by SwiftUI.
     @Published var expandedContentHeight: CGFloat = 0
+    /// Each card's bottom edge in the list (for Settings → Panel → Cards before scrolling).
+    @Published var cardBottoms: [CGFloat] = []
+    /// Cards whose full body and links are shown (Show more / Show details / +N). Cleared
+    /// when the panel collapses.
+    @Published private(set) var expandedCards: Set<String> = []
     /// Phase 3: the new-item preview currently shown, if any.
     @Published var previewItem: Item?
     /// Phase 3: set while the start-of-day summary is open; items created after this
@@ -120,6 +125,16 @@ final class AppModel: ObservableObject {
 
     /// "needs Sam" / "needs you".
     var needsLabel: String { settings.needsLabel }
+
+    /// Sizes for the chosen panel size (Settings → Panel).
+    var metrics: PanelMetrics { settings.ui.metrics }
+    /// Card body text size in points (Settings → Panel → Text size).
+    var bodyFont: CGFloat { settings.ui.bodyFont }
+
+    /// Glow, ring and tint for a priority (Settings → Alerts; urgent has a floor).
+    func alertLook(_ priority: ItemPriority, basePulses: Int = 1) -> AlertLook {
+        settings.ui.alertLook(for: priority, basePulses: basePulses)
+    }
 
     /// Footer / tooltip status: "hub2 · 10:42", "Demo · 10:42", or the error.
     var statusLine: String {
@@ -349,6 +364,11 @@ final class AppModel: ObservableObject {
         isExpanded = false
         summarySince = nil
         peeking = false
+        if !expandedCards.isEmpty { expandedCards = [] }
+    }
+
+    func toggleCardExpanded(_ item: Item) {
+        if expandedCards.contains(item.id) { expandedCards.remove(item.id) } else { expandedCards.insert(item.id) }
     }
 
     func setContext(_ context: ItemContext) {
@@ -384,6 +404,18 @@ final class AppModel: ObservableObject {
                 lastError = "Couldn't update item"
             }
         }
+    }
+
+    /// What "Dismiss All from <host>" closes: everything shown in this context from that host.
+    func itemsFromSameHost(as item: Item) -> [Item] {
+        guard let host = ItemStore.host(of: item) else { return [] }
+        return store.visibleItems(fromHost: host, in: context, now: now)
+    }
+
+    /// Dismiss every card and Recent row from the item's host (stale-items.md, option D).
+    /// One PATCH per item, like Dismiss.
+    func dismissAll(fromHostOf item: Item) {
+        for other in itemsFromSameHost(as: item) { dismiss(other) }
     }
 
     func snoozeCard(_ item: Item, _ option: SnoozeOption) {

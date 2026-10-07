@@ -25,6 +25,12 @@ let entries =
     + testEntries(PanelPositionTests.self, PanelPositionTests.allTests)
     + testEntries(PrefsMigrationTests.self, PrefsMigrationTests.allTests)
     + testEntries(OrcaJumpTests.self, OrcaJumpTests.allTests)
+    + testEntries(PanelStyleTests.self, PanelStyleTests.allTests)
+    + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
+    + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)
+    + testEntries(CardLayoutTests.self, CardLayoutTests.allTests)
+    + testEntries(HotKeyComboTests.self, HotKeyComboTests.allTests)
+    + testEntries(CardAgeTests.self, CardAgeTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

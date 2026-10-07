@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var panel: PanelController!
     private var settingsWindow: SettingsWindowController!
-    private var hotKey: HotKey?
+    private var hotKeys: HotKeyController!
     private var phase3: Phase3Controller?
     private var localHub: LocalHubController!
     private var connect: ConnectController!
@@ -30,21 +30,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         localHub.prepareToken()
         phase3 = Phase3Controller(model: model, defaults: settings.defaults)   // phase 3; remove with the Phase3 folder
 
-        hotKey = HotKey { [weak self] in
-            // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
-            Task { @MainActor in if self?.model.toggleVisibility() == false { NSSound.beep() } }
-        }
-        if hotKey?.isRegistered != true {
-            NSLog("NeedsYou: couldn't register ⌃⌥Space (status \(hotKey?.status ?? -1)); is it bound to input-source switching?")
+        hotKeys = HotKeyController(settings: settings) { [weak self] in
+            Task { @MainActor in self?.hotKeyPressed() }
         }
 
-        settingsWindow = SettingsWindowController(model: model, connect: connect, localHub: localHub) { [weak self] in
-            self?.hotKey?.isRegistered ?? false
-        }
+        settingsWindow = SettingsWindowController(model: model, connect: connect, localHub: localHub, hotKeys: hotKeys)
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
-        model.openInviteHandler = { [weak self] in self?.settingsWindow.show() }
-        if let phase3 { settingsWindow.extraSettings = { phase3.settingsSection } }
+        model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .hubs) }
+        if let phase3 {
+            settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
+        }
 
         panel = PanelController(model: model)
         menuBar = MenuBarController(model: model)
@@ -120,6 +116,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The global shortcut. Shows or hides the panel; with "Hotkey also opens the top
+    /// card's first link" on, opens that link instead when there is one (the Orca terminal
+    /// jump or a VS Code window). Neither makes the panel key or activates this app.
+    private func hotKeyPressed() {
+        switch HotKeyAction.decide(openTopLink: settings.hotKeyOpensTopLink, top: model.needsItems.first) {
+        case .openTopCard(let item):
+            model.activate(item)
+        case .toggleVisibility:
+            // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
+            if !model.toggleVisibility() { NSSound.beep() }
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -154,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         connect.connect(url.absoluteString)
-        settingsWindow.show()
+        settingsWindow.show(tab: .hubs)
     }
 
     /// Accessory apps have no visible menu bar, but text fields still need an Edit menu

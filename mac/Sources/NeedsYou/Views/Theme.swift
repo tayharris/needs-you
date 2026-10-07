@@ -21,26 +21,52 @@ enum Theme {
         }
     }
 
-    static let title = Font.system(size: 13, weight: .semibold)
-    static let body = Font.system(size: 12)
-    static let meta = Font.system(size: 11)
-    static let mono = Font.system(size: 11, design: .monospaced)
+    // Type scales with Settings → Panel → Size (PanelStyle); body text has its own size.
+    static func title(_ m: PanelMetrics) -> Font { .system(size: m.titleFont, weight: .semibold) }
+    static func body(_ points: CGFloat) -> Font { .system(size: points) }
+    static func meta(_ m: PanelMetrics) -> Font { .system(size: m.metaFont) }
+    static func mono(_ m: PanelMetrics) -> Font { .system(size: m.metaFont, design: .monospaced) }
+}
+
+/// The soft glow outside a shape's edge during an arrival pulse (`glow` 0...1 is the
+/// pulse's progress; Settings → Alerts sets the look). Shared by the panel and the
+/// Settings preview.
+struct GlowEdge<S: Shape>: View {
+    let shape: S
+    let color: Color
+    let glow: Double
+    let look: AlertLook
+
+    var body: some View {
+        let strength = glow * look.glowPeak
+        shape
+            .stroke(color.opacity(strength * 0.9), lineWidth: look.strokeWidth)
+            .shadow(color: color.opacity(strength), radius: look.glowRadius)
+            .shadow(color: color.opacity(strength * 0.6), radius: look.glowRadius * 0.43)
+    }
+}
+
+/// Runs an alert look's pulses by animating `set(1)` / `set(0)`.
+@MainActor
+enum PulseRunner {
+    static func run(_ look: AlertLook, set: @escaping (Double) -> Void) async {
+        for _ in 0..<look.pulses {
+            withAnimation(.easeOut(duration: look.riseSeconds)) { set(1) }
+            try? await Task.sleep(nanoseconds: UInt64(look.holdSeconds * 1_000_000_000))
+            withAnimation(.easeIn(duration: look.fallSeconds)) { set(0) }
+            try? await Task.sleep(nanoseconds: UInt64(look.gapSeconds * 1_000_000_000))
+        }
+    }
 }
 
 enum Format {
     /// "now", "5m", "2h", "3d".
     static func age(from date: Date, now: Date) -> String {
-        let s = max(0, now.timeIntervalSince(date))
-        switch s {
-        case ..<60: return "now"
-        case ..<3600: return "\(Int(s / 60))m"
-        case ..<86_400: return "\(Int(s / 3600))h"
-        default: return "\(Int(s / 86_400))d"
-        }
+        CardAge.short(now.timeIntervalSince(date))
     }
 
-    /// `devbox · orca:redo-fixer · 2h`
-    static func meta(_ item: Item, now: Date) -> String {
-        ((item.source?.displayParts ?? []) + [age(from: item.createdAt, now: now)]).joined(separator: " · ")
+    /// `devbox · orca:redo-fixer · 2h`. Without the age when the card shows an age badge.
+    static func meta(_ item: Item, now: Date, includeAge: Bool = true) -> String {
+        ((item.source?.displayParts ?? []) + (includeAge ? [age(from: item.createdAt, now: now)] : [])).joined(separator: " · ")
     }
 }

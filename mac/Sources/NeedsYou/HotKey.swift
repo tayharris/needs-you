@@ -12,7 +12,8 @@ final class HotKey {
     private let action: () -> Void
     private(set) var status: OSStatus = noErr
 
-    /// ⌃⌥Space by default. Each live HotKey needs a distinct `id`.
+    /// ⌃⌥Space by default (HotKeyController passes the stored shortcut). Each live HotKey
+    /// needs a distinct `id`, and re-registering an id needs the old instance gone first.
     init(id: UInt32 = 1, keyCode: UInt32 = UInt32(kVK_Space), modifiers: UInt32 = UInt32(controlKey | optionKey), action: @escaping () -> Void) {
         self.id = id
         self.action = action
