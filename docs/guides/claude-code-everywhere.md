@@ -6,7 +6,7 @@ A card on your Mac whenever a Claude Code session stops to wait for you (a permi
 
 You need the Mac app running ([quickstart.md](quickstart.md) step 1). For machines other than the Mac, they and the Mac must be on one tailnet ([tailscale.md](tailscale.md)).
 
-**On the Mac:** right-click the pill → **Settings…** → **Invite a machine**: a name (e.g. `claude`), role **Sender**, **Uses** = the number of machines you'll set up, **Create invite**, then **Shell one-liner**. It copies a line like `curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`.
+**On the Mac:** right-click the pill → **Settings…** → **Connect a machine**: *A server or agent that sends alerts*, a name (e.g. `claude`), **Uses** = the number of machines you'll set up, **Create invite**, then **Shell one-liner**. It copies a line like `curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`.
 
 **On each machine where Claude Code runs** (the Mac itself included), paste that line. That's the whole setup (add `--auto-update` to let the machine update itself daily, see [Keeping up to date](updates.md)):
 

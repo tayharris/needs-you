@@ -41,7 +41,7 @@ Setting up Tailscale, or checking it step by step: [tailscale.md](tailscale.md).
 | `HTTP 421` "doesn't answer to that host name" | The URL uses a name the hub doesn't know as its own (a custom DNS name or alias); this is its DNS-rebinding protection | Use the hub's public URL (MagicDNS name) or tailnet IP, or add the name to the hub's `allowed_hosts` (`--allowed-host`, or `NEEDS_YOU_HUB_ALLOWED_HOSTS` for the Mac app's hub, [HUB.md](../HUB.md)) |
 | `HTTP 401` / `403` | Wrong, revoked, or Mac-only token | Get a new invite link and re-run its installer with `--force` |
 | Times out only while the Mac sleeps | The Mac's own hub is asleep | Expected: items queue and the 5-minute flush sends them after it wakes. Add a [server hub](../HUB.md) to avoid the wait. |
-| Times out from servers, works on the Mac | Tailscale is down on the Mac (the app's hub then listens only on `127.0.0.1`), or the macOS firewall blocks it | Bring Tailscale up on the Mac; the hub picks up the tailnet address by itself (Settings… → This Mac shows the URL). Allow `python3` in System Settings → Network → Firewall |
+| Times out from servers, works on the Mac | Tailscale is down on the Mac (the app's hub then listens only on `127.0.0.1`), or the macOS firewall blocks it | Bring Tailscale up on the Mac; the hub picks up the tailnet address by itself (Settings… → Your inbox shows the URL). Allow `python3` in System Settings → Network → Firewall |
 | `HTTP 400` | Validation: title > 100 chars, body > 2,000, > 6 links, a link scheme not on the allow-list, a bad `context`/`kind`/`priority` | Fix the item; the response body says which field |
 | `HTTP 429` or "too many open items" | The sender has 60 open items: something is looping | Stop the loop; resolve the stale keys |
 
@@ -71,7 +71,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 
 1. **Context and hours:** a `work` item at 21:00 shows only as the faint second number (`0 · 1`). Use the toggle in the expanded header, or check the work-hours setting.
 2. **Kind:** `done` and `info` items never raise the count. They're in the collapsed **Recent** section.
-3. **Snoozed:** press ⌃⌥Space (or your configured shortcut) to bring the panel back.
+3. **Snoozed:** press Control-Option-Space (⌃⌥Space, or your configured shortcut) to bring the panel back.
 4. **Mac can't reach a server hub:** the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.
 5. **Wrong hub:** the sender's `NEEDS_YOU_URLS` must include the Mac's hub or a server hub peered with it.
 6. **Hubs out of sync:** if the Mac polls `hub-a` and the sender wrote to `hub-b`, replication should copy it within seconds. If it doesn't, check the peer list and the replication outbox on `hub-b` ([HUB.md](../HUB.md)).

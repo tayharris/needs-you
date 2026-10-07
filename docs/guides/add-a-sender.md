@@ -4,7 +4,7 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 
 ## With an invite link (recommended)
 
-1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Invite a machine**, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
+1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Connect a machine** (or **Connect a Machine…** in the menu bar menu), keep *A server or agent that sends alerts*, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
    - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes`,
    - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it."*
@@ -99,7 +99,7 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
 
 ## Removing a sender
 
-1. **Revoke its token.** In the Mac app: right-click the pill → **Settings…** → **Access** → **Revoke** next to the machine (invites are listed there too). Over HTTP with an owner token: `DELETE /v1/tokens/<name>` ([API.md](../API.md#tokens)). On a server hub: `needs-you-admin token revoke <name>`. Or run the admin tool bundled in the app against its database (safe while the app runs):
+1. **Revoke its token.** In the Mac app: right-click the pill → **Settings…** → **Machines** → **Revoke** next to the machine (open invite links are listed there too). Over HTTP with an owner token: `DELETE /v1/tokens/<name>` ([API.md](../API.md#tokens)). On a server hub: `needs-you-admin token revoke <name>`. Or run the admin tool bundled in the app against its database (safe while the app runs):
 
    ```bash
    ADMIN=/Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py

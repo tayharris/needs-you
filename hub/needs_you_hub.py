@@ -2615,11 +2615,12 @@ def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:
         return head + (
             "## This invite is for the Mac app\n\n"
             "It grants a **%s** token (read the inbox%s), so it isn't for a server or an agent. "
-            "On the Mac, open this link (click it, or run `open` on it in Terminal):\n\n"
+            "On the Mac, open this link (click it, run `open` on it in Terminal, or paste it into "
+            "Settings → Other hubs (advanced) in NeedsYou.app):\n\n"
             "    %s\n\n"
             "NeedsYou.app adds the hub and stores its token. If you are an agent, "
             "stop here and tell the user to open that link on their Mac.\n"
-            % (inv["role"], ", and invite machines" if inv["role"] == "owner" else "", links["mac_url"]))
+            % (inv["role"], ", and connect machines" if inv["role"] == "owner" else "", links["mac_url"]))
     return head + """## Install (one line)
 
 Needs bash, curl and python3 3.9+ (stock on macOS and Ubuntu). Nothing else is installed

@@ -282,14 +282,14 @@ if [ "$UNINSTALL" -eq 1 ]; then
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
   rmdir "$CONF_DIR" 2>/dev/null || true
-  say "needs-you removed from this machine. Revoke its token in the Mac app (Settings → Access) or on the hub."
+  say "needs-you removed from this machine. Revoke its token in the Mac app (Settings → Machines) or on the hub."
   exit 0
 fi
 
 # ---------------------------------------------------------------- checks
 if [ "$ROLE" != "sender" ]; then
   say "This invite ($INVITE_NAME, role $ROLE) is for the Mac app, not for a server."
-  say "On the Mac, open:"
+  say "On the Mac, open it (or paste it into Settings → Other hubs (advanced)):"
   say "  $MAC_URL"
   exit 1
 fi

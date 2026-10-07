@@ -4,7 +4,7 @@ Orca runs agents in worktrees and scheduled automations, often on several server
 
 ## Several Orca servers: one link
 
-Make one invite with a use per server. In the Mac app: right-click the pill → **Settings…** → **Invite a machine**, **Uses** = the number of servers. On a server hub:
+Make one invite with a use per server. In the Mac app: right-click the pill → **Settings…** → **Connect a machine**, **Uses** = the number of servers. On a server hub:
 
 ```bash
 needs-you-admin invite create orca --role sender --uses 4 --ttl 72
@@ -16,7 +16,7 @@ Then on each Orca server, paste the agent prompt into an Orca terminal, or run:
 curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --orca
 ```
 
-Each server redeems the same link and gets **its own token**, named `orca-<hostname>` (e.g. `orca-build-1`, `orca-build-2`). Revoke one server without touching the others: **Settings… → Access** in the Mac app, or `needs-you-admin token revoke orca-build-2` on a server hub ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)). Running the installer again on a server keeps its token without spending a use, until the link expires (also after its last use is spent); give provisioning scripts a link with a long enough expiry (up to 90 days).
+Each server redeems the same link and gets **its own token**, named `orca-<hostname>` (e.g. `orca-build-1`, `orca-build-2`). Revoke one server without touching the others: **Settings… → Machines** in the Mac app, or `needs-you-admin token revoke orca-build-2` on a server hub ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)). Running the installer again on a server keeps its token without spending a use, until the link expires (also after its last use is spent); give provisioning scripts a link with a long enough expiry (up to 90 days).
 
 What the flags give you:
 
