@@ -88,9 +88,23 @@ public enum LinkRowPolicy {
         return LinkRowPlan(shown: shown, overflow: all.count - shown.count, maxLabelLength: compactLabelLength)
     }
 
-    /// The link's label (or its URL when the label is empty), shortened with an ellipsis.
+    /// The link's label, shortened with an ellipsis. An empty label falls back to the URL's
+    /// host (the full URL only when there's no host), so shortening can never hide where the
+    /// link really goes behind a look-alike prefix such as `https://github.co…`.
     public static func label(_ link: ItemLink, maxLength: Int?) -> String {
-        let text = link.label.trimmingCharacters(in: .whitespaces).isEmpty ? link.url : link.label
+        let text: String
+        if link.label.trimmingCharacters(in: .whitespaces).isEmpty {
+            if let host = URL(string: link.url)?.host, !host.isEmpty {
+                // Keep the end of the host (the registrable part), not the start.
+                if let maxLength, maxLength > 1, host.count > maxLength {
+                    return "…" + String(host.suffix(maxLength - 1))
+                }
+                return host
+            }
+            text = link.url
+        } else {
+            text = link.label
+        }
         guard let maxLength, maxLength > 1, text.count > maxLength else { return text }
         return String(text.prefix(maxLength - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
