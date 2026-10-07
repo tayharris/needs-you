@@ -4,9 +4,9 @@
 
 needs-you is AI-first. It gives AI agents the tools to set themselves up (hand an agent an invite link and it installs and configures itself) and to alert a person only when they actually need that person, routed to where they act: a deep link to the ticket, the PR or the Orca worktree. Humans stay in the loop without watching terminals.
 
-Private for now; open source later (license to be decided). Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/).
+Private for now; open source later. Licensed under [Apache-2.0](LICENSE). Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/).
 
-**Status: private preview (0.1.x).** The Mac app is ad-hoc signed, not notarized, so macOS asks you to approve it once. No license yet.
+**Status: private preview (0.1.x).** The Mac app is ad-hoc signed, not notarized, so macOS asks you to approve it once.
 
 ## Install from a release
 

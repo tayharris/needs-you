@@ -56,7 +56,7 @@ if [ "${NEEDS_YOU_SKIP_APP:-}" != 1 ]; then
 fi
 
 git -C "$ROOT" archive --format=tar.gz --prefix="needs-you-$V/" -o "$OUT/needs-you-server-$V.tar.gz" HEAD \
-  hub cli scripts deploy integrations docs README.md CHANGELOG.md VERSION
+  hub cli scripts deploy integrations docs README.md CHANGELOG.md VERSION LICENSE
 cp "$ROOT/cli/needs-you" "$OUT/needs-you-cli-$V"
 chmod 755 "$OUT/needs-you-cli-$V"
 

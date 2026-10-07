@@ -29,7 +29,7 @@ Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and the
    NEEDS_YOU_VERSION=$V mac/scripts/bundle.sh
    ditto -c -k --keepParent mac/dist/NeedsYou.app "$OUT/NeedsYou-$V-macos.zip"
    git archive --format=tar.gz --prefix=needs-you-$V/ -o "$OUT/needs-you-server-$V.tar.gz" HEAD \
-     hub cli scripts deploy integrations docs README.md
+     hub cli scripts deploy integrations docs README.md LICENSE
    cp cli/needs-you "$OUT/needs-you-cli-$V"
    (cd "$OUT" && shasum -a 256 * > SHA256SUMS)
    ```
@@ -42,4 +42,4 @@ Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and the
 
 - The app is **ad-hoc signed**. Say so in the release notes: first launch needs right-click → Open, and endpoint security (SentinelOne etc.) may flag it. Developer ID signing and notarization are in the CI/CD plan.
 - Never include `mac/dist/` or `.build/` in git, or tokens/DBs in the tarball (`git archive` only takes tracked files).
-- No LICENSE yet: the license is chosen at public launch. Don't publish a public release before that.
+- The license is Apache-2.0 (`LICENSE`). A public release still waits on the rest of `docs/roadmap/sharing-checklist.md`.

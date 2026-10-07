@@ -14,6 +14,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Changed
 
+- needs-you is licensed under Apache-2.0 (`LICENSE`).
 - The Orca prompt block, the skill and the agent guide tell scheduled senders to post with `--expires-in` of about twice their interval, so a blocker a run stops reporting drops off even if its resolve is missed.
 
 ## [0.1.1] - 2026-10-06

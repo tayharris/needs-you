@@ -4,6 +4,7 @@ Status (2026-10-06): ready to share with **invited collaborators**. Not ready to
 
 ## Done
 
+- License: **Apache-2.0** (`LICENSE`), chosen 2026-10-06 while the repo is private; revisit before going public if needed.
 - CI on every push (Ubuntu 22.04 and latest with the system python3, macOS with `/usr/bin/python3` 3.9, the Mac app's tests and build, and shellcheck at warning level). The site is checked by `tests/test_site.py`.
 - A release workflow: a `v*.*.*` tag drafts a GitHub Release with the app zip, the server tarball, the CLI, `SHA256SUMS`, and notes with the Gatekeeper steps. First tag: `v0.1.1`.
 - The tree has no personal hostnames, tailnet names or company names outside `docs/PLAN.md`. Demo data uses `acme` and `ACME-123`.
@@ -14,7 +15,6 @@ Status (2026-10-06): ready to share with **invited collaborators**. Not ready to
 
 | # | Decision | Why it matters | Suggestion |
 |---|---|---|---|
-| 1 | **License** | No public repo or public release without one. With no license, nobody else has the right to use, copy or modify the code, even when they can see it. | See "License options" below. |
 | 2 | **Who sees it**: collaborators or public | Collaborators (Settings → Collaborators, **Read** role) can see the repo, drafts and releases, and download assets with `gh` or the browser. Anonymous `curl` of release assets (the server installer in `distribution.md`) only works on a public repo. | Collaborators now; public once 1, 3 and 4 are done. |
 | 3 | **Git history** | Old commits contain personal host and tailnet names (they were cleaned from the tree, not from history). Fine for collaborators. Before going public: publish from a fresh history (one squashed commit in a new public repo, this one stays private), or rewrite history (needs `git filter-repo`, and every clone must re-clone). | A fresh public repo from a squashed snapshot: simplest, nothing to rewrite here. |
 | 4 | **Bundle id** `app.needsyou.mac` | Changing it later resets the app's settings, its login item and its macOS firewall rule for everyone. | Decide before the first public release: keep it, or move to the project's own domain. |
@@ -37,6 +37,6 @@ Suggestion: **Apache-2.0**. needs-you is a tool people run on their own machines
 
 ## Before the first public release
 
-- [ ] Decisions 1–4 above.
+- [ ] Decisions 2–4 above.
 - [ ] Run [fresh-user-test-plan.md](fresh-user-test-plan.md) on a second Mac and fix what it finds.
 - [ ] Site deployed ([site-deploy.md](site-deploy.md)), or the site's links point at the repo.
