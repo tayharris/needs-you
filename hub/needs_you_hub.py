@@ -815,6 +815,16 @@ class Store:
         self.lock = threading.RLock()
         d = os.path.dirname(os.path.abspath(path))
         os.makedirs(d, exist_ok=True)
+        # 0600 before SQLite opens it: SQLite gives the -wal and -shm files (the same data)
+        # the database file's mode, so chmod after connecting left them at the umask's 0644.
+        for p in (path, path + "-wal", path + "-shm") if path != ":memory:" else ():
+            try:
+                if p == path and not os.path.exists(p):
+                    os.close(os.open(p, os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600))
+                if os.path.isfile(p) and not os.path.islink(p):
+                    os.chmod(p, 0o600)
+            except OSError:
+                pass
         self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout=10000")
