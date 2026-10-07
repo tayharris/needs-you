@@ -137,9 +137,27 @@ Create an item, or update the open item with the same `key`.
 | `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h; `needs`: none |
 | `status` | | **rejected** (use resolve or PATCH) | |
 
-Link URLs must use one of these schemes (case-insensitive): `https`, `orca`, `slack`,
+Link URLs must use one of these schemes (case-insensitive): `https`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
-`file` and `javascript`, is a 400. Text strings are trimmed.
+`file`, `javascript` and `orca`, is a 400. Text strings are trimmed.
+
+`vscode` and `cursor` reach every installed extension's URI handler, so only these shapes are
+accepted (the scheme is case-insensitive, the rest is matched exactly, lowercase):
+
+| Shape | Opens |
+|---|---|
+| `vscode://file/<abs path>[:line[:col]]` | A file or folder on the Mac. No query, no fragment, no `//` after `file` |
+| `vscode://vscode-remote/ssh-remote+<host>[/<abs path>]` | A Remote-SSH window. `<host>` is an `~/.ssh/config` alias or name, optionally `user@`: letters, digits, `.`, `_`, `-`, starting with a letter or digit, no `%`; an all-hex value starting `7b` (a hex-encoded JSON host spec) is refused |
+| `vscode://vscode-remote/tunnel+<name>[/<abs path>]` | A Remote Tunnel window (tunnels belong to the user's own account); same name rule |
+| `vscode://anthropic.claude-code/open?session=<id>` | The Claude Code extension's tab for that session. Exactly one parameter, `session`, 8–64 letters, digits or `-` |
+
+The same with `cursor://`. Paths take RFC 3986 path characters and `%XX` escapes, but never an
+escaped control character (`%00`–`%1F`, `%7F`). Everything else is a 400: other authorities
+(`vscode://<publisher.extension>/…`, `vscode://settings/…`), `wsl+`, `dev-container+` and other
+remote kinds, userinfo, ports, queries or fragments on file and remote links, other paths or
+parameters on the Claude link. `orca://` was dropped: Orca's only link
+(`orca://skills/share/<id>`) imports a skill, which a card should never ask for, and the Orca
+jump is the app action below.
 
 One exception: the Mac app's own scheme, for a fixed set of **app actions** (the card's
 **Terminal** button). The hub accepts `needsyou://<host>/<path>?<query>` only for these

@@ -4,8 +4,34 @@ import Foundation
 /// so anything outside the allow-list is shown as plain text and is never opened.
 public enum LinkPolicy {
     public static let allowedSchemes: Set<String> = [
-        "https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear",
+        "https", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear",
     ]
+
+    /// The editor schemes, which reach every installed extension's URI handler, so they
+    /// open only the shapes in `editorLinkPattern` (security audit #14).
+    public static let editorSchemes: Set<String> = ["vscode", "cursor"]
+
+    /// The only `vscode://` / `cursor://` links that open, mirrored byte for byte by the
+    /// hub's `EDITOR_LINK_PATTERN` (hard rule 7; tests/test_link_mirror.py compares them).
+    /// The scheme is case-insensitive, the rest is exact:
+    /// - `<s>://file/<abs path>[:line[:col]]`: a file or folder; no query, no fragment.
+    /// - `<s>://vscode-remote/ssh-remote+<host>[/<abs path>]`: a Remote-SSH window.
+    /// - `<s>://vscode-remote/tunnel+<name>[/<abs path>]`: a Remote Tunnel (only the user's own).
+    /// - `<s>://anthropic.claude-code/open?session=<id>`: the Claude Code extension's tab.
+    /// Host names start with a letter or digit and take no `%` (no ssh option injection);
+    /// an all-hex name starting `7b` (a hex-encoded JSON host spec) is refused.
+    public static let editorLinkPattern: String =
+        #"(?i:vscode|cursor)://(?:"# +
+        #"file/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*"# +
+        #"|vscode-remote/(?:ssh-remote\+(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}@)?(?!7[Bb][0-9A-Fa-f]*(?:/|$))"# +
+        #"|tunnel\+)[A-Za-z0-9][A-Za-z0-9._-]{0,252}"# +
+        #"(?:/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*)?"# +
+        #"|anthropic\.claude-code/open\?session=[A-Za-z0-9-]{8,64})"#
+
+    /// Whether the whole string is one of the allowed editor link shapes.
+    public static func isAllowedEditorLink(_ string: String) -> Bool {
+        string.range(of: "^(?:" + editorLinkPattern + ")$", options: .regularExpression) != nil
+    }
 
     /// The app's own `needsyou://<host>/<path>?…` actions a card may carry, mirrored by the
     /// hub's `APP_LINK_PATHS` (hard rule 7: change both). Each one has a parser below that
@@ -25,6 +51,7 @@ public enum LinkPolicy {
         else { return nil }
         // https needs a host; the app schemes may legitimately be host-less.
         if scheme == "https", (url.host ?? "").isEmpty { return nil }
+        if editorSchemes.contains(scheme), !isAllowedEditorLink(trimmed) { return nil }
         return url
     }
 

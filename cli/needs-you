@@ -545,7 +545,7 @@ def parse_link(raw: str) -> Dict[str, str]:
 MAX_STEPS = 10
 # Where a step's URL starts: "=" then scheme:// or one of the hub's schemes (the hub
 # enforces the allow-list; this only finds the split).
-_STEP_URL_RE = re.compile(r"=\s*(?=(?:[A-Za-z][A-Za-z0-9+.-]*://|(?:https|orca|slack|vscode|cursor|figma"
+_STEP_URL_RE = re.compile(r"=\s*(?=(?:[A-Za-z][A-Za-z0-9+.-]*://|(?:https|slack|vscode|cursor|figma"
                           r"|msteams|discord|linear|needsyou):\S))", re.I)
 
 

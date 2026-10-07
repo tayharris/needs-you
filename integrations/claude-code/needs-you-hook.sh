@@ -444,6 +444,11 @@ def post(args, links):
     plain = [l for l in links if not l.partition("=")[2].lower().startswith("needsyou://")]
     if rc == 2 and len(plain) < len(links):
         rc = run(plain)
+    # Still refused: likely a link outside the hub's allowed shapes (a custom
+    # NEEDS_YOU_AGENT_LINK such as an extension's vscode:// handler, docs/API.md "Links").
+    # The card matters more than its buttons, so post it once more without links.
+    if rc == 2 and plain:
+        rc = run([])
     return rc
 
 

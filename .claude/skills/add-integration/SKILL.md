@@ -16,7 +16,7 @@ An integration is a thin layer that calls the `needs-you` CLI (preferred: outbox
 - **Opt-in when noisy.** Default off, like `NEEDS_YOU_AGENT_ALERTS` for the Claude hooks.
 - **Config via the existing env file** `~/.config/needs-you/env` and `NEEDS_YOU_*` variables. Prefix new ones `NEEDS_YOU_<INTEGRATION>_`.
 - bash scripts: `set -euo pipefail` where it can't break the caller, macOS bash 3.2 compatible, no jq, no package installs. Python: stdlib, 3.9.
-- Only allowed link schemes: `https orca slack vscode cursor figma msteams discord linear`.
+- Only allowed link schemes: `https slack vscode cursor figma msteams discord linear` (`vscode`/`cursor` only in the shapes listed in `docs/API.md`).
 
 ## Files
 

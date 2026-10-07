@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import unittest
 
-from support import ROOT
+from support import ROOT, hubmod
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -232,6 +232,19 @@ class LinkTests(HookHarness):
         self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin", TERM_PROGRAM="vscode"),
                          ["VS Code=vscode://file" + self.cwd])
 
+    def test_every_automatic_link_passes_the_hub(self):
+        # security audit #14: the narrowed vscode/cursor shapes still take everything the hook writes
+        self.cwd = os.path.join(self.home, "my repo", "josé")
+        os.makedirs(self.cwd)
+        got = (self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin", CLAUDE_CODE_ENTRYPOINT="claude-vscode")
+               + self.notify_links(NEEDS_YOU_SSH_ALIAS="devbox")
+               + self.notify_links(NEEDS_YOU_AGENT_LINK="Cursor=cursor://file{cwd}")
+               + self.notify_links(NEEDS_YOU_AGENT_LINK="VS Code=vscode://vscode-remote/ssh-remote+{host}{cwd}"))
+        self.assertEqual(len(got), 5)
+        for lk in got:
+            with self.subTest(lk):
+                self.assertTrue(hubmod.link_allowed(lk.partition("=")[2]))
+
     def test_template_wins_and_none_turns_them_off(self):
         self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin",
                                            NEEDS_YOU_AGENT_LINK="Cursor=cursor://file{cwd}"),
@@ -331,6 +344,16 @@ class TerminalLinkTests(HookHarness):
         self.assertEqual(len(calls), 2)
         self.assertEqual(self.links(calls[0])[0], TERM + "app=wezterm&pane=12")
         self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file" + self.cwd])
+
+    def test_refused_template_link_still_posts_the_card(self):
+        # security audit #14: the hub refuses extension handlers; the card arrives without links
+        with open(self.cli, "w") as fh:
+            fh.write(FAKE_CLI + "sys.exit(2 if any('ms-python' in a for a in sys.argv) else 0)\n")
+        self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", WEZTERM_PANE="12",
+                      NEEDS_YOU_AGENT_LINK="Py=vscode://ms-python.python/x")
+        calls = self.calls()
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(self.links(calls[2]), [])
 
 
 def usage_line(total, model="claude-opus-5", sidechain=False, cache=True):

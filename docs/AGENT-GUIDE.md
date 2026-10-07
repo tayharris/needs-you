@@ -181,9 +181,12 @@ item to test the setup; doctor is the test.
    characters or fewer. The body gives the options and where the question already lives (a
    ticket comment or PR thread). 2,000 characters at most. Markdown is fine; HTML and images
    are not rendered. Several actions in order go in `steps` (see above), not the body.
-4. **Link to the place they act:** the ticket, PR, Orca worktree, dashboard or log. At most 6
-   links. Allowed schemes: `https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`,
-   `discord`, `linear`. Put the link where they act **first**: the menu bar and the hotkey open
+4. **Link to the place they act:** the ticket, PR, dashboard or log. At most 6
+   links. Allowed schemes: `https`, `slack`, `vscode`, `cursor`, `figma`, `msteams`,
+   `discord`, `linear`. `vscode://` and `cursor://` only as `file/<abs path>[:line[:col]]`,
+   `vscode-remote/ssh-remote+<host>[/<abs path>]` (or `tunnel+<name>`) and
+   `anthropic.claude-code/open?session=<id>`; extension handlers, settings and query strings
+   are refused ([API.md](API.md#post-v1items-sender)). `orca://` isn't allowed. Put the link where they act **first**: the menu bar and the hotkey open
    a card's first link. Link as deep as the tool allows:
 
    | Where they act | Link |

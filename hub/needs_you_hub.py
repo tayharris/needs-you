@@ -44,7 +44,30 @@ STATUSES = ("open", "resolved", "dismissed")
 PATCH_STATUSES = ("resolved", "dismissed")
 ROLES = ("sender", "reader", "owner")
 READ_ROLES = ("reader", "owner")  # owner = reader + may create invites
-LINK_SCHEMES = ("https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear")
+LINK_SCHEMES = ("https", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear")
+# vscode:// and cursor:// reach every installed extension's URI handler, so only these
+# shapes are allowed (security audit #14; mirrored byte for byte by LinkPolicy.editorLinkPattern
+# in the Mac app, hard rule 7). The scheme is case-insensitive, everything after it is exact:
+#   <s>://file/<abs path>[:line[:col]]                  open a file or folder
+#   <s>://vscode-remote/ssh-remote+<host>[/<abs path>]  a Remote-SSH window
+#   <s>://vscode-remote/tunnel+<name>[/<abs path>]      a Remote Tunnel (only the user's own)
+#   <s>://anthropic.claude-code/open?session=<id>       the Claude Code extension's session tab
+# Paths take RFC 3986 path characters and %XX escapes, never an escaped control character.
+# Host names start with a letter or digit and take no '%', so no "-oProxyCommand" option
+# injection even after decoding; a name that is all hex starting "7b" ('{' hex-encoded) is
+# refused because Remote-SSH reads that as a JSON host spec. Refused: other authorities
+# (extension handlers, vscode://settings, ...), wsl+ and dev-container+ remotes, userinfo,
+# ports, queries and fragments on file and remote links, any other parameter on the Claude link.
+EDITOR_LINK_PATTERN = (
+    r"(?i:vscode|cursor)://(?:"
+    r"file/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*"
+    r"|vscode-remote/(?:ssh-remote\+(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}@)?(?!7[Bb][0-9A-Fa-f]*(?:/|$))"
+    r"|tunnel\+)[A-Za-z0-9][A-Za-z0-9._-]{0,252}"
+    r"(?:/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%(?![01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*)?"
+    r"|anthropic\.claude-code/open\?session=[A-Za-z0-9-]{8,64})"
+)
+EDITOR_LINK_RE = re.compile(EDITOR_LINK_PATTERN)
+EDITOR_SCHEMES = ("vscode", "cursor")
 # The Mac app's own scheme, for a fixed set of actions only (mirrored by
 # LinkPolicy.appActionPaths in the Mac app). Each is "<host>/<path>" and the URL must be
 # exactly needsyou://<host>/<path>?<query>. The app parses each into a typed value and
@@ -301,6 +324,8 @@ def link_allowed(url: Any) -> bool:
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if scheme == "needsyou":
         return url.lower().startswith(APP_LINK_PREFIXES)
+    if scheme in EDITOR_SCHEMES:
+        return EDITOR_LINK_RE.fullmatch(url) is not None
     return scheme in LINK_SCHEMES
 
 
@@ -324,6 +349,11 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
     if _URL_BAD_RE.search(url):
         raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
     scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme in EDITOR_SCHEMES and not link_allowed(url):
+        raise _invalid(path + ".url", "%s.url: %s links may only be %s://file/<abs path>[:line[:col]], "
+                       "%s://vscode-remote/ssh-remote+<host>[/<abs path>] (or tunnel+<name>), or "
+                       "%s://anthropic.claude-code/open?session=<id> (not allowed otherwise)"
+                       % (path, scheme, scheme, scheme, scheme))
     if not link_allowed(url):
         raise _invalid(path + ".url", "%s.url scheme %r is not allowed (allowed: %s, %s)"
                        % (path, scheme, ", ".join(LINK_SCHEMES),
@@ -2567,7 +2597,8 @@ needs-you done --key "work:nightly-import:last-run" --title "Nightly import fini
 3. The title is the action, at most 100 characters. Body at most 2,000 characters, Markdown.
    Several things to do in order go in steps, not the body: `--step "Text"` or
    `--step "Text=https://..."` (a link button), at most 10, one line each.
-4. At most 6 links; schemes https, orca, slack, vscode, cursor, figma, msteams, discord, linear.
+4. At most 6 links; schemes https, slack, vscode, cursor, figma, msteams, discord, linear
+   (vscode/cursor only as file/<path>, vscode-remote/ssh-remote+<host><path> or the Claude session link).
 5. Never send secrets, credentials, customer data or code.
 6. Priority: `urgent` (broken now, breaks through snooze), `normal` (today), `low` (this week).
 7. Context: `work` or `personal`; it decides when the item is shown.

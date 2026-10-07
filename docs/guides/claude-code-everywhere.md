@@ -164,7 +164,7 @@ Put these in `~/.config/needs-you/env` on the machine where Claude runs (or in t
 | `NEEDS_YOU_AGENT_ALERTS` | unset (off, except in Orca) | `1` on, `0` off even in Orca. Installer: `--alerts` |
 | `NEEDS_YOU_AGENT_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | `work` or `personal`: when the card is prominent on the Mac |
 | `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
-| `NEEDS_YOU_AGENT_LINK` | unset: automatic editor buttons ([Buttons](#buttons)) | One link instead, `Label=url-template`, with `{cwd}`, `{host}`, `{session}`, `{handle}` (URL-encoded); `none` for no editor buttons. The scheme must be on the allow-list (`https`, `vscode`, `cursor`, `orca`, `slack`, `figma`, `msteams`, `discord`, `linear`). Installer: `--agent-link` |
+| `NEEDS_YOU_AGENT_LINK` | unset: automatic editor buttons ([Buttons](#buttons)) | One link instead, `Label=url-template`, with `{cwd}`, `{host}`, `{session}`, `{handle}` (URL-encoded); `none` for no editor buttons. The scheme must be on the allow-list (`https`, `vscode`, `cursor`, `slack`, `figma`, `msteams`, `discord`, `linear`; `vscode`/`cursor` only as `file…`, `vscode-remote/ssh-remote+…` or the Claude session link, [API.md](../API.md#post-v1items-sender)). Installer: `--agent-link` |
 | `NEEDS_YOU_SSH_ALIAS` | unset | This host's name in the Mac's `~/.ssh/config`: cards from it get a Remote-SSH button. Installer: `--ssh-alias` |
 | `NEEDS_YOU_CONTEXT_ALERT_PCT` | `80` | Context card threshold in percent; `0` off. Installer: `--context-alert` |
 | `NEEDS_YOU_CONTEXT_WINDOW` | `200000`, or `1000000` for a `[1m]` model | Context window in tokens, for the threshold |
