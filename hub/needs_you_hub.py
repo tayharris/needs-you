@@ -83,7 +83,17 @@ DOWNLOADS = {
     "install-hooks.sh": ("integrations/claude-code/install-hooks.sh", "text/x-shellscript; charset=utf-8"),
     "hooks.json": ("integrations/claude-code/hooks.json", "application/json"),
     "SKILL.md": ("integrations/claude-code/skill/needs-you/SKILL.md", "text/markdown; charset=utf-8"),
+    "orca-snippet.md": ("integrations/orca/snippet.md", "text/markdown; charset=utf-8"),
 }
+# Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
+# the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
+FILE_VERSION_RE = re.compile(r'(?:needs[-_]you[-_]version"?\s*:\s*"?|^VERSION = ")(\d+\.\d+\.\d+)', re.M)
+# X-Needs-You-Client: "cli=0.1.1; hook=0.1.1; skill=none; orca=none". Unknown names are ignored.
+CLIENT_HEADER = "X-Needs-You-Client"
+CLIENT_NAMES = ("cli", "hook", "skill", "orca")
+CLIENT_VALUE_RE = re.compile(r"^(\d{1,6}\.\d{1,6}\.\d{1,6}|none|unknown)$")
+CLIENT_HEADER_MAX = 200
+CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
 
 # The invite installer flags for a machine that runs Claude Code: hooks, skill, alerts on.
 CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
@@ -239,6 +249,45 @@ def _enum_field(data: Dict[str, Any], name: str, allowed: Tuple[str, ...], defau
     if not isinstance(v, str) or v.strip().lower() not in allowed:
         raise _invalid(name, "%s must be one of %s" % (name, ", ".join(allowed)))
     return v.strip().lower()
+
+
+def parse_client_header(raw: Any) -> Dict[str, str]:
+    """The sender's reported versions. Strict: at most CLIENT_HEADER_MAX chars, `name=value`
+    pairs split by ';', known names only, values X.Y.Z, none or unknown. Anything else in the
+    header is dropped, so it can't carry text into the database."""
+    out: Dict[str, str] = {}
+    if not isinstance(raw, str) or not raw or len(raw) > CLIENT_HEADER_MAX:
+        return out
+    for part in raw.split(";"):
+        name, sep, value = part.strip().partition("=")
+        name, value = name.strip().lower(), value.strip()
+        if sep and name in CLIENT_NAMES and name not in out and CLIENT_VALUE_RE.match(value):
+            out[name] = value
+    return out
+
+
+def file_version(data: bytes) -> Optional[str]:
+    m = FILE_VERSION_RE.search(data[:4096].decode("utf-8", "replace"))
+    return m.group(1) if m else None
+
+
+def download_manifest(install_dir: str) -> Dict[str, Any]:
+    """GET /dl/manifest.json: each file /dl serves, with its sha256, size and version stamp.
+    Senders (needs-you update) verify what they download against it. Files this hub doesn't
+    have are left out."""
+    files: Dict[str, Any] = {}
+    for name in sorted(DOWNLOADS):
+        try:
+            with open(os.path.join(install_dir, DOWNLOADS[name][0]), "rb") as fh:
+                data = fh.read()
+        except OSError:
+            continue
+        entry: Dict[str, Any] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+        v = file_version(data)
+        if v:
+            entry["version"] = v
+        files[name] = entry
+    return {"version": VERSION, "files": files}
 
 
 def link_allowed(url: Any) -> bool:
@@ -515,6 +564,15 @@ CREATE INDEX IF NOT EXISTS invites_seq ON invites(seq);
     # 3: item steps (a JSON array, like links)
     """
 ALTER TABLE items ADD COLUMN steps TEXT NOT NULL DEFAULT '[]';
+""",
+    # 4: what each token's machine last reported (X-Needs-You-Client) and when it was last
+    #    seen. Local to this hub: never replicated (it would be a write per post).
+    """
+CREATE TABLE IF NOT EXISTS token_clients (
+  token_id TEXT PRIMARY KEY,
+  client TEXT NOT NULL DEFAULT '{}',
+  last_seen_at INTEGER NOT NULL
+);
 """,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -1285,6 +1343,44 @@ class Store:
                 "FROM tokens t ORDER BY t.created_at", (now,)).fetchall()
         return [dict(r) for r in rows]
 
+    def note_client(self, token_id: str, client: Dict[str, str]) -> bool:
+        """Record what a token's machine reported, at most once per CLIENT_WRITE_EVERY_MS unless
+        the versions changed. An empty report keeps the last versions and only marks it seen.
+        Returns True when it wrote."""
+        now = self.now_ms()
+        with self.lock:
+            row = self.conn.execute("SELECT client, last_seen_at FROM token_clients WHERE token_id = ?",
+                                    (token_id,)).fetchone()
+            if row is not None:
+                try:
+                    before = json.loads(row["client"])
+                except ValueError:
+                    before = {}
+                merged = dict(before if isinstance(before, dict) else {})
+                merged.update(client)
+                if merged == before and now - int(row["last_seen_at"]) < CLIENT_WRITE_EVERY_MS:
+                    return False
+            else:
+                merged = dict(client)
+            self.conn.execute(
+                "INSERT INTO token_clients(token_id, client, last_seen_at) VALUES(?, ?, ?) "
+                "ON CONFLICT(token_id) DO UPDATE SET client = excluded.client, last_seen_at = excluded.last_seen_at",
+                (token_id, json.dumps(merged, sort_keys=True), now))
+            return True
+
+    def token_clients(self) -> Dict[str, Dict[str, Any]]:
+        with self.lock:
+            rows = self.conn.execute("SELECT token_id, client, last_seen_at FROM token_clients").fetchall()
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            try:
+                client = json.loads(r["client"])
+            except ValueError:
+                client = {}
+            out[r["token_id"]] = {"client": client if isinstance(client, dict) else {},
+                                  "last_seen_at": int(r["last_seen_at"])}
+        return out
+
     def token_by_secret(self, token: str) -> Optional[Dict[str, Any]]:
         h = hash_token(token)
         with self.lock:
@@ -1700,7 +1796,17 @@ class Handler(BaseHTTPRequestHandler):
         if role is not None and rec["role"] not in allowed:
             raise ApiError(403, "forbidden", "this endpoint needs a %s token (this one is %s)"
                            % (role, rec["role"]))
+        self._note_client(rec)
         return rec
+
+    def _note_client(self, rec: Dict[str, Any]) -> None:
+        """Remember what this token's machine runs (sender calls and token-checked health)."""
+        if rec.get("role") != "sender":
+            return
+        try:
+            self.hub.store.note_client(rec["id"], parse_client_header(self.headers.get(CLIENT_HEADER)))
+        except sqlite3.Error:
+            pass  # bookkeeping only: never fail the request over it
 
     def _send_text(self, status: int, text: str, ctype: str = "text/plain; charset=utf-8") -> None:
         data = text.encode("utf-8")
@@ -1815,6 +1921,7 @@ class Handler(BaseHTTPRequestHandler):
                 body["token_error"] = "unknown or revoked token"
             else:
                 body["token"] = {"name": tok["name"], "role": tok["role"]}
+                self._note_client(tok)
                 body["peers"] = [self.hub.peer_status(p) for p in self.hub.cfg["peers"]]
                 stats["outbox"] = {p: outbox.get(p, 0) for p in self.hub.cfg["peers"]}
         self._send(200, body)
@@ -1856,10 +1963,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def _list_tokens(self) -> None:
         me = self._auth("owner")
-        self._send(200, {"tokens": [
-            {"id": r["id"], "name": r["name"], "role": r["role"], "created_at": fmt_ts(r["created_at"]),
-             "open_items": int(r["open_items"]), "current": r["id"] == me["id"]}
-            for r in self.hub.store.list_tokens() if r["revoked_at"] is None]})
+        clients = self.hub.store.token_clients()
+        out = []
+        for r in self.hub.store.list_tokens():
+            if r["revoked_at"] is not None:
+                continue
+            seen = clients.get(r["id"]) or {}
+            out.append({"id": r["id"], "name": r["name"], "role": r["role"],
+                        "created_at": fmt_ts(r["created_at"]), "open_items": int(r["open_items"]),
+                        "current": r["id"] == me["id"], "client": seen.get("client") or {},
+                        "last_seen_at": fmt_ts(seen.get("last_seen_at"))})
+        self._send(200, {"tokens": out})
 
     def _revoke_token(self, name_or_id: str) -> None:
         me = self._auth("owner")
@@ -1929,6 +2043,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _download(self, name: str) -> None:
+        if name == "manifest.json":
+            return self._send(200, download_manifest(self.hub.cfg["install_dir"]))
         entry = DOWNLOADS.get(name)
         if entry is None:
             raise ApiError(404, "not_found", "not downloadable")

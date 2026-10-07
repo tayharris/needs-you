@@ -25,6 +25,14 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
   `GET /join/<code>[/install.sh]` and `GET /dl/<file>` need no token. The hub stores only the sha256 of each token, and records
   which token created or last re-posted each item (used by the volume guard).
+- **Client versions (optional):** senders send
+  `X-Needs-You-Client: cli=<v>; hook=<v|none>; skill=<v|none>; orca=<v|none>` on every request.
+  The hub keeps the last report per sender token, **on that hub only** (not replicated), with
+  the time it last saw the token, and lists both in `GET /v1/tokens`. Parsing is strict: at
+  most 200 characters, `;`-separated `name=value` pairs, names `cli`, `hook`, `skill`,
+  `orca` (others ignored), values `X.Y.Z`, `none` or `unknown` (others dropped). A missing or
+  unparseable header never fails a request. A request without it keeps the last report and
+  only updates `last_seen_at`, which is written at most every 10 minutes unless the versions change.
 - **Errors:** a non-2xx response has the body
   `{"error": "<code>", "message": "<human text>", "field": "<field path>"}` (`field` only on
   validation errors, for example `title`, `links[2].url`, `source.agent`).
@@ -313,11 +321,16 @@ Tokens it already minted stay valid (revoke those separately). Response `200`
 
 ```json
 {"tokens": [{"id": "01M...", "name": "servers-devbox", "role": "sender",
-             "created_at": "2026-10-06T17:04:05.123Z", "open_items": 2, "current": false}]}
+             "created_at": "2026-10-06T17:04:05.123Z", "open_items": 2, "current": false,
+             "client": {"cli": "0.1.1", "hook": "0.1.1", "skill": "0.1.1", "orca": "none"},
+             "last_seen_at": "2026-10-07T09:12:00.000Z"}]}
 ```
 
 Active tokens only. `current` marks the token making the request. Never includes secrets or
-hashes.
+hashes. `client` is what the token's machine last reported in `X-Needs-You-Client` (`{}` when
+nothing yet) and `last_seen_at` when this hub last saw a sender call or token-checked
+`/v1/health` from it (`null` when never). Both are per hub: a client merging several hubs
+takes the newest `last_seen_at` per token id. Hubs before 0.1.2 omit both fields.
 
 ### `DELETE /v1/tokens/<id or name>` (owner)
 
@@ -387,8 +400,28 @@ Serves files from the hub's install directory (`install_dir`, default: the direc
 | `install-hooks.sh` | `integrations/claude-code/install-hooks.sh` |
 | `hooks.json` | `integrations/claude-code/hooks.json` |
 | `SKILL.md` | `integrations/claude-code/skill/needs-you/SKILL.md` |
+| `orca-snippet.md` | `integrations/orca/snippet.md` (the Orca automation rules; prompts point at the installed copy) |
+| `manifest.json` | generated: see below |
 
-Anything else is a `404`.
+Anything else is a `404`. A file the install directory lacks is a `404` too.
+
+`GET /dl/manifest.json` lists what this hub serves, for `needs-you update`:
+
+```json
+{"version": "0.1.2",
+ "files": {"needs-you": {"sha256": "<64 hex>", "size": 51234, "version": "0.1.2"},
+           "needs-you-hook.sh": {"sha256": "...", "size": 30211, "version": "0.1.2"},
+           "install-hooks.sh": {"sha256": "...", "size": 8122},
+           "hooks.json": {"sha256": "...", "size": 2310, "version": "0.1.2"},
+           "SKILL.md": {"sha256": "...", "size": 9876, "version": "0.1.2"},
+           "orca-snippet.md": {"sha256": "...", "size": 3456, "version": "0.1.2"}}}
+```
+
+`version` at the top is the hub's; a file's `version` is its stamp (`needs-you-version: X.Y.Z`
+in a comment, `"_needs_you_version"` in `hooks.json`, `VERSION = "X.Y.Z"` in the CLI), absent
+when the file has none. Files the hub doesn't have are left out. The checksums guard a sender
+against truncated or mixed-version downloads; they don't make the hub more trustworthy than
+it already is (it minted the sender's token and served its installer).
 
 ### Invite replication
 

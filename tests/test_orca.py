@@ -19,6 +19,7 @@ from support import ROOT
 BASH = shutil.which("bash") or "/bin/bash"
 INSTALLER = os.path.join(ROOT, "hub", "join-install.sh")
 README = os.path.join(ROOT, "integrations", "orca", "README.md")
+SNIPPET = os.path.join(ROOT, "integrations", "orca", "snippet.md")
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
 
 FAKE_CLI = """#!/usr/bin/env python3
@@ -29,10 +30,27 @@ with open(os.environ["FAKE_CLI_LOG"], "a") as fh:
 
 
 def installer_snippet():
+    """integrations/orca/snippet.md (what /dl/orca-snippet.md serves and the installer
+    writes), without its version stamp line."""
+    with open(SNIPPET) as fh:
+        lines = fh.read().splitlines(True)
+    assert lines[0].startswith("<!-- needs-you-version: "), "snippet.md has no version stamp"
+    return "".join(lines[1:])
+
+
+def readme_pointer():
+    with open(README) as fh:
+        s = fh.read()
+    m = re.search(r"<!-- orca-pointer:start -->\n```markdown\n(.*?)```\n<!-- orca-pointer:end -->", s, re.S)
+    assert m, "orca-pointer markers not found in integrations/orca/README.md"
+    return m.group(1)
+
+
+def installer_pointer():
     with open(INSTALLER) as fh:
         s = fh.read()
-    m = re.search(r"cat >\"\$CONF_DIR/orca-snippet\.md\" <<'EOF'\n(.*?)\nEOF\n", s, re.S)
-    assert m, "orca snippet heredoc not found in join-install.sh"
+    m = re.search(r"  cat <<'EOF'\n(## Telling the user.*?)\nEOF\n", s, re.S)
+    assert m, "the pointer block isn't in join-install.sh"
     return m.group(1) + "\n"
 
 
@@ -51,6 +69,18 @@ class OrcaSnippetTests(unittest.TestCase):
 
     def test_readme_and_installer_carry_the_same_block(self):
         self.assertEqual(readme_snippet(), installer_snippet())
+
+    def test_pasted_block_points_at_the_file(self):
+        # Prompts carry a pointer, so `needs-you update` changes what every prompt follows.
+        self.assertEqual(readme_pointer(), installer_pointer())
+        self.assertIn("~/.config/needs-you/orca-snippet.md", installer_pointer())
+        self.assertLess(len(installer_pointer().splitlines()), 8)
+
+    def test_installer_fetches_the_snippet_from_the_hub(self):
+        with open(INSTALLER) as fh:
+            s = fh.read()
+        self.assertIn('fetch orca-snippet.md "$TMP/orca-snippet.md"', s)
+        self.assertNotIn("Post, one item per blocker", s)  # no second copy of the text
 
     def test_block_has_links_resolve_and_no_orca_deep_link(self):
         s = installer_snippet()

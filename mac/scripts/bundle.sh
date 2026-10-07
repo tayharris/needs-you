@@ -68,6 +68,11 @@ else
   echo "warning: $REPO/integrations/claude-code not found; joiners won't get the Claude Code files" >&2
 fi
 
+if [[ -f "$REPO/integrations/orca/snippet.md" ]]; then
+  mkdir -p "$RES/integrations/orca"
+  cp "$REPO/integrations/orca/snippet.md" "$RES/integrations/orca/snippet.md"
+fi
+
 # The in-app updater runs this copy of install.sh (swap, keep .previous, relaunch, roll back
 # if the new version doesn't stay running), so it must be inside the signed bundle.
 mkdir -p "$RES/scripts"

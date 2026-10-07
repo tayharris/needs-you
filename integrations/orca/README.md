@@ -38,7 +38,19 @@ Run that command in a terminal on the Mac where the Orca app is open. Orca gives
 
 ## Prompt block
 
-Paste this once into each automation prompt (or into the template your automations are rendered from), then add the per-automation block below it. The installer's `--orca` flag writes the same text to `~/.config/needs-you/orca-snippet.md`.
+Paste this once into each automation prompt (or into the template your automations are rendered from), then add the per-automation block below it. It points at `~/.config/needs-you/orca-snippet.md`, which the installer's `--orca` flag writes and `needs-you update` keeps current, so a new rule reaches every prompt on its next run without editing any of them.
+
+<!-- orca-pointer:start -->
+```markdown
+## Telling the user (needs-you)
+
+Before you post to or resolve anything in needs-you, read
+`~/.config/needs-you/orca-snippet.md` and follow it. It says when to tell the
+user that only they can unblock this run, and exactly how.
+```
+<!-- orca-pointer:end -->
+
+The file says this (the hub serves it as `/dl/orca-snippet.md`; its source is [snippet.md](snippet.md)). On a machine without the file, paste this text instead of the pointer:
 
 <!-- orca-snippet:start -->
 ```markdown
