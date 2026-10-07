@@ -141,6 +141,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `retention_days` | `--retention-days` | 7 | Closed and expired items older than this are deleted. 0 keeps them forever. |
 | `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
 | `allow_any_interface` | `--allow-any-interface` | false | Allow `0.0.0.0` / `::`. |
+| `allowed_hosts` | `--allowed-host` (repeatable) | `[]` | Extra `Host` names the hub answers to, besides IP literals, `localhost`, bind names, `public_url`, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, [API.md](API.md#conventions)). Also `$NEEDS_YOU_HUB_ALLOWED_HOSTS` (comma-separated), which is how to set it for the Mac app's hub (`launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name`, then restart the app). `*` turns the check off. |
 | `quiet` | `--quiet` | false | No access log. |
 | `access_log` | | true | One stderr line per request. Invite codes in `/join/` paths (and anything shaped like a code or token) are replaced with `<code>`/`<redacted>`, and control characters are escaped. |
 | `max_open_per_token` | | 60 | Volume guard. |

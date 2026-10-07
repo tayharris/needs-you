@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -273,7 +274,10 @@ class ReleaseCrossCheck(UpdateCase):
     """With gh, every file must match the GitHub release of the hub's version (its server
     tarball, itself checked against SHA256SUMS). The fake gh builds that release."""
 
-    def fake_gh(self, files, version, tamper=False, fail=False):
+    def fake_gh(self, files, version, tamper=False, fail=False, attest="ok", private="false",
+                manifest_tarball_sha=None):
+        """attest: "ok" (gh attestation verify passes) or "fail"; private: what
+        `gh api repos/... --jq .private` prints."""
         import io
         import tarfile
         rel = os.path.join(self.tmp, "release")
@@ -291,12 +295,32 @@ class ReleaseCrossCheck(UpdateCase):
                 info = tarfile.TarInfo("needs-you-%s/%s" % (version, paths[name]))
                 info.size = len(data)
                 tf.addfile(info, io.BytesIO(data))
+        tar_sha = hashlib.sha256(read(os.path.join(rel, tarball))).hexdigest()
         with open(os.path.join(rel, "SHA256SUMS"), "w") as fh:
-            fh.write("%s  %s\n" % (hashlib.sha256(read(os.path.join(rel, tarball))).hexdigest(), tarball))
+            fh.write("%s  %s\n" % (tar_sha, tarball))
+        with open(os.path.join(rel, "release-manifest.json"), "w") as fh:
+            json.dump({"version": version, "assets": [
+                {"name": tarball, "sha256": manifest_tarball_sha or tar_sha, "size": 1}]}, fh)
         gh = os.path.join(self.tmp, "gh")
         log = os.path.join(self.tmp, "gh.log")
+        out = os.path.join(self.tmp, "attestation.json")
+        if attest == "fail":
+            attest_cmd = "echo 'no attestations found' >&2; exit 1"
+        else:
+            if isinstance(attest, str) and attest.startswith("raw:"):
+                text = attest[4:]
+            else:
+                entry = self.attestation(read(os.path.join(rel, "release-manifest.json")), version)
+                if callable(attest):
+                    attest(entry)
+                text = json.dumps([entry])
+            with open(out, "w") as afh:
+                afh.write(text)
+            attest_cmd = "cat %s; exit 0" % out
         with open(gh, "w") as fh:
             fh.write("#!/bin/sh\necho \"$*\" >> %s\n" % log)
+            fh.write('[ "$1" = attestation ] && { %s; }\n' % attest_cmd)
+            fh.write('[ "$1" = api ] && { echo %s; exit 0; }\n' % private)
             if fail:
                 fh.write("echo 'release not found' >&2\nexit 1\n")
             else:
@@ -304,15 +328,110 @@ class ReleaseCrossCheck(UpdateCase):
         os.chmod(gh, 0o755)
         return gh, log
 
+    @staticmethod
+    def attestation(data, version):
+        """One `gh attestation verify --format json` entry, as GitHub's release workflow makes it."""
+        return {"attestation": {"bundle": {}}, "verificationResult": {
+            "statement": {"_type": "https://in-toto.io/Statement/v1",
+                          "predicateType": "https://slsa.dev/provenance/v1",
+                          "subject": [{"name": "release-manifest.json",
+                                       "digest": {"sha256": hashlib.sha256(data).hexdigest()}}]},
+            "signature": {"certificate": {
+                "issuer": "https://token.actions.githubusercontent.com",
+                "sourceRepositoryURI": "https://github.com/tayharris/needs-you",
+                "sourceRepositoryRef": "refs/tags/v%s" % version,
+                "buildSignerURI": "https://github.com/tayharris/needs-you/.github/workflows/release.yml"
+                                  "@refs/tags/v%s" % version,
+                "runnerEnvironment": "github-hosted"}}}}
+
+    def refused_by(self, attest, message):
+        h = self.hub()
+        gh, _ = self.fake_gh(current_files(), h.version, attest=attest)
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(message, r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+
+    def test_wrong_repo_refuses(self):
+        def f(e):
+            e["verificationResult"]["signature"]["certificate"]["sourceRepositoryURI"] = "https://github.com/evil/needs-you"
+        self.refused_by(f, "built from another repository")
+
+    def test_wrong_workflow_refuses(self):
+        def f(e):
+            e["verificationResult"]["signature"]["certificate"]["buildSignerURI"] = \
+                "https://github.com/tayharris/needs-you/.github/workflows/ci.yml@refs/heads/main"
+        self.refused_by(f, "signed by another workflow")
+
+    def test_wrong_ref_refuses(self):
+        def f(e):
+            e["verificationResult"]["signature"]["certificate"]["sourceRepositoryRef"] = "refs/heads/main"
+        self.refused_by(f, "built from another ref")
+
+    def test_self_hosted_runner_refuses(self):
+        def f(e):
+            e["verificationResult"]["signature"]["certificate"]["runnerEnvironment"] = "self-hosted"
+        self.refused_by(f, "built on a self-hosted runner")
+
+    def test_digest_mismatch_refuses(self):
+        def f(e):
+            e["verificationResult"]["statement"]["subject"][0]["digest"]["sha256"] = "0" * 64
+        self.refused_by(f, "the attested digest isn't the downloaded file's")
+
+    def test_wrong_predicate_refuses(self):
+        def f(e):
+            e["verificationResult"]["statement"]["predicateType"] = "https://example.com/other"
+        self.refused_by(f, "not SLSA provenance")
+
+    def test_bad_or_empty_json_refuses(self):
+        self.refused_by("raw:not json", "printed no valid JSON")
+        self.refused_by("raw:[]", "returned no attestation")
+        self.refused_by("raw:", "printed no valid JSON")
+        self.refused_by('raw:[{"verificationResult": {}}]', "unexpected shape")
+
     def test_matching_release_installs(self):
         h = self.hub()
         gh, log = self.fake_gh(current_files(), h.version)
         r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("matches release v%s on GitHub" % h.version, r.stdout)
+        self.assertIn("matches release v%s on GitHub (build provenance verified)" % h.version, r.stdout)
         self.assertEqual(read(self.cli), read(CLI))
         with open(log) as fh:
-            self.assertIn("release download v%s --repo tayharris/needs-you" % h.version, fh.read())
+            calls = fh.read()
+        self.assertIn("release download v%s --repo tayharris/needs-you" % h.version, calls)
+        self.assertIn("--pattern release-manifest.json", calls)
+        self.assertRegex(calls, r"attestation verify \S+/release-manifest\.json --repo tayharris/needs-you "
+                                r"--signer-workflow tayharris/needs-you/\.github/workflows/release\.yml "
+                                r"--source-ref refs/tags/v%s --predicate-type https://slsa\.dev/provenance/v1 "
+                                r"--deny-self-hosted-runners --format json" % re.escape(h.version))
+
+    def test_missing_provenance_refuses(self):
+        # security audit #17 (c): gh is there, the repo is public, the attestation doesn't verify
+        h = self.hub()
+        gh, _ = self.fake_gh(current_files(), h.version, attest="fail")
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("has no valid build provenance", r.stderr)
+        self.assertIn("no attestations found", r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+        r = self.run_cli("-q", "flush", urls=[h.url], env={"NEEDS_YOU_GH": gh, "NEEDS_YOU_AUTO_UPDATE": "1"})
+        self.assertEqual(read(self.cli), self.old_cli)
+
+    def test_private_repo_skips_provenance_with_a_note(self):
+        h = self.hub()
+        gh, _ = self.fake_gh(current_files(), h.version, attest="fail", private="true")
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("no build provenance to check", r.stdout)
+        self.assertEqual(read(self.cli), read(CLI))
+
+    def test_manifest_not_listing_the_tarball_refuses(self):
+        h = self.hub()
+        gh, _ = self.fake_gh(current_files(), h.version, manifest_tarball_sha="0" * 64)
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("release-manifest.json doesn't list this", r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
 
     def test_mismatch_refuses_everything(self):
         h = self.hub()

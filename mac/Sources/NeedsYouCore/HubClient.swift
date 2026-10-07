@@ -69,11 +69,14 @@ public enum HubError: Error, LocalizedError, Equatable {
     case unauthorized
     case http(status: Int)
     case invalidResponse
+    /// 421: the hub doesn't answer to this URL's host name (its DNS-rebinding check).
+    case misdirected
 
     public var errorDescription: String? {
         switch self {
         case .notConfigured: return "Hub URL or token not set"
         case .unauthorized: return "Hub rejected the token (401/403)"
+        case .misdirected: return "Hub doesn't answer to this host name (421): use its tailnet name or IP, or add the name to the hub's allowed_hosts"
         case .http(let status): return "Hub returned HTTP \(status)"
         case .invalidResponse: return "Hub sent an unreadable response"
         }
@@ -152,6 +155,7 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
         switch http.statusCode {
         case 200..<300: return data
         case 401, 403: throw HubError.unauthorized
+        case 421: throw HubError.misdirected
         default: throw HubError.http(status: http.statusCode)
         }
     }

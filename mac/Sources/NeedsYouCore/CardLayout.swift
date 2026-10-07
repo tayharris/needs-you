@@ -111,11 +111,11 @@ public enum LinkRowPolicy {
 
     /// Where an allowed link really goes, shown faintly after its label so a label can't
     /// pass for a different site: the host for https ("github.com", without "www."), the
-    /// app for other schemes ("slack", "vscode"). nil for the Orca terminal jump (the app's
-    /// own action), for links that aren't allowed, and when the label is already exactly
+    /// app for other schemes ("slack", "vscode"). nil for the app's own actions (the Orca
+    /// and terminal jumps), for links that aren't allowed, and when the label is already exactly
     /// the URL or the host.
     public static func destination(_ link: ItemLink) -> String? {
-        guard OrcaJump.parse(link.url) == nil, let url = LinkPolicy.externalURL(link.url),
+        guard AppAction.parse(link.url) == nil, let url = LinkPolicy.externalURL(link.url),
               let scheme = url.scheme?.lowercased() else { return nil }
         let where_: String
         if scheme == "https" {

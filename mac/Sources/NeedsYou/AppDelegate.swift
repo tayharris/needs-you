@@ -166,11 +166,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The user clicked a connect link, so showing Settings (and activating) is allowed.
-    /// A terminal link opened from outside runs the Orca jump and never shows Settings.
+    /// An Orca terminal link opened from outside runs the Orca jump and never shows
+    /// Settings; a needsyou://terminal link asks first.
     private func handleOpen(_ url: URL) {
         guard url.scheme?.lowercased() == ConnectLink.scheme else { return }
         if url.host?.lowercased() == OrcaJump.host {
             if let jump = OrcaJump.parse(url) { OrcaJumpRunner.run(jump) }
+            return
+        }
+        if url.host?.lowercased() == TerminalJump.host {
+            // needsyou://terminal/focus from outside the panel (a web page, chat, `open`).
+            // A card's Terminal button is trusted; this asks first, since any page can
+            // open one. The alert may activate this app (an explicit question); the jump
+            // then brings the terminal forward.
+            guard let jump = TerminalJump.parse(url) else {
+                NSLog("NeedsYou: ignored a needsyou://terminal link that doesn't parse")
+                return
+            }
+            let prompt = jump.confirmation
+            let alert = NSAlert()
+            alert.messageText = prompt.title
+            alert.informativeText = prompt.message
+            alert.addButton(withTitle: "Switch")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate(ignoringOtherApps: true)
+            let ok = alert.runModal() == .alertFirstButtonReturn
+            yieldActivation()
+            if ok { model.run(.terminal(jump)) }
             return
         }
         if url.host?.lowercased() == FocusLink.host {

@@ -181,9 +181,25 @@ item to test the setup; doctor is the test.
    characters or fewer. The body gives the options and where the question already lives (a
    ticket comment or PR thread). 2,000 characters at most. Markdown is fine; HTML and images
    are not rendered. Several actions in order go in `steps` (see above), not the body.
-4. **Link to the place they act:** the ticket, PR, Orca worktree, dashboard or log. At most 6
-   links. Allowed schemes: `https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`,
-   `discord`.
+4. **Link to the place they act:** the ticket, PR, dashboard or log. At most 6
+   links. Allowed schemes: `https`, `slack`, `vscode`, `cursor`, `figma`, `msteams`,
+   `discord`, `linear`. `vscode://` and `cursor://` only as `file/<abs path>[:line[:col]]`,
+   `vscode-remote/ssh-remote+<host>[/<abs path>]` (or `tunnel+<name>`) and
+   `anthropic.claude-code/open?session=<id>`; extension handlers, settings and query strings
+   are refused ([API.md](API.md#post-v1items-sender)). `orca://` isn't allowed. Put the link where they act **first**: the menu bar and the hotkey open
+   a card's first link. Link as deep as the tool allows:
+
+   | Where they act | Link |
+   |---|---|
+   | Review a PR | `https://github.com/<o>/<r>/pull/<n>/files` (conflicts: `/pull/<n>/conflicts`) |
+   | A failed check or job | the check run's `html_url`, `https://github.com/<o>/<r>/runs/<id>` |
+   | Approve a deployment | the run page, `https://github.com/<o>/<r>/actions/runs/<run>` |
+   | A Slack thread | the message permalink, `https://<ws>.slack.com/archives/<C…>/p<ts>` |
+   | A Jira ticket or comment | `https://<site>.atlassian.net/browse/<KEY>[?focusedCommentId=<id>]` |
+   | A Linear issue | `https://linear.app/<ws>/issue/<ID>` |
+
+   The Mac app's own `needsyou://` actions (the **Terminal** button) are written by the Claude
+   Code hook and the Orca block; don't build them by hand.
 5. **Never send secrets, credentials, customer data, card data, or code beyond a short
    identifier.** Titles, short text, ticket keys, shas and links only.
 6. **Priority:**

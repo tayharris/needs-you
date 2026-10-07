@@ -9,6 +9,14 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   `public_url`: a MagicDNS name (`http://<hub>.<tailnet>.ts.net:8765`), or
   `http://127.0.0.1:8765` for a hub on the same machine. Request and response bodies are JSON
   (UTF-8), except the `/join` pages and `/dl` files.
+- **Host check (DNS rebinding):** every endpoint answers only when the `Host` header is an IP
+  literal, `localhost`, a bind name, the `public_url` host (and, for a `*.ts.net` name, its
+  short form and `<that label>.<any tailnet>.ts.net`), the machine's host name (full, short,
+  `<short>.local`, `<short>.<tailnet>.ts.net`), or a name in the hub's `allowed_hosts`. Any
+  other name gets **421** `misdirected`, a malformed `Host` **400**; no `Host` at all (HTTP/1.0)
+  is accepted. `allowed_hosts` comes from the config, `--allowed-host NAME` (repeatable) and
+  `NEEDS_YOU_HUB_ALLOWED_HOSTS` (comma-separated; the Mac app's hub inherits it from the app's
+  environment); `*` turns the check off.
 - **Timestamps:** the hub always emits RFC 3339 UTC with exactly three fractional digits:
   `2026-10-06T17:04:05.123Z`. These sort correctly as strings. On input the hub accepts
   ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset, or no
@@ -44,6 +52,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 403 | `forbidden` | Valid token, wrong role for the endpoint |
   | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
   | 409 | `self` | A hub tried to replicate to itself (replication only) |
+  | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
   | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default) |
@@ -137,14 +146,64 @@ Create an item, or update the open item with the same `key`.
 | `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h; `needs`: none |
 | `status` | | **rejected** (use resolve or PATCH) | |
 
-Link URLs must use one of these schemes (case-insensitive): `https`, `orca`, `slack`,
-`vscode`, `cursor`, `figma`, `msteams`, `discord`. Anything else, including `http`, `jira`,
-`file` and `javascript`, is a 400. One exception: the Mac app's own scheme for the card's
-**Terminal** button, `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]`
-(nothing else under `needsyou://`). The app checks the handle (`term_` plus 8–64 lowercase
-hex or `-`) and the environment name (letters, digits, space, `.`, `_`, `-`; ≤ 64) and runs
-`orca terminal switch` with them as arguments, never through a shell; anything else does
-nothing. Text strings are trimmed.
+Link URLs must use one of these schemes (case-insensitive): `https`, `slack`,
+`vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
+`file`, `javascript` and `orca`, is a 400. Text strings are trimmed.
+
+Before the scheme is even read, every link URL (the app actions below included) must fit a
+strict, parser-neutral subset of RFC 3986, checked on the raw string by the hub and the Mac app
+with the same regex: plain ASCII; `<scheme>://` (so `https:host` and `vscode:/file/x` are
+refused); no userinfo `@` before the host; no backslash, whitespace, quotes, `[ ] < > ^` `` ` ``
+`{ | }` or control characters anywhere; `%` only as `%XX`; at most one `#`. An `https` link
+also needs a host (`https:///x` and `https://:443/` are refused). Percent-encode anything
+else.
+
+`vscode` and `cursor` reach every installed extension's URI handler, so only these shapes are
+accepted (the scheme is case-insensitive, the rest is matched exactly, lowercase):
+
+| Shape | Opens |
+|---|---|
+| `vscode://file/<abs path>[:line[:col]]` | A file or folder on the Mac. No query, no fragment, no `//` after `file` |
+| `vscode://vscode-remote/ssh-remote+<host>[/<abs path>]` | A Remote-SSH window. `<host>` is an `~/.ssh/config` alias or name, optionally `user@`: letters, digits, `.`, `_`, `-`, starting with a letter or digit, no `%`; an all-hex value starting `7b` (a hex-encoded JSON host spec) is refused |
+| `vscode://vscode-remote/tunnel+<name>[/<abs path>]` | A Remote Tunnel window (tunnels belong to the user's own account); same name rule |
+| `vscode://anthropic.claude-code/open?session=<id>` | The Claude Code extension's tab for that session. Exactly one parameter, `session`, 8–64 letters, digits or `-` |
+
+The same with `cursor://`. Paths take RFC 3986 path characters and `%XX` escapes, but no escape
+that decoding would turn into structure or into something to decode again (`%2F`, `%3F`, `%23`,
+`%2E`, `%25`, `%5C`), no escaped control character (`%00`–`%1F`, `%7F`), and no `.` or `..`
+segment. Everything else is a 400: other authorities
+(`vscode://<publisher.extension>/…`, `vscode://settings/…`), `wsl+`, `dev-container+` and other
+remote kinds, userinfo, ports, queries or fragments on file and remote links, other paths or
+parameters on the Claude link. `orca://` was dropped: Orca's only link
+(`orca://skills/share/<id>`) imports a skill, which a card should never ask for, and the Orca
+jump is the app action below.
+
+One exception: the Mac app's own scheme, for a fixed set of **app actions** (the card's
+**Terminal** button). The hub accepts `needsyou://<host>/<path>?<query>` only for these
+`<host>/<path>` pairs (case-insensitive), and nothing else under `needsyou://`:
+
+| Action | Link | What the app does |
+|---|---|---|
+| `orca/terminal` | `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]` | `orca terminal switch`. The handle is `term_` plus 8–64 lowercase hex or `-`; the environment name is letters, digits, space, `.`, `_`, `-`, ≤ 64 |
+| `terminal/focus` | `needsyou://terminal/focus?app=<app>&<id>` | Focuses one terminal tab or pane on the Mac (below) |
+
+`terminal/focus` takes `app` and exactly the parameters for that app, each at most once:
+
+| `app` | Parameters | Mac side |
+|---|---|---|
+| `wezterm` | `pane=<n>` (1–6 digits, `$WEZTERM_PANE`) | `wezterm cli activate-pane --pane-id <n>`, then WezTerm comes forward |
+| `tmux` | `pane=<n>` (the pane id `%<n>` without the `%`, 1–6 digits) **or** `target=<session>:<window>.<pane>` (session: letters, digits, `_`, `-`, ≤ 64, not starting with `-`; window and pane: 1–4 digits); optional `host=<iterm\|terminal\|wezterm\|ghostty>`, the terminal tmux runs in | `tmux select-window -t` / `select-pane -t` on the default tmux server, then the host terminal comes forward |
+| `iterm` | `session=<UUID>` (the part of `$ITERM_SESSION_ID` after `:`) **or** `tty=/dev/ttys<n>` | AppleScript (opt-in on the Mac): selects that session's window, tab and session |
+| `terminal` | `tty=/dev/ttys<n>` (1–4 digits) | AppleScript (opt-in on the Mac): selects the Terminal.app tab with that tty |
+| `ghostty` | none | Ghostty comes forward (no tab selection yet) |
+
+The hub checks only the action prefix; the app parses every link into a typed value and
+refuses anything else (an unknown parameter, a repeated one, a value outside its pattern, a
+value starting with `-`, user, port or fragment), and then does nothing. It runs only fixed
+executables from fixed paths with argument arrays, never a shell, and AppleScript only as
+fixed handlers called with the validated value as a typed parameter. Worst case for a
+sender: the Mac shows a different terminal tab. A hub older than an action rejects the item
+with 400; senders that add one (the Claude Code hook) retry without their `needsyou://` links.
 
 Control characters are refused in every text field (`title`, `body` except newline and tab,
 link labels, `source` fields): C0, DEL, C1 (U+0080–U+009F), and the bidi embedding, override
@@ -374,7 +433,8 @@ one-line install command, the installer's options, and the posting rules. For a 
 `owner` invite it says to open the `needsyou://` link on the Mac instead. Viewing the page
 doesn't spend a use. A used-up invite's page is still served, with a note that it can't set
 up a new machine. Unknown, expired and revoked codes get a plain-text `404` (and count as a
-failed attempt).
+failed attempt). A sender invite's page ends with **Files and checksums**: each `/dl` file
+and its sha256, the same values as `/dl/manifest.json`.
 
 ### `GET /join/<code>/install.sh` (no token)
 
@@ -382,6 +442,13 @@ A bash script (bash, curl and python3 only) with this hub's URL, the code and th
 baked in. See [guides/add-a-sender.md](guides/add-a-sender.md) for its flags. It is served
 until the invite expires or is revoked, also after its uses are spent: re-runs and
 `--uninstall` on a machine that is already set up don't redeem.
+
+The script also carries the sha256 of every `/dl` file at the moment it was served
+(`SHA256S`, the page's list). It checks each file it downloads (the CLI, hooks, skill, Orca
+snippet) against that list and refuses a file that doesn't match or isn't listed, before
+installing anything from it. This is integrity, not authenticity (the list and the files come
+from the same hub): it catches corrupt or partial downloads and a hub whose files changed
+between the page and the download.
 
 For an unknown, expired or revoked code (or a rate-limited client) the response is still
 `200`, with header `X-Needs-You-Invite: unusable (HTTP 404)` (or `429`) and a script that

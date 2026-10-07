@@ -78,8 +78,9 @@ public actor FailoverFeed: ItemFeed {
                 return
             } catch {
                 lastError = error
-                // An HTTP answer (e.g. 404) means the hub is up; only fail over on transport errors.
-                if error is HubError, error as? HubError != .invalidResponse { throw error }
+                // An HTTP answer (e.g. 404) means the hub is up; only fail over on transport
+                // errors and 421 (this URL's host name is wrong for that hub, another may work).
+                if let e = error as? HubError, e != .invalidResponse, e != .misdirected { throw error }
             }
         }
         throw lastError

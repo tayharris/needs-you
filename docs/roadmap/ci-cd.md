@@ -32,7 +32,7 @@ Cutting a release: rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - <
 3. **Mac app** (`macos-latest`): `NEEDS_YOU_VERSION=$V mac/scripts/bundle.sh`; `ditto -c -k --keepParent mac/dist/NeedsYou.app NeedsYou-$V-macos.zip`; `NeedsYou-$V.dmg` with `hdiutil create -volname NeedsYou -srcfolder <the app plus an /Applications link> -format UDZO`.
 4. **Server tarball** (`ubuntu-latest`): `git archive --prefix=needs-you-$V/ HEAD hub cli scripts deploy integrations docs README.md VERSION | gzip > needs-you-server-$V.tar.gz`.
 5. **CLI:** `cli/needs-you` copied as `needs-you-cli-$V` (it's one file).
-6. `sha256sum * > SHA256SUMS`. Later: sign `SHA256SUMS` with a minisign or Sigstore key.
+6. `sha256sum * > SHA256SUMS`. Built since: GitHub build provenance (Sigstore) for every asset, and an Ed25519 signature over `release-manifest.json` once the owner adds the key ([release-signing.md](../security/release-signing.md)).
 7. `gh release create v$V --draft --notes-file <changelog section>` with all files. A human publishes the draft.
 
 Permissions: `contents: write` only in the release job.

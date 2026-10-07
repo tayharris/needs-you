@@ -1,5 +1,7 @@
 # Push a vX.Y.Z tag -> tests -> a DRAFT GitHub Release with the Mac app (DMG and zip),
-# the server tarball, the CLI, release-manifest.json and SHA256SUMS. A person reviews and publishes the draft.
+# the server tarball, the CLI, release-manifest.json (plus .sig once the owner adds the signing
+# key) and SHA256SUMS, each with a GitHub build-provenance attestation (public repo only).
+# A person reviews and publishes the draft. Verification: docs/security/release-signing.md.
 # The app is ad-hoc signed; the notes carry the Gatekeeper steps. See docs/roadmap/ci-cd.md.
 #
 # Dry run: Actions -> release -> Run workflow (or `gh workflow run release.yml --ref <branch>
@@ -31,6 +33,10 @@ jobs:
     runs-on: ${{ fromJSON(vars.RELEASE_MAC_RUNNER || '"macos-latest"') }}
     permissions:
       contents: write
+      # Build provenance (security audit #17): the OIDC token for Sigstore and the
+      # attestation write. Only this job has them.
+      id-token: write
+      attestations: write
     env:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     steps:
@@ -65,6 +71,45 @@ jobs:
           assert any(a["name"].endswith("-macos.zip") for a in m["assets"]), "no app zip"
           print("release-manifest.json: %s, %d assets, run %s" % (m["version"], len(m["assets"]), m["run_id"]))
           PY
+      # Ed25519 signature over release-manifest.json, verified by the Mac updater once
+      # UpdateAuthenticity.pinnedManifestKey is set. Owner steps: docs/security/release-signing.md.
+      # Without the secret the release ships unsigned, with a notice; never on dry runs.
+      - name: Sign release-manifest.json
+        if: env.DRY_RUN != 'true'
+        env:
+          SIGNING_KEY: ${{ secrets.RELEASE_MANIFEST_SIGNING_KEY }}
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::notice title=Unsigned release::RELEASE_MANIFEST_SIGNING_KEY is not set, so release-manifest.json.sig was not made (docs/security/release-signing.md)."
+            exit 0
+          fi
+          OPENSSL="$(brew --prefix openssl@3 2>/dev/null)/bin/openssl"
+          [ -x "$OPENSSL" ] || { echo "OpenSSL 3 (Ed25519) not found on the runner; refusing to ship unsigned" >&2; exit 1; }
+          key="$RUNNER_TEMP/manifest-key.pem"
+          trap 'rm -f "$key" "$RUNNER_TEMP/manifest.sig.bin" "$RUNNER_TEMP/manifest-pub.pem"' EXIT
+          (umask 077; printf '%s\n' "$SIGNING_KEY" >"$key")
+          "$OPENSSL" pkeyutl -sign -rawin -inkey "$key" -in release-manifest.json -out "$RUNNER_TEMP/manifest.sig.bin"
+          "$OPENSSL" pkey -in "$key" -pubout -out "$RUNNER_TEMP/manifest-pub.pem"
+          "$OPENSSL" pkeyutl -verify -rawin -pubin -inkey "$RUNNER_TEMP/manifest-pub.pem" \
+            -in release-manifest.json -sigfile "$RUNNER_TEMP/manifest.sig.bin"
+          [ "$(wc -c <"$RUNNER_TEMP/manifest.sig.bin" | tr -d ' ')" = 64 ] || { echo "not a 64-byte Ed25519 signature" >&2; exit 1; }
+          base64 <"$RUNNER_TEMP/manifest.sig.bin" | tr -d '\n' >release-manifest.json.sig
+          echo "signed release-manifest.json; public key (raw, base64): $("$OPENSSL" pkey -in "$key" -pubout -outform DER | tail -c 32 | base64)"
+      # GitHub build provenance for every asset (gh attestation verify <file> --repo
+      # tayharris/needs-you). GitHub attests public repositories only on this plan, so a
+      # private repo skips it; `needs-you update` knows that case (docs/security/release-signing.md).
+      - name: Attest build provenance
+        if: env.DRY_RUN != 'true' && !github.event.repository.private
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/NeedsYou-*.dmg
+            ${{ runner.temp }}/release/NeedsYou-*-macos.zip
+            ${{ runner.temp }}/release/needs-you-server-*.tar.gz
+            ${{ runner.temp }}/release/needs-you-cli-*
+            ${{ runner.temp }}/release/release-manifest.json*
+            ${{ runner.temp }}/release/SHA256SUMS
       - name: Upload the dry-run assets
         if: env.DRY_RUN == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -82,4 +127,4 @@ jobs:
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "needs-you ${TAG#v}" --notes-file NOTES.md \
-            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* release-manifest.json SHA256SUMS
+            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* release-manifest.json* SHA256SUMS

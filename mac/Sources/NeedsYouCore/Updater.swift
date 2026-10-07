@@ -440,8 +440,9 @@ public enum UpdateGate {
 public enum UpdateAuthenticity {
     /// TODO(owner): pin the base64 raw Ed25519 public key (32 bytes) here once the release
     /// signing key exists. The private key lives only in the owner's keychain and in the
-    /// `RELEASE_MANIFEST_SIGNING_KEY` Actions secret (see docs/security/audit-2026-10-07.md,
-    /// item 17); never commit it. While this is nil, signatures aren't checked.
+    /// `RELEASE_MANIFEST_SIGNING_KEY` Actions secret; the exact steps are in
+    /// docs/security/release-signing.md. Never commit it. While this is nil, signatures
+    /// aren't checked.
     public static let pinnedManifestKey: String? = nil
     public static let signatureSuffix = ".sig"
     public static var signatureName: String { ReleaseManifest.fileName + signatureSuffix }

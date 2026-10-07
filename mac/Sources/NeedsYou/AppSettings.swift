@@ -36,6 +36,7 @@ final class AppSettings: ObservableObject {
         static let hotKey = "hotKey"
         static let hotKeyOpensTopLink = "hotKeyOpensTopLink"
         static let allowFocusLinks = "allowFocusLinks"
+        static let terminalAppleScript = "terminalAppleScript"
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -79,6 +80,12 @@ final class AppSettings: ObservableObject {
     /// Default off: any web page can open a needsyou:// link, so the app asks first.
     @Published var allowFocusLinks: Bool {
         didSet { defaults.set(allowFocusLinks, forKey: Key.allowFocusLinks) }
+    }
+    /// Settings → Integrations: the Terminal button selects iTerm2 and Terminal.app tabs
+    /// with AppleScript (needs macOS's Automation permission, asked from the toggle).
+    /// Default off: the button only brings the app forward.
+    @Published var terminalAppleScript: Bool {
+        didSet { defaults.set(terminalAppleScript, forKey: Key.terminalAppleScript) }
     }
     /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
     @Published var focus: FocusState {
@@ -164,6 +171,7 @@ final class AppSettings: ObservableObject {
             Key.panelHidden: false,
             Key.snapToCorners: false,
             Key.allowFocusLinks: false,
+            Key.terminalAppleScript: false,
         ])
         runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
@@ -184,6 +192,7 @@ final class AppSettings: ObservableObject {
         bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))
         focus = FocusState.load(from: defaults)
         allowFocusLinks = defaults.bool(forKey: Key.allowFocusLinks)
+        terminalAppleScript = defaults.bool(forKey: Key.terminalAppleScript)
         previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard
         edgeGlow = defaults.string(forKey: EdgeGlowMode.defaultsKey).flatMap(EdgeGlowMode.init(rawValue:)) ?? .standard
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))

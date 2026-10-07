@@ -13,6 +13,9 @@ ROLE=__NY_ROLE__
 INVITE_NAME=__NY_INVITE_NAME__
 MAC_URL=__NY_MAC_URL__
 USES_LEFT=__NY_USES_LEFT__
+# "<file>=<sha256> ...": the hub's /dl files when it served this script (the join page and
+# /dl/manifest.json list the same). Every download is checked against it.
+SHA256S=__NY_CHECKSUMS__
 
 YES=0
 HOOKS=none
@@ -35,6 +38,23 @@ AUTO_UPDATE=""
 say() { printf '%s\n' "$*"; }
 warn() { printf 'needs-you install: %s\n' "$*" >&2; }
 die() { warn "$*"; exit 1; }
+# verify NAME FILE: FILE's sha256 must equal NAME's entry in SHA256S (security audit #17:
+# catches corrupt or partial downloads and binds the files to the page the user saw).
+verify() {
+  local want="" kv got
+  for kv in $SHA256S; do
+    [ "${kv%%=*}" = "$1" ] && want=${kv#*=}
+  done
+  if [ -z "$want" ]; then
+    warn "the hub's install page lists no checksum for $1; not installing it"
+    return 1
+  fi
+  got=$(python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$2") || return 1
+  if [ "$got" != "$want" ]; then
+    warn "$1 doesn't match the sha256 on the hub's install page (got $got, expected $want): a corrupt or partial download, or the hub was updated since. Re-run the one line."
+    return 1
+  fi
+}
 usage() {
   cat <<'EOF'
 needs-you installer for one machine:
@@ -250,7 +270,8 @@ if [ "$UNINSTALL" -eq 1 ]; then
   if [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
      command -v curl >/dev/null 2>&1; then
     tmp=$(mktemp -d)
-    if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh"; then
+    if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh" &&
+       verify install-hooks.sh "$tmp/install-hooks.sh"; then
       bash "$tmp/install-hooks.sh" --user --uninstall || warn "removing the Claude Code hooks failed"
     else
       warn "hub unreachable; remove the hooks with integrations/claude-code/install-hooks.sh --uninstall"
@@ -308,7 +329,7 @@ fi
 umask 077
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-fetch() { curl -fsSL --noproxy '*' --max-time 30 "$HUB_URL/dl/$1" -o "$2"; }
+fetch() { curl -fsSL --noproxy '*' --max-time 30 "$HUB_URL/dl/$1" -o "$2" && verify "$1" "$2"; }
 
 # ---------------------------------------------------------------- CLI
 fetch needs-you "$TMP/needs-you" || die "could not download the CLI from $HUB_URL/dl/needs-you"
