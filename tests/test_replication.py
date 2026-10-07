@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import unittest
 
@@ -64,6 +65,30 @@ class WorkerSurvives(Mesh):
                                            or a.store.peer_state(url)["last_push_ok"], 10))
                 time.sleep(0.5)  # a few more rounds of push and pull
                 self.assertTrue(w.is_alive(), "worker for %s died" % name)
+
+
+class BigBatches(Mesh):
+    def test_push_batches_stay_under_the_peer_body_limit(self):
+        """200 outbox rows of large items (non-ASCII text is \\u-escaped on the wire, 6 bytes
+        a character) can exceed the receiver's 8 MiB /v1/replicate limit. The receiver says
+        413 every time, the same rows are retried forever and the push to that peer is stuck."""
+        a, b = self.mesh(["hub-a", "hub-b"], start=False)
+        url = "https://ci.example/" + "x" * 1950
+        cjk = "漢" * 199
+        for i in range(200):
+            a.store.upsert_item(hubmod.validate_item_input({
+                "key": "big-%d" % i, "title": "big %d" % i, "body": "字" * 2000,
+                "links": [{"label": "L%d" % n, "url": url} for n in range(6)],
+                "steps": [{"text": cjk, "link": {"label": "S", "url": url}} for _ in range(10)],
+            }), None, 0, 0)
+        rows = a.store.outbox_batch(b.url, 200)
+        items, _t, _i = a.store.records_for(rows)
+        size = len(json.dumps({"items": [hubmod.item_wire(r) for r in items]}))
+        self.assertGreater(size, hubmod.MAX_REPLICATE_BYTES)  # the premise
+        a.start()
+        b.start()
+        self.assertTrue(wait_until(lambda: a.store.outbox_pending(b.url) == 0, 20),
+                        a.peer_status(b.url))
 
 
 class Convergence(Mesh):

@@ -584,7 +584,7 @@ receiving hub's own id (the sender then stops using that peer).
 
 Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
-thread per peer sends batches of up to 200 records, always the record's *current* version, and
+thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's *current* version, and
 deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
 5 min, ±20% jitter). Outbox rows survive restarts. The admin tool writes to the same outbox, so
 `needs-you-admin token add` on one hub reaches every peer.

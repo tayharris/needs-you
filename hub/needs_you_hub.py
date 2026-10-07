@@ -109,6 +109,7 @@ MAX_STEP_TEXT = 200
 MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
+PUSH_MAX_BYTES = MAX_REPLICATE_BYTES // 2  # a push batch stays well under the peer's limit
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
@@ -1873,9 +1874,15 @@ class PeerWorker(threading.Thread):
         if not rows:
             self.failures = 0
             return False
-        items, toks, invs = self.hub.store.records_for(rows)
-        payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
-                   "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+        while True:
+            items, toks, invs = self.hub.store.records_for(rows)
+            payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
+                       "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+            # The peer refuses bodies over MAX_REPLICATE_BYTES (413), and would refuse the same
+            # rows on every retry: send fewer rows instead. One record is far below the limit.
+            if len(rows) == 1 or len(json.dumps(payload)) <= PUSH_MAX_BYTES:
+                break
+            rows = rows[:len(rows) // 2]
         try:
             self._request("POST", "/v1/replicate", payload)
         except urllib.error.HTTPError as e:
