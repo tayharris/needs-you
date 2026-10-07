@@ -6,6 +6,7 @@ struct CardView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
+        let m = model.metrics
         HStack(alignment: .top, spacing: 9) {
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(Theme.color(item.priority))
@@ -14,19 +15,19 @@ struct CardView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(item.title)
-                    .font(Theme.title)
+                    .font(Theme.title(m))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(item.key)
 
                 Text(Format.meta(item, now: model.now))
-                    .font(Theme.meta)
+                    .font(Theme.meta(m))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
 
                 if let body = item.body, !body.isEmpty {
                     Text(LimitedMarkdown.render(body))
-                        .font(Theme.body)
+                        .font(Theme.body(model.bodyFont))
                         .foregroundStyle(.white.opacity(0.85))
                         .tint(Theme.normal)
                         .fixedSize(horizontal: false, vertical: true)
@@ -41,7 +42,7 @@ struct CardView: View {
                     .padding(.top, 2)
             }
         }
-        .padding(10)
+        .padding(m.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.cardFill))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
@@ -66,7 +67,7 @@ struct LinkRow: View {
                             Text(link.label.isEmpty ? link.url : link.label).lineLimit(1)
                             Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
                         }
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: model.metrics.linkFont, weight: .medium))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Capsule().fill(Color.white.opacity(0.10)))
                         .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
@@ -77,7 +78,7 @@ struct LinkRow: View {
                     .help(link.url)
                 } else {
                     Text("\(link.label): \(link.url)")
-                        .font(.system(size: 11))
+                        .font(.system(size: model.metrics.linkFont))
                         .foregroundStyle(Theme.faint)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -94,15 +95,15 @@ struct CardActions: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ActionButton(title: "Done", symbol: "checkmark") { model.resolve(item) }
-            ActionButton(title: "Dismiss", symbol: "xmark") { model.dismiss(item) }
+            ActionButton(title: "Done", symbol: "checkmark", size: model.metrics.actionFont) { model.resolve(item) }
+            ActionButton(title: "Dismiss", symbol: "xmark", size: model.metrics.actionFont) { model.dismiss(item) }
             Menu {
                 ForEach(SnoozeOption.cardChoices) { option in
                     Button(option.title) { model.snoozeCard(item, option) }
                 }
             } label: {
                 Label("Snooze", systemImage: "clock")
-                    .font(.system(size: 11))
+                    .font(.system(size: model.metrics.actionFont))
                     .foregroundStyle(Theme.muted)
                     .contentShape(Rectangle())
             }
@@ -118,12 +119,13 @@ struct CardActions: View {
 private struct ActionButton: View {
     let title: String
     let symbol: String
+    var size: CGFloat = 11
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: symbol)
-                .font(.system(size: 11))
+                .font(.system(size: size))
                 .foregroundStyle(Theme.muted)
                 .contentShape(Rectangle())
         }
@@ -139,15 +141,15 @@ struct RecentRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: item.kind == .done ? "checkmark.circle" : "info.circle")
-                .font(.system(size: 11))
+                .font(.system(size: model.metrics.metaFont))
                 .foregroundStyle(Theme.muted)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .font(Theme.body)
+                    .font(Theme.body(model.bodyFont))
                     .foregroundStyle(.white.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
                 Text(Format.meta(item, now: model.now))
-                    .font(Theme.meta)
+                    .font(Theme.meta(model.metrics))
                     .foregroundStyle(Theme.faint)
                 if !item.links.isEmpty {
                     LinkRow(item: item, model: model)

@@ -240,28 +240,27 @@ final class PanelController {
     // MARK: Sizes (visible shape; the panel adds glow padding around it)
 
     private func contentSize(for display: PanelDisplay) -> CGSize {
+        let m = model.metrics
         switch display {
         case .idle:
             // PLAN.md: a faint "Nothing needs <you>" pill; on hover "all clear" and the last check.
             let text = (model.hovering ? model.idleHoverLine : model.idleRestLine) as NSString
-            let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width
-            return CGSize(width: min(340, ceil(width) + 32), height: model.hovering ? 22 : 18)
+            let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
+            return CGSize(width: m.idleWidth(textWidth: width), height: model.hovering ? m.idleHoverHeight : m.idleHeight)
         case .waiting:
             let digits = String(model.count).count + (model.otherCount > 0 ? String(model.otherCount).count + 2 : 0)
-            return CGSize(width: max(44, CGFloat(18 + digits * 8)), height: 22)
+            return CGSize(width: m.countWidth(digits: digits), height: m.countHeight)
         case .preview:
-            return CGSize(width: 320, height: 52)
+            return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:
-            let header: CGFloat = 44
-            let footer: CGFloat = 26
-            let list = min(max(model.expandedContentHeight, 64), maxListHeight())
-            return CGSize(width: 360, height: header + list + footer)
+            let list = min(max(model.expandedContentHeight, m.minListHeight), maxListHeight(m))
+            return CGSize(width: m.expandedWidth, height: m.headerHeight + list + m.footerHeight)
         }
     }
 
-    private func maxListHeight() -> CGFloat {
+    private func maxListHeight(_ m: PanelMetrics) -> CGFloat {
         let screenHeight = currentScreen()?.visibleFrame.height ?? 800
-        return min(520, screenHeight - 140)
+        return min(m.maxListHeight, screenHeight - 140)
     }
 
     private func panelSize(for display: PanelDisplay) -> CGSize {

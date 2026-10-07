@@ -35,6 +35,12 @@ final class AppSettings: ObservableObject {
         static let snapToCorners = "snapToCorners"
     }
 
+    /// Look and feel: panel size, text size, alerts, and so on (UIPrefs; defaults are the
+    /// original look). Each change writes only the keys that changed.
+    @Published var ui: UIPrefs {
+        didSet { if ui != oldValue { ui.save(to: defaults, previous: oldValue) } }
+    }
+
     /// The app's defaults, or the NEEDS_YOU_DEFAULTS_SUITE suite (test instances).
     nonisolated static func makeDefaults(environment: [String: String] = ProcessInfo.processInfo.environment) -> UserDefaults {
         if let suite = environment["NEEDS_YOU_DEFAULTS_SUITE"], !suite.isEmpty, let d = UserDefaults(suiteName: suite) {
@@ -128,6 +134,7 @@ final class AppSettings: ObservableObject {
         urgentShowsHiddenPanel = defaults.bool(forKey: Key.urgentShowsHiddenPanel)
         tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
         snapToCorners = defaults.bool(forKey: Key.snapToCorners)
+        ui = UIPrefs.load(from: defaults)
         // Stored prefs that hide both the icon and the panel: keep the icon.
         if visibility.showMenuBarIcon != defaults.bool(forKey: Key.showMenuBarIcon) {
             defaults.set(true, forKey: Key.showMenuBarIcon)

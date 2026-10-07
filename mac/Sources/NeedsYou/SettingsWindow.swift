@@ -366,6 +366,12 @@ struct SettingsView: View {
             ))
             Toggle("Urgent items show the panel even when hidden", isOn: $settings.urgentShowsHiddenPanel)
             Toggle("Snap to corners", isOn: $settings.snapToCorners)
+            Picker("Panel size", selection: $settings.ui.panelSize) {
+                ForEach(PanelSize.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            Picker("Card text size", selection: $settings.ui.textSize) {
+                ForEach(TextSize.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             if let visibilityMessage {
                 Text(visibilityMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }

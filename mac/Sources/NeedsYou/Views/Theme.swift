@@ -21,10 +21,11 @@ enum Theme {
         }
     }
 
-    static let title = Font.system(size: 13, weight: .semibold)
-    static let body = Font.system(size: 12)
-    static let meta = Font.system(size: 11)
-    static let mono = Font.system(size: 11, design: .monospaced)
+    // Type scales with Settings → Panel → Size (PanelStyle); body text has its own size.
+    static func title(_ m: PanelMetrics) -> Font { .system(size: m.titleFont, weight: .semibold) }
+    static func body(_ points: CGFloat) -> Font { .system(size: points) }
+    static func meta(_ m: PanelMetrics) -> Font { .system(size: m.metaFont) }
+    static func mono(_ m: PanelMetrics) -> Font { .system(size: m.metaFont, design: .monospaced) }
 }
 
 enum Format {

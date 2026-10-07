@@ -121,6 +121,11 @@ final class AppModel: ObservableObject {
     /// "needs Sam" / "needs you".
     var needsLabel: String { settings.needsLabel }
 
+    /// Sizes for the chosen panel size (Settings → Panel).
+    var metrics: PanelMetrics { settings.ui.metrics }
+    /// Card body text size in points (Settings → Panel → Text size).
+    var bodyFont: CGFloat { settings.ui.bodyFont }
+
     /// Footer / tooltip status: "hub2 · 10:42", "Demo · 10:42", or the error.
     var statusLine: String {
         if !isConfigured { return localHubIssue != nil ? "Hub on this Mac can't start · click for Settings" : "No hub set up · click to set up" }

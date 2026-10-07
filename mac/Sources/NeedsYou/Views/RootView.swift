@@ -41,7 +41,7 @@ struct RootView: View {
         case .waiting:
             CountPill(model: model)
         case .preview(let item):
-            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel)
+            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel, metrics: model.metrics)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 3, coordinateSpace: .global)
@@ -125,7 +125,7 @@ struct IdlePill: View {
                 .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
                 .frame(width: 5, height: 5)
             Text(model.hovering ? model.idleHoverLine : model.idleRestLine)
-                .font(Theme.meta)
+                .font(.system(size: model.metrics.idleFont))
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
         }
@@ -150,7 +150,7 @@ struct CountPill: View {
                     .foregroundStyle(Theme.faint)
             }
         }
-        .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+        .font(.system(size: model.metrics.countFont, weight: .semibold, design: .rounded).monospacedDigit())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
         .help("\(model.needsLabel): \(model.count) \(model.context.rawValue) item\(model.count == 1 ? "" : "s") · \(model.statusLine)")
@@ -162,18 +162,19 @@ struct PreviewPill: View {
     let item: Item
     let now: Date
     let needsLabel: String
+    let metrics: PanelMetrics
 
     var body: some View {
         HStack(spacing: 10) {
             Circle().fill(Theme.color(item.priority)).frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .font(Theme.title)
+                    .font(Theme.title(metrics))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 (Text(needsLabel).foregroundStyle(Theme.color(item.priority).opacity(0.9))
                  + Text(" · " + Format.meta(item, now: now)).foregroundStyle(Theme.muted))
-                    .font(Theme.meta)
+                    .font(Theme.meta(metrics))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
