@@ -41,6 +41,19 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 - **⌃⌥Space** shows or hides the panel. Change it in **Settings → Panel → Keyboard**.
 - Drag the pill anywhere; it stays where you drop it (or snaps to a corner with **Snap to corners**) and remembers the spot per display setup. **Reset Position** in the right-click menu puts it back top right.
 
+### Setup tips
+
+While something isn't set up yet, the open panel shows a **setup tip**: a card like any other, from **Needs You setup**, with a button and a link to the guide. The idle pill says so (`Nothing needs you · 1 setup tip`).
+
+| Tip | Shows when | Button |
+|---|---|---|
+| **Turn on the hub on this Mac** | **Run hub on this Mac** is off and no other hub is set up | **Open Settings** (This Mac) |
+| **Connect your first agent or machine** | The hub answers, but nothing has ever posted to it and it lists no token besides this Mac's | **Copy agent prompt**: makes a one-use sender invite (24 hours) and copies the prompt to paste into Claude Code |
+| **Reach this Mac from your other machines** | The hub on this Mac listens on `127.0.0.1` only (no Tailscale) and you have server hubs or cards from other machines | **Open Settings**, and the [Tailscale guide](tailscale.md) |
+| **Install the Claude Code hooks on this Mac** | `~/.claude` exists but `~/.claude/settings.json` doesn't use the needs-you hook, after the first sender connected | **Copy agent prompt**, and the [Claude Code guide](claude-code.md) |
+
+Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Invite a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
+
 ## Focus: heads-down, except what you choose
 
 Every new item arrives one of three ways:
@@ -103,6 +116,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
 | Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | Off, On |
 | The open panel's list height | Panel → Open panel → **List height** (drag the panel's edge) | Automatic, or the height you dragged |
+| Cards about what isn't set up yet ([Setup tips](#setup-tips)) | Panel → Setup tips → **Show setup tips** | On, Off |
 | See-through when the pointer isn't over it | Panel → Look → **Opacity** | 100%, 90%, 80%, 70%, 60% |
 | The global shortcut | Panel → Keyboard | ⌃⌥Space, or record your own (it must use ⌃, ⌥ or ⌘) |
 | How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
