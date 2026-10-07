@@ -127,6 +127,10 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
         with open(driver, "w") as fh:
             fh.write(self.DRIVER)
         plugin = os.path.join(self.oc, "plugins", "needs-you.js")
+        # opencode loads plugins with Bun, which takes ES modules as they are; plain Node
+        # needs to be told (some versions fail, newer ones only warn on stderr).
+        with open(os.path.join(self.oc, "plugins", "package.json"), "w") as fh:
+            fh.write('{"type": "module"}\n')
         r = subprocess.run([NODE, driver, plugin, self.cwd, json.dumps(events)], env=self.env(),
                            capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)

@@ -15,7 +15,7 @@
 //
 // The hook does the rest (opt-in gate, card text, links, lease, the CLI call); it is off
 // unless NEEDS_YOU_AGENT_ALERTS=1 or the session runs in an Orca terminal. This file never
-// throws, never waits for the hook, and never changes a permission decision.
+// throws, never makes opencode wait for the hook, and never changes a permission decision.
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -29,20 +29,39 @@ function str(v) {
   return typeof v === "string" ? v : ""
 }
 
+// One hook at a time per session, in event order, so a reply's resolve never overtakes
+// the post it answers (question.asked then question.replied in the same instant).
+// Handlers still return at once; only the hooks queue. Each is cut off after 20 s.
+const queues = new Map()
+
+function start(mode, payload) {
+  return new Promise((done) => {
+    try {
+      if (!existsSync(HOOK)) return done()
+      const child = spawn("bash", [HOOK, mode, "opencode"], {
+        stdio: ["pipe", "ignore", "ignore"],
+        detached: true,
+      })
+      const timer = setTimeout(() => {
+        try { child.kill() } catch {}
+        done()
+      }, 20000)
+      timer.unref()
+      child.on("error", () => { clearTimeout(timer); done() })
+      child.on("exit", () => { clearTimeout(timer); done() })
+      child.stdin.on("error", () => {})
+      child.stdin.end(JSON.stringify(payload))
+    } catch {
+      done() // never fail opencode
+    }
+  })
+}
+
 function run(mode, payload) {
-  try {
-    if (!existsSync(HOOK)) return
-    const child = spawn("bash", [HOOK, mode, "opencode"], {
-      stdio: ["pipe", "ignore", "ignore"],
-      detached: true,
-    })
-    child.on("error", () => {})
-    child.stdin.on("error", () => {})
-    child.stdin.end(JSON.stringify(payload))
-    child.unref()
-  } catch {
-    // never fail opencode
-  }
+  const id = str(payload.session_id)
+  const next = (queues.get(id) || Promise.resolve()).then(() => start(mode, payload))
+  queues.set(id, next)
+  next.then(() => { if (queues.get(id) === next) queues.delete(id) })
 }
 
 export const NeedsYou = async ({ directory, worktree }) => {
