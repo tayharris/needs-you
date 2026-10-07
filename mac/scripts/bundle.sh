@@ -68,6 +68,12 @@ else
   echo "warning: $REPO/integrations/claude-code not found; joiners won't get the Claude Code files" >&2
 fi
 
+# The in-app updater runs this copy of install.sh (swap, keep .previous, relaunch, roll back
+# if the new version doesn't stay running), so it must be inside the signed bundle.
+mkdir -p "$RES/scripts"
+cp scripts/install.sh "$RES/scripts/install.sh"
+chmod 755 "$RES/scripts/install.sh"
+
 echo "==> ad-hoc codesign"
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --strict "$APP"

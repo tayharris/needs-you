@@ -9,7 +9,11 @@
 #                                 (needs hdiutil, so macOS only; skipped with a message elsewhere)
 #   needs-you-server-X.Y.Z.tar.gz hub, CLI, scripts, deploy, integrations, docs (git archive HEAD)
 #   needs-you-cli-X.Y.Z           the sender CLI, one file
-#   SHA256SUMS                    of the assets above
+#   release-manifest.json         version, commit, workflow run, test result, min macOS,
+#                                 and each asset above with its sha256 and size. The Mac
+#                                 app's updater installs only releases that carry it
+#                                 (docs/roadmap/rollout-updates.md)
+#   SHA256SUMS                    of the assets above and the manifest
 #   NOTES.md                      release notes: the CHANGELOG section plus install steps
 #                                 (not an asset, so not in SHA256SUMS)
 #
@@ -18,6 +22,9 @@
 #
 #   NEEDS_YOU_SKIP_APP=1   skip the Mac app (tests, or a machine without Swift)
 #   NEEDS_YOU_TAG=vX.Y.Z   fail unless the tag matches VERSION (the workflow sets it)
+#   NEEDS_YOU_TESTS_RESULT the test job's result, recorded in the manifest (the workflow
+#                          passes needs.test.result; "local" when unset)
+#   GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, GITHUB_REPOSITORY, GITHUB_SHA: recorded when set
 set -euo pipefail
 
 die() { echo "build-release: $*" >&2; exit 1; }
@@ -74,13 +81,46 @@ cp "$ROOT/cli/needs-you" "$OUT/needs-you-cli-$V"
 chmod 755 "$OUT/needs-you-cli-$V"
 
 if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$@"; }; else sum() { shasum -a 256 "$@"; }; fi
+min_macos=$(sed -n 's/.*\.macOS(\.v\([0-9][0-9]*\)).*/\1/p' "$ROOT/mac/Package.swift" | head -n 1)
+[ -n "$min_macos" ] || die "can't read the minimum macOS from mac/Package.swift"
+commit=${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}
 (
   cd "$OUT"
   assets=()
   for f in "NeedsYou-$V-macos.zip" "NeedsYou-$V.dmg" "needs-you-server-$V.tar.gz" "needs-you-cli-$V"; do
     [ -f "$f" ] && assets+=("$f")
   done
-  sum "${assets[@]}" >SHA256SUMS
+  # Written only here, after the release job's `needs: test`, and listing every asset, so
+  # the updater checks a download against both this manifest and SHA256SUMS.
+  python3 - "$V" "$commit" "$min_macos.0" "${NEEDS_YOU_TESTS_RESULT:-local}" "${assets[@]}" \
+    >release-manifest.json <<'PY'
+import hashlib, json, os, sys, time
+version, commit, min_macos, tests = sys.argv[1:5]
+assets = []
+for name in sys.argv[5:]:
+    h = hashlib.sha256()
+    with open(name, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    assets.append({"name": name, "sha256": h.hexdigest(), "size": os.path.getsize(name)})
+run_id = os.environ.get("GITHUB_RUN_ID") or ""
+attempt = os.environ.get("GITHUB_RUN_ATTEMPT") or ""
+json.dump({
+    "schema": 1,
+    "version": version,
+    "tag": "v" + version,
+    "commit": commit,
+    "repository": os.environ.get("GITHUB_REPOSITORY") or "",
+    "run_id": int(run_id) if run_id.isdigit() else None,
+    "run_attempt": int(attempt) if attempt.isdigit() else None,
+    "tests": tests,
+    "min_macos": min_macos,
+    "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "assets": assets,
+}, sys.stdout, indent=1, sort_keys=True)
+sys.stdout.write("\n")
+PY
+  sum "${assets[@]}" release-manifest.json >SHA256SUMS
 )
 
 {

@@ -1,5 +1,5 @@
 # Push a vX.Y.Z tag -> tests -> a DRAFT GitHub Release with the Mac app (DMG and zip),
-# the server tarball, the CLI and SHA256SUMS. A person reviews and publishes the draft.
+# the server tarball, the CLI, release-manifest.json and SHA256SUMS. A person reviews and publishes the draft.
 # The app is ad-hoc signed; the notes carry the Gatekeeper steps. See docs/roadmap/ci-cd.md.
 #
 # Dry run: Actions -> release -> Run workflow (or `gh workflow run release.yml --ref <branch>
@@ -44,12 +44,25 @@ jobs:
       - name: Build assets
         env:
           NEEDS_YOU_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          NEEDS_YOU_TESTS_RESULT: ${{ needs.test.result }}
         run: scripts/build-release.sh "$RUNNER_TEMP/release"
       - name: Verify checksums
         working-directory: ${{ runner.temp }}/release
         run: |
-          ls NeedsYou-*.dmg NeedsYou-*-macos.zip
+          ls NeedsYou-*.dmg NeedsYou-*-macos.zip release-manifest.json
           shasum -a 256 -c SHA256SUMS
+          # The updater refuses a release whose manifest doesn't match these files.
+          python3 - <<'PY'
+          import hashlib, json, os
+          m = json.load(open("release-manifest.json"))
+          assert m["tests"] == "success", m["tests"]
+          assert m["run_id"], "no run id"
+          for a in m["assets"]:
+              assert hashlib.sha256(open(a["name"], "rb").read()).hexdigest() == a["sha256"], a["name"]
+              assert os.path.getsize(a["name"]) == a["size"], a["name"]
+          assert any(a["name"].endswith("-macos.zip") for a in m["assets"]), "no app zip"
+          print("release-manifest.json: %s, %d assets, run %s" % (m["version"], len(m["assets"]), m["run_id"]))
+          PY
       - name: Upload the dry-run assets
         if: env.DRY_RUN == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -67,4 +80,4 @@ jobs:
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "needs-you ${TAG#v}" --notes-file NOTES.md \
-            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* SHA256SUMS
+            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* release-manifest.json SHA256SUMS
