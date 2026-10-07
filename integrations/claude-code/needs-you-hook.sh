@@ -307,8 +307,9 @@ def base_args(key, title, body, priority):
     args = [os.environ["NY_CLI"], "add", "--key", key]
     if context in ("work", "personal"):  # else the CLI's NEEDS_YOU_DEFAULT_CONTEXT, else work
         args += ["--context", context]
-    args += ["--priority", priority, "--title", title[:100], "--body", body[:2000],
-             "--agent", "claude-code", "--project", project]
+    # --opt=value: a title, body or project starting with "-" isn't taken for an option
+    args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
+             "--agent", "claude-code", "--project=" + project]
     try:
         expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
     except ValueError:

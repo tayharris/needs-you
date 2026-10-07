@@ -67,7 +67,12 @@ class HookHarness(unittest.TestCase):
 
     @staticmethod
     def opt(argv, name):
-        return argv[argv.index(name) + 1]
+        for i, a in enumerate(argv):
+            if a.startswith(name + "="):
+                return a[len(name) + 1:]
+            if a == name:
+                return argv[i + 1]
+        raise ValueError(name)
 
     @staticmethod
     def links(argv):
@@ -155,6 +160,16 @@ class FailureTests(HookHarness):
         self.assertEqual(self.last()[0], "add")
         self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
         self.assertEqual(self.last()[:3], ["resolve", "--key", self.opt(argv, "--key")])
+
+    def test_dash_project_and_error_survive_the_cli(self):
+        # real CLI argparse, offline: the card queues instead of failing on "-x" values
+        self.cwd = os.path.join(self.home, "-odd")
+        os.makedirs(self.cwd)
+        cli = os.path.join(ROOT, "cli", "needs-you")
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_message": "--bad"},
+                      NEEDS_YOU_BIN=cli, NEEDS_YOU_URL="http://127.0.0.1:9", NEEDS_YOU_TOKEN="t",
+                      NEEDS_YOU_TIMEOUT="1")
+        self.assertEqual(self.marker()["kind"], "failure")  # the CLI exited 0 (queued)
 
     def test_unknown_error_type(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "something_new"})

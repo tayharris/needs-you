@@ -122,7 +122,7 @@ class HookOrcaBodyTests(unittest.TestCase):
             return json.loads(fh.read().splitlines()[-1])
 
     def body(self, argv):
-        return argv[argv.index("--body") + 1]
+        return [a for a in argv if a.startswith("--body=")][0][len("--body="):]
 
     def test_orca_card_names_worktree_and_switch_command(self):
         argv = self.notify()
