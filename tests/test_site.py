@@ -1,7 +1,11 @@
 """site/: the static landing page. Offline checks only (stdlib html.parser).
 
 Structure (balanced tags, one h1, title, description), in-page anchors, local files,
-and every link into this repo on GitHub points at a path that exists here.
+every link into this repo on GitHub points at a path that exists here, the sections and
+links the landing page promises, and no personal hostnames.
+
+The donate link is a placeholder (#donate-tbd) until the donation service is chosen.
+Set NEEDS_YOU_SITE_RELEASE=1 (before deploying) to make that placeholder a failure.
 """
 from __future__ import annotations
 
@@ -13,6 +17,10 @@ from html.parser import HTMLParser
 from support import ROOT
 
 SITE = os.path.join(ROOT, "site")
+DONATE_PLACEHOLDER = "#donate-tbd"
+RELEASE = os.environ.get("NEEDS_YOU_SITE_RELEASE") == "1"
+# Hosts the site may link to. Anything else (a personal domain, a tailnet name) fails.
+LINK_HOSTS = {"github.com"}
 REPO_LINK = re.compile(r"^https://github\.com/tayharris/needs-you/(?:blob|tree)/main/(.+?)/?(?:#.*)?$")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
         "source", "track", "wbr", "path", "circle", "rect", "line", "polyline", "polygon",
@@ -28,6 +36,9 @@ class Page(HTMLParser):
         self.errors = []
         self.ids = set()
         self.links = []
+        self.anchors = []  # (attrs, text) for every <a>
+        self.text = []
+        self._a = None
         self.tags = []
         self.meta = {}
         self.title = ""
@@ -47,6 +58,9 @@ class Page(HTMLParser):
             self.meta[a["name"]] = a.get("content", "")
         if tag == "title":
             self._in_title = True
+        if tag == "a":
+            self._a = (a, [])
+            self.anchors.append(self._a)
         if tag not in VOID:
             self.stack.append((tag, self.getpos()))
 
@@ -58,6 +72,8 @@ class Page(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "title":
             self._in_title = False
+        if tag == "a":
+            self._a = None
         if tag in VOID:
             return
         while self.stack and self.stack[-1][0] != tag and self.stack[-1][0] in OPTIONAL_END:
@@ -70,6 +86,25 @@ class Page(HTMLParser):
     def handle_data(self, data):
         if self._in_title:
             self.title += data
+        if self._a is not None:
+            self._a[1].append(data)
+        self.text.append(data)
+
+    def anchor_text(self, anchor):
+        return " ".join("".join(anchor[1]).split())
+
+    def body_text(self):
+        return " ".join("".join(self.text).split())
+
+
+def read_site(name):
+    with open(os.path.join(SITE, name), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def repo_url():
+    m = re.search(r'^var REPO_URL = "([^"]+)";$', read_site("site.js"), re.M)
+    return m.group(1) if m else None
 
 
 class SiteTests(unittest.TestCase):
@@ -102,6 +137,8 @@ class SiteTests(unittest.TestCase):
         for name, p in self.pages.items():
             for link in p.links:
                 with self.subTest(page=name, link=link[:80]):
+                    if link == DONATE_PLACEHOLDER:
+                        continue  # test_donate_link decides
                     if link.startswith("#"):
                         self.assertIn(link[1:], p.ids, "no element with this id")
                     elif link.startswith(("data:", "mailto:")):
@@ -116,6 +153,76 @@ class SiteTests(unittest.TestCase):
                     else:
                         local = link.split("#", 1)[0].split("?", 1)[0]
                         self.assertTrue(os.path.exists(os.path.join(SITE, local)), "missing file")
+
+
+    def test_link_hosts(self):
+        for name, p in self.pages.items():
+            for link in p.links:
+                m = re.match(r"^https://([^/]+)", link)
+                if m:
+                    with self.subTest(page=name, link=link[:80]):
+                        self.assertIn(m.group(1), LINK_HOSTS, "link to an unexpected host")
+
+    def test_no_personal_hostnames(self):
+        # Only the documented placeholders: hub-a.example.ts.net, <tailnet>, devbox.
+        for name in sorted(os.listdir(SITE)):
+            path = os.path.join(SITE, name)
+            if not os.path.isfile(path):
+                continue
+            text = read_site(name)
+            with self.subTest(file=name):
+                for host in re.findall(r"[\w.-]+\.ts\.net", text):
+                    self.assertTrue(host.endswith("example.ts.net"), host)
+                self.assertNotRegex(text, r"\b(?:100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+)\b",
+                                    "tailnet IP")
+
+    def test_sections(self):
+        p = self.pages["index.html"]
+        for sid in ("how", "install", "source", "donate"):
+            self.assertIn(sid, p.ids)
+        self.assertIn("mock", read_site("index.html"))  # the CSS pill mock, not a screenshot
+        self.assertNotIn("img", p.tags)
+        how = re.search(r'<ol class="how">(.*?)</ol>', read_site("index.html"), re.S).group(1)
+        self.assertEqual(how.count("<li>"), 3)
+
+    def test_install(self):
+        p = self.pages["index.html"]
+        text = p.body_text()
+        download = [a for a in p.anchors if "Download" in p.anchor_text(a)]
+        self.assertEqual(len(download), 1)
+        self.assertEqual(download[0][0].get("href"), repo_url() + "/releases/latest")
+        self.assertIn(".dmg", text)
+        self.assertIn(".zip", text)
+        self.assertIn("ad-hoc signed", text)
+        self.assertIn("Right-click", text)
+        self.assertIn("curl -fsSL <join_url>/install.sh | bash -s -- --yes", text)
+
+    def test_repo_links_follow_the_constant(self):
+        base = repo_url()
+        self.assertEqual(base, "https://github.com/tayharris/needs-you")
+        for name, p in self.pages.items():
+            repo_anchors = [a for a, _ in p.anchors if (a.get("href") or "").startswith("https://github.com/")]
+            self.assertTrue(repo_anchors)
+            for a in repo_anchors:
+                with self.subTest(page=name, href=a["href"]):
+                    self.assertIn("data-repo", a, "GitHub links go through REPO_URL in site.js")
+                    self.assertEqual(a["href"], base + a["data-repo"])
+
+    def test_open_source(self):
+        p = self.pages["index.html"]
+        self.assertIn("Apache-2.0", p.body_text())
+        self.assertTrue([a for a, _ in p.anchors if a.get("data-repo") == ""], "a link to the repo itself")
+
+    def test_donate_link(self):
+        p = self.pages["index.html"]
+        donate = [a for a in p.anchors if "support the project" in p.anchor_text(a).lower()]
+        self.assertEqual(len(donate), 1)
+        href = donate[0][0].get("href", "")
+        if RELEASE:
+            self.assertNotEqual(href, DONATE_PLACEHOLDER,
+                                "pick the donation service and set the real URL before release")
+        else:
+            self.assertTrue(href == DONATE_PLACEHOLDER or href.startswith("https://"), href)
 
 
 if __name__ == "__main__":
