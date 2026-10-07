@@ -786,7 +786,9 @@ class ListCursor(NamedTuple):
         parts = raw.split(".")
         if len(parts) not in (3, 4) or not all(parts) or len(raw) > 200:
             raise ValueError("bad cursor")
-        if not (parts[1].isdigit() and parts[2].isdigit()) or not re.match(r"^[0-9A-Za-z]{1,40}$", parts[0]):
+        # seq and exp_at: ASCII digits that fit SQLite's 64-bit integers
+        if not (re.match(r"^[0-9]{1,18}$", parts[1]) and re.match(r"^[0-9]{1,18}$", parts[2])) \
+                or not re.match(r"^[0-9A-Za-z]{1,40}$", parts[0]):
             raise ValueError("bad cursor")
         exp_id = None
         if len(parts) == 4:
@@ -2781,6 +2783,8 @@ class Handler(BaseHTTPRequestHandler):
         last = self.headers.get("Last-Event-ID") or (query.get("after") or [""])[0]
         try:
             after = int(last) if last else self.hub.store.max_seq()
+            if not 0 <= after < 2 ** 63:  # beyond SQLite's integers
+                raise ValueError(last)
         except ValueError:
             after = self.hub.store.max_seq()
         self.send_response(200)
@@ -2842,6 +2846,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             after = int((query.get("after") or ["0"])[0] or 0)
             limit = max(1, min(int((query.get("limit") or ["500"])[0] or 500), 2000))
+            if not 0 <= after < 2 ** 63:  # beyond SQLite's integers
+                raise ValueError(after)
         except ValueError:
             raise ApiError(400, "invalid", "after/limit must be integers")
         st = self.hub.store

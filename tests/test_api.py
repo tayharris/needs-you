@@ -469,6 +469,25 @@ class BadInput(ApiTestCase):
         self.assertEqual([x["id"] for x in r["skipped"]], [bad["id"]])
         self.assertIsNotNone(self.hub.store.get_item(good["id"]))
 
+    def test_numbers_too_large(self):
+        for body in ({"key": "k", "title": "t", "expires_at": 1e306}, {"key": "k", "title": "t", "expires_at": 1.7e308},
+                     {"key": "k", "title": "t", "expires_at": 10 ** 400}):
+            s, r = self.post(body)
+            self.assertEqual((s, r.get("error")), (400, "invalid"), body)
+        s, r = self.post({"key": "k", "title": "t"})
+        self.assertEqual(s, 201, r)
+        s, r = self.patch(r["id"], {"seen_at": 1e306})
+        self.assertEqual(s, 400, r)
+        # a cursor shaped right but with numbers SQLite can't hold: refused like any other
+        epoch = self.hub.store.epoch()
+        for cur in ("%s.%s.0" % (epoch, "9" * 30), "%s.0.%s" % (epoch, "9" * 30), "%s.².0" % epoch):
+            s, r = self.list(cursor=cur)
+            self.assertEqual(s, 400, (cur, r))
+            s, r = self.list(cursor=cur, since="2026-01-01T00:00:00Z")
+            self.assertEqual(s, 200, (cur, r))
+        s, r = request("GET", self.base + "/v1/replicate/changes?after=" + "9" * 30, PEER_SECRET)
+        self.assertEqual(s, 400, r)
+
 
 if __name__ == "__main__":
     import unittest
