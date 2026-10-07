@@ -819,10 +819,11 @@ final class AppModel: ObservableObject {
     }
 
     /// The global shortcut and the menu bar's Show Floating Panel: hidden/snoozed → shown,
-    /// shown → hidden. Returns false if hiding was refused.
+    /// shown → hidden. Returns false if hiding was refused. A peek (a menu item opened the
+    /// hidden panel) counts as hidden, matching the unchecked menu item: it stays shown.
     @discardableResult
     func toggleVisibility() -> Bool {
-        if visibility.isHidden(at: Date()) && !peeking { showPanel(); return true }
+        if visibility.isHidden(at: Date()) { showPanel(); return true }
         return hidePanel()
     }
 
