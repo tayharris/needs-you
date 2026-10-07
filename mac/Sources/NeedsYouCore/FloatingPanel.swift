@@ -60,10 +60,10 @@ public final class EdgeGlowWindow: NSPanel {
             backing: .buffered,
             defer: true
         )
-        level = .statusBar
         collectionBehavior = FloatingPanel.requiredCollectionBehavior
         ignoresMouseEvents = true
         isFloatingPanel = true
+        level = .statusBar   // after isFloatingPanel, which resets the level to .floating
         hidesOnDeactivate = false
         becomesKeyOnlyIfNeeded = true
         isOpaque = false
