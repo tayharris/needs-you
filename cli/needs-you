@@ -749,6 +749,7 @@ def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None
                 _remove(path)
                 out.sent += 1
                 out.results[path] = result
+                _after_sent(entry["path"], entry["body"], result[2])
                 drop_held(key)  # resolved, or re-posted in full: the held add is moot
                 if verbose and path != mine:
                     warn("sent queued %s %s via %s" % (entry["method"], entry["path"], result[0]))
@@ -974,15 +975,78 @@ def _prune_session_items(base: str) -> None:
             pass
 
 
+# key -> the id the hub gave it, for the items this run sent (an add sent from the outbox
+# learns its id only then): the note keeps it, so `resolve --id` can find the note.
+_SENT_IDS: Dict[str, str] = {}
+
+
+def _note_name(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+def _session_notes(name: Optional[str] = None) -> List[str]:
+    """Every note file (or every one named `name`) across the sessions."""
+    base = session_items_dir()
+    out: List[str] = []
+    try:
+        sessions = os.listdir(base)
+    except OSError:
+        return out
+    for sess in sessions:
+        d = os.path.join(base, sess)
+        if os.path.islink(d) or not os.path.isdir(d):
+            continue
+        try:
+            names = [name] if name else os.listdir(d)
+        except OSError:
+            continue
+        out.extend(os.path.join(d, n) for n in names if os.path.isfile(os.path.join(d, n)))
+    return out
+
+
+def forget_session_item_id(item_id: str) -> None:
+    """`resolve --id`: forget the notes of the item with that id. Never raises."""
+    if not item_id:
+        return
+    for path in _session_notes():
+        if _read_lease(path).get("id") == item_id:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def _after_sent(path: str, body: Dict[str, Any], resp: Dict[str, Any]) -> None:
+    """Keep the session notes in step with what the hub said. A resolve (by key or id) names
+    the items it closed; an add of a `needs` item names its id, which its note keeps."""
+    try:
+        if path == "/v1/items/resolve":
+            for item in resp.get("items") or []:
+                if isinstance(item, dict) and isinstance(item.get("key"), str):
+                    note_session_item(item["key"], open_=False)
+            return
+        key, item_id = body.get("key"), resp.get("id")
+        if not (isinstance(key, str) and isinstance(item_id, str) and body.get("kind", "needs") == "needs"):
+            return
+        _SENT_IDS[key] = item_id
+        for note in _session_notes(_note_name(key)):
+            lease = _read_lease(note)
+            if lease.get("key") == clean(key) and lease.get("id") != item_id:
+                lease["id"] = item_id
+                _write_atomic(note, "".join("%s=%s\n" % kv for kv in lease.items()).encode("utf-8"), 0o600)
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
 def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None) -> None:
     """Record (open_) or forget an item key for the hook. Never raises."""
     try:
-        name = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+        name = _note_name(key)
         base = session_items_dir()
         if not open_:  # resolved, or now done/info: no session waits on it any more
-            for sess in os.listdir(base) if os.path.isdir(base) else []:
+            for note in _session_notes(name):
                 try:
-                    os.remove(os.path.join(base, sess, name))
+                    os.remove(note)
                 except OSError:
                     pass
             return
@@ -998,6 +1062,8 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
         text = "key=%s\nexpires=%d\n" % (clean(key), time.time() + hours * 3600)
         if start:  # a process, not a session id: the hook also checks it's the same process
             text += "start=%s\n" % start
+        if key in _SENT_IDS:
+            text += "id=%s\n" % clean(_SENT_IDS[key])
         _write_atomic(os.path.join(d, name), text.encode("utf-8"), 0o600)
     except (OSError, ValueError):
         pass
@@ -1041,6 +1107,7 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     if mine is None:
         try:
             result: Any = send(cfg, method, path, body)
+            _after_sent(path, body, result[2])
         except Unreachable as e:
             warn("no hub reachable (%s), and the outbox can't be written: dropped" % e)
             return 0
@@ -1261,6 +1328,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
         rc = deliver(cfg, "POST", "/v1/items/resolve", body, args.quiet, args.json)
         if rc == 0 and args.key:
             note_session_item(args.key, open_=False)
+        elif rc == 0:  # (also forgotten by key once the hub names what it resolved)
+            forget_session_item_id(args.id)
         return rc
     kind = args.kind if args.cmd == "add" else args.cmd
     if args.link and len(args.link) > 6:

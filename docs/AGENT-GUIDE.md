@@ -254,8 +254,8 @@ the key for that session (in `~/.local/state/needs-you/session-items/`, by
 `$ORCA_TERMINAL_HANDLE`, else the agent's session id, such as `$CLAUDE_CODE_SESSION_ID` or
 `$CODEX_SESSION_ID`), and while it is open the hooks skip their generic "Claude is waiting for
 you" or "turn ended" card for that session. Permission prompts, questions and errors still post.
-`needs-you resolve --key` (from any session or run) or a `done`/`info` with the same key ends
-it; so do the item's `--expires-in` (at most 48 hours) and the session ending. So resolve what
+`needs-you resolve --key` or `--id` (from any session or run) or a `done`/`info` with the same
+key ends it; so do the item's `--expires-in` (at most 48 hours) and the session ending. So resolve what
 you post: until you do, the person gets no "waiting" card from that session. Details:
 [integrations/claude-code](../integrations/claude-code/README.md).
 

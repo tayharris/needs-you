@@ -7,6 +7,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - Agent hooks: **one card for one wait now works for Codex, Gemini CLI and opencode outside Orca.** It needed the Orca terminal handle, because only Claude Code told the agent's commands their session id. Now the CLI also reads Codex's `$CODEX_SESSION_ID` (older Codex: `$CODEX_THREAD_ID`), the opencode plugin hands the agent's commands `$NEEDS_YOU_OPENCODE_SESSION` through opencode's `shell.env` hook, and in Gemini CLI, which gives its commands no session id, the CLI notes the item for the Gemini process, which the hook matches against its own. Update the opencode plugin (`needs-you update`) and restart open sessions.
+- Agent hooks: an item the agent resolved with **`needs-you resolve --id`** kept that session's "waiting" card off until the item's expiry (up to 48 hours), because only a resolve by key cleared the note. Now a resolve by id clears it too, also when the hub is down (the note remembers the item's id once the hub has assigned it).
 
 ## [0.1.3] - 2026-10-07
 
