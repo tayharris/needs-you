@@ -16,6 +16,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - CLI: an outbox file that is valid JSON but not a queued request (`[]`, `null`, a missing `path`) no longer makes every later `needs-you` command crash while flushing; it moves to `outbox/failed/` like an unreadable one. A queued file another invocation already pruned is no longer an error either.
 - Hub: replication to a peer no longer stops for good when that peer's URL answers with something other than HTTP, cuts a response short, or sends JSON of the wrong shape. The per-peer thread used to die on these (until the hub restarted); now it records the error in `/v1/health` `peers[].last_error` and retries with backoff.
 - Hub: a push to a peer could get stuck for good when 200 queued records added up to more than the peer's 8 MiB `/v1/replicate` limit (large items with non-ASCII text, which is `\u`-escaped on the wire): the peer said 413 and the same batch was retried forever. Push batches now stay under 4 MiB.
+- CLI (security): queued requests are replayed with this machine's token, so the outbox now only replays the two requests the CLI ever queues (`POST /v1/items` and `POST /v1/items/resolve`). A planted outbox file with a path like `@other.host/x` could otherwise have sent the token to another host. Refused entries never move through a symlinked `outbox/failed/` (they are deleted instead), and the outbox lock file isn't opened through a symlink.
 
 ## [0.1.2] - 2026-10-07
 

@@ -381,7 +381,9 @@ def _lock():  # type: ignore[no-untyped-def]
     try:
         os.makedirs(d, mode=0o700, exist_ok=True)
         import fcntl
-        fh = open(os.path.join(d, ".lock"), "a")
+        fd = os.open(os.path.join(d, ".lock"), os.O_WRONLY | os.O_CREAT | os.O_APPEND
+                     | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        fh = os.fdopen(fd, "a")
         try:
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
@@ -390,6 +392,9 @@ def _lock():  # type: ignore[no-untyped-def]
         return fh
     except (OSError, ImportError):
         return None
+
+
+QUEUED_PATHS = ("/v1/items", "/v1/items/resolve")  # the only requests the CLI queues
 
 
 def _remove(path: str) -> None:
@@ -421,9 +426,10 @@ def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
                     entry = json.load(fh)
             except (OSError, ValueError):
                 entry = None
-            if not (isinstance(entry, dict) and isinstance(entry.get("method"), str)
-                    and isinstance(entry.get("path"), str) and entry["path"].startswith("/")
-                    and isinstance(entry.get("body"), (dict, type(None)))):
+            # Replayed with this machine's token, so only what queue() ever writes: a planted
+            # path such as "@other.host/x" would turn url + path into another host.
+            if not (isinstance(entry, dict) and entry.get("method") == "POST"
+                    and entry.get("path") in QUEUED_PATHS and isinstance(entry.get("body"), dict)):
                 _move_failed(path)  # unreadable, or not an entry this CLI wrote
                 dropped += 1
                 continue
@@ -524,12 +530,19 @@ def reap_leases(cfg: Config, verbose: bool = False) -> int:
 
 
 def _move_failed(path: str) -> None:
+    """Keep a refused entry in outbox/failed/ for a person to look at. Never through a
+    symlink out of the outbox: then the entry is just deleted."""
     d = os.path.join(os.path.dirname(path), "failed")
-    os.makedirs(d, mode=0o700, exist_ok=True)
     try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        if os.path.islink(d) or not os.path.isdir(d):
+            raise OSError("outbox/failed is not a plain directory")
         os.replace(path, os.path.join(d, os.path.basename(path)))
     except OSError:
-        pass
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------

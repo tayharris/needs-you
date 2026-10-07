@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
+import threading
 import time
 import sys
 
@@ -115,6 +117,66 @@ class Outbox(CliTestCase):
         self.assertEqual(self.queued(), [])
         self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), len(bad))
         self.assertEqual([i["key"] for i in self.items(hub, reader, "open")], ["after"])
+
+    def test_queued_entries_only_replay_what_the_cli_queues(self):
+        """An outbox file is replayed with this machine's token. Only the two requests the CLI
+        ever queues are sent: a planted `path` like "@evil.example/x" would otherwise turn
+        url + path into http://hub@evil.example/x and hand the token to another host."""
+        caught = []
+
+        class Catch(threading.Thread):
+            daemon = True
+
+            def __init__(self):
+                super().__init__()
+                self.srv = socket.socket()
+                self.srv.bind(("127.0.0.1", 0))
+                self.srv.listen(4)
+
+            def run(self):
+                while True:
+                    try:
+                        conn, _ = self.srv.accept()
+                    except OSError:
+                        return
+                    caught.append(conn.recv(65536))
+                    conn.close()
+
+        evil = Catch()
+        evil.start()
+        self.addCleanup(evil.srv.close)
+        os.makedirs(self.outbox)
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        planted = [
+            {"method": "POST", "path": "@127.0.0.1:%d/steal" % evil.srv.getsockname()[1], "body": {}},
+            {"method": "DELETE", "path": "/v1/tokens/x", "body": None},
+            {"method": "GET", "path": "/v1/items", "body": None},
+            {"method": "POST", "path": "/v1/items?x=1", "body": {"title": "t"}},
+        ]
+        for i, entry in enumerate(planted):
+            with open(os.path.join(self.outbox, "%020d-%05d.json" % (time.time_ns() + i, 1)), "w") as fh:
+                json.dump(entry, fh)
+        r = self.run_cli("flush", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        time.sleep(0.2)
+        self.assertEqual(caught, [], "the token went to another host")
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), len(planted))
+
+    def test_failed_dir_symlink_is_not_followed(self):
+        os.makedirs(self.outbox)
+        elsewhere = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(elsewhere)
+        os.symlink(elsewhere, os.path.join(self.outbox, "failed"))
+        with open(os.path.join(self.outbox, "%020d-%05d.json" % (time.time_ns(), 1)), "w") as fh:
+            fh.write("[]")
+        hub = self.make_hub("hub-a")
+        sender, _ = self.tokens(hub)
+        r = self.run_cli("flush", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertEqual(self.queued(), [])
 
     def test_missing_config_still_exits_zero(self):
         r = self.run_cli("add", "--key", "a", "--title", "t", urls=None, token=None)
