@@ -6,10 +6,12 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 
 1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Invite a machine**, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
-   - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes`,
-   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it."*
+   - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`. The last three options set up Claude Code alerts; on a machine without Claude Code, drop them ([Options](#options)),
+   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts."*
 2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
-3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**).
+3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**). On the machine, open a new terminal and run `needs-you doctor`: every line should be `OK` or `INFO`.
+
+If the installer stops with *can't reach the hub*, nothing was installed and no use was spent: the machine can't reach the Mac (asleep, Tailscale off on one side, or macOS blocked `python3`). [tailscale.md → Check reachability](tailscale.md#4-check-reachability) has the checks.
 
 The join URL is safe to open in a browser first: it's Markdown that explains what will happen. Opening it doesn't spend a use.
 

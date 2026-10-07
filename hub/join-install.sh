@@ -282,7 +282,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
   rmdir "$CONF_DIR" 2>/dev/null || true
-  say "needs-you removed from this machine. Revoke its token in the Mac app (Settings → Access) or on the hub."
+  say "needs-you removed from this machine. Revoke its token in the Mac app (Settings → Machines) or on the hub."
   exit 0
 fi
 
@@ -332,6 +332,15 @@ trap 'rm -rf "$TMP"' EXIT
 fetch() { curl -fsSL --noproxy '*' --max-time 30 "$HUB_URL/dl/$1" -o "$2" && verify "$1" "$2"; }
 
 # ---------------------------------------------------------------- CLI
+if ! curl -fsS --noproxy '*' --max-time 10 -o /dev/null "$HUB_URL/v1/health"; then
+  warn "can't reach the hub at $HUB_URL, so nothing was installed. Check from this machine:"
+  warn "  curl -sS --max-time 5 $HUB_URL/v1/health     (should print \"ok\":true)"
+  warn "A timeout: the Mac is asleep, Tailscale is off on one of the two machines, or macOS"
+  warn "blocked python3 (allow it when asked). \"Could not resolve host\": this machine isn't"
+  warn "on the tailnet or MagicDNS is off: re-run with --hub and the hub's tailnet IP in place of"
+  warn "its name (e.g. --hub http://100.x.y.z:8765; \`tailscale ip -4\` on the Mac prints it)."
+  die "more: docs/guides/tailscale.md (Check reachability) in the needs-you repo"
+fi
 fetch needs-you "$TMP/needs-you" || die "could not download the CLI from $HUB_URL/dl/needs-you"
 python3 - "$TMP/needs-you" <<'PY' || die "the downloaded CLI looks wrong; not installing it"
 import sys
@@ -448,6 +457,29 @@ if [ "$HOOKS" != none ]; then
   done
   if [ "$HOOKS" = user ]; then
     NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --user
+    # Record which hooks.json the settings were merged from, as `needs-you update` does, so
+    # `needs-you doctor` doesn't report the hooks we just installed as out of date.
+    hj=""
+    for kv in $SHA256S; do [ "${kv%%=*}" = hooks.json ] && hj=${kv#*=}; done
+    if [ -n "$hj" ]; then
+      python3 - "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you" "$hj" <<'PY' || true
+import json, os, sys
+d, sha = sys.argv[1], sys.argv[2]
+p = os.path.join(d, "update.json")
+try:
+    with open(p, encoding="utf-8") as fh:
+        st = json.load(fh)
+    st = st if isinstance(st, dict) else {}
+except (OSError, ValueError):
+    st = {}
+st["hooks_json_sha256"] = sha
+os.makedirs(d, mode=0o700, exist_ok=True)
+fd = os.open(p + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as fh:
+    json.dump(st, fh, sort_keys=True)
+os.replace(p + ".tmp", p)
+PY
+    fi
   else
     NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --project "$PWD"
   fi
@@ -491,8 +523,12 @@ say ""
   --body "Test item from the invite installer. It expires on its own." --agent installer \
   --host "$HOST_NAME" || true
 say ""
-say "Done. Try: $CLI add --key \"test:$HOST_NAME:hello\" --title \"Hello from $HOST_NAME\""
 case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) say "Note: $BIN_DIR is not on PATH. Add to your shell profile: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+  *":$BIN_DIR:"*) NY=needs-you ;;
+  *) NY=$CLI ;;  # path_setup above said how to get it on PATH; until then, the full path works
 esac
+say "Done. Check the setup (every line should be OK or INFO):"
+say "  $NY doctor"
+say "Then post a test item and resolve it:"
+say "  $NY add --key \"personal:test:$HOST_NAME\" --context personal --title \"Hello from $HOST_NAME\""
+say "  $NY resolve --key \"personal:test:$HOST_NAME\""

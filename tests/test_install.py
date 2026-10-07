@@ -12,7 +12,7 @@ import stat
 import subprocess
 import unittest
 
-from support import ROOT, HubTestCase, request
+from support import ROOT, HubTestCase, free_port, request
 
 OWNER = "owner-secret-0123456789abcdef"
 REAL_HOME = os.path.expanduser("~")
@@ -103,6 +103,19 @@ class InstallScript(HubTestCase):
         with open(os.path.join(self.home, ".claude", "settings.json")) as fh:
             self.assertIn("needs-you-hook.sh", fh.read())
         self.assertTrue(os.path.exists(os.path.join(self.home, ".claude", "hooks", "needs-you-hook.sh")))
+        # the hooks.json it merged is recorded, so doctor doesn't call fresh hooks out of date
+        with open(os.path.join(self.home, ".local", "state", "needs-you", "update.json")) as fh:
+            sha = json.load(fh)["hooks_json_sha256"]
+        _, manifest = request("GET", self.hub.url + "/dl/manifest.json")
+        self.assertEqual(sha, manifest["files"]["hooks.json"]["sha256"])
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        update = [c for c in json.loads(d.stdout)["checks"] if c["check"] == "update"][0]
+        self.assertNotIn("hooks.json", update["detail"])
+        # the closing lines point at doctor and a test item
+        self.assertIn("needs-you doctor", r.stdout)
+        self.assertIn('resolve --key "personal:test:box1"', r.stdout)
+        self.assertNotIn("is not on PATH", r.stdout)
         self.assertIn("needs-you add", r.stdout)  # the orca snippet is printed
         plist = os.path.join(self.home, "Library", "LaunchAgents", "io.needs-you.flush.plist")
         with open(plist) as fh:
@@ -250,6 +263,16 @@ class InstallScript(HubTestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("unknown, expired or revoked", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
+
+    def test_unreachable_hub_says_how_to_check(self):
+        inv = self.invite()
+        r = self.install(inv, "--yes", "--hub", "http://127.0.0.1:%d" % free_port())
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("can't reach the hub", r.stderr)
+        self.assertIn("/v1/health", r.stderr)
+        self.assertIn("tailscale.md", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
+        self.assertEqual(self.hub.store.list_invites()[0]["left"], 1)  # no use spent
 
     def test_help_when_piped(self):
         r = self.install(self.invite(), "--help")

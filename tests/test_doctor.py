@@ -132,6 +132,8 @@ class Healthy(DoctorTestCase):
         self.assertIn("OK    config", r.stdout)
         self.assertIn("-> ", r.stdout)  # hints are printed under their line
         self.assertIn("claude hooks", r.stdout)
+        # the minimal PATH is a WARN: the last line says so instead of a bare "ok"
+        self.assertRegex(r.stdout, r"\nok, with \d+ warnings? \(WARN above\)\n$")
 
 
 class NeverLeaksOrWrites(DoctorTestCase):
