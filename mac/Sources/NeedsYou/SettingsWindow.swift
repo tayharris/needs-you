@@ -17,21 +17,21 @@ final class SettingsWindowController {
     private let model: AppModel
     private let connect: ConnectController
     private let localHub: LocalHubController
-    private let hotKeyStatus: () -> Bool
+    private let hotKeys: HotKeyController
     /// Extra Settings sections (phase 3 adds its schedule options here).
     var extraSettings: (() -> AnyView)?
 
-    init(model: AppModel, connect: ConnectController, localHub: LocalHubController, hotKeyStatus: @escaping () -> Bool) {
+    init(model: AppModel, connect: ConnectController, localHub: LocalHubController, hotKeys: HotKeyController) {
         self.model = model
         self.connect = connect
         self.localHub = localHub
-        self.hotKeyStatus = hotKeyStatus
+        self.hotKeys = hotKeys
     }
 
     func show() {
         if window == nil {
             let view = SettingsView(model: model, settings: model.settings, connect: connect, localHub: localHub,
-                                    hotKeyRegistered: hotKeyStatus(), extra: extraSettings?(),
+                                    hotKeys: hotKeys, extra: extraSettings?(),
                                     close: { [weak self] in self?.window?.performClose(nil) })
             let hosting = NSHostingController(rootView: view)
             let w = NSWindow(contentViewController: hosting)
@@ -98,7 +98,7 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var connect: ConnectController
     @ObservedObject var localHub: LocalHubController
-    let hotKeyRegistered: Bool
+    @ObservedObject var hotKeys: HotKeyController
     var extra: AnyView?
     var close: () -> Void
 
@@ -150,10 +150,8 @@ struct SettingsView: View {
                 if let loginMessage {
                     Text(loginMessage).font(.caption).foregroundStyle(.secondary)
                 }
-                LabeledContent("Show / hide shortcut") {
-                    Text(hotKeyRegistered ? "⌃⌥Space" : "⌃⌥Space (unavailable: taken by another app or input-source switching)")
-                        .foregroundStyle(hotKeyRegistered ? .primary : .secondary)
-                }
+                ShortcutRecorder(hotKeys: hotKeys)
+                Toggle("Hotkey also opens the top card's first link", isOn: $settings.hotKeyOpensTopLink)
             }
 
             if let extra { extra }
@@ -394,7 +392,7 @@ struct SettingsView: View {
         } header: {
             Text("Menu bar and panel")
         } footer: {
-            Text("While the panel is hidden, new items only update the menu bar; an urgent one pulses the icon once. ⌃⌥Space shows or hides the panel. Drag the pill anywhere; Reset Position is in the menu bar and right-click menus.")
+            Text("While the panel is hidden, new items only update the menu bar; an urgent one pulses the icon once. \(settings.hotKey.display) shows or hides the panel. Drag the pill anywhere; Reset Position is in the menu bar and right-click menus.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -575,6 +573,50 @@ struct SettingsView: View {
         if SMAppService.mainApp.status == .requiresApproval {
             loginMessage = "Approve Needs You in System Settings → General → Login Items."
         }
+    }
+}
+
+/// The shortcut and its recorder. Lives in the Settings window only (never the panel):
+/// recording listens for the next key press in this window.
+private struct ShortcutRecorder: View {
+    @ObservedObject var hotKeys: HotKeyController
+    @State private var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent("Show / hide shortcut") {
+                HStack(spacing: 8) {
+                    Text(hotKeys.isRecording ? "Type a shortcut… (Esc cancels)" : hotKeys.combo.display)
+                        .font(hotKeys.isRecording ? .body : .body.monospaced())
+                        .foregroundStyle(hotKeys.isRecording ? .secondary : .primary)
+                    if hotKeys.isRecording {
+                        Button("Cancel") { hotKeys.stopRecording() }
+                    } else {
+                        Button("Change…") {
+                            message = nil
+                            hotKeys.startRecording { message = $0 }
+                        }
+                        if hotKeys.combo != .standard {
+                            Button("Reset") { message = hotKeys.change(to: .standard) }
+                                .help("Back to \(HotKeyCombo.standard.display)")
+                        }
+                    }
+                }
+            }
+            if hotKeys.isRecording {
+                EmptyView()
+            } else if hotKeys.isRegistered {
+                Label("Registered", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+            } else {
+                Label("Not registered: another app or macOS (input-source switching?) has \(hotKeys.combo.display). Pick another.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            if let message {
+                Text(message).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onDisappear { hotKeys.stopRecording() }
     }
 }
 

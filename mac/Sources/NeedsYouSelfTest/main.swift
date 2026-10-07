@@ -29,6 +29,7 @@ let entries =
     + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
     + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)
     + testEntries(CardLayoutTests.self, CardLayoutTests.allTests)
+    + testEntries(HotKeyComboTests.self, HotKeyComboTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

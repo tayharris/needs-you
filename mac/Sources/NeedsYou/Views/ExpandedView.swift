@@ -49,10 +49,12 @@ struct ExpandedView: View {
                 .foregroundStyle(model.lastError == nil ? Theme.faint : Theme.urgent.opacity(0.8))
                 .lineLimit(1)
             Spacer()
-            Text("⌃⌥Space")
+            Text(model.settings.hotKey.display)
                 .font(Theme.mono(model.metrics))
                 .foregroundStyle(Theme.faint)
-                .help("Global shortcut: show / hide the panel")
+                .help(model.settings.hotKeyOpensTopLink
+                      ? "Global shortcut: open the top card's first link (or show / hide the panel)"
+                      : "Global shortcut: show / hide the panel")
         }
         .padding(.horizontal, 12)
     }
@@ -108,8 +110,8 @@ struct ExpandedHeader: View {
             HeaderButton(symbol: "gearshape", help: "Settings", size: model.metrics.headerFont - 1) { model.openSettings() }
             HeaderButton(symbol: "chevron.up", help: "Collapse (Esc)", size: model.metrics.headerFont - 1) { model.collapse() }
             if model.canHidePanel {
-                // Hide the whole panel; the menu bar icon (or ⌃⌥Space) brings it back.
-                HeaderButton(symbol: "xmark", help: "Hide floating panel (menu bar icon or ⌃⌥Space shows it)", size: model.metrics.headerFont - 1) { model.hidePanel() }
+                // Hide the whole panel; the menu bar icon (or the shortcut) brings it back.
+                HeaderButton(symbol: "xmark", help: "Hide floating panel (menu bar icon or \(model.settings.hotKey.display) shows it)", size: model.metrics.headerFont - 1) { model.hidePanel() }
             }
         }
         .padding(.horizontal, 10)

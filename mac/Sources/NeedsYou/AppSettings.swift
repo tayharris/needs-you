@@ -33,6 +33,19 @@ final class AppSettings: ObservableObject {
         static let urgentShowsHiddenPanel = "urgentShowsHiddenPanel"
         static let panelHidden = "panelHidden"
         static let snapToCorners = "snapToCorners"
+        static let hotKey = "hotKey"
+        static let hotKeyOpensTopLink = "hotKeyOpensTopLink"
+    }
+
+    /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
+    /// missing or invalid means ⌃⌥Space.
+    @Published var hotKey: HotKeyCombo {
+        didSet { if hotKey != oldValue { defaults.set(hotKey.storageString, forKey: Key.hotKey) } }
+    }
+    /// The shortcut opens the top card's first link (when it has one) instead of showing or
+    /// hiding the panel. Default off; the panel never takes focus either way.
+    @Published var hotKeyOpensTopLink: Bool {
+        didSet { defaults.set(hotKeyOpensTopLink, forKey: Key.hotKeyOpensTopLink) }
     }
 
     /// Look and feel: panel size, text size, alerts, and so on (UIPrefs; defaults are the
@@ -135,6 +148,8 @@ final class AppSettings: ObservableObject {
         tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
         snapToCorners = defaults.bool(forKey: Key.snapToCorners)
         ui = UIPrefs.load(from: defaults)
+        hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))
+        hotKeyOpensTopLink = defaults.bool(forKey: Key.hotKeyOpensTopLink)
         // Stored prefs that hide both the icon and the panel: keep the icon.
         if visibility.showMenuBarIcon != defaults.bool(forKey: Key.showMenuBarIcon) {
             defaults.set(true, forKey: Key.showMenuBarIcon)
