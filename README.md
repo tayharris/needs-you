@@ -2,13 +2,17 @@
 
 One inbox for "you have to do something". AI agents, servers and CI post an item when they're blocked on you; your Mac shows it in a small floating pill, with a link to where you act, and it disappears once it's handled.
 
+**Your Mac is the hub.** A hub is a small SQLite database behind a tiny web server: one Python file that needs only the standard library. The Mac app runs one, so there's nothing else to install: no server, no account, no cloud. **Senders** (servers, CI, agents) post with the `needs-you` command, also one Python file: it tries each hub in turn, and if none answers (the Mac is asleep, say) it keeps the alert in a local outbox and sends it later. **Server hubs** are optional: the same hub, always on, on a Linux server, for redundancy, so alerts land while the Mac sleeps. Most people don't need one. It's light: the idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](docs/HUB.md#resource-use)). More in [Words](docs/guides/concepts.md).
+
+**Works with:** [Claude Code](docs/guides/claude-code.md) (hooks + skill) and [Orca](docs/guides/orca.md) (automation prompt blocks). Coming soon: Codex, Kimi, Grok, Gemini CLI, Cursor, GitHub Copilot, Aider, Cline, Continue, opencode. Anything that can run a shell command can post too ([Add a sender](docs/guides/add-a-sender.md)).
+
 Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
 ## Get started
 
 Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page.
 
-Words used below: the **hub** is the small service that stores items (the Mac app runs one for you, so your Mac is the hub); a **sender** is any machine or agent that posts items, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
+Words used below: the **hub** holds your alerts (the Mac app runs one, so your Mac is the hub); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
 
 1. **Download** the latest release from the repository's [Releases page](https://github.com/tayharris/needs-you/releases) (macOS 14 or later): `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
 2. **First launch.** The app is ad-hoc signed, not notarized, so macOS blocks it once. On macOS 14 and earlier: right-click `NeedsYou.app` → **Open** → **Open**. On macOS 15 and later: double-click it, then **System Settings → Privacy & Security → Open Anyway**. The release notes have the full steps (firewall prompt, managed Macs). The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools; if Settings says Python 3 isn't available, run `xcode-select --install` and reopen the app.
@@ -32,14 +36,14 @@ Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/
 
 ## How it works, in three steps
 
-1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting, and it runs its own hub (a tiny HTTP + SQLite service). Nothing else to set up.
+1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting, and it runs its own hub (a small SQLite database behind a tiny web server). Nothing else to set up.
 2. **Connect Claude Code on the Mac.** Right-click the pill → **Settings…** → **Connect a machine** → **Create invite**, copy the **Agent prompt**, and paste it into Claude Code: *"Set up needs-you alerts on this machine: read &lt;link&gt; and follow it."* The agent reads the link, installs the `needs-you` CLI, and from then on posts when it's blocked on you.
 3. **Connect servers over Tailscale.** Same thing on any VM, devbox or CI runner: paste the prompt into its agent, or run the one-liner the link gives you. One link can set up several machines; each gets its own revocable token.
 
 ```
  agents, CI, cron          needs-you CLI                 your Mac
  on servers or the Mac ──► (fails over, queues  ──────►  NeedsYou.app
-                            while the Mac sleeps)        └─ its own hub (HTTP + SQLite)
+                            while the Mac sleeps)        └─ its own hub (SQLite + tiny web server)
                                                              ▲
                          optional: always-on server hubs ────┘ replicate
 ```

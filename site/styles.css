@@ -221,6 +221,7 @@ code, pre { font-family: var(--font-mono); }
   color: var(--text-muted);
   position: absolute; left: var(--space-4); top: calc(var(--space-3) + 0.2em);
 }
+.how + .note { margin: var(--space-3) 0 0; }
 
 /* Install */
 .button {
@@ -441,4 +442,34 @@ code, pre { font-family: var(--font-mono); }
   .arch-arrow { flex-direction: row; justify-content: center; gap: var(--space-2); }
   .arch-arrow svg { transform: rotate(90deg); width: 1.75rem; height: 0.75rem; margin: var(--space-2) 0; }
   .weight tbody th { width: auto; }
+}
+
+/* Hero: one line under the lede saying where the alerts live. */
+.hero-sub { color: var(--text-muted); max-width: 36rem; }
+
+/* Works with: supported agents as outlined rows, coming-soon ones as faint chips. */
+.works { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); margin: 0 0 var(--space-3); }
+.works-h3 {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono); font-size: var(--size-caption); font-weight: var(--weight-regular);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.works-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.works-list li {
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: var(--size-h6); font-weight: var(--weight-medium);
+}
+.works-list li span { color: var(--text-muted); font-weight: var(--weight-regular); }
+.works-soon { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.works-soon li {
+  padding: var(--space-1) var(--space-3);
+  background: none; border-style: dashed;
+  color: var(--text-secondary); font-weight: var(--weight-regular);
+}
+@media (max-width: 40rem) {
+  .works { grid-template-columns: minmax(0, 1fr); }
 }
