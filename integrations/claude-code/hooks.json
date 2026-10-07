@@ -1,4 +1,5 @@
 {
+  "_needs_you_version": "0.1.1",
   "hooks": {
     "Notification": [
       {

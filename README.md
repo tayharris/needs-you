@@ -70,6 +70,7 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 | [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
+| [Keeping up to date](docs/guides/updates.md) | The Mac app updating itself, `needs-you update` on senders, `scripts/rollout.sh` |
 
 Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 

@@ -9,6 +9,12 @@
 #     --no-launch         don't relaunch afterwards
 #     --quit-with term    quit with SIGTERM instead of asking the app to quit (tests; the
 #                         app handles SIGTERM like Quit, so its hub still stops cleanly)
+#     --record-rollback DIR   when a version is rolled back (--rollback, or the new one
+#                         didn't stay running), write the version left behind to
+#                         DIR/rolled-back-version, so the in-app updater skips it
+#
+# The app ships a copy at NeedsYou.app/Contents/Resources/scripts/install.sh, which its
+# updater runs detached with --app <staged copy> --dest <the running app's folder>.
 #
 # What it does:
 #   1. Copies the new app next to the old one with `ditto` (same volume), so the swap is
@@ -35,6 +41,7 @@ APP_SRC=""
 ROLLBACK=0
 LAUNCH=1
 QUIT_WITH=app
+RECORD_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) APP_SRC="$2"; shift 2 ;;
@@ -42,7 +49,8 @@ while [[ $# -gt 0 ]]; do
     --rollback) ROLLBACK=1; shift ;;
     --no-launch) LAUNCH=0; shift ;;
     --quit-with) QUIT_WITH="$2"; shift 2 ;;
-    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+    --record-rollback) RECORD_DIR="$2"; shift 2 ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -55,6 +63,10 @@ TARGET="$DEST/$NAME"
 PREVIOUS="$DEST/$NAME.previous"
 
 plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Contents/Info.plist"; }
+record_rollback() {   # $1 = the version that was left behind
+  [[ -n "$RECORD_DIR" && -n "$1" ]] || return 0
+  mkdir -p "$RECORD_DIR" && printf '%s\n' "$1" >"$RECORD_DIR/rolled-back-version" || true
+}
 running_pids() { pgrep -f "^$1/Contents/MacOS/NeedsYou( |$)" || true; }
 wait_gone() {   # $1 = app path, $2 = tenths of a second
   for _ in $(seq 1 "$2"); do
@@ -124,7 +136,9 @@ if [[ $ROLLBACK == 1 ]]; then
   [[ -d "$PREVIOUS" ]] || { echo "error: no previous version at $PREVIOUS" >&2; exit 1; }
   [[ -d "$TARGET" ]] || { echo "error: nothing installed at $TARGET" >&2; exit 1; }
   quit_app "$TARGET"; stop_bundle_hubs "$TARGET"
-  echo "==> rolling back: $(plist "$TARGET" CFBundleShortVersionString) → $(plist "$PREVIOUS" CFBundleShortVersionString)"
+  LEFT="$(plist "$TARGET" CFBundleShortVersionString)"
+  echo "==> rolling back: $LEFT → $(plist "$PREVIOUS" CFBundleShortVersionString)"
+  record_rollback "$LEFT"
   SWAP="$DEST/.$NAME.swap.$$"
   mv "$TARGET" "$SWAP"
   mv "$PREVIOUS" "$TARGET"
@@ -170,6 +184,7 @@ if [[ $LAUNCH == 1 ]] && ! launch_app "$TARGET"; then
   echo "error: the new version didn't stay running" >&2
   if [[ -d "$PREVIOUS" ]]; then
     echo "==> restoring the previous version"
+    record_rollback "$(plist "$TARGET" CFBundleShortVersionString)"
     quit_app "$TARGET" || true; stop_bundle_hubs "$TARGET"
     FAILED="$DEST/.$NAME.failed.$$"
     mv "$TARGET" "$FAILED"

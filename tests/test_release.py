@@ -6,6 +6,7 @@ app (NEEDS_YOU_SKIP_APP=1), into a temporary directory.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -89,12 +90,14 @@ class BuildReleaseTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         tarball = "needs-you-server-%s.tar.gz" % self.v
         cli = "needs-you-cli-%s" % self.v
-        self.assertEqual(sorted(os.listdir(self.out)), sorted(["NOTES.md", "SHA256SUMS", cli, tarball]))
+        manifest = "release-manifest.json"
+        self.assertEqual(sorted(os.listdir(self.out)),
+                         sorted(["NOTES.md", "SHA256SUMS", cli, tarball, manifest]))
         self.assertTrue(os.access(os.path.join(self.out, cli), os.X_OK))
 
         with open(os.path.join(self.out, "SHA256SUMS")) as fh:
             sums = dict(reversed(line.split()) for line in fh if line.strip())
-        self.assertEqual(sorted(sums), sorted([cli, tarball]))
+        self.assertEqual(sorted(sums), sorted([cli, tarball, manifest]))
         for name, digest in sums.items():
             with open(os.path.join(self.out, name), "rb") as fh:
                 self.assertEqual(hashlib.sha256(fh.read()).hexdigest(), digest, name)
@@ -115,12 +118,63 @@ class BuildReleaseTests(unittest.TestCase):
         self.assertIn("SHA256SUMS", notes)
         self.assertNotIn("## [", notes)  # the section body only, no headings from other versions
 
+    def test_release_manifest_matches_the_assets(self):
+        self.cut_changelog()
+        r = self.build(NEEDS_YOU_TAG="v" + self.v, NEEDS_YOU_TESTS_RESULT="success",
+                       GITHUB_RUN_ID="123456", GITHUB_RUN_ATTEMPT="2", GITHUB_REPOSITORY="owner/repo",
+                       GITHUB_SHA="a" * 40)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(self.out, "release-manifest.json")) as fh:
+            m = json.load(fh)
+        self.assertEqual(m["schema"], 1)
+        self.assertEqual(m["version"], self.v)
+        self.assertEqual(m["tag"], "v" + self.v)
+        self.assertEqual(m["commit"], "a" * 40)
+        self.assertEqual(m["run_id"], 123456)
+        self.assertEqual(m["run_attempt"], 2)
+        self.assertEqual(m["repository"], "owner/repo")
+        self.assertEqual(m["tests"], "success")
+        with open(os.path.join(ROOT, "mac", "Package.swift")) as fh:
+            major = re.search(r"\.macOS\(\.v(\d+)\)", fh.read()).group(1)
+        self.assertEqual(m["min_macos"], major + ".0")
+        with open(os.path.join(self.out, "SHA256SUMS")) as fh:
+            sums = dict(reversed(line.split()) for line in fh if line.strip())
+        names = [a["name"] for a in m["assets"]]
+        self.assertEqual(sorted(names), sorted(n for n in sums if n != "release-manifest.json"))
+        for a in m["assets"]:
+            path = os.path.join(self.out, a["name"])
+            self.assertEqual(a["size"], os.path.getsize(path), a["name"])
+            self.assertEqual(a["sha256"], sums[a["name"]], a["name"])
+
+    def test_manifest_defaults_outside_ci(self):
+        self.cut_changelog()
+        r = self.build(GITHUB_RUN_ID="", GITHUB_SHA="")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(self.out, "release-manifest.json")) as fh:
+            m = json.load(fh)
+        self.assertEqual(m["tests"], "local")
+        self.assertIsNone(m["run_id"])
+        self.assertRegex(m["commit"], r"^[0-9a-f]{40}$")
+
     def test_refuses_a_non_empty_output_dir(self):
         os.makedirs(self.out)
         open(os.path.join(self.out, "stale"), "w").close()
         r = self.build()
         self.assertEqual(r.returncode, 1)
         self.assertIn("not empty", r.stderr)
+
+
+class BundleScriptTests(unittest.TestCase):
+    def test_bundle_ships_install_sh_for_the_updater(self):
+        with open(os.path.join(ROOT, "mac", "scripts", "bundle.sh")) as fh:
+            s = fh.read()
+        self.assertIn('cp scripts/install.sh "$RES/scripts/install.sh"', s)
+
+    def test_install_sh_records_rollbacks(self):
+        with open(os.path.join(ROOT, "mac", "scripts", "install.sh")) as fh:
+            s = fh.read()
+        self.assertIn("--record-rollback)", s)
+        self.assertEqual(s.count('record_rollback "'), 2)  # --rollback and the auto-restore
 
 
 if __name__ == "__main__":

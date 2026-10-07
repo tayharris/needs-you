@@ -108,8 +108,14 @@ fi
 DB_INODE="$(stat -f %i "$SUPPORT/hub.db" 2>/dev/null || echo none)"
 V1_PIDS="$(pgrep -f "^$APP/Contents/MacOS/NeedsYou( |$)" || true)"
 
-echo "==> update to v2 with install.sh"
-scripts/install.sh --app "$T/v2/NeedsYou.app" --dest "$DEST" "${QUIT[@]+"${QUIT[@]}"}"
+# The update runs the copy of install.sh inside the installed v1, as the in-app updater
+# does (from a copy outside the bundle, since the bundle is moved during the swap).
+BUNDLED="$APP/Contents/Resources/scripts/install.sh"
+[[ -x "$BUNDLED" ]] && pass "install.sh is bundled at Contents/Resources/scripts/" || fail "no bundled install.sh"
+cp "$BUNDLED" "$T/install-from-app.sh"
+
+echo "==> update to v2 with the bundled install.sh"
+"$T/install-from-app.sh" --app "$T/v2/NeedsYou.app" --dest "$DEST" --record-rollback "$T/updates" "${QUIT[@]+"${QUIT[@]}"}"
 
 echo "==> checks"
 V="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
@@ -149,7 +155,8 @@ if [[ $HUB_UP == 1 ]]; then
 fi
 
 echo "==> rollback"
-scripts/install.sh --rollback --dest "$DEST" "${QUIT[@]+"${QUIT[@]}"}"
+scripts/install.sh --rollback --dest "$DEST" --record-rollback "$T/updates" "${QUIT[@]+"${QUIT[@]}"}"
+[[ "$(cat "$T/updates/rolled-back-version" 2>/dev/null)" == 0.9.1 ]] && pass "rollback recorded 0.9.1 for the updater to skip" || fail "rolled-back-version not written"
 V="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 [[ "$V" == 0.9.0 ]] && pass "rolled back to 0.9.0" || fail "after rollback the version is $V"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP.previous/Contents/Info.plist")" == 0.9.1 ]] \

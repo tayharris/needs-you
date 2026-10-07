@@ -71,8 +71,18 @@ final class ConnectLinkTests: XCTestCase {
 
     func testInviteTexts() {
         let invite = InviteResponse(code: "c", joinURL: "http://mac.tail1.ts.net:8765/join/c", macURL: "needsyou://connect?x", expiresAt: nil)
-        XCTAssertEqual(invite.agentPrompt, "Set up needs-you alerts on this machine: read http://mac.tail1.ts.net:8765/join/c and follow it.")
-        XCTAssertEqual(invite.shellOneLiner, "curl -fsSL http://mac.tail1.ts.net:8765/join/c/install.sh | bash -s -- --yes")
+        XCTAssertEqual(invite.agentPrompt, "Set up needs-you alerts on this machine: read http://mac.tail1.ts.net:8765/join/c and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts.")
+        XCTAssertEqual(invite.shellOneLiner, "curl -fsSL http://mac.tail1.ts.net:8765/join/c/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts")
+        // An older hub's short texts are replaced; a current hub's are used as sent.
+        let old = InviteResponse(code: "c", joinURL: "http://mac.tail1.ts.net:8765/join/c/", macURL: nil, expiresAt: nil,
+                                 hubAgentPrompt: "Set up needs-you alerts on this machine: read x and follow it.",
+                                 hubInstallCommand: "curl -fsSL x/install.sh | bash -s -- --yes")
+        XCTAssertTrue(old.shellOneLiner.hasSuffix("/join/c/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts"))
+        XCTAssertTrue(old.agentPrompt.contains("--claude-hooks user --skill --alerts"))
+        let current = InviteResponse(code: "c", joinURL: "j", macURL: nil, expiresAt: nil,
+                                     hubAgentPrompt: "hub prompt --claude-hooks user", hubInstallCommand: "hub cmd --claude-hooks user")
+        XCTAssertEqual(current.agentPrompt, "hub prompt --claude-hooks user")
+        XCTAssertEqual(current.shellOneLiner, "hub cmd --claude-hooks user")
         // uses are clamped to 1...20.
         XCTAssertEqual(InviteRequest(name: " box ", role: .sender, uses: 99, ttlHours: 24).uses, 20)
         XCTAssertEqual(InviteRequest(name: "box", role: .sender, uses: 0, ttlHours: 24).uses, 1)

@@ -215,16 +215,23 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         self.hubInstallCommand = hubInstallCommand
     }
 
-    /// What to paste into an agent on the new machine.
+    /// The installer flags for a machine that runs Claude Code: hooks, skill, alerts on
+    /// (docs/guides/claude-code-everywhere.md). The join page lists the rest.
+    public static let claudeFlags = "--claude-hooks user --skill --alerts"
+
+    /// What to paste into an agent on the new machine. A hub that predates the Claude
+    /// flags sends a shorter prompt; this one is used instead.
     public var agentPrompt: String {
-        hubAgentPrompt ?? "Set up needs-you alerts on this machine: read \(joinURL) and follow it."
+        if let hubAgentPrompt, hubAgentPrompt.contains("--claude-hooks") { return hubAgentPrompt }
+        return "Set up needs-you alerts on this machine: read \(joinURL) and follow it. "
+            + "If this machine runs Claude Code, use \(Self.claudeFlags)."
     }
-    /// What to run on the new machine.
+    /// What to run on the new machine: the full Claude Code setup.
     public var shellOneLiner: String {
-        if let hubInstallCommand { return hubInstallCommand }
+        if let hubInstallCommand, hubInstallCommand.contains("--claude-hooks") { return hubInstallCommand }
         var base = joinURL
         while base.hasSuffix("/") { base.removeLast() }
-        return "curl -fsSL \(base)/install.sh | bash -s -- --yes"
+        return "curl -fsSL \(base)/install.sh | bash -s -- --yes \(Self.claudeFlags)"
     }
 }
 
@@ -270,18 +277,27 @@ public struct TokenSummary: Decodable, Equatable, Identifiable, Sendable {
     public var openItems: Int
     /// The token making the request (this Mac's own owner token).
     public var current: Bool
+    /// What the machine last reported (X-Needs-You-Client): "cli", "hook", "skill", "orca"
+    /// → "X.Y.Z" / "none" / "unknown". Empty from older hubs or before its first report.
+    public var client: [String: String]
+    /// When this hub last saw a call from it. Nil from older hubs, or never.
+    public var lastSeenAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, role, current
+        case id, name, role, current, client
         case openItems = "open_items"
+        case lastSeenAt = "last_seen_at"
     }
 
-    public init(id: String, name: String, role: HubRole?, openItems: Int = 0, current: Bool = false) {
+    public init(id: String, name: String, role: HubRole?, openItems: Int = 0, current: Bool = false,
+                client: [String: String] = [:], lastSeenAt: Date? = nil) {
         self.id = id
         self.name = name
         self.role = role
         self.openItems = openItems
         self.current = current
+        self.client = client
+        self.lastSeenAt = lastSeenAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -291,6 +307,19 @@ public struct TokenSummary: Decodable, Equatable, Identifiable, Sendable {
         role = (try? c.decodeIfPresent(String.self, forKey: .role)).flatMap { $0.flatMap(HubRole.init(rawValue:)) }
         openItems = (try? c.decodeIfPresent(Int.self, forKey: .openItems)) ?? 0
         current = (try? c.decodeIfPresent(Bool.self, forKey: .current)) ?? false
+        // Tolerant: a non-string value (a newer hub) drops that entry, not the token.
+        let raw = (try? c.decodeIfPresent([String: JSONScalar].self, forKey: .client)) ?? nil
+        client = (raw ?? [:]).compactMapValues(\.string)
+        let seen = (try? c.decodeIfPresent(String.self, forKey: .lastSeenAt)) ?? nil
+        lastSeenAt = seen.flatMap(HubJSON.parseDate)
+    }
+}
+
+/// A JSON value that may or may not be a string.
+struct JSONScalar: Decodable {
+    let string: String?
+    init(from decoder: Decoder) throws {
+        string = try? decoder.singleValueContainer().decode(String.self)
     }
 }
 

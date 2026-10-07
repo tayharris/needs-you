@@ -215,7 +215,7 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   back.
 - **Tokens and invites** live in the database, so they survive. Senders keep their
   `~/.config/needs-you/env` and outbox; both formats are unchanged (an env file with only
-  `NEEDS_YOU_URL` still works). Update the CLI with `needs-you self-update`.
+  `NEEDS_YOU_URL` still works). Update senders with `needs-you update` ([guides/updates.md](guides/updates.md)).
 - **Peered hubs:** upgrade all of them (and the Mac app) together when moving from a version
   without invites. Older hubs ignore invite records and refuse a replication batch that
   contains an `owner` token, so they fall behind until upgraded. Nothing is lost: the outbox

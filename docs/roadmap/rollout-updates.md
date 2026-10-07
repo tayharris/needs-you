@@ -1,6 +1,15 @@
 # Rollout and updates: every machine on the version that passed
 
-Status: plan, nothing built, 2026-10-07.
+Status: items 1-14 built on `tay/auto-update` (2026-10-07), with the security changes below; item 15 (server hub updater) not built. Marked per item in the build list.
+
+**Changed from this plan after review:** sender auto-updates are opt-in (`--auto-update` /
+`NEEDS_YOU_AUTO_UPDATE=1`), come only from the invite hub over https, loopback or the tailnet
+(pinned address, no redirects), and are cross-checked against the GitHub release with `gh`
+(required for automatic updates). The Mac updater accepts GitHub hosts only, the repo is fixed in
+code (no `updateRepository`), checks the signing team and symlinks, and has an optional pinned
+Ed25519 manifest key. The post-update notice shows in Settings → Updates instead of a hub item
+(an owner token can't post items), and the "7+ days behind" item isn't built. Details:
+[docs/guides/updates.md](../guides/updates.md), [audit item 17](../security/audit-2026-10-07.md).
 
 The owner runs the Mac app plus several Linux sender machines reached over SSH (devbox and friends), each with the CLI, the Claude Code hook and skill, and often the Orca prompt block. Today each piece updates by hand. Goal: **a release that passed its tests reaches the Mac app shortly after it ships, and from there every sender, with no SSH loop needed in the normal case**, and the owner can see which machines lag.
 
@@ -88,32 +97,32 @@ Ordered: each part works on its own, and the earlier parts make the later ones u
 
 ### Release (CI)
 
-1. **`release-manifest.json` asset.** `scripts/build-release.sh` writes it (version, commit, `GITHUB_RUN_ID`, each asset's sha256 and size, `min_macos` from `mac/Package.swift`); `release.yml` uploads it with the rest; it goes in `SHA256SUMS` too. Tests: `tests/test_release.py` (the manifest matches `SHA256SUMS`, version matches `VERSION`).
-2. **Ship `install.sh` in the bundle.** `mac/scripts/bundle.sh` copies `mac/scripts/install.sh` to `Contents/Resources/scripts/`; `install.sh` gains `--record-rollback DIR` (writes the version it left). Tests: `mac/scripts/upgrade-test.sh` covers the bundled copy.
+1. *(Built.)* **`release-manifest.json` asset.** `scripts/build-release.sh` writes it (version, commit, `GITHUB_RUN_ID`, each asset's sha256 and size, `min_macos` from `mac/Package.swift`); `release.yml` uploads it with the rest; it goes in `SHA256SUMS` too. Tests: `tests/test_release.py` (the manifest matches `SHA256SUMS`, version matches `VERSION`).
+2. *(Built.)* **Ship `install.sh` in the bundle.** `mac/scripts/bundle.sh` copies `mac/scripts/install.sh` to `Contents/Resources/scripts/`; `install.sh` gains `--record-rollback DIR` (writes the version it left). Tests: `mac/scripts/upgrade-test.sh` covers the bundled copy.
 
 ### Mac
 
-3. **`Updater` in NeedsYouCore (pure, tested).** `mac/Sources/NeedsYouCore/Updater.swift`: `SemVer` parse and compare; `ReleaseInfo` and `ReleaseManifest` decoding from fixture JSON (GitHub's release and runs shapes); `UpdateDecision.evaluate(release:manifest:run:current:now:soak:skipped:) -> .none | .wait(until) | .download(asset)`; `SHA256SUMS` line parse; checksum verify over a file (CryptoKit, a system framework); `InstallWindow.canInstall(panelExpanded:hovering:lastArrival:idleSeconds:now:)`. Tests: `mac/Tests/NeedsYouCoreTests/UpdaterTests.swift` (registered in `NeedsYouSelfTest/main.swift`, symlinked).
-4. **`UpdateSource` auth chain** (Core + app). Core: choose anonymous / `gh` / PAT file; fixed `gh` paths; never log the token. App: run `gh auth token` with `Process` (argv, 5 s timeout), keep the result in memory. Tests for the choice logic in Core.
-5. **`UpdateController` in the app.** `mac/Sources/NeedsYou/UpdateController.swift`: schedule (launch + 2 min, every 6 h), fetch, decide, download, stage, verify bundle id, version and `codesign --verify`, then install through the bundled `install.sh` when `InstallWindow` allows or on click. Settings → Updates: on/off, soak, auth status ("using gh", "PAT", "public"), Check now, Restart to update, Skip this version. Post-update `info` item through the local hub. Nothing activates the app except the Settings window itself; `FloatingPanelTests` unchanged and passing.
+3. *(Built.)* **`Updater` in NeedsYouCore (pure, tested).** `mac/Sources/NeedsYouCore/Updater.swift`: `SemVer` parse and compare; `ReleaseInfo` and `ReleaseManifest` decoding from fixture JSON (GitHub's release and runs shapes); `UpdateDecision.evaluate(release:manifest:run:current:now:soak:skipped:) -> .none | .wait(until) | .download(asset)`; `SHA256SUMS` line parse; checksum verify over a file (CryptoKit, a system framework); `InstallWindow.canInstall(panelExpanded:hovering:lastArrival:idleSeconds:now:)`. Tests: `mac/Tests/NeedsYouCoreTests/UpdaterTests.swift` (registered in `NeedsYouSelfTest/main.swift`, symlinked).
+4. *(Built.)* **`UpdateSource` auth chain** (Core + app). Core: choose anonymous / `gh` / PAT file; fixed `gh` paths; never log the token. App: run `gh auth token` with `Process` (argv, 5 s timeout), keep the result in memory. Tests for the choice logic in Core.
+5. *(Built.)* **`UpdateController` in the app.** `mac/Sources/NeedsYou/UpdateController.swift`: schedule (launch + 2 min, every 6 h), fetch, decide, download, stage, verify bundle id, version and `codesign --verify`, then install through the bundled `install.sh` when `InstallWindow` allows or on click. Settings → Updates: on/off, soak, auth status ("using gh", "PAT", "public"), Check now, Restart to update, Skip this version. Post-update `info` item through the local hub. Nothing activates the app except the Settings window itself; `FloatingPanelTests` unchanged and passing.
 
 ### Hub (API)
 
-6. **`/dl/manifest.json` and the Orca snippet file.** `hub/needs_you_hub.py`: compute and cache the sha256 and size of each `DOWNLOADS` entry; add `orca-snippet.md` (from `integrations/orca/snippet.md`). `hub/join-install.sh` fetches the snippet instead of carrying a heredoc. `mac/scripts/bundle.sh` bundles the snippet. Docs: `docs/API.md` (`/dl` table, manifest shape). Tests: `tests/test_api.py` (manifest matches files; 404 for unknown), `tests/test_orca.py` (README ↔ snippet file), `tests/test_install.py`.
-7. **Client version tracking.** Hub: parse `X-Needs-You-Client` (a strict `name=version` list, ≤ 200 chars; unknown names ignored), store in `token_clients(token_id, client, last_seen_at)` on authenticated sender calls, throttled to one write per token per 10 minutes; `GET /v1/tokens` gains `client` (object) and `last_seen_at`. Not replicated, so each hub reports what it saw, and the Mac merges by token id across hubs (newest `last_seen_at` wins). Docs: `docs/API.md`. Tests: `tests/test_api.py`. Mac: `Models.swift` and `HubClient.swift` decode the new optional fields (unknown fields stay ignored).
+6. *(Built.)* **`/dl/manifest.json` and the Orca snippet file.** `hub/needs_you_hub.py`: compute and cache the sha256 and size of each `DOWNLOADS` entry; add `orca-snippet.md` (from `integrations/orca/snippet.md`). `hub/join-install.sh` fetches the snippet instead of carrying a heredoc. `mac/scripts/bundle.sh` bundles the snippet. Docs: `docs/API.md` (`/dl` table, manifest shape). Tests: `tests/test_api.py` (manifest matches files; 404 for unknown), `tests/test_orca.py` (README ↔ snippet file), `tests/test_install.py`.
+7. *(Built.)* **Client version tracking.** Hub: parse `X-Needs-You-Client` (a strict `name=version` list, ≤ 200 chars; unknown names ignored), store in `token_clients(token_id, client, last_seen_at)` on authenticated sender calls, throttled to one write per token per 10 minutes; `GET /v1/tokens` gains `client` (object) and `last_seen_at`. Not replicated, so each hub reports what it saw, and the Mac merges by token id across hubs (newest `last_seen_at` wins). Docs: `docs/API.md`. Tests: `tests/test_api.py`. Mac: `Models.swift` and `HubClient.swift` decode the new optional fields (unknown fields stay ignored).
 
 ### CLI and integrations (sender-side)
 
-8. **Version stamps.** A `# needs-you <v>` line in `needs-you-hook.sh`, `SKILL.md` (as an HTML comment), the Orca snippet and `hooks.json` (a `"_needs_you_version"` key, which Claude Code ignores); `scripts/build-release.sh` and `tests/test_release.py` check they all match `VERSION`.
-9. **`needs-you update`.** `cli/needs-you`: manifest fetch, per-file verify and atomic install, `--check`, `--auto`, no downgrade; `self-update` becomes an alias. `doctor` gains an `update` check. Tests: `tests/test_cli.py` with a fake hub serving a manifest (good, bad checksum, older version), `tests/test_doctor.py`.
-10. **Auto-update from flush.** `flush` calls `update --auto` once per 24 h (state file `~/.local/state/needs-you/last-update`, random per-host offset), honours `NEEDS_YOU_AUTO_UPDATE=0`, never changes flush's exit code. Tests: `tests/test_cli.py`.
-11. **Client header.** The CLI sends `X-Needs-You-Client` on every request. Tests: `tests/test_cli.py` (header shape), `tests/test_api.py` end to end.
-12. **Orca pointer block.** `integrations/orca/README.md` and the snippet: the pasted block becomes "read `~/.config/needs-you/orca-snippet.md` and follow it", with the full text living in the file. Tests: `tests/test_orca.py`.
-13. **Mac Settings: "machines out of date".** Settings → Access shows each sender's versions and last seen; a summary line in Settings and the menu; one `low` item for a machine 7+ days behind. Pure counting in Core (`RolloutStatus`, tested).
+8. *(Built.)* **Version stamps.** A `# needs-you <v>` line in `needs-you-hook.sh`, `SKILL.md` (as an HTML comment), the Orca snippet and `hooks.json` (a `"_needs_you_version"` key, which Claude Code ignores); `scripts/build-release.sh` and `tests/test_release.py` check they all match `VERSION`.
+9. *(Built.)* **`needs-you update`.** `cli/needs-you`: manifest fetch, per-file verify and atomic install, `--check`, `--auto`, no downgrade; `self-update` becomes an alias. `doctor` gains an `update` check. Tests: `tests/test_cli.py` with a fake hub serving a manifest (good, bad checksum, older version), `tests/test_doctor.py`.
+10. *(Built.)* **Auto-update from flush.** `flush` calls `update --auto` once per 24 h (state file `~/.local/state/needs-you/last-update`, random per-host offset), honours `NEEDS_YOU_AUTO_UPDATE=0`, never changes flush's exit code. Tests: `tests/test_cli.py`.
+11. *(Built.)* **Client header.** The CLI sends `X-Needs-You-Client` on every request. Tests: `tests/test_cli.py` (header shape), `tests/test_api.py` end to end.
+12. *(Built.)* **Orca pointer block.** `integrations/orca/README.md` and the snippet: the pasted block becomes "read `~/.config/needs-you/orca-snippet.md` and follow it", with the full text living in the file. Tests: `tests/test_orca.py`.
+13. *(Built.)* **Mac Settings: "machines out of date".** Settings → Access shows each sender's versions and last seen; a summary line in Settings and the menu; one `low` item for a machine 7+ days behind. Pure counting in Core (`RolloutStatus`, tested).
 
 ### Fallback and server hubs
 
-14. **`scripts/rollout.sh`.** `rollout.sh [--hosts FILE] [--check] [host...]`: hosts from `~/.config/needs-you/hosts` (one SSH alias per line, for example `devbox`), else the arguments; never parses `~/.ssh/config` wildcards. Per host, over `ssh -o BatchMode=yes -o ConnectTimeout=10`: `needs-you update` (or `--check`), then `needs-you doctor --json`; prints a table (host, cli, hook, skill, doctor ok). If the CLI is missing, it says to use an invite link (it doesn't copy tokens). Tests: `tests/test_rollout.py` with a fake `ssh` on `PATH`; `shellcheck` already runs on every `*.sh`.
+14. *(Built.)* **`scripts/rollout.sh`.** `rollout.sh [--hosts FILE] [--check] [host...]`: hosts from `~/.config/needs-you/hosts` (one SSH alias per line, for example `devbox`), else the arguments; never parses `~/.ssh/config` wildcards. Per host, over `ssh -o BatchMode=yes -o ConnectTimeout=10`: `needs-you update` (or `--check`), then `needs-you doctor --json`; prints a table (host, cli, hook, skill, doctor ok). If the CLI is missing, it says to use an invite link (it doesn't copy tokens). Tests: `tests/test_rollout.py` with a fake `ssh` on `PATH`; `shellcheck` already runs on every `*.sh`.
 15. **`scripts/update-hub.sh` + systemd timer** for server hubs (gate, soak, checksum, symlink flip, health check, rollback). `deploy/needs-you-hub-update.{service,timer}`; `install-hub.sh --auto-update`. Docs: `docs/HUB.md`. Tests: `tests/test_install.py`-style with a fake release directory.
 
 ## Open decisions

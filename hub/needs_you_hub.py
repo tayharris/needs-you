@@ -83,7 +83,20 @@ DOWNLOADS = {
     "install-hooks.sh": ("integrations/claude-code/install-hooks.sh", "text/x-shellscript; charset=utf-8"),
     "hooks.json": ("integrations/claude-code/hooks.json", "application/json"),
     "SKILL.md": ("integrations/claude-code/skill/needs-you/SKILL.md", "text/markdown; charset=utf-8"),
+    "orca-snippet.md": ("integrations/orca/snippet.md", "text/markdown; charset=utf-8"),
 }
+# Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
+# the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
+FILE_VERSION_RE = re.compile(r'(?:needs[-_]you[-_]version"?\s*:\s*"?|^VERSION = ")(\d+\.\d+\.\d+)', re.M)
+# X-Needs-You-Client: "cli=0.1.1; hook=0.1.1; skill=none; orca=none". Unknown names are ignored.
+CLIENT_HEADER = "X-Needs-You-Client"
+CLIENT_NAMES = ("cli", "hook", "skill", "orca")
+CLIENT_VALUE_RE = re.compile(r"^(\d{1,6}\.\d{1,6}\.\d{1,6}|none|unknown)$")
+CLIENT_HEADER_MAX = 200
+CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
+
+# The invite installer flags for a machine that runs Claude Code: hooks, skill, alerts on.
+CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
 
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
@@ -236,6 +249,45 @@ def _enum_field(data: Dict[str, Any], name: str, allowed: Tuple[str, ...], defau
     if not isinstance(v, str) or v.strip().lower() not in allowed:
         raise _invalid(name, "%s must be one of %s" % (name, ", ".join(allowed)))
     return v.strip().lower()
+
+
+def parse_client_header(raw: Any) -> Dict[str, str]:
+    """The sender's reported versions. Strict: at most CLIENT_HEADER_MAX chars, `name=value`
+    pairs split by ';', known names only, values X.Y.Z, none or unknown. Anything else in the
+    header is dropped, so it can't carry text into the database."""
+    out: Dict[str, str] = {}
+    if not isinstance(raw, str) or not raw or len(raw) > CLIENT_HEADER_MAX:
+        return out
+    for part in raw.split(";"):
+        name, sep, value = part.strip().partition("=")
+        name, value = name.strip().lower(), value.strip()
+        if sep and name in CLIENT_NAMES and name not in out and CLIENT_VALUE_RE.match(value):
+            out[name] = value
+    return out
+
+
+def file_version(data: bytes) -> Optional[str]:
+    m = FILE_VERSION_RE.search(data[:16384].decode("utf-8", "replace"))
+    return m.group(1) if m else None
+
+
+def download_manifest(install_dir: str) -> Dict[str, Any]:
+    """GET /dl/manifest.json: each file /dl serves, with its sha256, size and version stamp.
+    Senders (needs-you update) verify what they download against it. Files this hub doesn't
+    have are left out."""
+    files: Dict[str, Any] = {}
+    for name in sorted(DOWNLOADS):
+        try:
+            with open(os.path.join(install_dir, DOWNLOADS[name][0]), "rb") as fh:
+                data = fh.read()
+        except OSError:
+            continue
+        entry: Dict[str, Any] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+        v = file_version(data)
+        if v:
+            entry["version"] = v
+        files[name] = entry
+    return {"version": VERSION, "files": files}
 
 
 def link_allowed(url: Any) -> bool:
@@ -512,6 +564,15 @@ CREATE INDEX IF NOT EXISTS invites_seq ON invites(seq);
     # 3: item steps (a JSON array, like links)
     """
 ALTER TABLE items ADD COLUMN steps TEXT NOT NULL DEFAULT '[]';
+""",
+    # 4: what each token's machine last reported (X-Needs-You-Client) and when it was last
+    #    seen. Local to this hub: never replicated (it would be a write per post).
+    """
+CREATE TABLE IF NOT EXISTS token_clients (
+  token_id TEXT PRIMARY KEY,
+  client TEXT NOT NULL DEFAULT '{}',
+  last_seen_at INTEGER NOT NULL
+);
 """,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -1282,6 +1343,44 @@ class Store:
                 "FROM tokens t ORDER BY t.created_at", (now,)).fetchall()
         return [dict(r) for r in rows]
 
+    def note_client(self, token_id: str, client: Dict[str, str]) -> bool:
+        """Record what a token's machine reported, at most once per CLIENT_WRITE_EVERY_MS unless
+        the versions changed. An empty report keeps the last versions and only marks it seen.
+        Returns True when it wrote."""
+        now = self.now_ms()
+        with self.lock:
+            row = self.conn.execute("SELECT client, last_seen_at FROM token_clients WHERE token_id = ?",
+                                    (token_id,)).fetchone()
+            if row is not None:
+                try:
+                    before = json.loads(row["client"])
+                except ValueError:
+                    before = {}
+                merged = dict(before if isinstance(before, dict) else {})
+                merged.update(client)
+                if merged == before and now - int(row["last_seen_at"]) < CLIENT_WRITE_EVERY_MS:
+                    return False
+            else:
+                merged = dict(client)
+            self.conn.execute(
+                "INSERT INTO token_clients(token_id, client, last_seen_at) VALUES(?, ?, ?) "
+                "ON CONFLICT(token_id) DO UPDATE SET client = excluded.client, last_seen_at = excluded.last_seen_at",
+                (token_id, json.dumps(merged, sort_keys=True), now))
+            return True
+
+    def token_clients(self) -> Dict[str, Dict[str, Any]]:
+        with self.lock:
+            rows = self.conn.execute("SELECT token_id, client, last_seen_at FROM token_clients").fetchall()
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            try:
+                client = json.loads(r["client"])
+            except ValueError:
+                client = {}
+            out[r["token_id"]] = {"client": client if isinstance(client, dict) else {},
+                                  "last_seen_at": int(r["last_seen_at"])}
+        return out
+
     def token_by_secret(self, token: str) -> Optional[Dict[str, Any]]:
         h = hash_token(token)
         with self.lock:
@@ -1435,8 +1534,11 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
     out = {"join_url": join,
            "mac_url": "needsyou://connect?hub=%s&code=%s" % (urllib.parse.quote(public_url, safe=""), code)}
     if role == "sender":
-        out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes" % join
-        out["agent_prompt"] = "Set up needs-you alerts on this machine: read %s and follow it." % join
+        # The whole Claude Code setup (docs/guides/claude-code-everywhere.md); the join page
+        # lists the options for machines without Claude Code.
+        out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
+        out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
+                               "If this machine runs Claude Code, use %s." % (join, CLAUDE_INSTALL_FLAGS))
     return out
 
 
@@ -1694,7 +1796,17 @@ class Handler(BaseHTTPRequestHandler):
         if role is not None and rec["role"] not in allowed:
             raise ApiError(403, "forbidden", "this endpoint needs a %s token (this one is %s)"
                            % (role, rec["role"]))
+        self._note_client(rec)
         return rec
+
+    def _note_client(self, rec: Dict[str, Any]) -> None:
+        """Remember what this token's machine runs (sender calls and token-checked health)."""
+        if rec.get("role") != "sender":
+            return
+        try:
+            self.hub.store.note_client(rec["id"], parse_client_header(self.headers.get(CLIENT_HEADER)))
+        except sqlite3.Error:
+            pass  # bookkeeping only: never fail the request over it
 
     def _send_text(self, status: int, text: str, ctype: str = "text/plain; charset=utf-8") -> None:
         data = text.encode("utf-8")
@@ -1809,6 +1921,7 @@ class Handler(BaseHTTPRequestHandler):
                 body["token_error"] = "unknown or revoked token"
             else:
                 body["token"] = {"name": tok["name"], "role": tok["role"]}
+                self._note_client(tok)
                 body["peers"] = [self.hub.peer_status(p) for p in self.hub.cfg["peers"]]
                 stats["outbox"] = {p: outbox.get(p, 0) for p in self.hub.cfg["peers"]}
         self._send(200, body)
@@ -1850,10 +1963,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def _list_tokens(self) -> None:
         me = self._auth("owner")
-        self._send(200, {"tokens": [
-            {"id": r["id"], "name": r["name"], "role": r["role"], "created_at": fmt_ts(r["created_at"]),
-             "open_items": int(r["open_items"]), "current": r["id"] == me["id"]}
-            for r in self.hub.store.list_tokens() if r["revoked_at"] is None]})
+        clients = self.hub.store.token_clients()
+        out = []
+        for r in self.hub.store.list_tokens():
+            if r["revoked_at"] is not None:
+                continue
+            seen = clients.get(r["id"]) or {}
+            out.append({"id": r["id"], "name": r["name"], "role": r["role"],
+                        "created_at": fmt_ts(r["created_at"]), "open_items": int(r["open_items"]),
+                        "current": r["id"] == me["id"], "client": seen.get("client") or {},
+                        "last_seen_at": fmt_ts(seen.get("last_seen_at"))})
+        self._send(200, {"tokens": out})
 
     def _revoke_token(self, name_or_id: str) -> None:
         me = self._auth("owner")
@@ -1923,6 +2043,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _download(self, name: str) -> None:
+        if name == "manifest.json":
+            return self._send(200, download_manifest(self.hub.cfg["install_dir"]))
         entry = DOWNLOADS.get(name)
         if entry is None:
             raise ApiError(404, "not_found", "not downloadable")
@@ -2385,6 +2507,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--claude-hooks user` | This machine runs Claude Code (or Orca): post an item when a session waits on a permission prompt or input. `project` installs into the current repo instead. Default `none`. |
 | `--alerts` | Turn the hooks on for every Claude Code session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
+| `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
 | `--ssh-alias NAME` | This machine is reached from the Mac over SSH: NAME is its host alias in the Mac's `~/.ssh/config` (VS Code Remote-SSH), so cards get a link that opens the session's folder there. |
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links (`{cwd}`, `{host}`, `{session}`, `{handle}`); `none` turns editor links off. |
@@ -2413,7 +2536,8 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 - If the installer exits 1 saying the link is unknown, expired or revoked, or that the hub
   refused the invite (no uses left), stop and ask the user for a new link.
 - Re-running on a machine that's already set up is safe and keeps its token, until the link
-  expires (even with no uses left). `needs-you self-update` updates the CLI later without a link.
+  expires (even with no uses left). `needs-you update` updates the CLI, hook, skill and Orca
+  snippet later without a link.
 - On the hub's own machine, the installer lists `http://127.0.0.1:<port>` first, so local
   agents don't depend on the network.
 

@@ -40,6 +40,8 @@ let entries =
     + testEntries(NoisySenderGuardTests.self, NoisySenderGuardTests.allTests)
     + testEntries(FocusLinkTests.self, FocusLinkTests.allTests)
     + testEntries(WorkDisplayTests.self, WorkDisplayTests.allTests)
+    + testEntries(UpdaterTests.self, UpdaterTests.allTests)
+    + testEntries(RolloutStatusTests.self, RolloutStatusTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
