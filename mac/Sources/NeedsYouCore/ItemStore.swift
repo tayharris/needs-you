@@ -39,13 +39,23 @@ public struct ItemStore: Sendable {
     /// `updated_at` of that version. A kind change doesn't move `content_updated_at`, so
     /// this is how they still count as new on the pill (`freshAt`).
     public private(set) var promotedToNeeds: [String: Date] = [:]
-    /// Items closed locally while the PATCH is in flight, with the `updated_at` they had
-    /// and when they were closed, so a poll that races the PATCH doesn't resurrect them.
+    /// Items closed locally while the PATCH is in flight, with the version they had and
+    /// when they were closed, so a poll that races the PATCH doesn't resurrect them.
     private var locallyClosed: [String: Tombstone] = [:]
 
     private struct Tombstone: Sendable {
-        var updatedAt: Date
+        var item: Item
         var closedAt: Date
+
+        /// Does a polled version undo the close? Only the sender's own change does: newer
+        /// content (`content_updated_at`, or a visible change from a hub without it). A
+        /// newer `updated_at` alone is a seen_at PATCH, an unchanged re-post or a replica
+        /// catching up, all from before the Done landed, so the Done wins.
+        func isReopened(by incoming: Item) -> Bool {
+            guard incoming.updatedAt > item.updatedAt else { return false }
+            if let new = incoming.contentUpdatedAt, let old = item.contentUpdatedAt, new > old { return true }
+            return incoming.hasVisibleChange(from: item)
+        }
     }
 
     /// How long a local close is remembered (it's settled long before this).
@@ -74,9 +84,15 @@ public struct ItemStore: Sendable {
             latestUpdatedAt = max(latestUpdatedAt ?? incoming.updatedAt, incoming.updatedAt)
 
             if let tombstone = locallyClosed[incoming.id] {
-                if incoming.updatedAt <= tombstone.updatedAt { continue }
-                // The sender updated it after we closed it: it's live again.
-                locallyClosed[incoming.id] = nil
+                if incoming.status != .open {
+                    // The close (ours or anyone's) reached the hub: settled.
+                    locallyClosed[incoming.id] = nil
+                } else if tombstone.isReopened(by: incoming) {
+                    // The sender changed it after we closed it: it's live again.
+                    locallyClosed[incoming.id] = nil
+                } else {
+                    continue
+                }
             }
 
             let existing = items[incoming.id]
@@ -166,7 +182,7 @@ public struct ItemStore: Sendable {
     @discardableResult
     public mutating func closeLocally(id: String, now: Date = Date()) -> Item? {
         guard let item = items.removeValue(forKey: id) else { return nil }
-        locallyClosed[id] = Tombstone(updatedAt: item.updatedAt, closedAt: now)
+        locallyClosed[id] = Tombstone(item: item, closedAt: now)
         cardSnoozes[id] = nil
         heldForLater[id] = nil
         return item

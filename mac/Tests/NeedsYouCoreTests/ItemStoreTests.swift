@@ -36,6 +36,8 @@ final class ItemStoreMergeTests: XCTestCase {
         ("testLatestUpdatedAtTracksNewest", testLatestUpdatedAtTracksNewest),
         ("testLocalCloseIsNotResurrectedByRacingPoll", testLocalCloseIsNotResurrectedByRacingPoll),
         ("testLocalCloseIsReopenedByNewerSenderUpdate", testLocalCloseIsReopenedByNewerSenderUpdate),
+        ("testDoneWinsOverRacingSeenPatch", testDoneWinsOverRacingSeenPatch),
+        ("testLocalCloseIsReopenedByContentUpdate", testLocalCloseIsReopenedByContentUpdate),
         ("testRestoreAfterFailedPatch", testRestoreAfterFailedPatch),
     ]
 
@@ -147,6 +149,41 @@ final class ItemStoreMergeTests: XCTestCase {
         store.merge([item("a", updated: 10)], isFullSnapshot: true, now: t0)
         store.closeLocally(id: "a")
         let r = store.merge([item("a", title: "changed", updated: 20)], isFullSnapshot: false, now: t0)
+        XCTAssertEqual(r.inserted.map(\.id), ["a"])
+    }
+
+    func testDoneWinsOverRacingSeenPatch() {
+        // The panel opened (seen_at PATCH) and Done was clicked before the next poll: the
+        // poll brings the seen version (newer updated_at, nothing else changed) while the
+        // Done PATCH is still in flight. The card stays gone.
+        var store = ItemStore()
+        store.merge([item("a", updated: 10)], isFullSnapshot: true, now: t0)
+        store.markSeen(id: "a", at: t0.addingTimeInterval(15))
+        store.closeLocally(id: "a")
+        var seen = item("a", updated: 20)
+        seen.seenAt = t0.addingTimeInterval(15)
+        let r = store.merge([seen], isFullSnapshot: false, now: t0)
+        XCTAssertTrue(r.inserted.isEmpty)
+        XCTAssertNil(store.items["a"])
+        // Also through a full snapshot, and an unchanged re-post with only a later updated_at.
+        store.merge([seen], isFullSnapshot: true, now: t0)
+        XCTAssertNil(store.items["a"])
+        // Then the Done lands: the close settles and the tombstone goes.
+        store.merge([item("a", status: .resolved, updated: 25)], isFullSnapshot: false, now: t0)
+        XCTAssertNil(store.items["a"])
+        XCTAssertEqual(store.closedTombstoneCount, 0)
+    }
+
+    func testLocalCloseIsReopenedByContentUpdate() {
+        // content_updated_at moved (the sender changed steps, say): it's live again.
+        var store = ItemStore()
+        var a = item("a", updated: 10)
+        a.contentUpdatedAt = t0.addingTimeInterval(10)
+        store.merge([a], isFullSnapshot: true, now: t0)
+        store.closeLocally(id: "a")
+        a.updatedAt = t0.addingTimeInterval(20)
+        a.contentUpdatedAt = t0.addingTimeInterval(20)
+        let r = store.merge([a], isFullSnapshot: false, now: t0)
         XCTAssertEqual(r.inserted.map(\.id), ["a"])
     }
 

@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- Mac app: a card you mark **Done** (or dismiss) right after opening the panel no longer flashes back for a poll. Opening the panel marks cards seen, and a poll that brought the seen version before the Done reached the hub put the card back; now only a change from its sender (new title, body, priority or steps) brings a closed card back.
+
 ## [0.1.3] - 2026-10-07
 
 ### Upgrade note
