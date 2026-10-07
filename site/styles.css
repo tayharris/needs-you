@@ -316,3 +316,97 @@ code, pre { font-family: var(--font-mono); }
   .pill { align-self: flex-end; }
   .card { max-width: none; }
 }
+
+/* Under the hood: the architecture diagram and the "how heavy is it" table.
+   Columns left to right on wide screens; stacked, with the arrows turned down, on phones. */
+.arch {
+  margin: 0 0 var(--space-6);
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+.arch-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+.arch-col { min-width: 0; }
+.arch-label {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono); font-size: var(--size-caption);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.arch-nodes { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.arch-node {
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-size: var(--size-h6); font-weight: var(--weight-medium);
+  line-height: 1.35;
+}
+.arch-node span {
+  display: block;
+  font-size: var(--size-caption); font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
+.arch-main { border-color: var(--brand-focus); }
+.arch-optional { border-style: dashed; }
+.arch-pill { display: flex; align-items: center; gap: var(--space-2); }
+.arch-pill .pill-dot { flex: none; }
+.arch-sub {
+  margin: var(--space-2) 0 0;
+  font-size: var(--size-caption); color: var(--text-muted); line-height: 1.4;
+}
+.arch-sub code { font-size: var(--size-caption); }
+.arch-arrow, .arch-repl {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-family: var(--font-mono); font-size: var(--size-caption);
+  color: var(--text-muted); text-align: center;
+}
+.arch-repl { flex-direction: row; justify-content: center; gap: var(--space-2); padding: 2px 0; }
+.arch-arrow { align-self: center; }
+.arch-arrow svg { width: 2.5rem; height: 0.75rem; }
+.arch-repl svg { width: 0.75rem; height: 1.75rem; }
+.arch svg path {
+  fill: none; stroke: var(--text-muted); stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.arch figcaption {
+  margin-top: var(--space-4); padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--size-h6); color: var(--text-secondary);
+}
+
+.arch-h3 {
+  font-size: var(--size-h5); font-weight: var(--weight-semibold);
+  margin: var(--space-6) 0 var(--space-3);
+}
+.table-wrap { overflow-x: auto; margin: 0 0 var(--space-3); }
+.weight {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--size-h6);
+}
+.weight th, .weight td {
+  text-align: left; vertical-align: top;
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.weight thead th { color: var(--text-muted); font-weight: var(--weight-medium); }
+.weight tbody th { font-weight: var(--weight-medium); width: 40%; }
+.weight td { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Four nav links don't fit a phone header; the section is right below "How it works". */
+@media (max-width: 30rem) {
+  .top nav a.nav-wide { display: none; }
+}
+
+@media (max-width: 40rem) {
+  .arch-flow { grid-template-columns: minmax(0, 1fr); }
+  .arch-arrow { flex-direction: row; justify-content: center; gap: var(--space-2); }
+  .arch-arrow svg { transform: rotate(90deg); width: 1.75rem; height: 0.75rem; margin: var(--space-2) 0; }
+  .weight tbody th { width: auto; }
+}

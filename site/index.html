@@ -32,6 +32,7 @@
       <a class="brand" href="#main"><span class="dot" aria-hidden="true"></span>needs-you</a>
       <nav aria-label="Primary">
         <a href="#how">How it works</a>
+        <a class="nav-wide" href="#inside">Under the hood</a>
         <a href="#install">Install</a>
         <a href="#source">Source</a>
       </nav>
@@ -71,6 +72,79 @@
         <li><strong>The pill shows it.</strong> It floats over everything on your Mac and never takes focus from what you're typing.</li>
         <li><strong>It goes away when handled.</strong> The sender clears it, or you click Done. Nothing piles up.</li>
       </ol>
+    </section>
+
+    <section id="inside" aria-labelledby="inside-title">
+      <h2 id="inside-title">Under the hood</h2>
+
+      <figure class="arch">
+        <div class="arch-flow">
+          <div class="arch-col">
+            <p class="arch-label">Senders</p>
+            <ul class="arch-nodes">
+              <li class="arch-node">Claude Code on devbox</li>
+              <li class="arch-node">CI job</li>
+              <li class="arch-node">cron on build-box</li>
+            </ul>
+            <p class="arch-sub"><code>needs-you</code> CLI: queues offline, fails over</p>
+          </div>
+
+          <div class="arch-arrow" aria-hidden="true">
+            <svg viewBox="0 0 40 12" focusable="false"><path d="M0 6h36M30 1l6 5-6 5"/></svg>
+            <span>post</span>
+          </div>
+
+          <div class="arch-col">
+            <p class="arch-label">Hubs</p>
+            <ul class="arch-nodes">
+              <li class="arch-node arch-main">Hub on your Mac<span>SQLite, runs inside the app</span></li>
+              <li class="arch-repl" aria-hidden="true">
+                <svg viewBox="0 0 12 28" focusable="false"><path d="M6 2v24M1 7l5-5 5 5M1 21l5 5 5-5"/></svg>
+                <span>copy every write</span>
+              </li>
+              <li class="arch-node arch-optional">Server hub<span>optional, always on</span></li>
+            </ul>
+          </div>
+
+          <div class="arch-arrow" aria-hidden="true">
+            <svg viewBox="0 0 40 12" focusable="false"><path d="M0 6h36M30 1l6 5-6 5"/></svg>
+            <span>poll + stream</span>
+          </div>
+
+          <div class="arch-col">
+            <p class="arch-label">You</p>
+            <ul class="arch-nodes">
+              <li class="arch-node arch-pill"><span class="pill-dot" aria-hidden="true"></span>The pill on your Mac</li>
+            </ul>
+            <p class="arch-sub">uses whichever hub answers</p>
+          </div>
+        </div>
+        <figcaption>Senders post to a hub. Hubs copy every write to each other. The Mac app reads from any hub that answers.</figcaption>
+      </figure>
+
+      <p><strong>A hub is a small SQLite database behind a little web server.</strong> It's one Python file that needs only the standard library. Your Mac runs one inside the app, so there is nothing to install or keep running.</p>
+      <p><strong>Senders use one file too.</strong> The <code>needs-you</code> command tries each hub in turn. If none answers (your Mac is asleep, say), it saves the alert in a local outbox, exits cleanly so the job carries on, and sends it next time.</p>
+      <p><strong>More hubs are for redundancy.</strong> Run the same hub on an always-on Linux server and it copies every write to your Mac's hub and back, so alerts land even while the Mac sleeps. Most people don't need one.</p>
+      <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
+      <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day, closed items are deleted after 7 days, and a sender's outbox keeps at most 500 alerts for 7 days.</p>
+
+      <h3 class="arch-h3" id="weight">How heavy is it?</h3>
+      <div class="table-wrap">
+        <table class="weight">
+          <thead>
+            <tr><th scope="col">Piece</th><th scope="col">Measured</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Mac app, idle</th><td>0.4% of one CPU core, 55 MB memory</td></tr>
+            <tr><th scope="row">Hub on the Mac, idle</th><td>0.2% of one core, 27 MB memory</td></tr>
+            <tr><th scope="row">Hub database</th><td>0.9 MB after a day of use (138 items); about 600 bytes per item</td></tr>
+            <tr><th scope="row">Server hub, idle</th><td>under 0.1% of one core, 33 MB memory</td></tr>
+            <tr><th scope="row">1,000 alerts in a burst</th><td>1.2 s in all, 1.1 ms each; hub memory grew by 1 MB</td></tr>
+            <tr><th scope="row">One <code>needs-you</code> call</th><td>about 0.12 s, the same when it queues offline</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a data-repo="/blob/main/docs/guides/concepts.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/concepts.md">Words</a> and <a data-repo="/blob/main/docs/HUB.md#resource-use" href="https://github.com/tayharris/needs-you/blob/main/docs/HUB.md#resource-use">Server hubs</a>.</p>
     </section>
 
     <section id="install" aria-labelledby="install-title">
