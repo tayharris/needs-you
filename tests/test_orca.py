@@ -167,6 +167,25 @@ class HookOrcaBodyTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file/home/me/wt/ACME-1/api"])
 
+    def test_tmux_pane_and_vscode_in_the_body(self):
+        bindir = os.path.join(self.home, "bin")
+        os.makedirs(bindir)
+        with open(os.path.join(bindir, "tmux"), "w") as fh:
+            fh.write("#!/bin/sh\n[ \"$1 $4 $5\" = 'display-message %7 #S:#I.#P' ] && echo 'kube:2.1'\n")
+        os.chmod(os.path.join(bindir, "tmux"), 0o755)
+        body = self.body(self.notify(ORCA_TERMINAL_HANDLE="", ORCA_WORKTREE_ID="", NEEDS_YOU_AGENT_ALERTS="1",
+                                     TMUX="/tmp/tmux-1/default,1,0", TMUX_PANE="%7", TERM_PROGRAM="vscode",
+                                     PATH=bindir + ":" + os.environ.get("PATH", "/usr/bin:/bin")))
+        self.assertIn("`/home/me/wt/ACME-1/api` on `", body)
+        self.assertIn(", tmux `kube:2.1`, VS Code", body)
+        self.assertIn("Attach: `tmux attach -t kube`", body)
+
+    def test_ssh_without_tmux(self):
+        body = self.body(self.notify(ORCA_TERMINAL_HANDLE="", NEEDS_YOU_AGENT_ALERTS="1",
+                                     SSH_CONNECTION="10.0.0.1 5000 10.0.0.2 22"))
+        self.assertIn(", SSH", body)
+        self.assertNotIn("tmux", body)
+
     def test_outside_orca_no_switch_command(self):
         argv = self.notify(ORCA_TERMINAL_HANDLE="", ORCA_WORKTREE_ID="", NEEDS_YOU_AGENT_ALERTS="1")
         body = self.body(argv)

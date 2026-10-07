@@ -7,7 +7,8 @@
 #                                SessionEnd hooks)   -> needs-you resolve
 #
 # Reads the hook input JSON from stdin (session_id, cwd, message,
-# notification_type). Always exits 0 and never prints to stdout, so it can't
+# notification_type). The card says where the session runs: the tmux pane
+# (session:window.pane, plus the attach command), VS Code, or SSH. Always exits 0 and never prints to stdout, so it can't
 # block or steer Claude. Installed by install-hooks.sh.
 #
 # Off unless one of these is true (so ordinary interactive use stays quiet):
@@ -168,7 +169,26 @@ short_cwd = "~" + cwd[len(home):] if cwd.startswith(home) else cwd
 lines = []
 if message:
     lines.append(message[:400])
-lines.append("`%s` on `%s`" % (short_cwd, host))
+# Where the session runs, so a card from a tmux pane on a VM says which one.
+where = []
+pane = os.environ.get("TMUX_PANE", "")
+tmux_target = ""
+if os.environ.get("TMUX") and re.match(r"^%[0-9]+$", pane):
+    try:
+        tmux_target = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", pane, "#S:#I.#P"], stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, timeout=2).stdout.strip()[:80]
+    except Exception:
+        tmux_target = ""
+    if tmux_target:
+        where.append("tmux `%s`" % tmux_target)
+if os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK_CLI"):
+    where.append("VS Code")
+elif os.environ.get("SSH_CONNECTION") and not tmux_target:
+    where.append("SSH")
+lines.append("`%s` on `%s`%s" % (short_cwd, host, ", " + ", ".join(where) if where else ""))
+if tmux_target:
+    lines.append("Attach: `tmux attach -t %s`" % shlex.quote(tmux_target.split(":", 1)[0]))
 links = []
 orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
 if handle:

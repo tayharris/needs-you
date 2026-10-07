@@ -77,7 +77,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
 
 - **Key:** `agent:<short-hostname>:<id>`, where `<id>` is `$ORCA_TERMINAL_HANDLE` if set, else the Claude `session_id`. Characters outside `A-Za-z0-9._-` become `_`. Re-posting the same key updates the item, so a session that asks five times shows one card.
 - **Title:** what's needed plus the project, e.g. `Claude needs permission: my-repo` or `Claude is waiting for you: my-repo`. The project is the basename of `$CLAUDE_PROJECT_DIR` (else `cwd`).
-- **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, and the short session id. In Orca, instead: the worktree path (from `$ORCA_WORKTREE_ID`) and the command that jumps to the terminal, `orca terminal switch --terminal <handle>` (plus `--environment <name>` when `NEEDS_YOU_ORCA_ENVIRONMENT` is set). No prompt text, transcript or tool input is sent.
+- **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, where the session runs (the tmux pane as `session:window.pane` plus `tmux attach -t <session>`, `VS Code`, or `SSH`), and the short session id. In Orca, instead: the worktree path (from `$ORCA_WORKTREE_ID`) and the command that jumps to the terminal, `orca terminal switch --terminal <handle>` (plus `--environment <name>` when `NEEDS_YOU_ORCA_ENVIRONMENT` is set). No prompt text, transcript or tool input is sent.
 - **Links:** in Orca, a **Terminal** link, `needsyou://orca/terminal?handle=<handle>[&environment=<name>]`, which the Mac app shows as a button that runs the same switch and brings Orca forward. A hub too old to accept it gets the card without it.
 - **Source:** `--agent claude-code --project <project>`; the CLI adds the host.
 
