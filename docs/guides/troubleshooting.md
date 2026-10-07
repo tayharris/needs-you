@@ -2,6 +2,8 @@
 
 Work from the sender toward the Mac: can the sender reach a hub, did the hub store the item, can the Mac see it, is the Mac showing the right context.
 
+Reporting a problem: what to include, and how to save the app's log with tokens and invite codes masked, is in [testers.md → Report a problem](testers.md#8-report-a-problem).
+
 ## Start here: `needs-you doctor`
 
 On the sender, run:
