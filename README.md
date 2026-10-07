@@ -1,20 +1,30 @@
 # needs-you
 
+One inbox for "you have to do something". AI agents, servers and CI post an item when they're blocked on you; your Mac shows it in a small floating pill, with a link to where you act, and it disappears once it's handled.
+
+Open source, [Apache-2.0](LICENSE). **Status: private preview (0.1.x).**
+
+## Get started
+
+1. **Download** the latest release from the repository's **Releases** page: `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
+2. **First launch.** The app is ad-hoc signed, not notarized, so macOS blocks it once. On macOS 14 and earlier: right-click `NeedsYou.app` → **Open** → **Open**. On macOS 15 and later: double-click it, then **System Settings → Privacy & Security → Open Anyway**. The release notes have the full steps (firewall prompt, managed Macs). The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools; if Settings says Python 3 isn't available, run `xcode-select --install` and reopen the app.
+3. **Invite a machine.** Right-click the pill → **Settings…** → **Invite a machine** → **Create invite**, then click **Agent prompt** and paste it into Claude Code (on this Mac or any server on your tailnet), or click **Shell one-liner** and run it there. The machine installs the `needs-you` CLI and posts a test card.
+
+Next:
+
+- [Quickstart](docs/guides/quickstart.md): the whole setup, step by step.
+- [Claude Code alerts everywhere](docs/guides/claude-code-everywhere.md): one copy-paste path to "my Claude sessions alert my Mac", on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca.
+- [Tailscale](docs/guides/tailscale.md): connecting servers to the Mac.
+- [Claude Code](docs/guides/claude-code.md) and [Orca](docs/guides/orca.md) integrations.
+- [AGENT-GUIDE.md](docs/AGENT-GUIDE.md): the rules agents follow when they post.
+
+To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
+
 ## Goal
 
-needs-you is AI-first. It gives AI agents the tools to set themselves up (hand an agent an invite link and it installs and configures itself) and to alert a person only when they actually need that person, routed to where they act: a deep link to the ticket, the PR or the Orca worktree. Humans stay in the loop without watching terminals.
+needs-you is AI-first. It gives AI agents the tools to set themselves up (hand an agent an invite link and it installs and configures itself) and to alert a person only when they actually need that person, routed to where they act: a deep link to the ticket, the PR or the Orca terminal. Humans stay in the loop without watching terminals.
 
-Private for now; open source later. Licensed under [Apache-2.0](LICENSE). Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/).
-
-**Status: private preview (0.1.x).** The Mac app is ad-hoc signed, not notarized, so macOS asks you to approve it once.
-
-## Install from a release
-
-1. From the repository's **Releases** page, download `NeedsYou-X.Y.Z-macos.zip` (and `SHA256SUMS` to check it: `shasum -a 256 -c SHA256SUMS`).
-2. Unzip, drag `NeedsYou.app` to `/Applications`, open it. macOS blocks the first launch: **System Settings → Privacy & Security → Open Anyway** (on macOS 14 and earlier, right-click → **Open**). Each release's notes have the full steps, including the firewall prompt and managed Macs.
-3. The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools. If Settings says Python 3 isn't available, run `xcode-select --install`, then reopen the app.
-
-Then follow the three steps below. To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
+Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/).
 
 ## How it works, in three steps
 
@@ -54,6 +64,8 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
 | [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting", plus a skill |
+| [Claude Code everywhere](docs/guides/claude-code-everywhere.md) | Alerts from local, SSH, tmux, VS Code Remote-SSH and Orca sessions |
+| [Tailscale](docs/guides/tailscale.md) | Putting the Mac and servers on one tailnet, checking reachability |
 | [Orca](docs/guides/orca.md) | Orca agents and automations, on one or many servers |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
