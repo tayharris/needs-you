@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -185,15 +186,23 @@ def _call(url: str, token: str, method: str, path: str, body: Optional[Dict[str,
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        with OPENER.open(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8") or "{}"
-            return resp.status, json.loads(raw)
-    except urllib.error.HTTPError as e:
         try:
-            parsed = json.loads(e.read().decode("utf-8") or "{}")
-        except ValueError:
-            parsed = {}
-        return e.code, parsed if isinstance(parsed, dict) else {}
+            with OPENER.open(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8") or "{}"
+                parsed = json.loads(raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError("response is not a JSON object")
+                return resp.status, parsed
+        except urllib.error.HTTPError as e:
+            try:
+                parsed = json.loads(e.read().decode("utf-8") or "{}")
+            except ValueError:
+                parsed = {}
+            return e.code, parsed if isinstance(parsed, dict) else {}
+    except http.client.HTTPException as e:
+        # Not HTTP at all (another service on that port) or a response cut short. These
+        # aren't OSErrors, so say so as one: callers treat it like a dead hub.
+        raise ConnectionError("bad HTTP response (%s)" % type(e).__name__)
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
 - Hub: a link URL with an unbalanced `[` in its host (`https://[x/y`) is a `400 invalid` naming the field, not a `500 internal`.
+- CLI: a hub URL that answers with something other than HTTP (another service on that port) or cuts its response short no longer crashes the CLI with a traceback and exit 1. It counts as an unreachable hub: the CLI tries the next URL, or queues and exits 0.
 
 ## [0.1.2] - 2026-10-07
 

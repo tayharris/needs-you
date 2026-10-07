@@ -2,11 +2,40 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
+import threading
 import time
 import sys
 
 from support import CLI, HubTestCase, free_port, request
+
+
+def garbage_server(test, payload):
+    """A loopback TCP server that answers every connection with `payload` and hangs up.
+    Returns its URL; it is closed when the test ends."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(16)
+
+    def serve():
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            try:
+                conn.settimeout(2)
+                conn.recv(65536)
+                conn.sendall(payload)
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    test.addCleanup(srv.close)
+    return "http://127.0.0.1:%d" % srv.getsockname()[1]
 
 
 class CliTestCase(HubTestCase):
@@ -144,6 +173,34 @@ class Failover(CliTestCase):
         self.assertIn("role=sender", r.stdout)
         r = self.run_cli("health", urls=[self.dead], token=sender)
         self.assertEqual(r.returncode, 1)
+
+    def test_broken_http_fails_over_and_queues(self):
+        """A URL that answers with something that isn't HTTP (another service on the port) or
+        cuts the response short raises http.client.HTTPException, which isn't an OSError: the
+        CLI must treat it like a dead hub, not crash with a traceback (hard rule 8)."""
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        for name, payload in (("not http", b"SSH-2.0-OpenSSH_9.6\r\n"),
+                              ("truncated", b"HTTP/1.1 201 Created\r\nContent-Length: 500\r\n\r\n{\"id\"")):
+            with self.subTest(name):
+                bad = garbage_server(self, payload)
+                r = self.run_cli("add", "--key", "g-" + name[:3], "--title", "t", urls=[bad, a.url],
+                                 token=sender)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("created", r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                r = self.run_cli("add", "--key", "q-" + name[:3], "--title", "t", urls=[bad], token=sender)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("queued", r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
+                r = self.run_cli("health", urls=[bad, a.url], token=sender)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("DOWN", r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+        # `health` flushed the queued ones through the second URL
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")),
+                         ["g-not", "g-tru", "q-not", "q-tru"])
 
     def test_urls_precedence(self):
         a = self.make_hub("hub-a")
