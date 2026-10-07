@@ -278,41 +278,56 @@ Query parameters:
 
 | Param | Meaning |
 |---|---|
-| `status` | `open` (default), `resolved`, `dismissed` or `all`. **Ignored when `since` is given.** |
-| `since` | A cursor: the `server_time` from this hub's previous response. |
+| `status` | `open` (default), `resolved`, `dismissed` or `all`. **Ignored when `cursor` or `since` is given.** |
+| `cursor` | A cursor: the `next` from this hub's previous response. Opaque; send it back unchanged. |
+| `since` | A cursor for clients that don't know `next`: the `server_time` from this hub's previous response. |
 | `limit` | Max items, default 500, max 2,000. |
 
 Response:
 
 ```json
-{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "hub_id": "hub-a", "more": false}
+{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "next": "01M492BJ7A...J.812.1791306245123",
+ "hub_id": "hub-a", "more": false}
 ```
 
-**Without `since`:** the full current set for `status`. `status=open` returns every item that
-is open and not expired. `resolved` includes expired items (shown as resolved).
+**Without `cursor` or `since`:** the full current set for `status`. `status=open` returns every
+item that is open and not expired. `resolved` includes expired items (shown as resolved).
 
-**With `since`:** every item that changed on this hub after `since` (exclusive), **in any
-status**, plus every item whose `expires_at` fell in `(since, now]` (reported as resolved).
-This is how a poller learns about resolves, dismissals and expiry, not only new items.
-"Changed on this hub" means this hub stored a new version of it after `since`: a local write,
-or a replicated version arriving from a peer. It is matched against the hub's own receive
-time, not the item's `updated_at`, so an item that reaches this hub late by replication is
-still delivered even if its `updated_at` is older than the cursor.
+**With `cursor` or `since`:** every item that changed on this hub after the cursor, **in any
+status**, plus every item whose `expires_at` passed since then (reported as resolved). This is
+how a poller learns about resolves, dismissals and expiry, not only new items. "Changed on
+this hub" means this hub stored a new version of it after the cursor: a local write, or a
+replicated version arriving from a peer. That is this hub's own order, not the item's
+`updated_at`, so an item that reaches this hub late by replication is still delivered even if
+its `updated_at` is older than the cursor.
 
 **The polling loop:**
 
 1. First poll (or after any doubt): `GET /v1/items?status=open`. Replace the local set.
-2. Keep `server_time` from the response. Next poll: `GET /v1/items?since=<server_time>`
-   (adding `status=open` is harmless; it is ignored). Upsert every returned item by `id`; drop
-   it from the open view if its status isn't `open`. Store the new `server_time`.
-3. If `more` is true, poll again immediately with the new `server_time`.
-4. **`server_time` is a cursor for that hub only.** If `hub_id` in a response differs from the
-   hub that issued the cursor (failover), discard the cursor and go back to step 1.
+2. Keep `next` and `server_time` from the response. Next poll:
+   `GET /v1/items?cursor=<next>&since=<server_time>` (adding `status=open` is harmless; it is
+   ignored). Upsert every returned item by `id`; drop it from the open view if its status isn't
+   `open`. Store the new `next` and `server_time`.
+3. If `more` is true, poll again immediately the same way.
+4. **Both are cursors for that hub only.** If `hub_id` in a response differs from the hub that
+   issued the cursor (failover), discard them and go back to step 1.
 
-`server_time` is the hub's clock 1 ms before it ran the query (or, when `more` is true, just
-before the last returned item), so a write landing in the same millisecond is never missed.
-The price is that an item can occasionally be delivered twice; clients must treat responses
-as idempotent upserts by `id`. Items come back ordered by the hub's receive time.
+`next` (hubs after 0.1.2) is `<database epoch>.<seq>.<expiry position>`: the hub's per-write
+sequence number, so a page always moves past what it returned and never holds more than
+`limit` items, however many writes share a millisecond. Clients must not parse it. A hub
+answers a `cursor` from another database (it was replaced) or one it can't read by serving
+`since` instead when that was sent, and with `400 invalid` (`"field": "cursor"`) when it
+wasn't; drop the cursor and do a full poll then. Sending both is also what keeps an older hub,
+which ignores `cursor`, working. `next` is in every response except a `since`-only page with
+`more: true`; keep paging with `since` then, and the last page carries a `next`.
+
+`server_time` is the hub's clock 1 ms before it ran the query, so a write landing in the same
+millisecond is never missed; when a `since` page has `more`, it is instead the time of the
+page's last event, and the page holds **every** event up to that millisecond (so it can
+exceed `limit` when more than `limit` writes or expiries share it; hubs up to 0.1.2 served such a page
+repeated forever). The price is that an item can occasionally be delivered twice; clients
+must treat responses as idempotent upserts by `id`. With `cursor`, changes come back in the
+hub's write order, then expiries; with `since`, in time order.
 
 ### `GET /v1/items/{id}` (reader)
 

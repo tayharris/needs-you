@@ -4,12 +4,17 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed (API)
+
+- `GET /v1/items` responses carry **`next`**, an opaque cursor, and the hub accepts it back as **`cursor=`**. It follows the hub's per-write sequence, so paging always moves on and a page never holds more than `limit` items. Send `cursor=<next>&since=<server_time>`: an older hub ignores `cursor` and uses `since`, and a newer hub falls back to `since` when the cursor comes from a replaced database. `since` alone keeps working for older clients. See [API.md](docs/API.md#get-v1items-reader).
+
 ### Changed
 
 - Mac app: **a new-item preview with a link has a button for it** ("VS Code ↗", "Approve ↗"). Clicking it opens the link and marks the item done, without opening the panel. Like the card links, the button also shows where the link really goes ("Approve ci.example.com ↗"). Clicking anywhere else on the preview opens the panel **scrolled to that card**, outlined for a moment, instead of at the top of the list. Clicking the pill also scrolls to the newest card that arrived since you last opened it, and so does clicking an item without a link in the menu bar menu.
 
 ### Fixed
 
+- Hub: **`since` paging could repeat the same page forever** when more than `limit` items were stored in one millisecond (a replicated batch) or expired since the last poll; `more` stayed true and `server_time` never moved. A `since` page that stops early now ends on a whole millisecond and holds every item up to it.
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
 - Mac app: an item a sender resolves or dismisses (`needs-you resolve`, a hook) now leaves the panel on the next poll, or at once with live updates. It used to stay up to 5 minutes, until the next full poll, because incremental polls threw away closed items. Polls also use the hub's `server_time` cursor and follow `more`, as `docs/API.md` describes, so an item stored in the same millisecond as a poll isn't missed.
 - Mac app: a card held under **Later** (by a focus or snooze) that its sender re-posts as done or info leaves Later. It used to show both under Later and in Recent, and count in the "N waited" peek.

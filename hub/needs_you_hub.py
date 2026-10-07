@@ -10,6 +10,7 @@ The wire contract is in docs/API.md; operating notes are in docs/HUB.md.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import hmac
@@ -30,7 +31,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
 VERSION = "0.1.2"
 API_VERSION = "v1"
@@ -739,6 +740,40 @@ INVITE_COLS = ("id", "name", "role", "hash", "uses", "used", "created_at", "expi
                "revoked_at", "created_by", "updated_at", "updated_by", "seq")
 
 
+class ListCursor(NamedTuple):
+    """The `next` cursor of GET /v1/items: opaque to clients, `<epoch>.<seq>.<exp_at>[.<exp_id>]`.
+    Every item version this hub stored with seq <= `seq` has been delivered, and every expiry
+    up to `exp_at` (up to (`exp_at`, `exp_id`) when a page stopped among same-ms expiries).
+    `epoch` ties it to this database: a cursor from a replaced one is refused."""
+    epoch: str
+    seq: int
+    exp_at: int
+    exp_id: Optional[str] = None
+
+    def encode(self) -> str:
+        parts = [self.epoch, str(self.seq), str(self.exp_at)]
+        if self.exp_id is not None:  # an item id, base64url so any id fits the grammar
+            parts.append(base64.urlsafe_b64encode(self.exp_id.encode("utf-8")).decode("ascii").rstrip("="))
+        return ".".join(parts)
+
+    @classmethod
+    def decode(cls, raw: str) -> "ListCursor":
+        parts = raw.split(".")
+        if len(parts) not in (3, 4) or not all(parts) or len(raw) > 200:
+            raise ValueError("bad cursor")
+        if not (parts[1].isdigit() and parts[2].isdigit()) or not re.match(r"^[0-9A-Za-z]{1,40}$", parts[0]):
+            raise ValueError("bad cursor")
+        exp_id = None
+        if len(parts) == 4:
+            if not re.match(r"^[0-9A-Za-z_-]{1,140}$", parts[3]):
+                raise ValueError("bad cursor")
+            try:
+                exp_id = base64.urlsafe_b64decode(parts[3] + "=" * (-len(parts[3]) % 4)).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                raise ValueError("bad cursor")
+        return cls(parts[0], int(parts[1]), int(parts[2]), exp_id)
+
+
 class Store:
     """SQLite access. One connection, serialised by a lock; WAL so the admin tool can share it."""
 
@@ -1005,41 +1040,108 @@ class Store:
             self.enqueue("item", rec["id"])
             return rec
 
-    def list_items(self, status: str, since: Optional[int], limit: int
-                   ) -> Tuple[List[Dict[str, Any]], int, bool]:
-        """Returns (records, cursor, more).
+    def list_items(self, status: str, since: Optional[int], limit: int,
+                   cursor: Optional["ListCursor"] = None
+                   ) -> Tuple[List[Dict[str, Any]], int, bool, Optional["ListCursor"]]:
+        """Returns (records, server_time, more, next cursor).
 
-        With `since`: every item this hub stored a new version of after `since` (exclusive),
-        in any status, plus open items whose expiry passed after `since`; `status` is ignored.
-        Without `since`: the current set for `status` (default open).
-        `cursor` is what the client sends back as the next `since`."""
+        With `cursor` (an earlier response's `next`, see ListCursor): every item this hub
+        stored a new version of after it, then every open item whose expiry passed after it;
+        at most `limit`. With `since` (older clients): the same by this hub's receive time.
+        Either way `status` is ignored. Without both: the current set for `status`.
+        `server_time` is the next `since` for clients that don't know `next`. `next` is None
+        only for a `since` page with more to come (that client pages on with `since`)."""
         with self.lock:
             now = self.now_ms()
-            args: List[Any] = []
+            # Read before the query: a write racing it has a higher seq and comes next time.
+            max_seq = int(self.conn.execute("SELECT v FROM meta WHERE k = 'seq'").fetchone()[0])
+            epoch = self.conn.execute("SELECT v FROM meta WHERE k = 'epoch'").fetchone()[0]
+            if cursor is not None:
+                return self._list_by_cursor(cursor, limit, now)
             if since is not None:
-                sql = ("SELECT * FROM items WHERE local_at > ? OR "
-                       "(status = 'open' AND expires_at > ? AND expires_at <= ?)")
-                args += [since, since, now]
-            else:
-                sql = "SELECT * FROM items WHERE 1=1"
-                if status == "open":
-                    sql += " AND status = 'open' AND (expires_at IS NULL OR expires_at > ?)"
-                    args.append(now)
-                elif status == "resolved":
-                    sql += " AND (status = 'resolved' OR (status = 'open' AND expires_at <= ?))"
-                    args.append(now)
-                elif status == "dismissed":
-                    sql += " AND status = 'dismissed'"
+                rows, server_time, more = self._list_since(since, limit, now)
+                return rows, server_time, more, None if more else ListCursor(epoch, max_seq, now)
+            args: List[Any] = []
+            sql = "SELECT * FROM items WHERE 1=1"
+            if status == "open":
+                sql += " AND status = 'open' AND (expires_at IS NULL OR expires_at > ?)"
+                args.append(now)
+            elif status == "resolved":
+                sql += " AND (status = 'resolved' OR (status = 'open' AND expires_at <= ?))"
+                args.append(now)
+            elif status == "dismissed":
+                sql += " AND status = 'dismissed'"
             sql += " ORDER BY local_at, id LIMIT ?"
             args.append(limit + 1)
             rows = [dict(r) for r in self.conn.execute(sql, args).fetchall()]
-        more = len(rows) > limit
-        rows = rows[:limit]
         # 1 ms behind "now": a write landing in this same millisecond is still after the cursor.
-        cursor = now - 1
-        if more and since is not None:
-            cursor = max(since, rows[-1]["local_at"] - 1)
-        return rows, cursor, more
+        return rows[:limit], now - 1, len(rows) > limit, ListCursor(epoch, max_seq, now)
+
+    def _list_by_cursor(self, cur: "ListCursor", limit: int, now: int
+                        ) -> Tuple[List[Dict[str, Any]], int, bool, "ListCursor"]:
+        """Changes by seq first (unique, so a page always moves past what it returned), then
+        expiries by (expires_at, id). Caller holds the lock."""
+        changed = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM items WHERE seq > ? ORDER BY seq LIMIT ?", (cur.seq, limit + 1))]
+        if len(changed) > limit:
+            changed = changed[:limit]
+            return changed, now - 1, True, cur._replace(seq=changed[-1]["seq"])
+        seq = changed[-1]["seq"] if changed else cur.seq
+        room = limit - len(changed)
+        if cur.exp_id is None:
+            where, args = "expires_at > ?", [cur.exp_at]  # type: Tuple[str, List[Any]]
+        else:
+            where = "(expires_at > ? OR (expires_at = ? AND id > ?))"
+            args = [cur.exp_at, cur.exp_at, cur.exp_id]
+        expired = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM items WHERE status = 'open' AND %s AND expires_at <= ? "
+            "ORDER BY expires_at, id LIMIT ?" % where, args + [now, room + 1])]
+        more = len(expired) > room
+        if more:
+            expired = expired[:room]
+            nxt = ListCursor(cur.epoch, seq, cur.exp_at, cur.exp_id)
+            if expired:
+                nxt = ListCursor(cur.epoch, seq, expired[-1]["expires_at"], expired[-1]["id"])
+        else:
+            nxt = ListCursor(cur.epoch, seq, max(now, cur.exp_at), None)
+        ids = {r["id"] for r in changed}
+        return changed + [r for r in expired if r["id"] not in ids], now - 1, more, nxt
+
+    def _list_since(self, since: int, limit: int, now: int) -> Tuple[List[Dict[str, Any]], int, bool]:
+        """The `since` poll. Events are stored versions (at local_at) and expiries (at
+        expires_at), in time order. A page that stops early ends on a whole millisecond: every
+        event at or before the returned cursor is in it, so the next poll always moves on,
+        even past more than `limit` events in one millisecond (the page is then longer).
+        Caller holds the lock."""
+        def events(upper: int, cap: Optional[int]) -> List[Tuple[int, str, Dict[str, Any]]]:
+            tail = " LIMIT %d" % (cap + 1) if cap is not None else ""
+            ch = self.conn.execute("SELECT * FROM items WHERE local_at > ? AND local_at <= ? "
+                                   "ORDER BY local_at, id" + tail, (since, upper))
+            ex = self.conn.execute("SELECT * FROM items WHERE status = 'open' AND expires_at > ? "
+                                   "AND expires_at <= ? ORDER BY expires_at, id" + tail,
+                                   (since, min(upper, now)))
+            out = [(r["local_at"], r["id"], dict(r)) for r in ch]
+            out += [(r["expires_at"], r["id"], dict(r)) for r in ex]
+            return sorted(out, key=lambda e: (e[0], e[1]))
+
+        def unique(evs: List[Tuple[int, str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
+            seen, out = set(), []
+            for _t, i, r in evs:
+                if i not in seen:
+                    seen.add(i)
+                    out.append(r)
+            return out
+
+        upper = MAX_TS_MS
+        evs = events(upper, limit)
+        if len(evs) <= limit:
+            return unique(evs), now - 1, False
+        boundary = evs[limit - 1][0]
+        if boundary >= now - 1:
+            # The page reaches the present: send everything (only these last milliseconds
+            # are over the limit), and the usual cursor 1 ms behind now.
+            return unique(events(upper, None)), now - 1, False
+        return unique(events(boundary, None)), boundary, True
 
     # -- replication -----------------------------------------------------
 
@@ -2417,10 +2519,25 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             raise ApiError(400, "invalid", "limit must be an integer")
         limit = max(1, min(limit, LIST_LIMIT_MAX))
-        recs, cursor, more = self.hub.store.list_items(status, since, limit)
+        cursor = None
+        raw_cursor = (query.get("cursor") or [""])[0]
+        if raw_cursor:
+            try:
+                cursor = ListCursor.decode(raw_cursor)
+            except ValueError:
+                cursor = None
+            if cursor is not None and cursor.epoch != self.hub.store.epoch():
+                cursor = None  # from a replaced database: its seqs mean nothing here
+            if cursor is None and since is None:
+                raise ApiError(400, "invalid", "cursor is not one this hub issued; poll without it",
+                               "cursor")
+        recs, server_time, more, nxt = self.hub.store.list_items(status, since, limit, cursor)
         now = self.hub.store.now_ms()
-        self._send(200, {"items": [item_public(r, now) for r in recs], "server_time": fmt_ts(cursor),
-                         "hub_id": self.hub.hub_id, "more": more})
+        body = {"items": [item_public(r, now) for r in recs], "server_time": fmt_ts(server_time),
+                "hub_id": self.hub.hub_id, "more": more}
+        if nxt is not None:
+            body["next"] = nxt.encode()
+        self._send(200, body)
 
     def _stream(self, query: Dict[str, List[str]]) -> None:
         self._auth("reader")
