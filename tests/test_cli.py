@@ -17,7 +17,7 @@ class CliTestCase(HubTestCase):
         self.outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
         self.dead = "http://127.0.0.1:%d" % free_port()
 
-    def run_cli(self, *args, urls=None, token="t", config_file=None, extra_env=None, cli=CLI):
+    def run_cli(self, *args, urls=None, token="t", config_file=None, extra_env=None, cli=CLI, cwd=None):
         env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
                "NEEDS_YOU_HOST": "testbox", "NEEDS_YOU_GH": "none"}
         env.update(extra_env or {})
@@ -25,7 +25,8 @@ class CliTestCase(HubTestCase):
             env["NEEDS_YOU_URL"] = ",".join(urls)
         if token is not None:
             env["NEEDS_YOU_TOKEN"] = token
-        return subprocess.run([sys.executable, cli] + list(args), env=env, capture_output=True,
+        # cwd: a temp dir by default, so project-level hooks in a checkout are never seen
+        return subprocess.run([sys.executable, cli] + list(args), env=env, capture_output=True, cwd=cwd or self.tmp,
                               text=True, timeout=60)
 
     def queued(self):

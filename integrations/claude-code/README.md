@@ -47,7 +47,8 @@ The installer:
 - replaces any earlier needs-you entries and leaves every other setting and hook alone,
 - doesn't rewrite the file if nothing changed, so it's safe to run from provisioning scripts,
 - writes through a symlinked settings file (dotfile managers) and keeps its mode,
-- refuses to touch a settings file that isn't valid JSON.
+- refuses to touch a settings file that isn't valid JSON,
+- records a project install in `~/.local/state/needs-you/claude-projects.json` (and forgets it on `--uninstall`), so `needs-you doctor` and `needs-you update` can find it.
 
 Restart running sessions (or open `/hooks` in Claude Code) to pick up the change.
 

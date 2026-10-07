@@ -12,6 +12,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
 - Claude Code hooks: **`--alerts` works with `XDG_CONFIG_HOME` set.** The hook read `~/.config/needs-you/env` while the CLI and the invite installer use `$XDG_CONFIG_HOME/needs-you/env`, so the opt-in line was never seen. The hook now finds the env file exactly as the CLI does (`NEEDS_YOU_CONFIG`, then `$XDG_CONFIG_HOME/needs-you/env`, then `~/.config/needs-you/env`; `NEEDS_YOU_ENV_FILE` still overrides it for the hook), and `scripts/setup-sender.sh` writes it there too.
+- Claude Code hooks: **project-level hooks are no longer invisible.** `install-hooks.sh --project` (and the invite installer's `--claude-hooks project`) records the install in `~/.local/state/needs-you/claude-projects.json`. Run inside such a project, `needs-you doctor` adds a `claude project hooks` line (script missing, not executable or old), and `needs-you update` refreshes the project's hook script and re-merges its `.claude/settings.json` or `settings.local.json` entries.
 
 ## [0.1.2] - 2026-10-07
 

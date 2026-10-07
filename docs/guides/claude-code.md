@@ -36,7 +36,7 @@ The installer downloads `install-hooks.sh`, `needs-you-hook.sh` and `hooks.json`
 
 With `--alerts`, the installer also writes `NEEDS_YOU_AGENT_ALERTS=1` into `~/.config/needs-you/env`. With `--skill`, it writes `~/.claude/skills/needs-you/SKILL.md`. Restart open Claude Code sessions (or open `/hooks` in them) to pick up the hooks.
 
-`--claude-hooks project` writes the same into the current directory instead: `./.claude/hooks/needs-you-hook.sh` and `./.claude/settings.json`, with commands that start `"$CLAUDE_PROJECT_DIR/.claude/hooks/..."` so the file works for everyone who clones the repo once it's committed. `needs-you update` and `needs-you doctor` only look at the user-level install.
+`--claude-hooks project` writes the same into the current directory instead: `./.claude/hooks/needs-you-hook.sh` and `./.claude/settings.json`, with commands that start `"$CLAUDE_PROJECT_DIR/.claude/hooks/..."` so the file works for everyone who clones the repo once it's committed. The installer records each project install in `~/.local/state/needs-you/claude-projects.json`. `needs-you doctor` and `needs-you update` see a project's hooks when you run them inside that project (any directory under it): doctor adds a `claude project hooks` line, and update refreshes the project's hook script and re-merges its entries, as it does for the user level.
 
 `scripts/setup-sender.sh` (the manual sender setup) doesn't install the hooks. It writes the same settings (`--alerts` and the rest) to the env file and tells you to run `integrations/claude-code/install-hooks.sh`.
 
@@ -151,11 +151,12 @@ needs-you: use key prefix `acme:` and context `work` for this repo.
 needs-you doctor
 ```
 
-It's read-only and never posts. The two Claude Code lines:
+It's read-only and never posts. The Claude Code lines:
 
 | Line | OK means | Otherwise |
 |---|---|---|
 | `claude hooks` | `~/.claude/hooks/needs-you-hook.sh` exists, is executable and current, and `~/.claude/settings.json` references it. The line also says whether alerts are on (and where that's set), the context alert threshold, and any SSH alias or link template. | `INFO` not installed; `WARN` with the problem (script missing, not executable, not referenced, or an old hook) and the command to re-run. If alerts are off, the hint gives the line to turn them on. |
+| `claude project hooks` | Only when run inside a project with project-level hooks: the project's `.claude/hooks/needs-you-hook.sh` exists, is executable and current, and which of `.claude/settings.json` / `settings.local.json` reference it. | `WARN` with the problem and the command to fix it (`needs-you update` there). |
 | `claude skill` | `~/.claude/skills/needs-you/SKILL.md` exists. | `INFO` not installed (optional). |
 
 `needs-you doctor --json` prints the same for an agent. Then post a fake permission prompt and clear it:

@@ -215,6 +215,54 @@ def installed_paths() -> Dict[str, str]:
     }
 
 
+# Claude Code settings files that can hold the hook entries, user level (~/.claude) or per
+# project (<repo>/.claude, written by install-hooks.sh --project [--local]).
+HOOK_FILE = "needs-you-hook.sh"
+SETTINGS_NAMES = ("settings.json", "settings.local.json")
+
+
+def _references_hook(path: str) -> bool:
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return HOOK_FILE in fh.read()
+    except OSError:
+        return False
+
+
+def project_claude_dir(start: Optional[str] = None) -> Optional[str]:
+    """The project-level .claude directory with needs-you hooks that covers `start` (default:
+    the current directory): the nearest one at or above it whose settings.json or
+    settings.local.json references the hook. ~/.claude is the user level, never a project."""
+    user = os.path.realpath(_home(".claude"))
+    try:
+        d = os.path.realpath(start or os.getcwd())
+    except OSError:
+        return None
+    while True:
+        c = os.path.join(d, ".claude")
+        if os.path.realpath(c) != user and any(_references_hook(os.path.join(c, n)) for n in SETTINGS_NAMES):
+            return c
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
+def hook_settings(claude_dir: str) -> List[str]:
+    """The settings files in a .claude directory that reference the hook."""
+    return [os.path.join(claude_dir, n) for n in SETTINGS_NAMES if _references_hook(os.path.join(claude_dir, n))]
+
+
+def claude_projects() -> Dict[str, Any]:
+    """Project installs install-hooks.sh recorded: {settings path: {"hooks_json_sha256": ...}}."""
+    try:
+        with open(os.path.join(state_dir(), "claude-projects.json"), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def cli_path() -> str:
     return os.path.realpath(sys.argv[0] if sys.argv and sys.argv[0] else __file__)
 
@@ -1158,6 +1206,20 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         if applied != hj.get("sha256") or any(c["file"] == "needs-you-hook.sh" for c in changes):
             changes.append({"file": "hooks.json", "path": settings, "sha256": str(hj.get("sha256") or ""),
                             "size": hj.get("size"), "from": "?", "to": hj.get("version") or "?"})
+    # Project-level hooks covering the current directory (install-hooks.sh --project): the
+    # project's copy of the hook and its settings entries, re-merged together.
+    project = project_claude_dir()
+    hook_entry = files.get(HOOK_FILE)
+    if project and isinstance(hj, dict) and isinstance(hook_entry, dict):
+        if not isinstance(files.get("install-hooks.sh"), dict):
+            raise UpdateRefused("the hub's manifest lists hooks.json without install-hooks.sh")
+        hook = os.path.join(project, "hooks", HOOK_FILE)
+        recorded = claude_projects()
+        stale = [p for p in hook_settings(project)
+                 if (recorded.get(os.path.realpath(p)) or {}).get("hooks_json_sha256") != hj.get("sha256")]
+        if _sha256_file(hook) != str(hook_entry.get("sha256") or "").lower() or stale:
+            changes.append({"file": "project hooks", "path": project, "sha256": str(hj.get("sha256") or ""),
+                            "size": None, "from": _stamp(hook) or "none", "to": hook_entry.get("version") or "?"})
     return changes, notes
 
 
@@ -1406,6 +1468,23 @@ def _download_verified(hub: UpdateTarget, name: str, manifest: Dict[str, Any], t
 
 def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], timeout: float) -> str:
     name = change["file"]
+    if name == "project hooks":
+        import subprocess
+        import tempfile
+        project = change["path"]
+        with tempfile.TemporaryDirectory(prefix="needs-you-update-") as tmp:
+            for f in ("install-hooks.sh", "needs-you-hook.sh", "hooks.json"):
+                with open(os.path.join(tmp, f), "wb") as fh:
+                    fh.write(_download_verified(hub, f, manifest, timeout))
+            for settings in hook_settings(project):
+                args = ["bash", os.path.join(tmp, "install-hooks.sh"), "--project", os.path.dirname(project)]
+                if os.path.basename(settings) == "settings.local.json":
+                    args.append("--local")
+                r = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
+                                   env=dict(os.environ, NEEDS_YOU_INSTALLER="1"))
+                if r.returncode != 0:
+                    raise ValueError("install-hooks.sh failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
+        return "updated the project hooks in %s (settings keep a .bak)" % _tilde(project)
     if name == "hooks.json":
         import subprocess
         import tempfile
@@ -1712,7 +1791,7 @@ class Doctor:
         return "", ""
 
     def run(self) -> List[Dict[str, str]]:
-        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.skill,
+        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -1937,6 +2016,43 @@ class Doctor:
             if "alerts off until opted in" in parts:
                 hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
             self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
+
+    def project_hooks(self) -> None:
+        """Project-level hooks (install-hooks.sh --project) covering the current directory.
+        No line at all outside such a project."""
+        project = project_claude_dir()
+        if not project:
+            return
+        hook = os.path.join(project, "hooks", HOOK_FILE)
+        where = ", ".join(_tilde(p) for p in hook_settings(project))
+        problems = []
+        if not os.path.isfile(hook):
+            problems.append("%s references the hook but %s is missing" % (where, _tilde(hook)))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    current = HOOK_MARKER in fh.read()
+            except OSError:
+                current = False
+            if not current:
+                problems.append("old hook")
+        detail = "installed in %s; %s" % (where, _tilde(hook))
+        if problems:
+            self.add("claude project hooks", "WARN", "; ".join(problems) + "; " + detail,
+                     "in %s: needs-you update (or integrations/claude-code/install-hooks.sh --project%s)"
+                     % (_tilde(os.path.dirname(project)),
+                        " --local" if where.endswith("settings.local.json") else ""))
+        else:
+            alerts, src = self.setting("NEEDS_YOU_AGENT_ALERTS")
+            if alerts.lower() in _ON:
+                state = "alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, src)
+            elif alerts.lower() in _OFF:
+                state = "alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, src)
+            else:
+                state = "alerts off until opted in (Orca sessions: on)"
+            self.add("claude project hooks", "OK", detail + "; " + state)
 
     # -- skill -------------------------------------------------------------
     def skill(self) -> None:

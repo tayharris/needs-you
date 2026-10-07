@@ -51,7 +51,7 @@ needs-you update             # do it
 needs-you update --rollback  # put back the files the last update replaced
 ```
 
-`needs-you update` updates what's already installed on the machine (it never adds a piece): the CLI, the Claude Code hook and its entries in `~/.claude/settings.json` (re-merged by `install-hooks.sh`, which keeps a `.bak`), the skill, and the Orca snippet. It:
+`needs-you update` updates what's already installed on the machine (it never adds a piece): the CLI, the Claude Code hook and its entries in `~/.claude/settings.json` (re-merged by `install-hooks.sh`, which keeps a `.bak`), a project's own hooks when you run it inside that project, the skill, and the Orca snippet. It:
 
 - asks only the hub this machine was invited by: the first URL in `NEEDS_YOU_URLS`, or `NEEDS_YOU_UPDATE_HUB` if you set one. Never a failover hub, never a URL a hub sends;
 - talks to it only over https, loopback or the tailnet (a `100.64.0.0/10` or `fd7a:115c:a1e0::/48` address, or a `*.ts.net` name that resolves into them). Plain http to anything else is refused;

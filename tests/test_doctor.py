@@ -85,13 +85,13 @@ class DoctorTestCase(CliTestCase):
             plistlib.dump({"Label": "io.needs-you.flush", "ProgramArguments": [CLI, "-q", "flush"],
                            "StartInterval": 300}, fh)
 
-    def doctor(self, *args, extra_env=None):
+    def doctor(self, *args, extra_env=None, cwd=None):
         env = {"PATH": MINIMAL_PATH}
         env.update(extra_env or {})
-        return self.run_cli("doctor", *args, urls=None, token=None, extra_env=env)
+        return self.run_cli("doctor", *args, urls=None, token=None, extra_env=env, cwd=cwd)
 
-    def doctor_json(self, extra_env=None):
-        r = self.doctor("--json", extra_env=extra_env)
+    def doctor_json(self, extra_env=None, cwd=None):
+        r = self.doctor("--json", extra_env=extra_env, cwd=cwd)
         data = json.loads(r.stdout)
         return r, data, {c["check"]: c for c in data["checks"]}
 
@@ -276,6 +276,35 @@ class ClaudeAndOrca(DoctorTestCase):
         detail = checks["claude hooks"]["detail"]
         for want in ("context alert off", "ssh alias devbox (env)", "agent link off (env)"):
             self.assertIn(want, detail)
+
+    def test_project_hooks_reported_inside_the_project(self):
+        proj = os.path.join(self.tmp, "proj")
+        claude = os.path.join(proj, ".claude")
+        os.makedirs(os.path.join(claude, "hooks"))
+        os.makedirs(os.path.join(proj, "src", "deep"))
+        with open(os.path.join(claude, "settings.local.json"), "w") as fh:
+            json.dump({"hooks": {"Stop": [{"hooks": [{"type": "command", "command":
+                       '"$CLAUDE_PROJECT_DIR/.claude/hooks/needs-you-hook.sh" stop'}]}]}}, fh)
+        hook = os.path.join(claude, "hooks", "needs-you-hook.sh")
+        with open(HOOK_SRC) as src, open(hook, "w") as fh:
+            fh.write(src.read())
+        os.chmod(hook, 0o755)
+        r, data, checks = self.doctor_json()  # not in the project: no line
+        self.assertNotIn("claude project hooks", checks)
+        r, data, checks = self.doctor_json(cwd=os.path.join(proj, "src", "deep"))
+        line = checks["claude project hooks"]
+        self.assertEqual(line["status"], "OK", line)
+        self.assertIn("proj/.claude/settings.local.json", line["detail"])
+        self.assertIn("alerts off until opted in", line["detail"])
+        os.chmod(hook, 0o644)
+        r, data, checks = self.doctor_json(cwd=proj)
+        line = checks["claude project hooks"]
+        self.assertEqual(line["status"], "WARN")
+        self.assertIn("not executable", line["detail"])
+        self.assertIn("--local", line["hint"])
+        os.remove(hook)
+        r, data, checks = self.doctor_json(cwd=proj)
+        self.assertIn("is missing", checks["claude project hooks"]["detail"])
 
     def test_orca_reported_inside_orca(self):
         r, data, checks = self.doctor_json(extra_env={"ORCA_TERMINAL_HANDLE": "term_1"})
