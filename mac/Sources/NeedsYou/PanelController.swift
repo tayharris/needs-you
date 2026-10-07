@@ -231,6 +231,7 @@ final class PanelController {
             }
             removeEscape()
             escapeReleased = false
+            endResize()
         }
     }
 
@@ -427,7 +428,11 @@ final class PanelController {
     /// NSEvent, so it works without the panel ever becoming key. The edge away from the
     /// anchored corner follows the pointer; the anchored one stays put.
     private func handleResize(_ phase: DragPhase) {
-        guard model.display == .expanded else { return }
+        guard model.display == .expanded else {
+            // Collapsed mid-drag (Escape, the shortcut): drop the half-finished resize.
+            endResize()
+            return
+        }
         let m = model.metrics
         let mouseY = NSEvent.mouseLocation.y
         switch phase {
@@ -451,6 +456,11 @@ final class PanelController {
             }
             liveListHeight = nil
         }
+    }
+
+    private func endResize() {
+        resizeStartMouseY = nil
+        liveListHeight = nil
     }
 
     // MARK: Debug snapshot
