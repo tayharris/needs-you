@@ -13,6 +13,7 @@ import argparse
 import contextlib
 import hashlib
 import hmac
+import http.client
 import ipaddress
 import json
 import os
@@ -108,6 +109,7 @@ MAX_STEP_TEXT = 200
 MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
+PUSH_MAX_BYTES = MAX_REPLICATE_BYTES // 2  # a push batch stays well under the peer's limit
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
@@ -378,7 +380,10 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
     assert label is not None and url is not None
     if _URL_BAD_RE.search(url):
         raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
-    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    try:
+        scheme = urllib.parse.urlsplit(url).scheme.lower()
+    except ValueError:  # e.g. an unbalanced '[' in the host ("Invalid IPv6 URL")
+        raise _invalid(path + ".url", "%s.url is not a valid URL" % path)
     if len(url) <= len(scheme) + 1:
         raise _invalid(path + ".url", "%s.url is empty" % path)
     if (scheme in LINK_SCHEMES or scheme == "needsyou") and not LINK_RAW_RE.fullmatch(url):
@@ -1815,18 +1820,33 @@ class PeerWorker(threading.Thread):
         req.add_header("X-Needs-You-Hub", self.hub.hub_id)
         if data is not None:
             req.add_header("Content-Type", "application/json")
-        with _NO_PROXY_OPENER.open(req, timeout=float(self.hub.cfg["peer_timeout_seconds"])) as resp:
-            return json.loads(resp.read().decode("utf-8") or "{}")
+        try:
+            with _NO_PROXY_OPENER.open(req, timeout=float(self.hub.cfg["peer_timeout_seconds"])) as resp:
+                out = json.loads(resp.read().decode("utf-8") or "{}")
+        except http.client.HTTPException as e:
+            # not HTTP at all, or a response cut short: not an OSError, so say so as one
+            raise ConnectionError("bad HTTP response (%s)" % type(e).__name__)
+        if not isinstance(out, dict):
+            raise ValueError("peer response is not a JSON object")
+        return out
 
     def run(self) -> None:
         while not self.hub.stopping.is_set() and not self.disabled:
             now = time.monotonic()
             did_work = False
-            if now >= self.next_push:
-                did_work = self.push_once()
-            if now >= self.next_pull and not self.disabled:
-                self.pull()
-                self.next_pull = time.monotonic() + float(self.hub.cfg["anti_entropy_seconds"])
+            try:
+                if now >= self.next_push:
+                    did_work = self.push_once()
+                if now >= self.next_pull and not self.disabled:
+                    try:
+                        self.pull()
+                    finally:
+                        self.next_pull = time.monotonic() + float(self.hub.cfg["anti_entropy_seconds"])
+            except Exception as e:  # noqa: BLE001 - this thread must outlive any one bad round
+                if not self.hub.cfg.get("quiet"):
+                    sys.stderr.write("peer %s: %s: %s\n" % (self.peer, type(e).__name__, e))
+                self._fail(e)
+                did_work = False
             if did_work:
                 continue
             now = time.monotonic()
@@ -1854,9 +1874,15 @@ class PeerWorker(threading.Thread):
         if not rows:
             self.failures = 0
             return False
-        items, toks, invs = self.hub.store.records_for(rows)
-        payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
-                   "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+        while True:
+            items, toks, invs = self.hub.store.records_for(rows)
+            payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
+                       "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+            # The peer refuses bodies over MAX_REPLICATE_BYTES (413), and would refuse the same
+            # rows on every retry: send fewer rows instead. One record is far below the limit.
+            if len(rows) == 1 or len(json.dumps(payload)) <= PUSH_MAX_BYTES:
+                break
+            rows = rows[:len(rows) // 2]
         try:
             self._request("POST", "/v1/replicate", payload)
         except urllib.error.HTTPError as e:
@@ -1905,7 +1931,7 @@ class PeerWorker(threading.Thread):
                                                last_pull_ok=self.hub.store.now_ms())
                 if not resp.get("more"):
                     break
-        except (OSError, ValueError, ApiError) as e:
+        except (OSError, ValueError, TypeError, ApiError) as e:
             try:
                 self.hub.store.save_peer_state(self.peer, last_error="pull %s: %s" % (type(e).__name__, e))
             except sqlite3.Error:
