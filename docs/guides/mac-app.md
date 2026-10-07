@@ -33,7 +33,7 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 | The pill springs out with a title | A new item just arrived. |
 
 - **Click** the pill to expand the cards; **Escape** or click outside to collapse.
-- On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, ...).
+- On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, `linear:`, ...). A **Terminal** button on an agent's card brings forward the terminal it runs in and marks the card done ([Terminal button](#terminal-button)).
 - A card with **steps** shows them as a numbered checklist at your card text size, each step's link as a button. Tick steps off as you go (the ticks stay on this Mac; steps the agent already marked done are ticked for you); once every step is ticked the card offers **All steps done: mark Done**. With **Card text** set to First lines or Title only, the card shows "3 steps" until you click it.
 - A card waiting 4 hours or more shows its age next to the title (`5 h`, `2 d`; amber after 2 days). Its **…** menu has **Dismiss All from <host>**, which clears every card and Recent row from that machine in this context, for when a machine went away without resolving its cards.
 - **Right-click** the pill (or the button in the expanded header) to snooze everything: 15 min, 30 min, 1 hr, 3 hr, until tomorrow. Urgent items still pulse once through a snooze. What else arrives while snoozed waits under **Later** (below).
@@ -114,6 +114,31 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 
 The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
 
+## Terminal button
+
+Agent cards from the Claude Code hook (and Orca) carry a **Terminal** button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done.
+
+| Link | What the app does |
+|---|---|
+| `needsyou://orca/terminal?handle=term_…` | `orca terminal switch`, then Orca comes forward |
+| `needsyou://terminal/focus?app=wezterm&pane=<n>` | `wezterm cli activate-pane --pane-id <n>`, then WezTerm comes forward |
+| `needsyou://terminal/focus?app=tmux&pane=<n>[&host=<terminal>]` (or `target=<session>:<window>.<pane>`) | `tmux select-window` and `select-pane`, then the terminal tmux runs in comes forward |
+| `needsyou://terminal/focus?app=iterm&session=<UUID>` (or `tty=/dev/ttys<n>`) | Selects that iTerm2 session with AppleScript (opt-in, below), else brings iTerm2 forward |
+| `needsyou://terminal/focus?app=terminal&tty=/dev/ttys<n>` | Selects the Terminal tab on that tty with AppleScript (opt-in), else brings Terminal forward |
+| `needsyou://terminal/focus?app=ghostty` | Brings Ghostty forward |
+
+**iTerm2 and Terminal** need **Settings → Integrations → Jump to iTerm2 and Terminal tabs** (off by default). Turning it on asks macOS for the Automation permission for each app that's running (System Settings → Privacy & Security → Automation lists it); **Check again** asks again after you open the other one. The panel itself never asks.
+
+What keeps a card from doing more than switching tabs:
+
+- Every link is parsed into a fixed shape: exactly the parameters above, each at most once, each value matching its pattern (digits, a UUID, `/dev/ttys` and digits, a tmux session name), none starting with `-`. Anything else does nothing.
+- The CLIs run from fixed paths (`/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, the WezTerm app), never from `PATH`, with an argument list and a 5 s timeout. No shell.
+- The AppleScript is fixed text compiled once; the session id or tty is passed to a handler as a typed parameter, never pasted into the script.
+- The jump activates the terminal, never Needs You.
+- A terminal link opened from **outside** the app (a web page, a chat message, `open 'needsyou://terminal/…'`) asks first: **Switch to a terminal?** The card's own button doesn't ask.
+
+If a CLI switch fails (the pane is gone), the command goes on the clipboard. Logs: Console, subsystem `app.needsyou.mac`, category `terminal-jump`. Setting the hook up, including SSH sessions: [Claude Code alerts everywhere → Terminal button](claude-code-everywhere.md#terminal-button).
+
 ## Settings
 
 Right-click the pill (or the menu bar icon) → **Settings…**. The look, alerts and shortcut are under **Make it yours** above; the rest:
@@ -125,6 +150,7 @@ Right-click the pill (or the menu bar icon) → **Settings…**. The look, alert
 - **Hubs:** server hubs added by hand (URL and token), polled in order.
 - **Menu bar and panel:** the menu bar icon and count, hide the floating panel, urgent items show a hidden panel, snap to corners.
 - **Behaviour:** demo mode, urgent items break through a snooze, open at login.
+- **Integrations:** the hotkey opens the top card's link; **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
 
 Built in, not settings yet:
 

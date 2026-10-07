@@ -69,8 +69,10 @@ No prompt text, transcript or tool input is sent: a permission card names the to
 | On a server, with `--ssh-alias devbox` | **VS Code**: opens the folder in a Remote-SSH window (`vscode://vscode-remote/ssh-remote+devbox<cwd>`) |
 | In the VS Code extension (not the CLI in VS Code's terminal) | **Claude**: focuses that conversation's tab (`vscode://anthropic.claude-code/open?session=<id>`; the session must belong to the workspace open in the focused window) |
 | In Orca | **Terminal**: switches Orca to that terminal |
+| In a terminal on the Mac (tmux, WezTerm, iTerm2, Terminal, Ghostty) | **Terminal**: brings that tab or pane forward ([Terminal button](#terminal-button)) |
+| On a server over SSH, with `LC_NEEDS_YOU_TERM` set on the Mac | **Terminal**: brings forward the Mac tab the SSH connection runs in |
 
-`NEEDS_YOU_AGENT_LINK` replaces the editor buttons with one of your own, and `none` turns them off.
+`NEEDS_YOU_AGENT_LINK` replaces the editor buttons with one of your own, and `none` turns them off (the Terminal button stays).
 
 ### Context alert
 
@@ -88,7 +90,7 @@ The installer lists `http://127.0.0.1:8765` first in `~/.config/needs-you/env` o
 
 The hooks run on the server, so the server is the sender: run the line above there, not on the Mac. It needs to reach the Mac's hub over Tailscale; without Tailscale, see [tailscale.md → Without Tailscale](tailscale.md#a-machine-without-tailscale). While the Mac sleeps, cards queue on the server and arrive within about 5 minutes of it waking.
 
-There's no button that jumps back to a plain terminal window yet; the card names the host and directory.
+The card names the host and directory. For a **Terminal** button that brings forward the Mac tab the SSH connection runs in, name the tab on the Mac ([Terminal button](#terminal-button)).
 
 ### Inside tmux
 
@@ -101,6 +103,42 @@ Claude Code running in a VS Code window connected to a server is a session on th
 - `devbox` must be the name VS Code uses for the host (from `~/.ssh/config` or the Remote-SSH host list on the Mac).
 - The link opens the session's working directory. If it isn't the folder the window has open, VS Code opens a new window for it.
 - For a different link, set a template instead: `--agent-link 'VS Code=vscode://vscode-remote/ssh-remote+{host}{cwd}'`. The hook fills in `{cwd}`, `{host}` (the short hostname), `{session}` and `{handle}` (Orca's terminal handle; a template using it is skipped outside Orca).
+
+### Terminal button
+
+Clicking a card's **Terminal** button brings forward the terminal tab or pane the session runs in and marks the card done. The hook writes the link (`needsyou://terminal/focus?app=…`); the Mac app checks every value against a strict pattern and runs only fixed commands, never anything from the card.
+
+| Terminal on the Mac | The hook reads | The app runs | Needs |
+|---|---|---|---|
+| tmux | `$TMUX_PANE`, and which terminal tmux runs in | `tmux select-window` and `select-pane -t %<n>`, then that terminal comes forward | nothing (the default tmux server) |
+| WezTerm | `$WEZTERM_PANE` | `wezterm cli activate-pane --pane-id <n>`, then WezTerm comes forward | nothing |
+| iTerm2 | `$ITERM_SESSION_ID` | AppleScript: selects that session | **Settings → Integrations → Jump to iTerm2 and Terminal tabs**, then allow the Automation prompt |
+| Terminal | the session's tty (`/dev/ttys<n>`) | AppleScript: selects the tab on that tty | the same setting |
+| Ghostty | `TERM_PROGRAM=ghostty` | brings Ghostty forward (no tab selection yet) | nothing |
+
+Without the setting, iTerm2 and Terminal cards still get the button; it brings the app forward. A CLI switch that fails (the pane closed) puts the command on the clipboard. The jump never activates Needs You itself, and the panel never asks for a permission: the Automation prompt comes only from the Settings toggle (**Check again** asks again once the terminal is open).
+
+**Sessions over SSH.** The hook runs on the server and can't see which Mac tab holds the connection, so the Mac tells it. macOS's ssh sends every `LC_*` variable (`SendEnv LANG LC_*` in `/etc/ssh/ssh_config`), and Debian and Ubuntu's sshd accepts them (`AcceptEnv LANG LC_*`), so one line in the Mac's shell is enough. Add this to `~/.zshrc` on the Mac:
+
+```sh
+# needs-you: name this tab for Claude Code cards from SSH sessions
+if [ -n "$TMUX_PANE" ]; then
+  export LC_NEEDS_YOU_TERM="app=tmux&pane=${TMUX_PANE#%}"
+elif [ -n "$WEZTERM_PANE" ]; then
+  export LC_NEEDS_YOU_TERM="app=wezterm&pane=$WEZTERM_PANE"
+elif [ -n "$ITERM_SESSION_ID" ]; then
+  export LC_NEEDS_YOU_TERM="app=iterm&session=${ITERM_SESSION_ID#*:}"
+elif [ "$TERM_PROGRAM" = Apple_Terminal ]; then
+  export LC_NEEDS_YOU_TERM="app=terminal&tty=$(tty)"
+fi
+```
+
+For tmux on the Mac, add `&host=iterm` (or `wezterm`, `ghostty`, `terminal`) so the right app comes forward. Check it from a new tab: `ssh devbox 'echo $LC_NEEDS_YOU_TERM'` should print the value.
+
+- If your `~/.ssh/config` has its own `SendEnv`, or the server's sshd doesn't accept `LC_*`, add `SendEnv LC_NEEDS_YOU_TERM` under the host in `~/.ssh/config` on the Mac and `AcceptEnv LC_NEEDS_YOU_TERM` to `/etc/ssh/sshd_config` on the server.
+- It names a tab, nothing more: a pane number, a session id or a tty. Don't put anything else in it; the hook drops a value that isn't exactly one of the forms above.
+- **tmux on the server:** a pane keeps the value from when its shell started. Re-attach from another Mac tab and old panes still name the first one (new panes pick up the new tab with `set -ga update-environment LC_NEEDS_YOU_TERM` in the server's `~/.tmux.conf`). A stale value fails safe: the button shows the wrong tab, or just brings the terminal forward.
+- The remote's own tmux or WezTerm variables are never used: they name panes on the server, not on the Mac.
 
 ### Orca terminals
 
