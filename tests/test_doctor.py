@@ -314,6 +314,20 @@ class ClaudeAndOrca(DoctorTestCase):
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertIn("is missing", checks["claude project hooks"]["detail"])
 
+    def test_user_level_claude_is_not_a_project(self):
+        """Walking up from a directory under $HOME reaches ~/.claude: that is the user scope
+        (reported as "claude hooks"), never "claude project hooks", however HOME is spelled."""
+        self.install_claude()
+        work = os.path.join(self.home, "work", "repo")
+        os.makedirs(work)
+        link = os.path.join(self.tmp, "home-link")
+        os.symlink(self.home, link)
+        for home in (self.home, self.home + "/", link):
+            with self.subTest(home=home):
+                r, data, checks = self.doctor_json(extra_env={"HOME": home}, cwd=work)
+                self.assertNotIn("claude project hooks", checks)
+                self.assertEqual(checks["claude hooks"]["status"], "OK", checks["claude hooks"])
+
     def test_orca_reported_inside_orca(self):
         r, data, checks = self.doctor_json(extra_env={"ORCA_TERMINAL_HANDLE": "term_1"})
         detail = checks["orca"]["detail"]
