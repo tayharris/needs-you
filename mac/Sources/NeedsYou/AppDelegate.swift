@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(model: model, connect: connect, localHub: localHub, hotKeys: hotKeys)
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
-        model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .invite) }
+        model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .connect) }
         // Setup cards: a click on a card's button (Settings may activate the app then).
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
@@ -247,7 +247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        settingsWindow.show(tab: .joinHub)
+        settingsWindow.show(tab: .otherHubs)
         guard let link = ConnectLink.parse(url.absoluteString) else {
             connect.connect(url.absoluteString)   // shows why the link isn't usable
             return

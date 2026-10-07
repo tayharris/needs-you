@@ -10,9 +10,11 @@ Words used on this page:
 |---|---|
 | **Pill** | The small floating panel the app shows at the top right of the screen. It never takes keyboard focus. |
 | **Hub** | The little service that stores items (Python + SQLite). The Mac app runs one for you; nothing to install. |
-| **Sender** | Any machine or agent that posts items, with the `needs-you` command-line tool (the CLI). |
-| **Invite link** | A link the app makes that sets up one or more senders. Each machine gets its own revocable token. |
+| **Sender** | Any machine or agent that posts items, with the `needs-you` command-line tool (the CLI). It doesn't need the Mac app. |
+| **Invite link** | A link the app makes (Settings → **Connect a machine**) that sets up one or more senders. Each machine gets its own revocable token. |
 | **Tailnet** | Your private [Tailscale](https://tailscale.com) network. Only needed if machines other than the Mac should post. |
+
+The rest (reader, owner, server hub): [Words](concepts.md).
 
 ## What you need
 
@@ -57,17 +59,17 @@ Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `release-m
 
 What you should see: **no Dock icon and no window.** A faint pill appears at the top right of the screen. That's the idle state ("nothing needs you"). It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by **right-clicking the pill**: Settings…, About Needs You, Quit Needs You.
 
-## 4. Check the hub on This Mac
+## 4. Check the hub on this Mac (Your inbox)
 
 The hub starts by itself (**Run hub on this Mac** is on by default). Check it:
 
-1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Hubs**: **This Mac**, **Join a hub**, **Invite a machine**, **Access**, **Hubs (manual)**; then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
-2. Open **This Mac**. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
+1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Inbox and machines**: **Your inbox**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
+2. Open **Your inbox**. It starts with how it works: your machines send alerts, this Mac holds them (it's the hub), the pill shows them. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
 3. Optional: **General → Open at login**.
 
 If the pill says **Hub can't start** (click it to open Settings):
 
-| This Mac says | Fix |
+| Your inbox says | Fix |
 |---|---|
 | *Python 3 isn't available on this Mac* | Run `xcode-select --install` in Terminal and let it finish (a few minutes). Then right-click the pill → **Quit Needs You** and open the app again. |
 | *Port 8765 is already in use by another program* | Another copy of Needs You (in another user account, or one you built) or another program holds port 8765. Quit it, then quit and reopen this one. |
@@ -86,12 +88,12 @@ The hub never listens on your Wi-Fi or the open internet, only on `127.0.0.1` an
 
 The first time another machine connects, macOS may ask whether **`python3`** may accept incoming connections. That's the app's hub: click **Allow**. (It can ask again after an update.)
 
-## 6. Connect a machine: Invite a machine and the one-line setup
+## 6. Connect a machine: an invite link and the one-line setup
 
 Do this for the Mac itself first (so Claude Code on the Mac can post), then for each other machine.
 
-1. Right-click the pill → **Settings…** → **Invite a machine** (under **Hubs**).
-2. **Machine name:** anything, e.g. `laptop` or `devbox`. **Role:** **Sender (a server or agent)**. **Uses:** how many machines this link should set up. **Expires after:** keep the default.
+1. Right-click the pill → **Settings…** → **Connect a machine** (under **Inbox and machines**).
+2. **What is it?** *A server or agent that sends alerts*. **Machine name:** anything, e.g. `laptop` or `devbox`. **Uses:** how many machines this link should set up. **Expires after:** keep the default.
 3. Click **Create invite**. The join link appears with two copy buttons:
    - **Shell one-liner** copies a command to run on the machine:
 
@@ -129,9 +131,9 @@ Tick off what you get to; anything that surprises you is worth a report.
 - [ ] **Never steals focus:** keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.
 - [ ] **Work and personal:** post one item with `--context work` and one with `--context personal`. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.
 - [ ] **Focus and snooze:** right-click the pill → **Focus** (Agents and urgent only, Urgent only, Everything later) and **Snooze**.
-- [ ] **Make it yours:** **Settings → Panel** (size, card text, opacity, shortcut) and **Alerts** (how loud). **⌃⌥Space** opens or collapses the card list.
+- [ ] **Make it yours:** **Settings → Panel** (size, card text, opacity, shortcut) and **Alerts** (how loud). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
 - [ ] **Mac asleep or app quit:** quit Needs You, post from another machine (the CLI says it queued and exits 0), reopen the app. The item arrives within about 5 minutes.
-- [ ] **Access:** **Settings → Access → Refresh** lists your machines (names and roles, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
+- [ ] **Machines:** **Settings → Machines → Refresh** lists your machines (names, what they are and CLI versions, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
 - [ ] **Updates:** **Settings → Updates** shows the version and the last check. While the repo is private, the app needs a GitHub login to check: install the [GitHub CLI](https://cli.github.com) and run `gh auth login` once (collaborators only). It only installs releases the owner has published, never drafts. A failed check here is expected without `gh`.
 
 More on everything: [mac-app.md](mac-app.md), [claude-code-everywhere.md](claude-code-everywhere.md), [troubleshooting.md](troubleshooting.md).

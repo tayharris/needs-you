@@ -20,7 +20,7 @@ posted under the same key.
 
 ## Setup on a machine (once)
 
-The normal way is an **invite link** from the person (the Mac app's Settings → "Invite a machine",
+The normal way is an **invite link** from the person (the Mac app's Settings → "Connect a machine",
 or `needs-you-admin invite create` on a server hub). It looks like
 `http://my-mac.example.ts.net:8765/join/nyi_...`. If you are an agent and were given one:
 

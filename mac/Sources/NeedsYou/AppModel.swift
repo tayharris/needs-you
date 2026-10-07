@@ -229,7 +229,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// The owner hub's token list (Settings → Access, or the one-off probe): any token
+    /// The owner hub's token list (Settings → Machines, or the one-off probe): any token
     /// besides this Mac's own means something has connected.
     func noteAccessTokens(_ tokens: [TokenSummary]) {
         guard !isDemo, !senderObserved, tokens.contains(where: { !$0.current }) else { return }

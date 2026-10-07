@@ -31,7 +31,7 @@ tailscale ip -4                                    # this machine's tailnet addr
 
 ## 3. How the hubs use it
 
-**The Mac app's hub** listens on `127.0.0.1:8765` and, whenever Tailscale is up, also on the Mac's tailnet address. There's no switch: the app finds the Tailscale CLI by itself (the app bundle, `/usr/local/bin`, `/opt/homebrew/bin`), reads the address and the MagicDNS name, and restarts its hub when they change. **Settings… → This Mac** shows the URL servers use under **From your other machines (Tailscale)**, `http://my-mac.<tailnet>.ts.net:8765` (the tailnet IP if MagicDNS is off), with a **Copy** button. Invite links use the same URL. Without Tailscale it says other machines can't reach the hub, and invite links point at `127.0.0.1`.
+**The Mac app's hub** listens on `127.0.0.1:8765` and, whenever Tailscale is up, also on the Mac's tailnet address. There's no switch: the app finds the Tailscale CLI by itself (the app bundle, `/usr/local/bin`, `/opt/homebrew/bin`), reads the address and the MagicDNS name, and restarts its hub when they change. **Settings… → Your inbox** shows the URL servers use under **From your other machines (Tailscale)**, `http://my-mac.<tailnet>.ts.net:8765` (the tailnet IP if MagicDNS is off), with a **Copy** button. Invite links use the same URL. Without Tailscale it says other machines can't reach the hub, and invite links point at `127.0.0.1`.
 
 The first time another machine connects, macOS may ask whether `python3` may accept incoming connections: click **Allow**. (Ad-hoc signed builds may ask again after an update.)
 
@@ -53,7 +53,7 @@ The last line should print JSON with `"ok":true`. `/v1/health` needs no token. T
 |---|---|
 | `Could not resolve host` | MagicDNS is off, or this machine isn't signed in to the tailnet. Use the 100.x address meanwhile. |
 | A timeout | The Mac is asleep or offline, Tailscale is down on the Mac, the macOS firewall blocked `python3`, or an access rule blocks port 8765 (below). |
-| `Connection refused` | The Mac is reachable, but its hub isn't listening on the tailnet address: check **Settings… → This Mac** (is **Run hub on this Mac** on, and does **From your other machines (Tailscale)** show the `ts.net` name?). |
+| `Connection refused` | The Mac is reachable, but its hub isn't listening on the tailnet address: check **Settings… → Your inbox** (is **Run hub on this Mac** on, and does **From your other machines (Tailscale)** show the `ts.net` name?). |
 
 More in [troubleshooting.md](troubleshooting.md#a-sender-cant-reach-the-hub).
 

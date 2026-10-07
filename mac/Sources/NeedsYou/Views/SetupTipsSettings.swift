@@ -32,7 +32,7 @@ extension SettingsTab {
     /// Where a setup card's Open Settings goes: the one place that maps Core's pages to tabs.
     init(setupPage: SetupSettingsPage) {
         switch setupPage {
-        case .thisMac: self = .thisMac
+        case .thisMac: self = .inbox
         }
     }
 }

@@ -289,7 +289,7 @@ fi
 # ---------------------------------------------------------------- checks
 if [ "$ROLE" != "sender" ]; then
   say "This invite ($INVITE_NAME, role $ROLE) is for the Mac app, not for a server."
-  say "On the Mac, open:"
+  say "On the Mac, open it (or paste it into Settings → Other hubs (advanced)):"
   say "  $MAC_URL"
   exit 1
 fi

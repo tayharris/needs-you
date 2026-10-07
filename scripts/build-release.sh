@@ -146,7 +146,7 @@ When the app first listens on your tailnet, the macOS firewall may ask whether \
 
 Managed Macs: endpoint security (SentinelOne, CrowdStrike, Jamf Protect) may flag an ad-hoc signed app that listens on a port. Ask IT to allow the bundle id \`app.needsyou.mac\`, or build from source (\`mac/scripts/bundle.sh\`).
 
-**Sender machines.** Use an invite link from the app (right-click the pill → **Settings…** → **Invite a machine**). To install only the CLI: download \`needs-you-cli-$V\`, \`chmod +x\` it and put it on your \`PATH\` as \`needs-you\`.
+**Sender machines.** Use an invite link from the app (right-click the pill → **Settings…** → **Connect a machine**). To install only the CLI: download \`needs-you-cli-$V\`, \`chmod +x\` it and put it on your \`PATH\` as \`needs-you\`.
 
 **Server hubs.** Unpack \`needs-you-server-$V.tar.gz\` and follow \`docs/HUB.md\`.
 

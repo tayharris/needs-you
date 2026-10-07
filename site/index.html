@@ -78,7 +78,7 @@
       <p><a class="button" data-repo="/releases/latest" href="https://github.com/tayharris/needs-you/releases/latest">Download for Mac</a></p>
       <p>The latest release has <code>NeedsYou-&lt;version&gt;.dmg</code> (open it, drag the app to Applications) and the same app as a <code>.zip</code>. macOS 14 or later.</p>
       <p class="note">The app is ad-hoc signed, not notarized, so macOS blocks the first launch. On macOS 15 and later: double-click it, then System Settings &rarr; Privacy &amp; Security &rarr; <strong>Open Anyway</strong>. On macOS 14: Right-click the app &rarr; <strong>Open</strong> &rarr; <strong>Open</strong>.</p>
-      <p>A faint pill appears at the top right; it runs its own hub. Then add your other machines: right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Invite a machine</strong> &rarr; <strong>Create invite</strong> &rarr; <strong>Shell one-liner</strong>, and run what it copies on the machine. It looks like this (the Claude Code options are optional):</p>
+      <p>A faint pill appears at the top right. Your Mac is the hub: it holds the alerts, and other machines only need the <code>needs-you</code> command. Then add your other machines: right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong> &rarr; <strong>Shell one-liner</strong>, and run what it copies on the machine. It looks like this (the Claude Code options are optional):</p>
       <div class="code"><pre><code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts</code></pre></div>
     </section>
 
