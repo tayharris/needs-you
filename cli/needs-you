@@ -616,7 +616,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     _QUIET = False
     code = _main(argv)
     if _UPDATE_REQUESTED_BY:
-        on_update_requested(Config(), _UPDATE_REQUESTED_BY, _QUIET)
+        on_update_requested(_UPDATE_REQUESTED_BY, _QUIET)
     return code
 
 
@@ -1580,12 +1580,13 @@ def _stderr_discarded() -> bool:
     return (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)
 
 
-def on_update_requested(cfg: Config, hub_url: str, quiet: bool) -> None:
+def on_update_requested(hub_url: str, quiet: bool) -> None:
     """A hub's response said the owner asked this machine to update. The flag is the only
     thing taken from the hub: with NEEDS_YOU_AUTO_UPDATE=1 this starts the same verified
     `needs-you update --auto` in the background (at most every 6 h); otherwise it prints one
     line to stderr at most once a day. Never raises, never changes the exit code."""
     try:
+        cfg = Config()
         st = _read_state()
         now = time.time()
         if _setting(cfg, "NEEDS_YOU_AUTO_UPDATE").strip().lower() in _ON:
