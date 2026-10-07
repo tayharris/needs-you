@@ -28,7 +28,7 @@ or `needs-you-admin invite create` on a server hub). It looks like
 2. Pick the options that fit this machine: `--claude-hooks user --skill --alerts` if it runs
    Claude Code (add `--ssh-alias <name>` if the person reaches it from the Mac over SSH, with
    the name their `~/.ssh/config` uses), `--codex-hooks user` (plus `--alerts`) if it runs
-   OpenAI Codex CLI, `--orca` if it runs Orca automations, `--context
+   OpenAI Codex CLI, `--gemini-hooks user` (plus `--alerts`) if it runs Gemini CLI, `--orca` if it runs Orca automations, `--context
    personal` if its items are personal rather than work.
 3. Run it:
 
@@ -250,7 +250,9 @@ asks for approval or finishes its turn and waits for you, and resolves it on you
 the next tool run, an interrupt or the end of the session. Install with the invite installer's
 `--codex-hooks user` or `integrations/codex/install-codex-hooks.sh`; Codex runs it only after
 the user trusts it once in `/hooks`. Same opt-in as the Claude hooks. Details:
-[integrations/codex](../integrations/codex/README.md).
+[integrations/codex](../integrations/codex/README.md). Gemini CLI works the same way
+(`--gemini-hooks user`, hooks in `~/.gemini/settings.json`, no trust step):
+[integrations/gemini](../integrations/gemini/README.md).
 
 ## Networking
 
