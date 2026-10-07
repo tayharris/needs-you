@@ -11,7 +11,7 @@ Use one of these, in order of preference:
 1. **A second Mac** that has never had needs-you, Xcode or the Command Line Tools. Check: `xcode-select -p` fails, and `/Applications/NeedsYou.app`, `~/Library/Application Support/NeedsYou` and `~/.config/needs-you` don't exist.
 2. **A new standard (non-admin) user account** on your Mac. The Command Line Tools are machine-wide, so this account can't test the "no Command Line Tools" path; do that part on (1) or skip it. Quit the main account's NeedsYou first (it holds port 8765), or expect and record the "port in use" behavior.
 
-The tester gets: the draft release's URL and nothing else. No repo checkout, no Swift, no brew. A collaborator account can see a draft release on a private repo; otherwise download the assets and hand them over with `SHA256SUMS`.
+The tester gets: the release's URL and [testers.md](../guides/testers.md), nothing else. No repo checkout, no Swift, no brew. Who can see the release: the repo is owned by a personal account, so every collaborator has write access and can see drafts too (the read-only **Read** role exists only for repos owned by an organization). Anyone who isn't a collaborator gets the assets handed over with `SHA256SUMS`.
 
 Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, Tailscale installed or not.
 
@@ -19,9 +19,9 @@ Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, 
 
 | # | Step | Expect | Record |
 |---|---|---|---|
-| A1 | Download `NeedsYou-X.Y.Z-macos.zip` and `SHA256SUMS`; run `shasum -a 256 -c SHA256SUMS` in Downloads | The zip line says `OK` (the other assets show as missing; that's fine) | Wording that confused them |
-| A2 | Unzip, drag `NeedsYou.app` to `/Applications`, double-click | macOS refuses: it can't verify the developer | The exact dialog text and buttons, per macOS version |
-| A3 | Follow the release notes: **Privacy & Security → Open Anyway** (macOS 15+), or right-click → **Open** (14 and earlier) | The app opens; a pill appears; Settings opens with "Welcome to Needs You" | Whether the notes' steps matched the screens |
+| A1 | Download `NeedsYou-X.Y.Z.dmg` (or the `-macos.zip`) and `SHA256SUMS`; run `shasum -a 256 -c SHA256SUMS --ignore-missing` in Downloads | The downloaded file's line says `OK` | Wording that confused them |
+| A2 | Open the DMG and drag `NeedsYou.app` onto the `Applications` link (or unzip and drag), then double-click it in `/Applications` | macOS refuses: it can't verify the developer | The exact dialog text and buttons, per macOS version |
+| A3 | Follow the release notes: **Privacy & Security → Open Anyway** (macOS 15+), or right-click → **Open** (14) | The app opens with no Dock icon and no window: a faint pill appears at the top right, and the hub starts by itself (**Run hub on this Mac** is on by default). Settings doesn't open on its own; right-click the pill → **Settings…** shows **This Mac** with the hub running. (The "Welcome to Needs You" box on **General** shows only when no hub is set up.) | Whether the notes' steps matched the screens; whether they knew where the app was |
 | A4 | Alternative: `xattr -dr com.apple.quarantine /Applications/NeedsYou.app` | Opens without the dialog | — |
 | A5 | Managed Mac only: watch for an EDR alert or the app being killed | Nothing, or an alert to write down | Product name and the alert text |
 
@@ -29,7 +29,7 @@ Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, 
 
 | # | Step | Expect | Record |
 |---|---|---|---|
-| B1 | Turn on **Run hub on this Mac** | No "install command line tools" dialog pops on its own. Settings shows *Python 3 isn't available on this Mac. Install Apple's command line tools (`xcode-select --install`) or connect to a remote hub.* | Whether any system dialog appeared |
+| B1 | Launch the app (the hub is on by default) and open **Settings… → This Mac** | No "install command line tools" dialog pops on its own. The pill says "Hub can't start" and clicking it opens Settings. **This Mac** shows *Python 3 isn't available on this Mac. Install Apple's command line tools (`xcode-select --install`) or connect to a remote hub.* | Whether any system dialog appeared |
 | B2 | Run `xcode-select --install`, finish the install | — | How long it took |
 | B3 | Quit and reopen NeedsYou | The hub starts: "Running. Agents and servers post to …" | Whether it needed a reopen, or a toggle off/on |
 
@@ -46,7 +46,7 @@ Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, 
 
 | # | Step | Expect | Record |
 |---|---|---|---|
-| D1 | Right-click the pill → **Settings…** → **Invite a machine**: name `laptop-agent`, role **Sender (a server or agent)**, 1 use, then **Create invite** | An invite row appears with **Agent prompt** and **Shell one-liner** buttons; "Copied …" after clicking one | Whether they found the section without help |
+| D1 | Right-click the pill → **Settings…** → **Invite a machine** (under **Hubs** in the sidebar): name `laptop-agent`, role **Sender (a server or agent)**, 1 use, then **Create invite** | An invite row appears with **Agent prompt** and **Shell one-liner** buttons; "Copied …" after clicking one | Whether they found the section without help |
 | D2 | Paste **Agent prompt** into Claude Code on the same Mac | The agent reads the link, installs the CLI to `~/.local/bin`, writes `~/.config/needs-you/env`, a test card appears, then it's resolved | Every question the agent asked; anything it got wrong |
 | D3 | `cat ~/.config/needs-you/env` (token redacted when sharing) | `NEEDS_YOU_URLS` starts with `http://127.0.0.1:8765` | — |
 | D4 | Second invite, 2 uses, for a Linux server on the tailnet: run **Shell one-liner** there with `--claude-hooks user --skill` | Installed; a test card from that host; a cron line `# needs-you-flush` | — |
@@ -58,7 +58,7 @@ Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, 
 
 | # | Step | Expect | Record |
 |---|---|---|---|
-| E1 | **Access** → **Refresh** | **Invites** lists the open invites; **Machines** lists the tokens from D2 and D4 (names, roles, never the token values) | — |
+| E1 | **Settings… → Access** (under **Hubs**) → **Refresh** | **Invites** lists the open invites; **Machines** lists the tokens from D2 and D4 (names, roles, never the token values) | — |
 | E2 | **Revoke** the server's token | It disappears from the list; on the server, `needs-you add ...` is refused (and isn't queued) | The CLI's message on the server |
 | E3 | **Revoke** a still-open invite; open its `/join/<code>` link | The join page says the link is no longer valid; its installer exits 1 | — |
 | E4 | Resolve everything from D6 (`needs-you resolve --key ...`) | The pill goes back to "Nothing needs you" | — |
