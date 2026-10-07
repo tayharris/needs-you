@@ -20,7 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-latest]
+        # Repo variable CI_LINUX_RUNNERS (JSON list of runs-on values) switches to self-hosted,
+        # e.g. [["self-hosted","linux"]]. Unset: GitHub's images. See docs/roadmap/ci-cd.md.
+        os: ${{ fromJSON(vars.CI_LINUX_RUNNERS || '["ubuntu-22.04","ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,7 +33,8 @@ jobs:
       - run: /usr/bin/python3 -m unittest discover -s tests
 
   python-macos-39:
-    runs-on: macos-14
+    # Repo variable CI_MAC_RUNNER (JSON runs-on value), e.g. ["self-hosted","macOS"].
+    runs-on: ${{ fromJSON(vars.CI_MAC_RUNNER || '"macos-14"') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,7 +44,7 @@ jobs:
       - run: /usr/bin/python3 -m unittest discover -s tests
 
   mac:
-    runs-on: macos-latest
+    runs-on: ${{ fromJSON(vars.CI_MAC_RUNNER || '"macos-latest"') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,7 +54,7 @@ jobs:
       - run: mac/scripts/bundle.sh
 
   shellcheck:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_LINUX_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
