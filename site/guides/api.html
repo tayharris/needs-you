@@ -287,9 +287,15 @@ title/body/priority/steps changed).</p>
 <p>If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),
 the response is <code>{"resolved": 0, "items": []}</code>. A body with neither or both of <code>key</code>/<code>id</code> is a
 400, and so is a <code>key</code> or <code>id</code> that isn't a string (<code>"id/key must be a string"</code>).</p>
-<p>Resolve doesn't check who posted the item: any <code>sender</code> token can resolve any item on the hub,
-by key or id. This is intended: the senders of one inbox are trusted alike (they are one
-person's machines and agents), and a resolve only closes a card, it can't read or change one.</p>
+<p>Resolve doesn't check who posted the item. This is intended:</p>
+<ul>
+<li>Any valid <code>sender</code> token for this inbox (this hub and its peers) can resolve any item in
+it, by key or id, including items another of your machines posted.</li>
+<li>Tokens are minted per inbox by its owner and checked on every request, so a machine
+outside the inbox can't resolve anything.</li>
+<li>Hubs listen only on loopback or the tailnet.</li>
+<li>If a token leaks, revoke it (<code>DELETE /v1/tokens/&lt;id or name&gt;</code>, or <code>needs-you-admin token revoke</code>).</li>
+</ul>
 <h3 id="patch-v1itemsid-reader"><code>PATCH /v1/items/{id}</code> (reader) <a class="anchor" href="#patch-v1itemsid-reader" aria-label="Link to this section">#</a></h3>
 <p>Body: any of</p>
 <ul>

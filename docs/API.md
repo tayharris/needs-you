@@ -270,9 +270,14 @@ If nothing is open with that key/id (already resolved, dismissed, expired, or ne
 the response is `{"resolved": 0, "items": []}`. A body with neither or both of `key`/`id` is a
 400, and so is a `key` or `id` that isn't a string (`"id/key must be a string"`).
 
-Resolve doesn't check who posted the item: any `sender` token can resolve any item on the hub,
-by key or id. This is intended: the senders of one inbox are trusted alike (they are one
-person's machines and agents), and a resolve only closes a card, it can't read or change one.
+Resolve doesn't check who posted the item. This is intended:
+
+- Any valid `sender` token for this inbox (this hub and its peers) can resolve any item in
+  it, by key or id, including items another of your machines posted.
+- Tokens are minted per inbox by its owner and checked on every request, so a machine
+  outside the inbox can't resolve anything.
+- Hubs listen only on loopback or the tailnet.
+- If a token leaks, revoke it (`DELETE /v1/tokens/<id or name>`, or `needs-you-admin token revoke`).
 
 ### `PATCH /v1/items/{id}` (reader)
 
