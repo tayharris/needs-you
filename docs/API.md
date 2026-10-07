@@ -263,7 +263,8 @@ title/body/priority/steps changed).
 
 ### `POST /v1/items/resolve` (sender)
 
-Body: exactly one of `{"key": "..."}` or `{"id": "..."}`.
+Body: exactly one of `{"key": "..."}` or `{"id": "..."}`. Leading and trailing whitespace is
+trimmed, as `POST /v1/items` trims the key it stores.
 
 Closes the open item with that key (or that id) as `resolved`. Always `200` and idempotent:
 

@@ -2700,8 +2700,9 @@ class Handler(BaseHTTPRequestHandler):
         data = self._body()
         if not isinstance(data, dict):
             raise ApiError(400, "invalid", "body must be a JSON object")
-        item_id = data.get("id")
-        key = data.get("key")
+        # Trimmed as POST /v1/items trims a key, so the same --key finds what it stored.
+        item_id = data.get("id").strip() if isinstance(data.get("id"), str) else data.get("id")
+        key = data.get("key").strip() if isinstance(data.get("key"), str) else data.get("key")
         if bool(item_id) == bool(key):
             raise ApiError(400, "invalid", "send exactly one of id or key")
         if not isinstance(item_id or key, str):

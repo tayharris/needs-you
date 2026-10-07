@@ -488,6 +488,18 @@ class BadInput(ApiTestCase):
         s, r = request("GET", self.base + "/v1/replicate/changes?after=" + "9" * 30, PEER_SECRET)
         self.assertEqual(s, 400, r)
 
+    def test_resolve_trims_the_key_as_post_does(self):
+        # POST stores " deploy:42 " as "deploy:42"; the same --key must resolve it
+        s, r = self.post({"key": " deploy:42 ", "title": "t"})
+        self.assertEqual((s, r["key"]), (201, "deploy:42"))
+        s, r = self.resolve({"key": " deploy:42\n"})
+        self.assertEqual((s, r["resolved"]), (200, 1), r)
+        s, r = self.post({"key": "deploy:43", "title": "t"})
+        s, r2 = self.resolve({"id": " %s " % r["id"]})
+        self.assertEqual(r2["resolved"], 1, r2)
+        s, r = self.resolve({"key": "   "})
+        self.assertEqual(s, 400, r)
+
 
 if __name__ == "__main__":
     import unittest

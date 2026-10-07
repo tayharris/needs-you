@@ -285,7 +285,8 @@ unexpired items, the hub returns <code>429 too_many_open</code> instead.</li>
 plus <code>"created": true|false</code> and <code>"changed": true|false</code> (<code>changed</code> is true on create and when
 title/body/priority/steps changed).</p>
 <h3 id="post-v1itemsresolve-sender"><code>POST /v1/items/resolve</code> (sender) <a class="anchor" href="#post-v1itemsresolve-sender" aria-label="Link to this section">#</a></h3>
-<p>Body: exactly one of <code>{"key": "..."}</code> or <code>{"id": "..."}</code>.</p>
+<p>Body: exactly one of <code>{"key": "..."}</code> or <code>{"id": "..."}</code>. Leading and trailing whitespace is
+trimmed, as <code>POST /v1/items</code> trims the key it stores.</p>
 <p>Closes the open item with that key (or that id) as <code>resolved</code>. Always <code>200</code> and idempotent:</p>
 <div class="code"><pre><code class="language-json">{"resolved": 1, "items": [ { ...the resolved item... } ]}</code></pre></div>
 <p>If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),

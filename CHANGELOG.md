@@ -11,6 +11,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Hub: **a replicated item with a field of the wrong type stopped replication with that peer.** A `body`, `source`, `token_id`, `superseded_by`, `origin_hub`, `updated_by` or step of the wrong JSON type, or a numeric timestamp too large for a float, made `/v1/replicate` answer `500` for the whole batch (retried forever) and stopped pulls at that record. It is now skipped and quarantined like any record the hub can't read; a token or invite record with such a timestamp still fails closed with `400`.
 - Hub: text with an unpaired UTF-16 surrogate (`\ud800` in the JSON, which `needs-you add --title "$name"` sends for a file name with a byte that isn't UTF-8) was a `500`, so the CLI took the hub for down and kept the item queued for a week. It is now a `400 invalid`; a replicated item with one is skipped.
 - Hub: a number too large for SQLite in a `cursor`, in `/v1/replicate/changes?after=` or in `/v1/stream`'s `after`, or a numeric `expires_at`/`seen_at` too large for a float, was a `500`. A cursor like that is refused like any cursor the hub didn't issue (or ignored for `since`), the others are `400 invalid`, and the stream starts from now.
+- Hub: `POST /v1/items/resolve` trims the key (and id) as `POST /v1/items` does, so `needs-you resolve --key " deploy:42 "` closes the item `needs-you add` stored as `deploy:42`. It used to resolve nothing.
 
 ## [0.1.3] - 2026-10-07
 
