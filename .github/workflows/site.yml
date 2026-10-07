@@ -1,0 +1,48 @@
+# Deploys needsyou.app on every push to main that touches the site or the docs it publishes.
+# Builds site/guides/ from docs/ (scripts/build_site_guides.py), runs the site tests, then
+# rsyncs site/ to the web server, the same as a deploy by hand.
+#
+# Needs, set once by the owner (nothing host-specific lives in the repo):
+#   repo variable SITE_DEPLOY_TARGET  rsync destination, e.g. user@web-host:sites/needsyou.app/
+#   repo variable CI_LINUX_RUNNER     the self-hosted Linux runner (shared with ci.yml), whose
+#                                     user can already ssh to that host (key and known_hosts)
+# Without SITE_DEPLOY_TARGET the deploy job is skipped.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'site/**'
+      - 'README.md'
+      - 'scripts/build_site_guides.py'
+      - 'tests/test_site*.py'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.SITE_DEPLOY_TARGET != ''
+    runs-on: ${{ fromJSON(vars.CI_LINUX_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the guides
+        run: /usr/bin/python3 scripts/build_site_guides.py
+      - name: Site tests
+        run: /usr/bin/python3 -m unittest discover -s tests -p 'test_site*.py'
+      - name: Deploy
+        env:
+          TARGET: ${{ vars.SITE_DEPLOY_TARGET }}
+        run: |
+          rsync -a --exclude README.md --exclude _headers --exclude '__pycache__' \
+            -e 'ssh -o BatchMode=yes -o ConnectTimeout=15' site/ "$TARGET"
