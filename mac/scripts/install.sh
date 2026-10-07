@@ -31,6 +31,12 @@
 # and never pruned), and ~/Library/Application Support/NeedsYou (hub.db, owner.token,
 # tokens.json). No Keychain is involved.
 #
+# One bundle id change is allowed: an installed NeedsYou.app with an older id may be
+# replaced by one with the current id (APP_ID) at the same path, and rolled back again.
+# The running app is found by its path and quit by the id in the installed copy's
+# Info.plist, so it doesn't matter which id it has. Settings live in the old id's defaults
+# domain and don't carry over; the login item has to be turned on again.
+#
 # NEEDS_YOU_* variables in the environment are passed to the relaunched app (`open --env`),
 # which scripts/upgrade-test.sh uses to keep everything in temp dirs.
 set -euo pipefail
@@ -50,13 +56,14 @@ while [[ $# -gt 0 ]]; do
     --no-launch) LAUNCH=0; shift ;;
     --quit-with) QUIT_WITH="$2"; shift 2 ;;
     --record-rollback) RECORD_DIR="$2"; shift 2 ;;
-    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
 case "$QUIT_WITH" in app|term) ;; *) echo "--quit-with must be app or term" >&2; exit 2 ;; esac
 
 NAME=NeedsYou.app
+APP_ID=app.needsyou.mac
 mkdir -p "$DEST"
 DEST="$(cd "$DEST" && pwd -P)"   # real path, as the running process reports it
 TARGET="$DEST/$NAME"
@@ -158,9 +165,15 @@ fi
 APP_SRC="$(cd "$APP_SRC" && pwd -P)"
 [[ "$APP_SRC" != "$TARGET" ]] || { echo "error: --app is the installed copy itself" >&2; exit 1; }
 codesign --verify --strict "$APP_SRC"
-if [[ -d "$TARGET" && "$(plist "$TARGET" CFBundleIdentifier)" != "$(plist "$APP_SRC" CFBundleIdentifier)" ]]; then
-  echo "error: $TARGET has bundle id $(plist "$TARGET" CFBundleIdentifier), the new app has $(plist "$APP_SRC" CFBundleIdentifier)" >&2
-  exit 1
+if [[ -d "$TARGET" ]]; then
+  OLD_ID="$(plist "$TARGET" CFBundleIdentifier)"
+  NEW_ID="$(plist "$APP_SRC" CFBundleIdentifier)"
+  if [[ "$OLD_ID" != "$NEW_ID" && "$NEW_ID" == "$APP_ID" ]]; then
+    echo "==> moving from bundle id $OLD_ID to $NEW_ID (settings start fresh; turn Open at login on again)"
+  elif [[ "$OLD_ID" != "$NEW_ID" ]]; then
+    echo "error: $TARGET has bundle id $OLD_ID, the new app has $NEW_ID" >&2
+    exit 1
+  fi
 fi
 
 # Stage first (same volume, so the swap below is a rename), then stop the old one.
