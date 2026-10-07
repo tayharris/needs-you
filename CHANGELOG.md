@@ -6,6 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Changed
 
+- Mac app: **Settings → Panel → Opacity → Background darkness** puts a dark layer behind the pill's and open panel's glass (30% by default; None for plain glass), so cards are easy to read and still see-through. A click anywhere else collapses the open panel again by default (Settings → Panel → Open panel turns that off).
 - Mac app: new-item previews stay on the pill's display by default instead of following the monitor you're working on (Settings → Alerts → On the work screen brings that back).
 - Mac app: the global shortcut opens the card list, or collapses it when it's open (a hidden or snoozed panel comes back open), and double-clicking the open panel's header bar collapses it. The "Hotkey also opens the top card's first link" option is gone (change the shortcut in **Settings → Panel → Keyboard**).
 - Mac app: **Settings → Panel → Opacity** sets the collapsed pill and the open panel (and previews) separately, each with the pointer away and over it, down to 30%. Settings page titles now scroll with the page instead of being clipped under the title bar.

@@ -8,6 +8,11 @@ struct OpacitySettingsSection: View {
 
     var body: some View {
         Section {
+            Picker(selection: $settings.ui.backdrop) {
+                ForEach(PanelBackdrop.choices, id: \.self) { Text(PanelBackdrop.title($0)).tag($0) }
+            } label: {
+                LabelWithDetail("Background darkness", "A dark layer behind the glass so cards are easy to read over bright or busy windows. It stays see-through.")
+            }
             picker($settings.ui.pillOpacity, "Collapsed pill", "The count pill while the pointer is elsewhere.")
             picker($settings.ui.pillHoverOpacity, "Collapsed pill, pointer over it", "While you point at the count pill.")
             picker($settings.ui.panelOpacity, "Open panel", "The open panel and new-item previews while the pointer is elsewhere.")
@@ -15,7 +20,7 @@ struct OpacitySettingsSection: View {
         } header: {
             Text("Opacity")
         } footer: {
-            Text("Lower is more see-through. The idle “Nothing needs you” pill stays faint on its own.")
+            Text("Background darkness tints the glass; the percentages below fade the whole panel. Lower is more see-through. The idle “Nothing needs you” pill stays faint on its own.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

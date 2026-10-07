@@ -155,6 +155,21 @@ public enum PanelOpacity {
     }
 }
 
+/// Settings → Panel → Opacity → Background: how dark the layer behind the glass is.
+public enum PanelBackdrop {
+    public static let choices: [Double] = [0, 0.15, 0.3, 0.45, 0.6, 0.75]
+    public static let standard = 0.3
+
+    public static func nearestChoice(_ value: Double) -> Double {
+        guard value.isFinite else { return standard }
+        return choices.min(by: { abs($0 - value) < abs($1 - value) }) ?? standard
+    }
+
+    public static func title(_ value: Double) -> String {
+        value <= 0 ? "None (plain glass)" : "\(Int((value * 100).rounded()))%"
+    }
+}
+
 /// Settings → Panel → Cards before scrolling: the expanded list's height.
 public enum ListHeightPolicy {
     /// 0 = as many as fit (the original: up to the size's maximum height).
