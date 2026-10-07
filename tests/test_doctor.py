@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import plistlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -480,7 +481,8 @@ class ClaudeAndOrca(DoctorTestCase):
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertEqual(checks["claude project hooks"]["status"], "WARN")
         self.assertIn("not installed from this machine", checks["claude project hooks"]["detail"])
-        self.assertIn("install-hooks.sh --project %s --local" % proj, checks["claude project hooks"]["hint"])
+        self.assertRegex(checks["claude project hooks"]["hint"],  # macOS: /var is /private/var
+                         r"install-hooks\.sh --project (/private)?%s --local$" % re.escape(proj))
         state = os.path.join(self.home, ".local", "state", "needs-you")
         os.makedirs(state, exist_ok=True)
         with open(os.path.join(state, "claude-projects.json"), "w") as fh:
@@ -495,7 +497,7 @@ class ClaudeAndOrca(DoctorTestCase):
         line = checks["claude project hooks"]
         self.assertEqual(line["status"], "WARN")
         self.assertIn("not executable", line["detail"])
-        self.assertEqual(line["hint"], "run: cd %s && needs-you update" % proj)  # recorded: update reinstalls
+        self.assertRegex(line["hint"], r"^run: cd (/private)?%s && needs-you update$" % re.escape(proj))  # recorded
         os.remove(hook)
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertIn("is missing", checks["claude project hooks"]["detail"])
