@@ -79,6 +79,8 @@ case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, proj
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
+  # It is saved to the (sourceable) env file, so no shell syntax: scheme://host:port[/path].
+  case "$HUB_GIVEN" in *[!]A-Za-z0-9.:/_~%@[-]*) die "--hub has characters that aren't allowed in a hub URL" ;; esac
   HUB_URL=$HUB_GIVEN
 fi
 HUB_URL=${HUB_URL%/}
@@ -259,10 +261,21 @@ def current(key):
 
 updates = {}
 urls = None
+import re
+# The env file is documented as sourceable (`. ~/.config/needs-you/env`), so nothing the hub
+# sent may carry shell syntax into it: tokens and URLs must be plain.
+SAFE_URL = re.compile(r"^https?://[A-Za-z0-9.:/_~%@\[\]-]+$")
+SAFE_TOKEN = re.compile(r"^[A-Za-z0-9._~+/=-]+$")
 if os.path.exists(resp_path):
     resp = json.load(open(resp_path))
-    urls = [u.rstrip("/") for u in resp.get("hub_urls") or [] if u]
+    urls = [u.rstrip("/") for u in resp.get("hub_urls") or [] if isinstance(u, str) and u]
+    bad = [u for u in urls if not SAFE_URL.match(u)]
+    if bad or not isinstance(resp.get("token"), str) or not SAFE_TOKEN.match(resp["token"]):
+        sys.exit("needs-you install: the hub's answer has characters that don't belong in a "
+                 "token or hub URL; not writing it to %s" % path)
     updates["NEEDS_YOU_TOKEN"] = resp["token"]
+if given and not SAFE_URL.match(given):
+    sys.exit("needs-you install: --hub %r has characters that aren't allowed in a hub URL" % given)
 if given:  # --hub: this URL first, then the rest
     rest = urls if urls is not None else [u for u in current("NEEDS_YOU_URLS").split(",") if u]
     urls = [given.rstrip("/")] + [u for u in rest if u.rstrip("/") != given.rstrip("/")]
