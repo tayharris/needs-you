@@ -11,6 +11,11 @@
 #                               resolve this process's earlier cards
 #   needs-you-hook.sh end       SessionEnd: resolve the session's cards
 #
+# A second argument names the agent: `codex` for OpenAI Codex CLI (installed by
+# integrations/codex/install-codex-hooks.sh into ~/.codex/hooks.json), where
+# PermissionRequest and Stop (the turn ended, Codex waits for you) call `notify`
+# and the cards say "Codex". Default: claude.
+#
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
 # it can (VS Code folder, Remote-SSH window, the VS Code Claude tab, the Orca
@@ -58,6 +63,8 @@
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
+#   NEEDS_YOU_CODEX_TURN_CARDS  Codex only: 0 = no card when a turn ends, just
+#                             approval prompts (default: on)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -66,6 +73,10 @@ set +e
 trap 'exit 0' INT TERM HUP
 
 mode=${1:-}
+case "${2:-}" in
+  codex) agent=codex ;;
+  *) agent=claude ;;
+esac
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
@@ -89,7 +100,7 @@ input=$(cat 2>/dev/null)
 
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
-           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW; do
+           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_CODEX_TURN_CARDS; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -183,6 +194,11 @@ resolve_marker() {
   [ -n "$k" ] || k=${2:-}
   rm -f "$1"
   [ -n "$k" ] || return 0
+  if [ "${resolve_bg:-}" = 1 ]; then
+    ( "$cli" resolve --key "$k" ) </dev/null >/dev/null 2>&1 &
+    log "resolve $k (background)"
+    return 0
+  fi
   "$cli" resolve --key "$k" </dev/null >/dev/null 2>&1
   log "resolve $k -> $?"
 }
@@ -193,12 +209,13 @@ run_py() {
   lease
   NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
-  NY_PID=$lease_pid NY_START=$lease_start \
+  NY_PID=$lease_pid NY_START=$lease_start NY_AGENT=$agent \
   python3 - 2>/dev/null <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
+AGENT = "codex" if os.environ.get("NY_AGENT") == "codex" else "claude"
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -400,7 +417,8 @@ def make_links():
         return links
     # No template: the deepest editor links this machine can name.
     # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
-    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode" and re.match(r"^[A-Za-z0-9-]{8,64}$", session):
+    if (AGENT == "claude" and os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"
+            and re.match(r"^[A-Za-z0-9-]{8,64}$", session)):
         links.append("Claude=vscode://anthropic.claude-code/open?session=" + session)
     if not cwd.startswith("/"):
         return links
@@ -420,7 +438,7 @@ def base_args(key, title, body, priority):
         args += ["--context", context]
     # --opt=value: a title, body or project starting with "-" isn't taken for an option
     args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
-             "--agent", "claude-code", "--project=" + project]
+             "--agent", "codex" if AGENT == "codex" else "claude-code", "--project=" + project]
     try:
         expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
     except ValueError:
@@ -494,10 +512,46 @@ def tool_label(tool):
 
 
 # ---------------------------------------------------------------- notify
+PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
+
+
+def codex_card():
+    """(kind, what, msg) for a Codex hook event, or None for no card."""
+    if event == "PermissionRequest":
+        tool = field("tool_name")
+        ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+        if tool in ("Bash", "shell", "exec_command", "local_shell"):
+            word = command_word(ti.get("command") if isinstance(ti.get("command"), str) else "")
+            what = "Codex wants to run %s" % word if word else "Codex wants to run a command"
+        elif tool == "apply_patch":
+            cmd = ti.get("command") if isinstance(ti.get("command"), str) else ""
+            names = [file_name(m.strip()) for m in PATCH_FILE.findall(cmd[:200000])]
+            names = [n for n in names if n]
+            if len(names) == 1:
+                what = "Codex wants to edit %s" % names[0]
+            elif names:
+                what = "Codex wants to edit %d files" % len(set(names))
+            else:
+                what = "Codex wants to edit files"
+        else:
+            what = "Codex needs permission for %s" % tool_label(tool)
+        return "permission", what, "Codex is asking to use %s." % tool_label(tool)
+    if event == "Stop":
+        if (os.environ.get("NEEDS_YOU_CODEX_TURN_CARDS") or "").lower() in ("0", "false", "no", "off"):
+            return None
+        return "notify", "Codex is waiting for you", "Codex finished its turn and is waiting for your next message."
+    return None
+
+
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if event == "PermissionRequest":
+    if AGENT == "codex":
+        card = codex_card()
+        if card is None:
+            return 3
+        kind, what, msg = card
+    elif event == "PermissionRequest":
         if data.get("requires_user_approval") is False:
             return 3
         kind = "permission"
@@ -702,6 +756,8 @@ PY
 
 case "$mode" in
   resolve)
+    # Codex's Interrupt hook is synchronous with a 1-3 s limit: don't wait on the hub.
+    [ "$agent" = codex ] && resolve_bg=1
     resolve_marker "$marker" "$key"
     ;;
 
@@ -717,7 +773,7 @@ case "$mode" in
   start)
     # Remember the model (the transcript has no [1m] suffix) for the context check.
     model=$(json_str model)
-    if [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
+    if [ "$agent" = claude ] && [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
       printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
       find "$state_dir" -name '.model-*' -mtime +7 -exec rm -f {} + 2>/dev/null
     fi
@@ -742,9 +798,17 @@ case "$mode" in
     ;;
 
   end)
-    resolve_marker "$marker" "$key"
-    resolve_marker "$ctx_marker"
-    [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+    if [ "$agent" = codex ]; then
+      # Codex runs SessionEnd synchronously with a 1-3 s limit: resolve in the
+      # background (the CLI queues if no hub answers; flush reaps the lease if
+      # this is cut short).
+      resolve_bg=1
+      resolve_marker "$marker" "$key"
+    else
+      resolve_marker "$marker" "$key"
+      resolve_marker "$ctx_marker"
+      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+    fi
     ;;
 
   notify)

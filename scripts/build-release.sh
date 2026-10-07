@@ -47,7 +47,8 @@ for f in hub/needs_you_hub.py cli/needs-you; do
 done
 # The sender files the hub serves carry a version stamp too (needs-you update reports it).
 for f in integrations/claude-code/needs-you-hook.sh integrations/claude-code/skill/needs-you/SKILL.md \
-         integrations/orca/snippet.md integrations/claude-code/hooks.json; do
+         integrations/orca/snippet.md integrations/claude-code/hooks.json \
+         integrations/codex/codex-hooks.json integrations/codex/install-codex-hooks.sh; do
   got=$(sed -n 's/.*needs[-_]you[-_]version"\{0,1\}: *"\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$ROOT/$f" | head -n 1)
   [ "$got" = "$V" ] || die "$f has version stamp ${got:-none}, VERSION file has $V"
 done
