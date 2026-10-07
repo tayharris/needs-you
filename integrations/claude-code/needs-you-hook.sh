@@ -939,6 +939,14 @@ case "$mode" in
         fi
         ;;
     esac
+    # Take the lease now, before the post (run_py runs in a subshell, and the agent may exit
+    # while the CLI posts). `opencode run` goes idle and exits at once: with opencode
+    # already gone nobody is waiting, and a card without a lease would stay for 48 hours.
+    lease
+    if [ "$agent" = opencode ] && [ -z "$lease_pid" ]; then
+      log "notify $key -> skipped: opencode has exited"
+      exit 0
+    fi
     # Build the item from the hook JSON and call the CLI with an argv list
     # (no shell quoting of untrusted text). Prints what posted it.
     kind=$(run_py notify)

@@ -35,7 +35,7 @@ It writes `plugins/needs-you.js` and `hooks/needs-you-hook.sh` there (opencode l
 - The plugin starts the hook only for sessions it posted a card for, so busy events cost nothing otherwise. It never awaits the hook, never throws, and has no permission hook, so it can't change a decision.
 - The hook gets the session id, the project directory, the permission name and up to five patterns on stdin. The card keeps at most a program name or a file's basename; patterns, metadata, questions and answers are never sent.
 - **Key:** `agent:<host>:<session id>` (or the Orca terminal handle). **Source:** `--agent opencode`.
-- The hook is a child of the opencode process, so its lease points at opencode and the 5-minute `needs-you flush` clears the card of an opencode that died.
+- The hook is a child of the opencode process, so its lease points at opencode and the 5-minute `needs-you flush` clears the card of an opencode that died. A one-shot `opencode run` exits as soon as it goes idle; the hook sees opencode gone and posts no "waiting" card for it.
 
 ## Check and test
 
