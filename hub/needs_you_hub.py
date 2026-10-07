@@ -267,7 +267,7 @@ def parse_client_header(raw: Any) -> Dict[str, str]:
 
 
 def file_version(data: bytes) -> Optional[str]:
-    m = FILE_VERSION_RE.search(data[:4096].decode("utf-8", "replace"))
+    m = FILE_VERSION_RE.search(data[:16384].decode("utf-8", "replace"))
     return m.group(1) if m else None
 
 
