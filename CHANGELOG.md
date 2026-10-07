@@ -4,6 +4,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-07
+
 ### Upgrade note: new bundle id
 
 The Mac app's bundle id is now **`app.needsyou.mac`**, so macOS sees it as a new app: **settings reset once** (hubs you joined, your name, panel and alert choices), and **Open at login** has to be turned on again in Settings → General. Hub data and tokens in `~/Library/Application Support/NeedsYou` are kept, so this Mac's hub and the machines connected to it carry on. If the firewall asks about `python3` again, choose **Allow**. 0.1.1 has no in-app updater: install this version by hand or with `mac/scripts/install.sh --app <new NeedsYou.app>`, which quits the old app and replaces it at the same path. To keep your old settings, before the first launch run `defaults export <old id> - | defaults import app.needsyou.mac -`, where `<old id>` is the previous bundle id (`defaults read /Applications/NeedsYou.app.previous/Contents/Info.plist CFBundleIdentifier` after an `install.sh` update). Commands now use the new id: `defaults read app.needsyou.mac`, `log show --predicate 'subsystem == "app.needsyou.mac"'`.
