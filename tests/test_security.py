@@ -1,0 +1,333 @@
+"""Security regression tests from the 2026-10-07 audit (docs/security/audit-2026-10-07.md).
+
+Each test tries one bypass or abuse and checks that the hub, CLI or installer refuses it.
+"""
+from __future__ import annotations
+
+import importlib.machinery
+import io
+import json
+import os
+import socket
+import sys
+import time
+import unittest
+import urllib.parse
+import urllib.request
+
+import test_install
+from support import CLI, OPENER, HubTestCase, hubmod, request  # noqa: E402
+
+ApiError = hubmod.ApiError
+OWNER = "owner-secret-0123456789abcdef"
+OK = {"key": "work:SEC-1:x", "title": "Decide the thing"}
+
+
+def with_(**kw):
+    d = dict(OK)
+    d.update(kw)
+    return d
+
+
+def link(url, label="L"):
+    return {"label": label, "url": url}
+
+
+def load_cli():
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("needs_you_cli_sec", CLI)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+class SpoofingAndSchemes(unittest.TestCase):
+    """Text and link tricks an agent could be talked into posting."""
+
+    REJECTED = [
+        ("RLO in title", with_(title="Approve \u202egpj.exe"), "title"),
+        ("RLI isolate in title", with_(title="a\u2067b"), "title"),
+        ("bidi override in body", with_(body="line\n\u202dforced"), "body"),
+        ("bidi override in link label", with_(links=[link("https://a.example", "\u202eRP")]), "links[0].label"),
+        ("bidi override in source", with_(source={"agent": "\u202ex"}), "source.agent"),
+        ("C1 control in title", with_(title="a\u009bb"), "title"),
+        ("zero-width space in url", with_(links=[link("https://git\u200bhub.com/x")]), "links[0].url"),
+        ("bidi override in url", with_(links=[link("https://a.example/\u202e")]), "links[0].url"),
+        ("BOM in url", with_(links=[link("\ufeffjavascript:alert(1)")]), "links[0].url"),
+        ("space inside url", with_(links=[link("https://a.example/x y")]), "links[0].url"),
+        ("nbsp inside url", with_(links=[link("https://a.example/\u00a0x")]), "links[0].url"),
+        ("javascript mixed case", with_(links=[link("JaVaScRiPt:alert(1)")]), "links[0].url"),
+        ("javascript leading space", with_(links=[link("  javascript:alert(1)")]), "links[0].url"),
+        ("javascript tab inside", with_(links=[link("java\tscript:alert(1)")]), "links[0].url"),
+        ("javascript newline inside", with_(links=[link("java\nscript:alert(1)")]), "links[0].url"),
+        ("percent-encoded scheme", with_(links=[link("%6Aavascript:alert(1)")]), "links[0].url"),
+        ("data url", with_(links=[link("data:text/html,<b>x</b>")]), "links[0].url"),
+        ("file url", with_(links=[link("FILE:///etc/passwd")]), "links[0].url"),
+        ("vbscript", with_(links=[link("vbscript:msgbox")]), "links[0].url"),
+        ("http", with_(links=[link("http://a.example")]), "links[0].url"),
+        ("needsyou connect", with_(links=[link("needsyou://connect?hub=http://x&code=y")]), "links[0].url"),
+        ("needsyou other host", with_(links=[link("needsyou://evil/terminal?handle=term_12345678")]), "links[0].url"),
+        ("unicode lookalike scheme", with_(links=[link("\uff48ttps://a.example")]), "links[0].url"),
+    ]
+
+    ACCEPTED = [
+        ("Arabic text", with_(title="\u0645\u0631\u062d\u0628\u0627 approve")),
+        ("Hebrew with RLM", with_(body="\u05e9\u05dc\u05d5\u05dd\u200f ok")),
+        ("emoji ZWJ sequence", with_(body="team \U0001F469\u200d\U0001F4BB done")),
+        ("Persian ZWNJ", with_(body="\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645")),
+        ("encoded space in url", with_(links=[link("https://a.example/x%20y")])),
+        ("terminal link", with_(links=[link("needsyou://orca/terminal?handle=term_ab12cd34&environment=dev%20box")])),
+    ]
+
+    def test_rejected(self):
+        for name, payload, field in self.REJECTED:
+            with self.subTest(name):
+                with self.assertRaises(ApiError) as cm:
+                    hubmod.validate_item_input(payload)
+                self.assertEqual(cm.exception.status, 400)
+                self.assertEqual(cm.exception.field, field)
+
+    def test_accepted(self):
+        for name, payload in self.ACCEPTED:
+            with self.subTest(name):
+                hubmod.validate_item_input(payload)
+
+    def test_link_allowed_matches_validation(self):
+        for name, payload, field in self.REJECTED:
+            if not field.endswith(".url"):
+                continue
+            for lk in payload.get("links") or []:
+                with self.subTest(name):
+                    self.assertFalse(hubmod.link_allowed(lk["url"]))
+        self.assertTrue(hubmod.link_allowed("https://a.example/x"))
+        self.assertTrue(hubmod.link_allowed("vscode://file/home/dev/x.py"))
+        self.assertFalse(hubmod.link_allowed(None))
+
+
+class Timestamps(unittest.TestCase):
+    def test_out_of_range_is_refused(self):
+        # 1e13 s is in the year ~318,000: storable, but unprintable, so it would break listings.
+        for raw in (1e13, -1, float("inf"), float("nan"), 1e300, "99999999999999999999",
+                    "10000000000000", "-5"):
+            with self.subTest(raw):
+                with self.assertRaises((ValueError, TypeError)):
+                    hubmod.parse_ts(raw)
+
+    def test_edges(self):
+        self.assertEqual(hubmod.parse_ts(0), 0)
+        self.assertEqual(hubmod.parse_ts("9999-12-31T23:59:59.999Z"), hubmod.MAX_TS_MS)
+        self.assertEqual(hubmod.fmt_ts(hubmod.MAX_TS_MS), "9999-12-31T23:59:59.999Z")
+
+
+class HubAbuse(HubTestCase):
+    def setUp(self):
+        super().setUp()
+        self.hub = self.make_hub("hub-a", public_url="http://hub-a.example.ts.net:8765",
+                                 maintenance_seconds=0)
+        self.hub.store.ensure_token("this-mac", "owner", OWNER)
+        self.sender, self.reader = self.tokens(self.hub)
+
+    def raw(self, data, timeout=5.0):
+        host, port = self.hub.server.server_address[:2]
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.sendall(data)
+            chunks = []
+            while True:
+                try:
+                    b = s.recv(65536)
+                except socket.timeout:
+                    break
+                if not b:
+                    break
+                chunks.append(b)
+        return b"".join(chunks)
+
+    def test_far_future_expiry_cannot_break_the_feed(self):
+        st, body = request("POST", self.hub.url + "/v1/items", self.sender,
+                           with_(expires_at=1e13))
+        self.assertEqual(st, 400, body)
+        self.assertEqual(body.get("field"), "expires_at")
+        st, body = request("POST", self.hub.url + "/v1/items", self.sender, with_(expires_at=float("inf")))
+        self.assertEqual(st, 400, body)
+        st, body = request("GET", self.hub.url + "/v1/items", self.reader)
+        self.assertEqual(st, 200, body)
+
+    def test_far_future_seen_at_is_refused(self):
+        st, item = request("POST", self.hub.url + "/v1/items", self.sender, OK)
+        self.assertEqual(st, 201)
+        st, body = request("PATCH", self.hub.url + "/v1/items/" + item["id"], self.reader,
+                           {"seen_at": 9e15})
+        self.assertEqual(st, 400, body)
+        self.assertEqual(request("GET", self.hub.url + "/v1/items", self.reader)[0], 200)
+
+    def test_negative_content_length_is_refused_without_reading(self):
+        # Unauthenticated endpoint; before the fix rfile.read(-1) read until the client hung up.
+        t0 = time.time()
+        resp = self.raw(b"POST /v1/invites/redeem HTTP/1.0\r\nContent-Length: -1\r\n\r\n{\"code\":")
+        self.assertIn(b" 400 ", resp.split(b"\r\n", 1)[0])
+        self.assertLess(time.time() - t0, 4)
+
+    def test_deeply_nested_json_is_a_400(self):
+        body = b"[" * 50000
+        resp = self.raw(b"POST /v1/invites/redeem HTTP/1.0\r\nContent-Length: %d\r\n\r\n" % len(body) + body)
+        self.assertIn(b" 400 ", resp.split(b"\r\n", 1)[0])
+
+    def test_idle_connections_time_out(self):
+        self.assertTrue(0 < hubmod.Handler.timeout <= 120)
+
+    def test_role_matrix(self):
+        st, item = request("POST", self.hub.url + "/v1/items", self.sender, OK)
+        self.assertEqual(st, 201)
+        iid = item["id"]
+        u = self.hub.url
+        cases = [
+            # (method, path, body, {token: expected status})
+            ("POST", "/v1/items", OK, {None: 401, "bogus": 401, "reader": 403, "owner": 403}),
+            ("POST", "/v1/items/resolve", {"key": "nope"}, {None: 401, "reader": 403, "owner": 403}),
+            ("GET", "/v1/items", None, {None: 401, "bogus": 401, "sender": 403, "reader": 200, "owner": 200}),
+            ("GET", "/v1/items/" + iid, None, {None: 401, "sender": 403, "reader": 200}),
+            ("PATCH", "/v1/items/" + iid, {"seen_at": None}, {None: 401, "sender": 403, "reader": 200}),
+            ("GET", "/v1/stream", None, {None: 401, "sender": 403}),
+            ("POST", "/v1/invites", {"name": "x"}, {None: 401, "sender": 403, "reader": 403, "owner": 201}),
+            ("GET", "/v1/invites", None, {None: 401, "sender": 403, "reader": 403, "owner": 200}),
+            ("DELETE", "/v1/invites/x", None, {None: 401, "sender": 403, "reader": 403}),
+            ("GET", "/v1/tokens", None, {None: 401, "sender": 403, "reader": 403, "owner": 200}),
+            ("DELETE", "/v1/tokens/x", None, {None: 401, "sender": 403, "reader": 403}),
+            ("GET", "/v1/replicate/changes", None, {None: 401, "sender": 401, "owner": 401}),
+            ("POST", "/v1/replicate", {"items": []}, {None: 401, "owner": 401}),
+        ]
+        toks = {None: None, "bogus": "ny_not-a-real-token-000000000000", "sender": self.sender,
+                "reader": self.reader, "owner": OWNER}
+        for method, path, body, want in cases:
+            for who, status in want.items():
+                with self.subTest(method=method, path=path, who=who):
+                    got, resp = request(method, u + path, toks[who], body)
+                    self.assertEqual(got, status, resp)
+
+    def test_no_cors_headers(self):
+        req = urllib.request.Request(self.hub.url + "/v1/health", method="GET")
+        req.add_header("Origin", "https://evil.example")
+        with OPENER.open(req, timeout=5) as resp:
+            self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
+
+    def test_sql_metacharacters_are_data(self):
+        st, body = request("POST", self.hub.url + "/v1/items/resolve", self.sender,
+                           {"key": "x' OR '1'='1"})
+        self.assertEqual((st, body["resolved"]), (200, 0))
+        st, _ = request("GET", self.hub.url + "/v1/items/" + urllib.parse.quote("x' OR 1=1 --", safe=""),
+                        self.reader)
+        self.assertEqual(st, 404)
+        st, body = request("GET", self.hub.url + "/v1/items", self.reader)
+        self.assertEqual(st, 200)
+        self.assertEqual(len(body["items"]), 0)
+
+    def test_downloads_cannot_traverse(self):
+        for path in ("/dl/../hub/needs_you_hub.py", "/dl/..%2Fhub%2Fneeds_you_hub.py",
+                     "/dl/%2e%2e/%2e%2e/etc/passwd", "/dl/needs-you/../../etc/passwd", "/dl/"):
+            with self.subTest(path):
+                resp = self.raw(("GET %s HTTP/1.0\r\n\r\n" % path).encode())
+                self.assertIn(b" 404 ", resp.split(b"\r\n", 1)[0])
+                self.assertNotIn(b"def main(", resp)
+
+    def test_replicated_items_lose_disallowed_links(self):
+        rec = {"id": hubmod.new_ulid(), "key": "work:x:y", "context": "work", "kind": "needs",
+               "priority": "normal", "title": "t", "status": "open",
+               "created_at": hubmod.fmt_ts(self.hub.store.now_ms()),
+               "updated_at": hubmod.fmt_ts(self.hub.store.now_ms()),
+               "links": [link("javascript:alert(1)"), link("https://ok.example"),
+                         link("needsyou://connect?hub=x&code=y"), "junk"]}
+        st, body = request("POST", self.hub.url + "/v1/replicate", "test-peer-secret-0123456789",
+                           {"from_hub": "hub-z", "items": [rec]})
+        self.assertEqual(st, 200, body)
+        got = self.hub.store.get_item(rec["id"])
+        self.assertEqual(json.loads(got["links"]), [link("https://ok.example")])
+
+    def test_access_log_never_shows_invite_codes(self):
+        st, inv = request("POST", self.hub.url + "/v1/invites", OWNER, {"name": "srv"})
+        self.assertEqual(st, 201)
+        code = inv["code"]
+        self.hub.cfg["quiet"] = False
+        buf = io.StringIO()
+        old, sys.stderr = sys.stderr, buf
+        try:
+            for path in ("/join/" + code, "/join/" + code + "/install.sh", "/join/nyi_wrong-guess"):
+                with OPENER.open(self.hub.url + path, timeout=5) as resp:
+                    resp.read()
+            self.raw(("GARBAGE %s\x1b[31m HTTP/9\r\n\r\n" % code).encode())
+        except Exception:
+            pass
+        finally:
+            sys.stderr = old
+            self.hub.cfg["quiet"] = True
+        log = buf.getvalue()
+        self.assertIn("/join/<code>", log)
+        self.assertNotIn(code, log)
+        self.assertNotIn(code[4:], log)
+        self.assertNotIn("\x1b", log)
+
+    def test_redact_log(self):
+        line = 'GET /join/nyi_abc-DEF_123/install.sh HTTP/1.1" 200 - \x1b]0;pwned\x07 ny_' + "a" * 43
+        out = hubmod.redact_log(line)
+        self.assertNotIn("nyi_abc", out)
+        self.assertNotIn("a" * 43, out)
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\x07", out)
+        self.assertIn("\\x1b", out)
+
+    def test_install_script_substitutes_in_one_pass(self):
+        inv = {"name": "__NY_MAC_URL__", "role": "sender", "uses": 1, "used": {}}
+        out = hubmod.install_script(self.hub, inv, "nyi_code")
+        self.assertIn("INVITE_NAME='__NY_MAC_URL__'\n", out)
+        self.assertIn("CODE='nyi_code'\n", out)
+        inv["name"] = "it's $(x)"
+        out = hubmod.install_script(self.hub, inv, "nyi_code")
+        self.assertIn("INVITE_NAME='it'\"'\"'s $(x)'\n", out)
+
+    def test_bind_refusal(self):
+        for bind in ("0.0.0.0", "::", "[::]", "", "*", "127.0.0.1,0.0.0.0"):
+            with self.subTest(bind):
+                with self.assertRaises(SystemExit):
+                    hubmod.check_bind({"bind": bind, "hub_id": "h"})
+
+
+class CliOutput(unittest.TestCase):
+    def test_clean_neutralises_terminal_escapes(self):
+        cli = load_cli()
+        self.assertEqual(cli.clean("ok"), "ok")
+        self.assertEqual(cli.clean("a\x1b[2Jb"), "a\\x1b[2Jb")
+        self.assertEqual(cli.clean("x\x9by"), "x\\x9by")
+        self.assertEqual(cli.clean("x\u202ey"), "x\\u202ey")
+        self.assertEqual(cli.clean("caf\u00e9 \u0645"), "caf\u00e9 \u0645")
+        self.assertEqual(cli.clean(None), "None")
+
+
+class InstallerEnvFile(test_install.InstallScript):
+    """A hub answer with shell syntax must never reach the sourceable env file."""
+
+    def test_shell_syntax_in_hub_urls_is_refused(self):
+        marker = os.path.join(self.tmp, "pwned")
+        self.hub.hub_urls = lambda local_first=False: ["http://h:1/$(touch %s)" % marker]
+        inv = self.invite(role="sender")
+        r = self.install(inv, "--yes", "--no-schedule")
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("don't belong", r.stderr)
+        env_file = os.path.join(self.home, ".config", "needs-you", "env")
+        self.assertFalse(os.path.exists(env_file))
+        self.assertFalse(os.path.exists(marker))
+
+    def test_shell_syntax_in_hub_flag_is_refused(self):
+        inv = self.invite(role="sender")
+        r = self.install(inv, "--yes", "--no-schedule", "--hub", "'http://h:1/`id`'")
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("--hub", r.stderr)
+
+
+# Reuse InstallScript's fixtures without running its tests a second time.
+for _name in dir(test_install.InstallScript):
+    if _name.startswith("test_"):
+        setattr(InstallerEnvFile, _name, None)
+
+
+if __name__ == "__main__":
+    unittest.main()
