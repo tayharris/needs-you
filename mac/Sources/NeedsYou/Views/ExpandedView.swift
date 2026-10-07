@@ -33,6 +33,10 @@ struct ExpandedView: View {
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
             footer.frame(height: model.metrics.footerHeight - 0.5)
         }
+        // Drag to set the list height; on the edge away from the anchored corner.
+        .overlay(alignment: model.listGripAtBottom ? .bottom : .top) {
+            ResizeGrip(model: model)
+        }
     }
 
     private var footer: some View {

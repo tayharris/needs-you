@@ -69,6 +69,9 @@ final class AppModel: ObservableObject {
     @Published var expandedContentHeight: CGFloat = 0
     /// Each card's bottom edge in the list (for Settings → Panel → Cards before scrolling).
     @Published var cardBottoms: [CGFloat] = []
+    /// The resize grip is on the open panel's bottom edge; false puts it on the top edge
+    /// (the panel sits on a bottom corner and grows up). Set by the panel controller.
+    @Published var listGripAtBottom = true
     /// Cards whose full body and links are shown (Show more / Show details / +N). Cleared
     /// when the panel collapses.
     @Published private(set) var expandedCards: Set<String> = []
@@ -84,6 +87,8 @@ final class AppModel: ObservableObject {
 
     /// Set by the panel controller; the SwiftUI drag gesture forwards to it.
     var dragHandler: ((DragPhase) -> Void)?
+    /// Set by the panel controller; the expanded panel's resize grip forwards to it.
+    var resizeHandler: ((DragPhase) -> Void)?
     /// Set by the app delegate.
     var openSettingsHandler: (() -> Void)?
     /// Set by the app delegate: opens Settings at the invite section (activates the app).
@@ -526,6 +531,11 @@ final class AppModel: ObservableObject {
         summarySince = nil
         peeking = false
         if !expandedCards.isEmpty { expandedCards = [] }
+    }
+
+    /// The resize grip's double-click: the list goes back to its automatic height.
+    func resetListHeight() {
+        settings.ui.expandedListHeight = Double(ListResize.automatic)
     }
 
     func toggleCardExpanded(_ item: Item) {
