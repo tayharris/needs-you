@@ -35,7 +35,8 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--claude-hooks user\|project\|none` | Install the Claude Code hooks for every repo (`user`), or the current directory's repo (`project`). Default `none`. See [claude-code.md](claude-code.md). |
 | `--codex-hooks user\|none` | Install the OpenAI Codex CLI hooks in `~/.codex/hooks.json` (trust them once with `/hooks` in Codex). Default `none`. See [codex.md](codex.md). |
 | `--gemini-hooks user\|none` | Install the Gemini CLI hooks in `~/.gemini/settings.json`. Default `none`. See [gemini.md](gemini.md). |
-| `--alerts` | Turn the Claude Code, Codex and Gemini CLI hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
+| `--opencode-plugin` | Install the opencode plugin in `~/.config/opencode/plugins/`. See [opencode.md](opencode.md). |
+| `--alerts` | Turn the Claude Code, Codex, Gemini CLI and opencode hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
 | `--skill` | Install the needs-you skill to `~/.claude/skills/needs-you/`. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day (`NEEDS_YOU_AUTO_UPDATE=1`). Updates come only from this hub. See [Keeping up to date](updates.md). |
 | `--context-alert PCT` | Card suggesting `/compact` or `/clear` once a Claude session's context is PCT% full. Default 80; `0` off. |

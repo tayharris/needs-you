@@ -25,7 +25,7 @@ integrations/codex/install-codex-hooks.sh --dry-run       # show the change
 integrations/codex/install-codex-hooks.sh --uninstall
 ```
 
-The installer backs up `hooks.json` first (`hooks.json.bak-<timestamp>`), replaces only its own entries (any command containing `needs-you-hook.sh`), appends them after existing groups so the positions of other hooks (Orca's, your own) don't move, refuses a file that isn't valid JSON, and doesn't rewrite an unchanged file.
+The installer backs up `hooks.json` first (`hooks.json.bak-<timestamp>`), replaces only its own entries (any command containing `needs-you-hook.sh`), appends them after existing groups so the positions of other hooks (Orca's, your own) don't move, refuses a file that isn't valid JSON or is a symlink (it won't write through one; merge by hand into the file it points to), and doesn't rewrite an unchanged file.
 
 **Trust them once.** Codex runs a hook only after you've reviewed it: start Codex, open `/hooks`, and trust the needs-you entries. Until then Codex skips them with a warning at startup. Re-running the installer keeps the same entries, so they stay trusted. (`codex --dangerously-bypass-hook-trust` skips the check for one run.)
 

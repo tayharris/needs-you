@@ -23,7 +23,7 @@ integrations/gemini/install-gemini-hooks.sh --dry-run
 integrations/gemini/install-gemini-hooks.sh --uninstall
 ```
 
-The installer backs up `settings.json`, replaces only entries whose command contains `needs-you-hook.sh`, appends them after your own hooks, and leaves every other setting alone. Gemini allows comments in `settings.json`; this installer doesn't parse those and stops without changing anything: merge `gemini-hooks.json` by hand (replace `$HOME/.gemini` if you use another directory). User-level hooks need no trust step. `hooksConfig.enabled: false` turns all hooks off; the installer and `needs-you doctor` say so. `/hooks` in Gemini CLI lists them.
+The installer backs up `settings.json`, replaces only entries whose command contains `needs-you-hook.sh`, appends them after your own hooks, and leaves every other setting alone. It never writes through a symlinked `settings.json` (merge by hand into the file it points to). Gemini allows comments in `settings.json`; this installer doesn't parse those and stops without changing anything: merge `gemini-hooks.json` by hand (replace `$HOME/.gemini` if you use another directory). User-level hooks need no trust step. `hooksConfig.enabled: false` turns all hooks off; the installer and `needs-you doctor` say so. `/hooks` in Gemini CLI lists them.
 
 ## What gets posted
 
