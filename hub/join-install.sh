@@ -267,7 +267,11 @@ path_remove() {
 if [ "$UNINSTALL" -eq 1 ]; then
   schedule_remove
   path_remove
-  if [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
+  # The CLI removes the hooks locally (user level, this directory's project, recorded project
+  # installs); a CLI from before `uninstall-hooks` falls back to the hub's install-hooks.sh.
+  if [ -x "$CLI" ] && "$CLI" uninstall-hooks --help >/dev/null 2>&1; then
+    "$CLI" uninstall-hooks || warn "some Claude Code hooks were left in place (see above)"
+  elif [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
      command -v curl >/dev/null 2>&1; then
     tmp=$(mktemp -d)
     if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-hooks.sh" -o "$tmp/install-hooks.sh" &&

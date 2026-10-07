@@ -36,7 +36,7 @@ The installer downloads `install-hooks.sh`, `needs-you-hook.sh` and `hooks.json`
 
 With `--alerts`, the installer also writes `NEEDS_YOU_AGENT_ALERTS=1` into `~/.config/needs-you/env`. With `--skill`, it writes `~/.claude/skills/needs-you/SKILL.md`. Restart open Claude Code sessions (or open `/hooks` in them) to pick up the hooks.
 
-`--claude-hooks project` writes the same into the current directory instead: `./.claude/hooks/needs-you-hook.sh` and `./.claude/settings.json`, with commands that start `"$CLAUDE_PROJECT_DIR/.claude/hooks/..."` so the file works for everyone who clones the repo once it's committed. The installer records each project install in `~/.local/state/needs-you/claude-projects.json`. `needs-you doctor` and `needs-you update` see a project's hooks when you run them inside that project (any directory under it): doctor adds a `claude project hooks` line, and update refreshes the project's hook script and re-merges its entries, as it does for the user level.
+`--claude-hooks project` writes the same into the current directory instead: `./.claude/hooks/needs-you-hook.sh` and `./.claude/settings.json`, with commands that start `"$CLAUDE_PROJECT_DIR/.claude/hooks/..."` so the file works for everyone who clones the repo once it's committed. The installer records each project install in `~/.local/state/needs-you/claude-projects.json`. `needs-you doctor` and `needs-you update` see a project's hooks when you run them inside that project (any directory under it): doctor adds a `claude project hooks` line, and update refreshes the project's hook script and re-merges its entries, as it does for the user level (only for a project this machine installed into: see below).
 
 `scripts/setup-sender.sh` (the manual sender setup) doesn't install the hooks. It writes the same settings (`--alerts` and the rest) to the env file and tells you to run `integrations/claude-code/install-hooks.sh`.
 
@@ -156,7 +156,7 @@ It's read-only and never posts. The Claude Code lines:
 | Line | OK means | Otherwise |
 |---|---|---|
 | `claude hooks` | `~/.claude/hooks/needs-you-hook.sh` exists, is executable and current, and `~/.claude/settings.json` references it. The line also says whether alerts are on (and where that's set), the context alert threshold, and any SSH alias or link template. | `INFO` not installed; `WARN` with the problem (script missing, not executable, not referenced, or an old hook) and the command to re-run. If alerts are off, the hint gives the line to turn them on. |
-| `claude project hooks` | Only when run inside a project with project-level hooks: the project's `.claude/hooks/needs-you-hook.sh` exists, is executable and current, and which of `.claude/settings.json` / `settings.local.json` reference it. | `WARN` with the problem and the command to fix it (`needs-you update` there). |
+| `claude project hooks` | Only when run inside a project with project-level hooks: the project's `.claude/hooks/needs-you-hook.sh` exists, is executable and current, and which of `.claude/settings.json` / `settings.local.json` reference it. | `WARN` with the problem and the command to fix it (`needs-you update` there), or that the settings weren't installed from this machine (a repo that ships them), which `needs-you update` leaves alone. |
 | `claude skill` | `~/.claude/skills/needs-you/SKILL.md` exists. | `INFO` not installed (optional). |
 
 `needs-you doctor --json` prints the same for an agent. Then post a fake permission prompt and clear it:
@@ -177,16 +177,10 @@ Add `NEEDS_YOU_HOOK_LOG=/dev/stderr` to either line to see what the hook did. No
 | Quiet one session | Start it with `NEEDS_YOU_AGENT_ALERTS=0 claude`. |
 | Quiet every session here, keep the hooks | Set `NEEDS_YOU_AGENT_ALERTS=0` in `~/.config/needs-you/env` (or delete the `=1` line; Orca sessions then still post). |
 | Stop only the context card | `NEEDS_YOU_CONTEXT_ALERT_PCT=0` in the env file. |
-| Remove the hooks | `integrations/claude-code/install-hooks.sh --uninstall` from a checkout (add `--project DIR [--local]` for a project install). It backs up `settings.json`, removes only the needs-you entries, and deletes `~/.claude/hooks/needs-you-hook.sh` unless another settings file next to it still uses it. Restart open sessions. |
+| Remove the hooks | `needs-you uninstall-hooks`. It works offline (no hub, no invite link) and removes the user-level hooks, the project hooks covering the current directory, and every project install recorded in `~/.local/state/needs-you/claude-projects.json`. `--user` or `--project [DIR]` limits it to one; `--dry-run` only says what it would change. For each settings file it backs up the file (`.bak-<timestamp>`), removes only the needs-you entries, and deletes the copied `needs-you-hook.sh` once no settings file next to it uses it. Restart open sessions. From a checkout, `integrations/claude-code/install-hooks.sh --uninstall [--project DIR [--local]]` does the same for one settings file. |
 | Remove the skill | `rm -rf ~/.claude/skills/needs-you` |
-| Remove everything needs-you put on this machine | `curl -fsSL <join_url>/install.sh \| bash -s -- --uninstall` with any invite link from this hub that hasn't expired or been revoked: the CLI, the env file, the flush schedule, the PATH line, the state directory, the skill and the user-level hooks. |
+| Remove everything needs-you put on this machine | `curl -fsSL <join_url>/install.sh \| bash -s -- --uninstall` with any invite link from this hub that hasn't expired or been revoked: the CLI, the env file, the flush schedule, the PATH line, the state directory, the skill and the hooks (user level and recorded projects, as `needs-you uninstall-hooks` does). |
 
-Without a checkout, fetch the uninstaller from your hub:
+The invite installer's `--uninstall` runs `needs-you uninstall-hooks` before it deletes the CLI (with a CLI from before `uninstall-hooks` it downloads `install-hooks.sh` from the hub instead, for the user level only). The installer itself comes from the hub, so with an expired link or a hub that's gone, run `needs-you uninstall-hooks` and then remove the rest by hand ([Removing a sender](add-a-sender.md#removing-a-sender)). Then revoke the machine's token.
 
-```bash
-. ~/.config/needs-you/env; d=$(mktemp -d)
-curl -fsS "$NEEDS_YOU_URL/dl/install-hooks.sh" -o "$d/install-hooks.sh"
-bash "$d/install-hooks.sh" --uninstall; rm -rf "$d"
-```
-
-The invite installer's `--uninstall` downloads the same script from the hub to remove the hooks. If the hub doesn't answer, it says so and leaves the hooks in place; remove them with one of the commands above. It doesn't touch project-level installs. Then revoke the machine's token ([Removing a sender](add-a-sender.md#removing-a-sender)).
+A project's `.claude` is part of the repo, so needs-you treats it as untrusted: its settings are only read as data (never run), `needs-you update` only refreshes a project this machine installed into (recorded by `install-hooks.sh --project`), and nothing is written or deleted there through a symlink.

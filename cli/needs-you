@@ -19,6 +19,10 @@
   needs-you health                                   check each configured hub and the token
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
+  needs-you uninstall-hooks [--user | --project [DIR]] [--dry-run]
+                                                     remove the Claude Code hooks: by default the
+                                                     user level, this directory's project and every
+                                                     recorded project install; works offline
 
 Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
   NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
@@ -240,12 +244,24 @@ def project_claude_dir(start: Optional[str] = None) -> Optional[str]:
         return None
     while True:
         c = os.path.join(d, ".claude")
-        if os.path.realpath(c) != user and any(_references_hook(os.path.join(c, n)) for n in SETTINGS_NAMES):
+        if (os.path.realpath(c) != user and plain_project_dir(c)
+                and any(_references_hook(os.path.join(c, n)) for n in SETTINGS_NAMES)):
             return c
         parent = os.path.dirname(d)
         if parent == d:
             return None
         d = parent
+
+
+def plain_project_dir(claude_dir: str) -> bool:
+    """A project's .claude is the repo's, so untrusted (a clone can ship any files): it is
+    only treated as a needs-you install when nothing on the paths needs-you reads, writes or
+    deletes there is a symlink (.claude, .claude/hooks, the settings files, the hook), so
+    acting on it can never touch a file outside that directory. Settings are read as data
+    only; no command or path is ever taken from them."""
+    paths = [claude_dir, os.path.join(claude_dir, "hooks"), os.path.join(claude_dir, "hooks", HOOK_FILE)]
+    paths += [os.path.join(claude_dir, n) for n in SETTINGS_NAMES]
+    return os.path.isdir(claude_dir) and not any(os.path.islink(x) for x in paths)
 
 
 def hook_settings(claude_dir: str) -> List[str]:
@@ -254,13 +270,149 @@ def hook_settings(claude_dir: str) -> List[str]:
 
 
 def claude_projects() -> Dict[str, Any]:
-    """Project installs install-hooks.sh recorded: {settings path: {"hooks_json_sha256": ...}}."""
+    """Project installs install-hooks.sh recorded: {settings path: {"hooks_json_sha256": ...}}.
+    Only entries shaped like <absolute dir>/.claude/settings[.local].json count."""
     try:
         with open(os.path.join(state_dir(), "claude-projects.json"), "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items()
+            if isinstance(k, str) and os.path.isabs(k) and os.path.normpath(k) == k
+            and os.path.basename(k) in SETTINGS_NAMES and os.path.basename(os.path.dirname(k)) == ".claude"
+            and isinstance(v, dict)}
+
+
+def _without_hook_entries(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """settings with every needs-you hook entry removed (the same rule as install-hooks.sh:
+    a command naming needs-you-hook.sh), other hooks and their groups untouched."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return settings
+    out: Dict[str, Any] = {}
+    for event, groups in hooks.items():
+        if not isinstance(groups, list):
+            out[event] = groups
+            continue
+        kept_groups = []
+        for group in groups:
+            if isinstance(group, dict) and isinstance(group.get("hooks"), list):
+                kept = [h for h in group["hooks"]
+                        if not (isinstance(h, dict) and HOOK_FILE in str(h.get("command", "")))]
+                if len(kept) != len(group["hooks"]):
+                    if not kept:
+                        continue
+                    group = dict(group, hooks=kept)
+            kept_groups.append(group)
+        if kept_groups:
+            out[event] = kept_groups
+    new = dict(settings)
+    if out:
+        new["hooks"] = out
+    else:
+        new.pop("hooks", None)
+    return new
+
+
+def uninstall_hooks(user: bool, project: Optional[str], dry_run: bool, quiet: bool) -> int:
+    """`needs-you uninstall-hooks`: take the needs-you entries out of Claude Code settings
+    files and delete the copied hook script, with no hub and no download. Default: the user
+    level, the project covering the current directory and every project install recorded
+    in claude-projects.json. Exit 1 if a settings file couldn't be changed."""
+    say = (lambda msg: None) if quiet else print  # noqa: E731
+    dirs: List[str] = []
+    if user or project is None:
+        dirs.append(_home(".claude"))
+    if project is not None:
+        start = os.path.abspath(os.path.expanduser(project))
+        found = project_claude_dir(start)
+        dirs.append(found or os.path.join(start, ".claude"))
+    if not user and project is None:
+        found = project_claude_dir()
+        if found:
+            dirs.append(found)
+        dirs.extend(os.path.dirname(p) for p in sorted(claude_projects()))
+    seen, failed, removed = set(), False, 0
+    forget: List[str] = []
+    user_dir = os.path.realpath(_home(".claude"))
+    for d in dirs:
+        real = os.path.realpath(d)
+        if real in seen:
+            continue
+        seen.add(real)
+        is_user = real == user_dir
+        if not is_user and os.path.lexists(d) and not plain_project_dir(d):
+            warn("%s: a symlink where needs-you writes; not touching it (remove the hooks there by hand)"
+                 % _tilde(d))
+            failed = True
+            continue
+        for name in SETTINGS_NAMES:
+            path = os.path.join(d, name)
+            if not _references_hook(path):
+                forget.append(os.path.realpath(path))
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    text = fh.read()
+                settings = json.loads(text)
+                if not isinstance(settings, dict):
+                    raise ValueError("not a JSON object")
+            except (OSError, ValueError) as e:
+                warn("%s: can't read it (%s); fix it first, nothing was changed" % (_tilde(path), e))
+                failed = True
+                continue
+            new = _without_hook_entries(settings)
+            if new == settings:  # mentioned somewhere other than a hook command; leave it
+                forget.append(os.path.realpath(path))
+                continue
+            if dry_run:
+                say("would remove the needs-you hooks from %s" % _tilde(path))
+                continue
+            try:
+                # The user's own settings may be a symlink (dotfile managers), written through as
+                # install-hooks.sh does; a project's never is (plain_project_dir above).
+                target = os.path.realpath(path) if is_user else path
+                mode = os.stat(target).st_mode & 0o777
+                bak = "%s.bak-%s-%d" % (target, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
+                fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+                _write_atomic(target, (json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), mode)
+            except OSError as e:
+                warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+                failed = True
+                continue
+            forget.append(os.path.realpath(path))
+            removed += 1
+            say("removed the needs-you hooks from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
+        hook = os.path.join(d, "hooks", HOOK_FILE)
+        if os.path.isfile(hook) and not os.path.islink(hook) and not hook_settings(d):
+            if dry_run:
+                say("would delete %s" % _tilde(hook))
+            else:
+                try:
+                    os.remove(hook)
+                    say("deleted %s" % _tilde(hook))
+                    os.rmdir(os.path.dirname(hook))
+                except OSError:
+                    pass
+    if not dry_run:
+        projects = claude_projects()
+        left = {k: v for k, v in projects.items() if k not in forget}
+        if left != projects:
+            try:
+                _write_atomic(os.path.join(state_dir(), "claude-projects.json"),
+                              json.dumps(left, indent=1, sort_keys=True).encode("utf-8"), 0o600)
+            except OSError:
+                pass
+    if removed:
+        say("Restart open Claude Code sessions (or open /hooks in them) to drop the hooks.")
+    elif not failed and not dry_run:
+        say("no needs-you hooks found%s" % ("" if project is not None or user else
+                                           " (a project elsewhere: run this inside it, or with --project DIR)"))
+    return 1 if failed else 0
 
 
 def cli_path() -> str:
@@ -722,6 +874,11 @@ def _main(argv: Optional[List[str]] = None) -> int:
                         help="quiet, never fails (what flush runs once a day with NEEDS_YOU_AUTO_UPDATE=1)")
         up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
         up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
+    uh = sub.add_parser("uninstall-hooks", help="remove the Claude Code hooks (offline; no hub needed)")
+    uh.add_argument("--user", action="store_true", help="only the user level (~/.claude)")
+    uh.add_argument("--project", nargs="?", const=".", metavar="DIR",
+                    help="only the project covering DIR (default: the current directory)")
+    uh.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
     dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
     dp.add_argument("--json", dest="doctor_json", action="store_true",
                     help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
@@ -739,6 +896,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
             return rollback(args.quiet, args.json)
         return update(cfg, check=args.check, auto=args.auto, quiet=args.quiet or args.auto, as_json=args.json,
                       allow_downgrade=args.allow_downgrade)
+    if args.cmd == "uninstall-hooks":  # local files only: no hub, no outbox
+        return uninstall_hooks(args.user, args.project, args.dry_run, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
@@ -1208,15 +1367,19 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
                             "size": hj.get("size"), "from": "?", "to": hj.get("version") or "?"})
     # Project-level hooks covering the current directory (install-hooks.sh --project): the
     # project's copy of the hook and its settings entries, re-merged together.
+    # Only a project this machine installed into (recorded by install-hooks.sh): a clone that
+    # merely ships settings naming the hook is never written to.
     project = project_claude_dir()
+    recorded = claude_projects()
+    if project and not any(os.path.realpath(p) in recorded for p in hook_settings(project)):
+        project = None
     hook_entry = files.get(HOOK_FILE)
     if project and isinstance(hj, dict) and isinstance(hook_entry, dict):
         if not isinstance(files.get("install-hooks.sh"), dict):
             raise UpdateRefused("the hub's manifest lists hooks.json without install-hooks.sh")
         hook = os.path.join(project, "hooks", HOOK_FILE)
-        recorded = claude_projects()
-        stale = [p for p in hook_settings(project)
-                 if (recorded.get(os.path.realpath(p)) or {}).get("hooks_json_sha256") != hj.get("sha256")]
+        stale = [p for p in hook_settings(project) if os.path.realpath(p) in recorded
+                 and (recorded.get(os.path.realpath(p)) or {}).get("hooks_json_sha256") != hj.get("sha256")]
         if _sha256_file(hook) != str(hook_entry.get("sha256") or "").lower() or stale:
             changes.append({"file": "project hooks", "path": project, "sha256": str(hj.get("sha256") or ""),
                             "size": None, "from": _stamp(hook) or "none", "to": hook_entry.get("version") or "?"})
@@ -1472,11 +1635,14 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
         import subprocess
         import tempfile
         project = change["path"]
+        if not plain_project_dir(project):  # checked again right before writing
+            raise ValueError("%s has a symlink where needs-you writes; not touching it" % _tilde(project))
+        recorded = claude_projects()
         with tempfile.TemporaryDirectory(prefix="needs-you-update-") as tmp:
             for f in ("install-hooks.sh", "needs-you-hook.sh", "hooks.json"):
                 with open(os.path.join(tmp, f), "wb") as fh:
                     fh.write(_download_verified(hub, f, manifest, timeout))
-            for settings in hook_settings(project):
+            for settings in [p for p in hook_settings(project) if os.path.realpath(p) in recorded]:
                 args = ["bash", os.path.join(tmp, "install-hooks.sh"), "--project", os.path.dirname(project)]
                 if os.path.basename(settings) == "settings.local.json":
                     args.append("--local")
@@ -2038,6 +2204,10 @@ class Doctor:
                 current = False
             if not current:
                 problems.append("old hook")
+        recorded = claude_projects()
+        if not any(os.path.realpath(p) in recorded for p in hook_settings(project)):
+            problems.append("not installed from this machine (install-hooks.sh --project didn't record it), "
+                            "so needs-you update leaves it alone")
         detail = "installed in %s; %s" % (where, _tilde(hook))
         if problems:
             self.add("claude project hooks", "WARN", "; ".join(problems) + "; " + detail,

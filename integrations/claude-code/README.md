@@ -46,9 +46,12 @@ The installer:
 - backs up the settings file to `settings.json.bak-<timestamp>` before changing it,
 - replaces any earlier needs-you entries and leaves every other setting and hook alone,
 - doesn't rewrite the file if nothing changed, so it's safe to run from provisioning scripts,
-- writes through a symlinked settings file (dotfile managers) and keeps its mode,
+- writes through a symlinked user-level settings file (dotfile managers) and keeps its mode,
 - refuses to touch a settings file that isn't valid JSON,
-- records a project install in `~/.local/state/needs-you/claude-projects.json` (and forgets it on `--uninstall`), so `needs-you doctor` and `needs-you update` can find it.
+- records a project install in `~/.local/state/needs-you/claude-projects.json` (and forgets it on `--uninstall`), so `needs-you doctor`, `needs-you update` and `needs-you uninstall-hooks` can find it,
+- refuses a project whose `.claude`, `.claude/hooks`, hook script or settings file is a symlink (a repo's `.claude` is untrusted).
+
+`needs-you uninstall-hooks` removes the hooks without this script or a hub (user level, the current directory's project, recorded project installs).
 
 Restart running sessions (or open `/hooks` in Claude Code) to pick up the change.
 

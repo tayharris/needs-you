@@ -61,10 +61,10 @@ class InstallScript(HubTestCase):
         self.assertEqual(status, 201, inv)
         return inv
 
-    def install(self, inv, *flags, **env):
+    def install(self, inv, *flags, cwd=None, **env):
         cmd = "curl -fsSL %s/install.sh | bash -s -- %s" % (inv["join_url"], " ".join(flags))
         return subprocess.run([BASH, "-c", cmd], env=self.env(**env), capture_output=True,
-                              text=True, timeout=120, cwd=self.home)
+                              text=True, timeout=120, cwd=cwd or self.home)
 
     def envfile(self):
         out = {}
@@ -186,6 +186,36 @@ class InstallScript(HubTestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("no uses left", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
+
+    def test_uninstall_removes_project_hooks_locally(self):
+        inv = self.invite(uses=1)
+        proj = os.path.join(self.home, "src", "app")
+        os.makedirs(proj)
+        r = self.install(inv, "--yes", "--host", "p1", "--claude-hooks", "project", cwd=proj, STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.install(inv, "--yes", "--host", "p1", "--claude-hooks", "user", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        project_settings = os.path.join(proj, ".claude", "settings.json")
+        with open(project_settings) as fh:
+            self.assertIn("needs-you-hook.sh", fh.read())
+        # Run from the home directory: the recorded project install goes too, via the CLI.
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("removed the needs-you hooks from ~/src/app/.claude/settings.json", r.stdout)
+        for settings in (project_settings, os.path.join(self.home, ".claude", "settings.json")):
+            with open(settings) as fh:
+                self.assertNotIn("needs-you-hook.sh", fh.read())
+        self.assertFalse(os.path.exists(os.path.join(proj, ".claude", "hooks", "needs-you-hook.sh")))
+
+    def test_uninstall_without_the_cli_still_uses_the_hub(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--host", "u1", "--claude-hooks", "user", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        os.remove(os.path.join(self.home, ".local", "bin", "needs-you"))
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.home, ".claude", "settings.json")) as fh:
+            self.assertNotIn("needs-you-hook.sh", fh.read())
 
     def test_one_line_claude_setup_settings_and_path(self):
         inv = self.invite(uses=1)

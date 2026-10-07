@@ -90,6 +90,10 @@ case "$SCOPE" in
       SETTINGS="$PROJECT_DIR/.claude/settings.json"
     fi
     HOOKS_DIR="$PROJECT_DIR/.claude/hooks"
+    # A repo's .claude is untrusted: never write or delete through a symlink it ships.
+    for p in "$PROJECT_DIR/.claude" "$HOOKS_DIR" "$HOOKS_DIR/needs-you-hook.sh" "$SETTINGS"; do
+      [ ! -L "$p" ] || die "$p is a symlink; not touching it"
+    done
     CMD_PREFIX='"$CLAUDE_PROJECT_DIR/.claude/hooks/needs-you-hook.sh"'
     ;;
   file)

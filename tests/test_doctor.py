@@ -291,6 +291,14 @@ class ClaudeAndOrca(DoctorTestCase):
         os.chmod(hook, 0o755)
         r, data, checks = self.doctor_json()  # not in the project: no line
         self.assertNotIn("claude project hooks", checks)
+        # A clone that merely ships such settings: reported, but not as this machine's install.
+        r, data, checks = self.doctor_json(cwd=proj)
+        self.assertEqual(checks["claude project hooks"]["status"], "WARN")
+        self.assertIn("not installed from this machine", checks["claude project hooks"]["detail"])
+        state = os.path.join(self.home, ".local", "state", "needs-you")
+        os.makedirs(state, exist_ok=True)
+        with open(os.path.join(state, "claude-projects.json"), "w") as fh:
+            json.dump({os.path.realpath(os.path.join(claude, "settings.local.json")): {"hooks_json_sha256": "x"}}, fh)
         r, data, checks = self.doctor_json(cwd=os.path.join(proj, "src", "deep"))
         line = checks["claude project hooks"]
         self.assertEqual(line["status"], "OK", line)
