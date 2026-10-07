@@ -173,7 +173,9 @@ struct SettingsView: View {
 
             tabForm {
                 alertStyleSection
+                DeliverySection(settings: settings)
                 breakthroughSection
+                BypassRulesSection(settings: settings)
                 extra[.alerts]
             }
             .tabItem { Label(SettingsTab.alerts.title, systemImage: "bell.badge") }
