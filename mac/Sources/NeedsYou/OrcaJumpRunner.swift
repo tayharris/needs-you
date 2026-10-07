@@ -3,67 +3,96 @@ import Foundation
 import NeedsYouCore
 import os
 
-/// Runs a validated `OrcaJump`: `orca terminal switch …` from a fixed path (argv, no
-/// shell, 5 s timeout), then brings Orca forward. That activates Orca, never this app
-/// (hard rule 2). If the switch fails, the command goes on the clipboard; Orca still
-/// comes forward, so the worst case is "opens the right app".
+/// Runs a validated `OrcaJump`: brings Orca forward (that activates Orca, never this app;
+/// hard rule 2), then runs `orca terminal switch … --json` from a fixed path (argv, no
+/// shell, 5 s timeout). Orca first, because a switch sent to a background Orca may not
+/// show. A card without an environment that the local Orca calls stale is retried
+/// through each paired environment. If nothing works, the command goes on the clipboard;
+/// the worst case is "opens the right app".
 enum OrcaJumpRunner {
     private static let log = Logger(subsystem: "app.needsyou.mac", category: "orca-jump")
 
     static func run(_ jump: OrcaJump) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let ok = switchTerminal(jump)
-            DispatchQueue.main.async {
+        bringOrcaForward {
+            // Give Orca's window a moment to come up before it navigates.
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3) {
+                let ok = switchTerminal(jump)
                 if !ok {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(jump.command, forType: .string)
+                    DispatchQueue.main.async {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(jump.command, forType: .string)
+                    }
                 }
-                bringOrcaForward()
             }
         }
     }
 
     private static func switchTerminal(_ jump: OrcaJump) -> Bool {
-        let fm = FileManager.default
-        guard let cli = OrcaJump.cliPaths.first(where: { fm.isExecutableFile(atPath: $0) }) else {
+        guard let cli = OrcaJump.cliPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             log.error("orca CLI not found")
             return false
         }
+        if attempt(cli, jump) { return true }
+        guard jump.environment == nil, let list = runOrca(cli, OrcaJump.environmentListArguments) else { return false }
+        for name in OrcaJump.environmentNames(list) {
+            if let viaEnv = jump.via(name), attempt(cli, viaEnv) { return true }
+        }
+        return false
+    }
+
+    private static func attempt(_ cli: String, _ jump: OrcaJump) -> Bool {
+        let env = jump.environment ?? "local"
+        guard let out = runOrca(cli, jump.arguments) else { return false }
+        let ok = OrcaJump.switchSucceeded(out)
+        if ok {
+            log.info("switched to \(jump.handle, privacy: .public) via \(env, privacy: .public)")
+        } else {
+            log.error("switch to \(jump.handle, privacy: .public) via \(env, privacy: .public) failed: \(String(decoding: out.prefix(300), as: UTF8.self), privacy: .public)")
+        }
+        return ok
+    }
+
+    /// stdout of `orca <arguments>`, or nil if it didn't start or timed out. A non-zero
+    /// exit still returns stdout: Orca reports errors as JSON.
+    private static func runOrca(_ cli: String, _ arguments: [String]) -> Data? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: cli)
-        p.arguments = jump.arguments
+        p.arguments = arguments
+        let out = Pipe()
         p.standardInput = FileHandle.nullDevice
-        p.standardOutput = FileHandle.nullDevice
+        p.standardOutput = out
         p.standardError = FileHandle.nullDevice
         let done = DispatchSemaphore(value: 0)
         p.terminationHandler = { _ in done.signal() }
         do {
             try p.run()
         } catch {
-            log.error("orca terminal switch did not start: \(error.localizedDescription, privacy: .public)")
-            return false
+            log.error("orca did not start: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
+        // Read while it runs so a full pipe can't stall it; the output is small.
+        var data = Data()
+        let reader = DispatchQueue(label: "orca-jump-read")
+        reader.async { data = out.fileHandleForReading.readDataToEndOfFile() }
         if done.wait(timeout: .now() + 5) == .timedOut {
             p.terminate()
-            log.error("orca terminal switch timed out")
-            return false
+            log.error("orca \(arguments.first ?? "", privacy: .public) timed out")
+            return nil
         }
-        if p.terminationStatus != 0 {
-            log.error("orca terminal switch exited \(p.terminationStatus)")
-            return false
-        }
-        return true
+        return reader.sync { data }
     }
 
-    private static func bringOrcaForward() {
+    private static func bringOrcaForward(then next: @escaping () -> Void) {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: OrcaJump.bundleID) else {
             log.error("Orca.app not found")
+            next()
             return
         }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
         NSWorkspace.shared.openApplication(at: app, configuration: config) { _, error in
             if let error { log.error("opening Orca failed: \(error.localizedDescription, privacy: .public)") }
+            next()
         }
     }
 }
