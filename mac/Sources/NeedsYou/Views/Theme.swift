@@ -28,6 +28,37 @@ enum Theme {
     static func mono(_ m: PanelMetrics) -> Font { .system(size: m.metaFont, design: .monospaced) }
 }
 
+/// The soft glow outside a shape's edge during an arrival pulse (`glow` 0...1 is the
+/// pulse's progress; Settings → Alerts sets the look). Shared by the panel and the
+/// Settings preview.
+struct GlowEdge<S: Shape>: View {
+    let shape: S
+    let color: Color
+    let glow: Double
+    let look: AlertLook
+
+    var body: some View {
+        let strength = glow * look.glowPeak
+        shape
+            .stroke(color.opacity(strength * 0.9), lineWidth: look.strokeWidth)
+            .shadow(color: color.opacity(strength), radius: look.glowRadius)
+            .shadow(color: color.opacity(strength * 0.6), radius: look.glowRadius * 0.43)
+    }
+}
+
+/// Runs an alert look's pulses by animating `set(1)` / `set(0)`.
+@MainActor
+enum PulseRunner {
+    static func run(_ look: AlertLook, set: @escaping (Double) -> Void) async {
+        for _ in 0..<look.pulses {
+            withAnimation(.easeOut(duration: look.riseSeconds)) { set(1) }
+            try? await Task.sleep(nanoseconds: UInt64(look.holdSeconds * 1_000_000_000))
+            withAnimation(.easeIn(duration: look.fallSeconds)) { set(0) }
+            try? await Task.sleep(nanoseconds: UInt64(look.gapSeconds * 1_000_000_000))
+        }
+    }
+}
+
 enum Format {
     /// "now", "5m", "2h", "3d".
     static func age(from date: Date, now: Date) -> String {

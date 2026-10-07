@@ -37,8 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(model: model, connect: connect, localHub: localHub, hotKeys: hotKeys)
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
-        model.openInviteHandler = { [weak self] in self?.settingsWindow.show() }
-        if let phase3 { settingsWindow.extraSettings = { phase3.settingsSection } }
+        model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .hubs) }
+        if let phase3 {
+            settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
+        }
 
         panel = PanelController(model: model)
         menuBar = MenuBarController(model: model)
@@ -161,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         connect.connect(url.absoluteString)
-        settingsWindow.show()
+        settingsWindow.show(tab: .hubs)
     }
 
     /// Accessory apps have no visible menu bar, but text fields still need an Edit menu

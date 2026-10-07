@@ -135,18 +135,39 @@ final class Phase3Controller: ObservableObject {
     // MARK: Settings
 
     var settingsSection: AnyView {
-        AnyView(Phase3SettingsSection(phase3: self))
+        AnyView(Phase3ScheduleSection(phase3: self))
     }
+
+    /// Settings → Alerts: the work/personal schedule and the morning summary.
+    var scheduleSection: AnyView { settingsSection }
+
+    /// Settings → Integrations: live updates over SSE.
+    var streamSection: AnyView { AnyView(Phase3StreamSection(phase3: self)) }
 }
 
-private struct Phase3SettingsSection: View {
+private struct Phase3ScheduleSection: View {
     @ObservedObject var phase3: Phase3Controller
 
     var body: some View {
         Section("Schedule") {
-            Toggle("Switch work / personal on a schedule (weekdays 7:00–18:00 = work)", isOn: $phase3.followSchedule)
-            Toggle("Start-of-day summary at 7:30 on weekdays", isOn: $phase3.morningSummaryEnabled)
-            Toggle("Live updates from /v1/stream when the hub offers it", isOn: $phase3.useStream)
+            Toggle(isOn: $phase3.followSchedule) {
+                LabelWithDetail("Switch work / personal on a schedule", "Weekdays 7:00–18:00 show work; evenings and weekends personal. Picking a side holds until the next switch.")
+            }
+            Toggle(isOn: $phase3.morningSummaryEnabled) {
+                LabelWithDetail("Start-of-day summary", "At 7:30 on weekdays the panel opens with everything still waiting, oldest first.")
+            }
+        }
+    }
+}
+
+private struct Phase3StreamSection: View {
+    @ObservedObject var phase3: Phase3Controller
+
+    var body: some View {
+        Section("Live updates") {
+            Toggle(isOn: $phase3.useStream) {
+                LabelWithDetail("Live updates from the hub", "Uses /v1/stream when the hub offers it, so new items show at once instead of at the next poll.")
+            }
         }
     }
 }

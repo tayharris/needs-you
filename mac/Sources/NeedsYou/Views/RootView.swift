@@ -20,10 +20,7 @@ struct RootView: View {
             .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: 0.5))
             .background(
                 // Soft glow outside the edge; only visible while a pulse runs.
-                shape(display)
-                    .stroke(glowColor.opacity(glow * glowLook.glowPeak * 0.9), lineWidth: glowLook.strokeWidth)
-                    .shadow(color: glowColor.opacity(glow * glowLook.glowPeak), radius: glowLook.glowRadius)
-                    .shadow(color: glowColor.opacity(glow * glowLook.glowPeak * 0.6), radius: glowLook.glowRadius * 0.43)
+                GlowEdge(shape: shape(display), color: glowColor, glow: glow, look: glowLook)
             )
             .padding(PanelController.glowPadding)
             .environment(\.colorScheme, .dark)
@@ -105,12 +102,7 @@ struct RootView: View {
         glowColor = Theme.color(request.priority)
         glowLook = look
         Task { @MainActor in
-            for _ in 0..<look.pulses {
-                withAnimation(.easeOut(duration: look.riseSeconds)) { glow = 1 }
-                try? await Task.sleep(nanoseconds: UInt64(look.holdSeconds * 1_000_000_000))
-                withAnimation(.easeIn(duration: look.fallSeconds)) { glow = 0 }
-                try? await Task.sleep(nanoseconds: UInt64(look.gapSeconds * 1_000_000_000))
-            }
+            await PulseRunner.run(look) { glow = $0 }
         }
     }
 }
