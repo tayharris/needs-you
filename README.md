@@ -10,7 +10,7 @@ Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
 ## Get started
 
-Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page.
+Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page. Every guide is also on the site, in reading order: **[needsyou.app/guides](https://needsyou.app/guides/)**.
 
 Words used below: the **hub** holds your alerts (the Mac app runs one, so your Mac is the hub); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
 
@@ -65,6 +65,8 @@ needs-you resolve --key "work:ACME-123:deploy-approval"     # once it's handled
 Re-posting the same key updates the item instead of stacking duplicates, and the sender clears it once it's handled. The rules agents follow are in [AGENT-GUIDE.md](docs/AGENT-GUIDE.md).
 
 ## Guides
+
+The same guides, grouped for a first read, are at **[needsyou.app/guides](https://needsyou.app/guides/)**.
 
 | Guide | For |
 |---|---|
