@@ -126,17 +126,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The global shortcut. Shows or hides the panel; with "Hotkey also opens the top
-    /// card's first link" on, opens that link instead when there is one (the Orca terminal
-    /// jump or a VS Code window). Neither makes the panel key or activates this app.
+    /// The global shortcut shows or hides the panel. It never makes the panel key or
+    /// activates this app.
     private func hotKeyPressed() {
-        switch HotKeyAction.decide(openTopLink: settings.hotKeyOpensTopLink, top: model.needsItems.first) {
-        case .openTopCard(let item):
-            model.activate(item)
-        case .toggleVisibility:
-            // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
-            if !model.toggleVisibility() { NSSound.beep() }
-        }
+        // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
+        if !model.toggleVisibility() { NSSound.beep() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

@@ -56,9 +56,7 @@ struct ExpandedView: View {
             Text(model.settings.hotKey.display)
                 .font(Theme.mono(model.metrics))
                 .foregroundStyle(Theme.faint)
-                .help(model.settings.hotKeyOpensTopLink
-                      ? "Global shortcut: open the top card's first link (or show / hide the panel)"
-                      : "Global shortcut: show / hide the panel")
+                .help("Global shortcut: show / hide the panel (Settings → Panel → Keyboard)")
         }
         .padding(.horizontal, 12)
     }

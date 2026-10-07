@@ -196,12 +196,16 @@ struct SettingsView: View {
 
     /// The page's title and one-line summary, then its grouped form, which scrolls.
     private var detail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsPageHeader(tab: page)
-            Form { pageContent(page) }
-                .formStyle(.grouped)
-                .id(page)   // each page starts scrolled to the top
+        // The header is the form's first row, so it scrolls with the page and is never
+        // clipped under the title bar.
+        Form {
+            Section {
+                SettingsPageHeader(tab: page)
+            }
+            pageContent(page)
         }
+        .formStyle(.grouped)
+        .id(page)   // each page starts scrolled to the top
     }
 
     /// Each page's sections, in order. `extra[page]` is where the app delegate plugs in
@@ -244,6 +248,7 @@ struct SettingsView: View {
             PillSettingsSection(settings: settings)
             visibilitySection
             OpenPanelSettingsSection(settings: settings)
+            OpacitySettingsSection(settings: settings)
             keyboardSection
             extra[.panel]
         case .alerts:
@@ -255,7 +260,6 @@ struct SettingsView: View {
             WorkScreenSection(settings: settings)
             extra[.alerts]
         case .integrations:
-            shortcutActionSection
             terminalJumpSection
             extra[.integrations]
             sendersSection
@@ -677,11 +681,6 @@ struct SettingsView: View {
             } label: {
                 LabelWithDetail("Cards before scrolling", "How many cards the open panel shows before its list scrolls.")
             }
-            Picker(selection: $settings.ui.panelOpacity) {
-                ForEach(PanelOpacity.choices, id: \.self) { Text("\(Int(($0 * 100).rounded()))%").tag($0) }
-            } label: {
-                LabelWithDetail("Opacity", "While the pointer isn't over the pill or the open panel. Hovering shows it fully.")
-            }
         } header: {
             Text("Look")
         } footer: {
@@ -779,20 +778,6 @@ struct SettingsView: View {
     }
 
     // MARK: Integrations
-
-    private var shortcutActionSection: some View {
-        Section {
-            Toggle(isOn: $settings.hotKeyOpensTopLink) {
-                LabelWithDetail("Hotkey also opens the top card's first link",
-                                "\(settings.hotKey.display) runs the top card's Terminal jump or opens its VS Code window (or first link) instead of showing or hiding the panel. With nothing to open it shows or hides as usual.")
-            }
-        } header: {
-            Text("Go to the top card")
-        } footer: {
-            Text("The panel still never takes focus; only the app the link opens comes forward.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-    }
 
     private var terminalJumpSection: some View {
         Section {
@@ -1178,9 +1163,7 @@ private struct SettingsPageHeader: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 2)
+        .padding(.vertical, 4)
     }
 }
 

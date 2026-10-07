@@ -104,7 +104,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
 | Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | Off, On |
 | The open panel's list height | Panel → Open panel → **List height** (drag the panel's edge) | Automatic, or the height you dragged |
-| See-through when the pointer isn't over it | Panel → Look → **Opacity** | 100%, 90%, 80%, 70%, 60% |
+| How see-through the collapsed pill and the open panel are | Panel → **Opacity**: Collapsed pill, Collapsed pill pointer over it, Open panel (also previews), Open panel pointer over it | 100% to 30% (defaults 85%, 100%, 100%, 100%) |
 | Size of the collapsed pill only | Panel → Collapsed pill → **Pill size** | Medium, Small, Large |
 | What the collapsed pill says | Panel → Collapsed pill → **Shows** | Count only; Count and top item (the top card's title, truncated); Minimal dot (a dot in the top priority's colour, the count on hover) |
 | How the count is split | Panel → Collapsed pill → **Split** | None (`3 · 1`); Work \| Personal (`W 3 \| P 1`, the current side brighter); By priority (urgent, normal and low counts in their colours, empty ones hidden) |
@@ -119,7 +119,6 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Bypass rules | Alerts → **Bypass rules** | None; up to 50 |
 | Where new items spring out | Alerts → On the work screen | The display you're working on, The pill's display |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
-| The shortcut opens the top card's Terminal / VS Code link | Integrations | Off, On |
 
 The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
 
@@ -159,7 +158,7 @@ Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a s
 - **Hubs → Hubs (manual):** server hubs added by hand (URL and token), tried in order. The This Mac row shows its Tailscale URL too.
 - **Panel:** look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.
 - **Alerts:** how loud new items are, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
-- **Integrations:** the hotkey opens the top card's link; **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
+- **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
 - **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts).
 
 Built in, not settings yet:
