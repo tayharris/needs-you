@@ -6,23 +6,32 @@ public protocol ItemFeed: Sendable {
     func fetchOpen(since: Date?) async throws -> [Item]
     /// PATCH /v1/items/{id}.
     func patch(id: String, _ patch: ItemPatch) async throws
-    /// What the app polls: items plus whether they form a full snapshot and which hub
-    /// served them. The default wraps `fetchOpen`.
+    /// What the app polls: items (after a `since` poll, closed ones too), whether they form
+    /// a full snapshot, which hub served them, and its cursor. The default wraps `fetchOpen`.
     func fetchPage(since: Date?) async throws -> FeedPage
 }
 
 /// One poll response.
 public struct FeedPage: Equatable, Sendable {
+    /// Open items; after a `since` poll also items closed since then (docs/API.md), which
+    /// `ItemStore.merge` drops from the open set.
     public var items: [Item]
     /// True when the response is every open item (no `since`), so absences mean "closed".
     public var isFullSnapshot: Bool
     /// Short name of the hub that answered (nil for the demo feed).
     public var source: String?
+    /// The hub's `server_time`: the `since` for the next poll of the same hub. Nil from feeds
+    /// without one (the demo feed, older hubs); the newest `updated_at` stands in then.
+    public var cursor: Date?
+    /// The hub had more than it returned (`more`).
+    public var more: Bool
 
-    public init(items: [Item], isFullSnapshot: Bool, source: String? = nil) {
+    public init(items: [Item], isFullSnapshot: Bool, source: String? = nil, cursor: Date? = nil, more: Bool = false) {
         self.items = items
         self.isFullSnapshot = isFullSnapshot
         self.source = source
+        self.cursor = cursor
+        self.more = more
     }
 }
 
@@ -128,14 +137,45 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
     // MARK: ItemFeed
 
     public func fetchOpen(since: Date?) async throws -> [Item] {
+        try await fetchPage(since: since).items.filter { $0.status == .open }
+    }
+
+    /// Most pages fetched in one poll while the hub says `more`.
+    public static let maxPagesPerPoll = 10
+
+    /// docs/API.md "The polling loop": with `since`, closed items come back too (that's how
+    /// a sender's resolve or dismiss reaches the Mac), `server_time` is the next cursor, and
+    /// `more` means poll again at once.
+    public func fetchPage(since: Date?) async throws -> FeedPage {
+        var page = try await fetchOnePage(since: since)
+        var pages = 1
+        while page.more, since != nil, let cursor = page.cursor, pages < Self.maxPagesPerPoll {
+            let next = try await fetchOnePage(since: cursor)
+            page = FeedPage(items: page.items + next.items, isFullSnapshot: false,
+                            cursor: next.cursor ?? cursor, more: next.more)
+            pages += 1
+        }
+        return page
+    }
+
+    private func fetchOnePage(since: Date?) async throws -> FeedPage {
         let request = Self.makeRequest(url: Self.listURL(base: config.baseURL, since: since), method: "GET", token: config.token)
         let data = try await send(request)
         do {
-            // Belt and braces: the hub should only return open items, but never show others.
-            return try HubJSON.decodeItemList(data).filter { $0.status == .open }
+            return try Self.page(from: data, since: since)
         } catch {
             throw HubError.invalidResponse
         }
+    }
+
+    /// One `GET /v1/items` response as a page (pure, tested). A full snapshot keeps only open
+    /// items and is authoritative unless the hub cut it short (`more`); an incremental one
+    /// keeps every status.
+    public static func page(from data: Data, since: Date?) throws -> FeedPage {
+        let list = try HubJSON.decodeListResponse(data)
+        let full = since == nil
+        return FeedPage(items: full ? list.items.filter { $0.status == .open } : list.items,
+                        isFullSnapshot: full && !list.more, cursor: list.serverTime, more: list.more)
     }
 
     public func patch(id: String, _ patch: ItemPatch) async throws {

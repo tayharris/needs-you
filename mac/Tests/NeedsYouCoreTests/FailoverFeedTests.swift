@@ -29,6 +29,21 @@ private actor FakeHub: ItemFeed {
     }
 }
 
+/// A hub that answers whole pages (closed items, a cursor), like HubClient.
+private actor PagedHub: ItemFeed {
+    let page: FeedPage
+    private(set) var sinceSeen: [Date?] = []
+
+    init(page: FeedPage) { self.page = page }
+
+    func fetchOpen(since: Date?) async throws -> [Item] { page.items.filter { $0.status == .open } }
+    func fetchPage(since: Date?) async throws -> FeedPage {
+        sinceSeen.append(since)
+        return page
+    }
+    func patch(id: String, _ patch: ItemPatch) async throws {}
+}
+
 private final class Clock: @unchecked Sendable {
     var now = Date(timeIntervalSince1970: 1_000_000)
 }
@@ -50,6 +65,7 @@ final class FailoverFeedTests: XCTestCase {
         ("testPatchGoesToCurrentHub", testPatchGoesToCurrentHub),
         ("testAllHubsDownThrows", testAllHubsDownThrows),
         ("testMergeAcrossHubsIsLastWriterWins", testMergeAcrossHubsIsLastWriterWins),
+        ("testPassesTheHubsPageThrough", testPassesTheHubsPageThrough),
     ]
 
     func testHubNames() {
@@ -161,5 +177,23 @@ final class FailoverFeedTests: XCTestCase {
         store.merge(page.items, isFullSnapshot: page.isFullSnapshot)
         XCTAssertEqual(store.items["1"]?.title, "new")       // the lagging hub doesn't roll it back
         XCTAssertNotNil(store.items["2"])
+    }
+
+    // FailoverFeed hands on the answering hub's page: its closed items (so resolves arrive
+    // on incremental polls), its cursor, and whether it is authoritative.
+    func testPassesTheHubsPageThrough() async throws {
+        var closed = item("2")
+        closed.status = .resolved
+        let cursor = base.addingTimeInterval(99)
+        let hub = PagedHub(page: FeedPage(items: [item("1"), closed], isFullSnapshot: false, cursor: cursor))
+        let feed = FailoverFeed(hubs: [.init(name: "hub1", feed: hub)])
+        _ = try await feed.fetchPage(since: nil)
+        let page = try await feed.fetchPage(since: base)
+        XCTAssertEqual(page.items.map(\.id), ["1", "2"])
+        XCTAssertEqual(page.cursor, cursor)
+        XCTAssertFalse(page.isFullSnapshot)
+        XCTAssertEqual(page.source, "hub1")
+        let seen = await hub.sinceSeen
+        XCTAssertEqual(seen, [nil, base])
     }
 }

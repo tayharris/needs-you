@@ -51,10 +51,12 @@ public actor FailoverFeed: ItemFeed {
         for index in order() {
             let effectiveSince = index == current ? since : nil
             do {
-                let items = try await hubs[index].feed.fetchOpen(since: effectiveSince)
+                // The hub's own page: closed items from a `since` poll, its cursor, `more`.
+                var page = try await hubs[index].feed.fetchPage(since: effectiveSince)
                 current = index
                 failedUntil[index] = nil
-                return FeedPage(items: items, isFullSnapshot: effectiveSince == nil, source: hubs[index].name)
+                page.source = hubs[index].name
+                return page
             } catch {
                 lastError = error
                 failedUntil[index] = clock().addingTimeInterval(cooldown)

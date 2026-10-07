@@ -261,4 +261,28 @@ public enum HubJSON {
         struct Wrapped: Decodable { let items: [Item] }
         return try decoder.decode(Wrapped.self, from: data).items
     }
+
+    /// `GET /v1/items`: the items plus `server_time` (the next `since`) and `more`. A bare
+    /// array, or a hub without those fields, gives no cursor and `more` false.
+    public static func decodeListResponse(_ data: Data) throws -> (items: [Item], serverTime: Date?, more: Bool) {
+        let decoder = makeDecoder()
+        if let items = try? decoder.decode([Item].self, from: data) { return (items, nil, false) }
+        struct Wrapped: Decodable {
+            let items: [Item]
+            let serverTime: String?
+            let more: Bool?
+            enum CodingKeys: String, CodingKey {
+                case items, more
+                case serverTime = "server_time"
+            }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                items = try c.decode([Item].self, forKey: .items)
+                serverTime = try? c.decodeIfPresent(String.self, forKey: .serverTime)
+                more = try? c.decodeIfPresent(Bool.self, forKey: .more)
+            }
+        }
+        let wrapped = try decoder.decode(Wrapped.self, from: data)
+        return (wrapped.items, wrapped.serverTime.flatMap(parseDate), wrapped.more ?? false)
+    }
 }

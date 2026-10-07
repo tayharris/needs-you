@@ -113,6 +113,8 @@ final class AppModel: ObservableObject {
     private var feed: ItemFeed?
     private var demoFeed: DemoFeed?
     private var planner = PollPlanner()
+    /// The answering hub's `server_time` from the last poll: the next `since`.
+    private var pollCursor: Date?
     private var hasSynced = false
     private var isPolling = false
     private var feedGeneration = 0
@@ -356,6 +358,7 @@ final class AppModel: ObservableObject {
         feedGeneration += 1
         store = ItemStore()
         planner = PollPlanner()
+        pollCursor = nil
         hasSynced = false
         lastError = nil
         lastCheck = nil
@@ -430,7 +433,8 @@ final class AppModel: ObservableObject {
         isPolling = true
         defer { isPolling = false }
         let generation = feedGeneration
-        let since = planner.nextSince(latest: store.latestUpdatedAt)
+        // The hub's own cursor (docs/API.md); feeds without one fall back to the newest updated_at.
+        let since = planner.nextSince(latest: pollCursor ?? store.latestUpdatedAt)
         do {
             let page = try await feed.fetchPage(since: since)
             guard generation == feedGeneration else { return }
@@ -438,6 +442,7 @@ final class AppModel: ObservableObject {
             // By id, last-writer-wins on updated_at; a hub switch forces a full snapshot.
             let result = updated.merge(page.items, isFullSnapshot: page.isFullSnapshot, now: Date())
             activeHub = page.source
+            pollCursor = page.cursor
             store = updated
             if !stepTicks.isEmpty {
                 var ticks = stepTicks
