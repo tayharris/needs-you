@@ -442,3 +442,6 @@ code, pre { font-family: var(--font-mono); }
   .arch-arrow svg { transform: rotate(90deg); width: 1.75rem; height: 0.75rem; margin: var(--space-2) 0; }
   .weight tbody th { width: auto; }
 }
+
+/* Hero: one line under the lede saying where the alerts live. */
+.hero-sub { color: var(--text-muted); max-width: 36rem; }
