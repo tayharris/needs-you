@@ -28,7 +28,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   |---|---|
   | `sender` | `POST /v1/items`, `POST /v1/items/resolve` |
   | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream` |
-  | `owner` | everything `reader` can, plus invites (`/v1/invites`) and tokens (`/v1/tokens`): list, create and revoke (the Mac app) |
+  | `owner` | everything `reader` can, plus invites (`/v1/invites`) and tokens (`/v1/tokens`): list, create, revoke and request updates (the Mac app) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
   `GET /join/<code>[/install.sh]` and `GET /dl/<file>` need no token. The hub stores only the sha256 of each token, and records
@@ -41,6 +41,12 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   `orca` (others ignored), values `X.Y.Z`, `none` or `unknown` (others dropped). A missing or
   unparseable header never fails a request. A request without it keeps the last report and
   only updates `last_seen_at`, which is written at most every 10 minutes unless the versions change.
+- **Update requests (optional):** while the owner has asked a sender token's machine to update
+  (`POST /v1/tokens/<id>/request-update`, below), every **2xx** JSON response to a request made
+  with that token (`POST /v1/items`, `POST /v1/items/resolve`, token-checked `GET /v1/health`)
+  carries `"update_requested": true`. Absent otherwise. It is a flag only: no URL, version or
+  command comes with it. A CLI that understands it runs its own `needs-you update` (with
+  auto-update on) or prints a reminder; older clients ignore it.
 - **Errors:** a non-2xx response has the body
   `{"error": "<code>", "message": "<human text>", "field": "<field path>"}` (`field` only on
   validation errors, for example `title`, `links[2].url`, `source.agent`).
@@ -382,7 +388,7 @@ Tokens it already minted stay valid (revoke those separately). Response `200`
 {"tokens": [{"id": "01M...", "name": "servers-devbox", "role": "sender",
              "created_at": "2026-10-06T17:04:05.123Z", "open_items": 2, "current": false,
              "client": {"cli": "0.1.1", "hook": "0.1.1", "skill": "0.1.1", "orca": "none"},
-             "last_seen_at": "2026-10-07T09:12:00.000Z"}]}
+             "last_seen_at": "2026-10-07T09:12:00.000Z", "update_requested_at": null}]}
 ```
 
 Active tokens only. `current` marks the token making the request. Never includes secrets or
@@ -390,6 +396,34 @@ hashes. `client` is what the token's machine last reported in `X-Needs-You-Clien
 nothing yet) and `last_seen_at` when this hub last saw a sender call or token-checked
 `/v1/health` from it (`null` when never). Both are per hub: a client merging several hubs
 takes the newest `last_seen_at` per token id. Hubs before 0.1.2 omit both fields.
+`update_requested_at` is when an update request for the token was made on this hub, or `null`
+(absent from hubs that predate it).
+
+### `POST /v1/tokens/<id or name>/request-update` (owner)
+
+Asks that sender machine to update: its next requests to **this hub** get
+`"update_requested": true`. No body. Asking again refreshes the time. Response `200`:
+
+```json
+{"id": "01M...", "name": "servers-devbox", "update_requested_at": "2026-10-07T09:12:00.000Z"}
+```
+
+`404 not_found` if no active token has that id or name; `400 invalid` for a `reader` or `owner`
+token (they don't run the CLI).
+
+The hub records the CLI version the machine last reported with the request and **clears the
+request by itself** when a request from that token reports a different `cli` version in
+`X-Needs-You-Client`, or one at least the hub's own version (what its `/dl` serves). A request
+made before the machine ever reported a version takes its first report as the baseline. A
+request without the header changes nothing. Revoking the token drops its request.
+
+**Per hub, not replicated** (like `client` and `last_seen_at`): the Mac app sends the request to
+every owner hub it has. A machine that only talks to another hub doesn't see it there.
+
+### `DELETE /v1/tokens/<id or name>/request-update` (owner)
+
+Withdraws the request. Idempotent: `200` `{"id", "name", "update_requested_at": null}` whether
+or not one was pending; `404 not_found` if no active token has that id or name.
 
 ### `DELETE /v1/tokens/<id or name>` (owner)
 
