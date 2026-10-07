@@ -9,10 +9,17 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Mac app: Orca cards have a **Terminal** button that runs `orca terminal switch` for that agent's terminal and brings Orca forward (a card that doesn't name its Orca environment tries each paired one). Clicking it marks the card done. If the switch fails, the command goes on the clipboard. The hook and the Orca prompt block add the link (`needsyou://orca/terminal?handle=…`); the hub accepts the app's own scheme for that path only, and the app validates the handle and environment and runs nothing else.
 
 - Agent cards say where the session runs: the tmux pane (`kube:2.1`), VS Code, or SSH.
+- One line from zero to Claude Code alerts on a machine: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`. New installer flags: `--alerts` (writes `NEEDS_YOU_AGENT_ALERTS=1`), `--context-alert PCT`, `--ssh-alias NAME`, `--agent-link 'LABEL=URL'`, `--orca-environment NAME`, and `--no-path`. The installer now puts `~/.local/bin` on `PATH` with one tagged line in your shell profile (removed again by `--uninstall`). Re-runs keep every setting you don't pass again.
+- `scripts/setup-sender.sh` schedules the 5-minute `needs-you flush` like the installer (`--no-schedule`), sets up `PATH` (`--no-path`) and takes the same Claude Code setting flags.
+- Claude Code hook: specific cards for permission requests ("Approve Claude's plan", "Claude asked you a question", "Claude wants to run git", "Claude wants to edit config.yml"; never the command or content), for turns that ended on an API error (`StopFailure`: rate limit, sign-in, billing, ...), and for a usage limit that won't auto-resume. Re-run the installer (or `install-hooks.sh`) to register the new events.
+- Claude Code hook: a low-priority card suggests `/compact` or `/clear` when a session's context is 80% full (`NEEDS_YOU_CONTEXT_ALERT_PCT`, `0` = off; `NEEDS_YOU_CONTEXT_WINDOW`, 1M models detected). It clears itself after `/compact`, `/clear` or the end of the session.
+- Claude Code hook: cards get editor buttons without configuration: the folder in VS Code on the Mac, a VS Code Remote-SSH window with `NEEDS_YOU_SSH_ALIAS`, and the conversation's tab for sessions in the VS Code extension. `NEEDS_YOU_AGENT_LINK` still replaces them (`none` turns them off).
+- `needs-you doctor` shows the context alert, SSH alias and agent link settings.
 - Docs: a get-started section at the top of the README (download, first launch, invite a machine), and two guides: [Claude Code alerts everywhere](docs/guides/claude-code-everywhere.md) (one copy-paste setup; SSH, tmux, VS Code Remote-SSH, Orca) and [Tailscale](docs/guides/tailscale.md).
 
 ### Fixed
 
+- The installer's `--uninstall` (and a re-install) no longer stops halfway on a crontab that holds only the needs-you flush line.
 - Agent cards from a killed Claude session (closed terminal, reboot, OOM) no longer stay forever. The hook leases each card to its Claude process, and `needs-you flush` (every 5 minutes) resolves the card once that process is gone. Cards also expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`, `0` turns it off).
 
 ### Changed

@@ -4,12 +4,12 @@ Two independent pieces. Use either or both, in any repo or VM, with or without O
 
 | Piece | What it does | Install |
 |---|---|---|
-| **Hooks** | When a Claude Code session stops to ask for permission or sits waiting for input, a `needs` item appears on your Mac. It's resolved automatically as soon as the session moves again. | `./install-hooks.sh` |
+| **Hooks** | When a Claude Code session stops to ask for permission, approve a plan or answer a question, sits waiting for input, or stops on an API error, a `needs` item appears on your Mac. It's resolved automatically as soon as the session moves again. A low-priority card suggests `/compact` or `/clear` when the context fills up. | `./install-hooks.sh` |
 | **Skill** | Teaches the agent when and how to post a specific blocker ("choose A or B for ACME-123") and to resolve it afterwards. | copy `skill/needs-you` to `~/.claude/skills/` |
 
 Shortest setup, and how it works over SSH, in tmux, VS Code Remote-SSH and Orca: [docs/guides/claude-code-everywhere.md](../../docs/guides/claude-code-everywhere.md).
 
-Both call the `needs-you` CLI, so set the machine up as a sender first: an invite link from the Mac app (its installer can add the hooks and the skill too, with `--claude-hooks user --skill`), or [`scripts/setup-sender.sh`](../../scripts/setup-sender.sh) ([guide](../../docs/guides/add-a-sender.md)).
+Both call the `needs-you` CLI, so set the machine up as a sender first: an invite link from the Mac app (its installer can add the hooks and the skill too, and turn them on: `--claude-hooks user --skill --alerts`), or [`scripts/setup-sender.sh`](../../scripts/setup-sender.sh) ([guide](../../docs/guides/add-a-sender.md)).
 
 ## Files
 
@@ -66,22 +66,35 @@ The hooks are installed everywhere but do nothing unless the session is opted in
 # just this session
 NEEDS_YOU_AGENT_ALERTS=1 claude
 
-# this whole VM
+# this whole VM (what the invite installer's --alerts writes)
 echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
 ```
 
 ### What gets posted
 
-| Claude Code event | Hook action |
-|---|---|
-| `Notification` with `notification_type` `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog` or `agent_needs_input` | `needs-you add` (kind `needs`) |
-| `UserPromptSubmit`, `PostToolUse`, `Stop`, `SessionEnd` | `needs-you resolve`, only if this session posted something |
+| Claude Code event | Hook mode | Hook action |
+|---|---|---|
+| `Notification` with `notification_type` `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` or `quota_auto_resume_disabled` | `notify` | `needs-you add` (kind `needs`). A `permission_prompt` or `idle_prompt` doesn't overwrite the more specific `PermissionRequest` card |
+| `PermissionRequest` (every tool) | `notify` | `needs-you add` with a title per tool: plan approval (`ExitPlanMode`), a question (`AskUserQuestion`), the program a `Bash` call runs, the file an `Edit`/`Write` changes, else the tool's name |
+| `StopFailure` | `notify` | `needs-you add`, titled by `error_type` (rate limit, sign-in, billing, API error, ...) |
+| `UserPromptSubmit`, `PostToolUse` | `resolve` | `needs-you resolve`, only if this session posted something |
+| `Stop` | `stop` | the same resolve (except an API-error card), then the context check below |
+| `SessionStart` | `start` | remembers the model; after `/clear`, compaction or `/resume`, resolves this Claude process's earlier cards |
+| `SessionEnd` | `end` | resolves the session's card and its context card |
+
+Settings files written by an older installer call `resolve` for `Stop` and `SessionEnd`; that still works. Re-run the installer to get the new events.
 
 - **Key:** `agent:<short-hostname>:<id>`, where `<id>` is `$ORCA_TERMINAL_HANDLE` if set, else the Claude `session_id`. Characters outside `A-Za-z0-9._-` become `_`. Re-posting the same key updates the item, so a session that asks five times shows one card.
-- **Title:** what's needed plus the project, e.g. `Claude needs permission: my-repo` or `Claude is waiting for you: my-repo`. The project is the basename of `$CLAUDE_PROJECT_DIR` (else `cwd`).
+- **Title:** what's needed plus the project, e.g. `Claude wants to run git: my-repo`, `Approve Claude's plan: my-repo` or `Claude is waiting for you: my-repo`. The project is the basename of `$CLAUDE_PROJECT_DIR` (else `cwd`). `tool_input` can hold secrets, so a permission card names the tool and at most the program (the first word of a `Bash` command that isn't a `VAR=value`, a flag or a wrapper like `sudo`, as a basename matching `[A-Za-z][A-Za-z0-9._+-]*`) or the file's basename, never the command line or content.
 - **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, where the session runs (the tmux pane as `session:window.pane`, `VS Code`, or `SSH`), and the short session id. In Orca, instead: the worktree path (from `$ORCA_WORKTREE_ID`) and the command that jumps to the terminal, `orca terminal switch --terminal <handle>` (plus `--environment <name>` when `NEEDS_YOU_ORCA_ENVIRONMENT` is set). No prompt text, transcript or tool input is sent.
-- **Links:** in Orca, a **Terminal** link, `needsyou://orca/terminal?handle=<handle>[&environment=<name>]`, which the Mac app shows as a button that runs the same switch and brings Orca forward. A hub too old to accept it gets the card without it.
+- **Links:** in Orca, a **Terminal** link, `needsyou://orca/terminal?handle=<handle>[&environment=<name>]`, which the Mac app shows as a button that runs the same switch and brings Orca forward. A hub too old to accept it gets the card without it. Without `NEEDS_YOU_AGENT_LINK`, the hook adds editor links itself:
+  - `Claude=vscode://anthropic.claude-code/open?session=<id>` when the session runs in the VS Code extension (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`). The URI handler is documented in [Claude Code in VS Code](https://code.claude.com/docs/en/vs-code#launch-a-vs-code-tab-from-other-tools): it focuses the conversation's tab if it's open, else resumes it; the session must belong to the workspace open in the focused window.
+  - `VS Code=vscode://file<cwd>` on macOS outside SSH (the folder exists on the Mac).
+  - `VS Code=vscode://vscode-remote/ssh-remote+<alias><cwd>` elsewhere, when `NEEDS_YOU_SSH_ALIAS` is set.
+  - `NEEDS_YOU_AGENT_LINK` (a template) replaces these; `NEEDS_YOU_AGENT_LINK=none` drops them.
 - **Source:** `--agent claude-code --project <project>`; the CLI adds the host.
+
+**Context card.** On `Stop`, the hook reads the tail of `transcript_path` (256 KB, then up to 2 MB; never the whole file) for the newest assistant message that isn't a subagent's, and adds its `usage` `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. A `compact_boundary` record after it counts as 0. The window is `NEEDS_YOU_CONTEXT_WINDOW`, else 1,000,000 when a model name has `[1m]` (the `SessionStart` input's `model`, kept in a state file, then `ANTHROPIC_MODEL`, then `model` in `~/.claude/settings.json`; the transcript's model id has no suffix) or the usage is over 200,000, else 200,000. At `NEEDS_YOU_CONTEXT_ALERT_PCT` percent (default 80) or more it posts `agent:<host>:<id>:context`, priority `low`, with the percentage and the `/compact` or `/clear` suggestion, and re-posts only when the percentage moved 5 points. Below the threshold it resolves the card. Claude Code's hook input has no usage field, so this is the only source. The check starts `python3` once per turn in opted-in sessions; `NEEDS_YOU_CONTEXT_ALERT_PCT=0` skips it.
 
 The resolve side keeps a marker file per session in `~/.local/state/needs-you/claude-hooks/`, so `Stop` and `PostToolUse` (which fire constantly) cost a file check and no network call unless there is something to resolve.
 
@@ -99,7 +112,10 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | `NEEDS_YOU_AGENT_ALERTS` | unset | `1` opts in, `0` opts out (see above) |
 | `NEEDS_YOU_AGENT_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | `work` or `personal` |
 | `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
-| `NEEDS_YOU_AGENT_LINK` | unset | One link, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. |
+| `NEEDS_YOU_AGENT_LINK` | unset (automatic editor links) | One link instead, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. `none`: no editor links. |
+| `NEEDS_YOU_SSH_ALIAS` | unset | This host's name in the Mac's `~/.ssh/config` / Remote-SSH list; adds the Remote-SSH folder link |
+| `NEEDS_YOU_CONTEXT_ALERT_PCT` | `80` | Context card threshold in percent; `0` turns it off |
+| `NEEDS_YOU_CONTEXT_WINDOW` | `200000` (`1000000` for `[1m]` models) | Context window in tokens |
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | A card expires this many hours after its last post; `0` never expires |
 | `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal. Without it, the Mac app's Terminal button tries each paired environment in turn. |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
@@ -111,13 +127,13 @@ Link examples:
 # Orca cards already get a Terminal button (needsyou://orca/terminal?...);
 # Orca itself has no terminal or worktree deep link (1.4.220).
 
-# Open the folder in VS Code or Cursor on the Mac (only useful if the path exists there)
-NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'
+# On a VM you open with VS Code Remote-SSH: the automatic link needs only the
+# SSH host name VS Code on the Mac uses ({cwd} is the session's folder; if the
+# window has a different folder open, VS Code opens a new window).
+NEEDS_YOU_SSH_ALIAS=devbox
 
-# On a VM you open with VS Code Remote-SSH: bring that window forward. Use the
-# SSH host name VS Code uses; {cwd} is the session's folder (if the window has a
-# different folder open, VS Code opens a new window).
-NEEDS_YOU_AGENT_LINK='VS Code=vscode://vscode-remote/ssh-remote+devbox{cwd}'
+# Cursor instead of VS Code on the Mac
+NEEDS_YOU_AGENT_LINK='Cursor=cursor://file{cwd}'
 ```
 
 ### Guarantees

@@ -31,16 +31,22 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 |---|---|
 | `--yes` | Don't ask. Needed when piped (there's no terminal to confirm on). |
 | `--claude-hooks user\|project\|none` | Install the Claude Code hooks for every repo (`user`), or the current directory's repo (`project`). Default `none`. See [claude-code.md](claude-code.md). |
+| `--alerts` | Turn the Claude Code hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
 | `--skill` | Install the needs-you skill to `~/.claude/skills/needs-you/`. |
+| `--context-alert PCT` | Card suggesting `/compact` or `/clear` once a Claude session's context is PCT% full. Default 80; `0` off. |
+| `--ssh-alias NAME` | This machine's name in the Mac's `~/.ssh/config`: agent cards get a VS Code Remote-SSH button. |
+| `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links; `none` turns them off. See [claude-code-everywhere.md](claude-code-everywhere.md#buttons). |
+| `--orca-environment NAME` | On a paired Orca server: its name in the Mac's Orca. |
 | `--orca` | Write the Orca automation snippet to `~/.config/needs-you/orca-snippet.md` and print it. See [orca.md](orca.md). |
 | `--context work\|personal` | Default context for this machine's items. |
 | `--host NAME` | This machine's name (default: short hostname). |
 | `--hub URL` | Use a different URL for the same hub (e.g. its IP while DNS is broken). It is used for the install and saved first in `NEEDS_YOU_URLS`, ahead of the hub's advertised URLs. |
 | `--no-schedule` | Don't add the 5-minute flush. |
+| `--no-path` | Don't add `~/.local/bin` to `PATH` in your shell profile; print the line instead. |
 | `--force` | Redeem again and replace an existing token (needs a link with a use left). |
 | `--uninstall` | Remove the CLI, the config, the flush schedule, the skill, local state (outbox, hook markers) and (if installed) the user-level hooks. Works until the link expires or is revoked. |
 
-Re-running with an already-configured machine updates the CLI and the schedule and keeps the token. It doesn't spend a use, and it works until the link expires or is revoked, also after its last use is spent. A new machine (or `--force`) needs a use left; the installer stops with exit 1 before installing anything if there's none. Give provisioning scripts a link with a long enough expiry (up to 90 days).
+Re-running with an already-configured machine updates the CLI and the schedule and keeps the token and every setting you don't pass again (the PATH line is added once). It doesn't spend a use, and it works until the link expires or is revoked, also after its last use is spent. A new machine (or `--force`) needs a use left; the installer stops with exit 1 before installing anything if there's none. Give provisioning scripts a link with a long enough expiry (up to 90 days).
 
 Notes:
 
@@ -56,7 +62,7 @@ Mint a token on a server hub (`needs-you-admin token add <name> --role sender`),
 ./scripts/setup-sender.sh
 ```
 
-It installs the CLI, asks for the hub URLs and the token (hidden input), writes `~/.config/needs-you/env`, checks health, and offers a test item. Unattended:
+It installs the CLI, asks for the hub URLs and the token (hidden input), writes `~/.config/needs-you/env`, checks health, schedules the 5-minute `needs-you flush` (crontab on Linux, a LaunchAgent on macOS, like the installer), puts `~/.local/bin` on `PATH` in your shell profile, and offers a test item. Re-running it is safe. Unattended:
 
 ```bash
 printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
@@ -72,12 +78,9 @@ printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
 | `--bin-dir DIR` | Install somewhere other than `~/.local/bin`. |
 | `--test` / `--no-test` | Post (or don't) the test item. `--test-context work\|personal`. |
 | `--require-health` | Exit 3 if no hub answers. |
+| `--no-schedule` / `--no-path` | Skip the flush schedule / the shell profile line. |
+| `--alerts`, `--context-alert`, `--ssh-alias`, `--agent-link`, `--orca-environment` | Claude Code hook settings, as in the installer above. |
 
-It doesn't schedule a flush; add one to cron yourself:
-
-```cron
-*/5 * * * *  $HOME/.local/bin/needs-you -q flush >/dev/null 2>&1
-```
 
 ## Without the CLI
 

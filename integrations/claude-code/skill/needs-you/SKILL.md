@@ -63,7 +63,7 @@ Never print or echo the token.
 
 ## Automatic alerts
 
-If the needs-you Claude Code hooks are installed, permission prompts and "waiting for input" are already posted (key `agent:<host>:<session>`) and resolved for you. Don't duplicate those; use this skill for the specific blocker and its options.
+If the needs-you Claude Code hooks are installed, permission prompts, plan approvals, your `AskUserQuestion` questions, "waiting for input" and API-error stops are already posted (key `agent:<host>:<session>`) and resolved for you, and so is a "context is filling up" card (`agent:<host>:<session>:context`). Don't duplicate those; use this skill for the specific blocker and its options.
 
 ## Install this skill
 
