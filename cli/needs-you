@@ -69,7 +69,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 VERSION = "0.1.1"
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -608,8 +608,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--json", action="store_true", help="print the hub's JSON response")
     sub = p.add_subparsers(dest="cmd")
 
-    def item_parser(name: str, help_: str) -> argparse.ArgumentParser:
-        sp = sub.add_parser(name, help=help_)
+    def item_parser(name: str, help_: str, aliases: Sequence[str] = ()) -> argparse.ArgumentParser:
+        sp = sub.add_parser(name, help=help_, aliases=list(aliases))
         sp.add_argument("--key", required=True, help="stable dedupe key, e.g. work:ACME-123:redo-blocked")
         sp.add_argument("--title", required=True, help="the action needed, <= 100 chars")
         sp.add_argument("--body", help="markdown, <= 2000 chars")
@@ -632,7 +632,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             sp.add_argument("--kind", choices=("needs", "done", "info"), default="needs")
         return sp
 
-    item_parser("add", "add or update an item (kind needs by default)")
+    item_parser("add", "add or update an item (kind needs by default)", aliases=("post",))
     item_parser("done", "FYI: something finished (expires in 24 h, never counted)")
     item_parser("info", "FYI: information (expires in 24 h, never counted)")
     rp = sub.add_parser("resolve", help="mark an item handled")
@@ -655,6 +655,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
 
     args = p.parse_args(argv)
+    if args.cmd == "post":  # the docs say "post an item"; agents guess it
+        args.cmd = "add"
     if not args.cmd:
         p.print_help()
         return 2
@@ -1980,7 +1982,13 @@ def doctor(cfg: Config, as_json: bool) -> int:
             print("%-4s  %-*s  %s" % (c["status"], width, c["check"], c["detail"]))
             if c["hint"]:
                 print("      %-*s  -> %s" % (width, "", c["hint"]))
-        print("ok" if ok else "problems found (FAIL above)")
+        warns = sum(1 for c in checks if c["status"] == "WARN")
+        if not ok:
+            print("problems found (FAIL above)")
+        elif warns:
+            print("ok, with %d warning%s (WARN above)" % (warns, "" if warns == 1 else "s"))
+        else:
+            print("ok")
     return 0 if ok else 1
 
 

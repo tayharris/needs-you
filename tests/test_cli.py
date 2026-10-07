@@ -67,6 +67,13 @@ class Outbox(CliTestCase):
         self.assertEqual(items["run"]["kind"], "done")
         self.assertIsNotNone(items["run"]["expires_at"])
 
+    def test_post_is_add(self):
+        r = self.run_cli("post", "--key", "work:x:y", "--title", "Decide", urls=[self.dead])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(self.outbox, self.queued()[0])) as fh:
+            body = json.load(fh)["body"]
+        self.assertEqual((body["key"], body.get("kind", "needs")), ("work:x:y", "needs"))
+
     def test_every_invocation_flushes_first(self):
         self.run_cli("add", "--key", "a", "--title", "queued", urls=[self.dead])
         self.assertEqual(len(self.queued()), 1)
