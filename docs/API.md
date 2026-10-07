@@ -132,8 +132,10 @@ gives the pending outbox rows per peer URL.
 If a bearer token is sent it is checked but never causes an error: a valid token adds
 `"token": {"name": "...", "role": "sender"}` and a `"peers"` array (per-peer `url`,
 `outbox_pending`, `last_push_ok`, `last_pull_ok`, `last_error`, and `skipped_push` /
-`skipped_pull` / `last_skipped`: how many replicated records that peer couldn't read from us,
-and we from it, and the last one; absent from hubs up to 0.1.2); an unknown or revoked token adds `"token": null` and
+`skipped_pull` / `last_skipped`: how many replicated item records that peer couldn't read
+from us, and we from it, and the last one; `blocked`: a token or invite record one side can't
+read, which holds replication in that direction (`"push ..."` / `"pull ..."`), else `null`;
+all absent from hubs up to 0.1.2); an unknown or revoked token adds `"token": null` and
 `"token_error": "unknown or revoked token"`.
 
 ### `POST /v1/items` (sender)
@@ -599,18 +601,28 @@ token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 Response `{"ok": true, "applied": <n>, "hub_id": "hub-b", "skipped": [...]}`; `409 self` if
 `from_hub` is the receiving hub's own id (the sender then stops using that peer).
 
-**Unreadable records are skipped, not the batch.** A record the receiver can't read (a status
-or role from a newer hub, a missing or malformed field) is left out and listed in `skipped`
-as `{"kind": "item"|"token"|"invite", "id": "<id or null>", "reason": "<short text>"}`; the
-rest of the batch is applied and the response is still `200`. The pusher treats the listed
-records as delivered (it logs them and counts them in its peer status, below) instead of
-retrying them. A body that isn't a JSON object, or a `tokens`/`items`/`invites` that isn't an
-array, is still a `400` for the whole batch. Hubs up to 0.1.2 have no `skipped` and answer
-`400` for the whole batch when one record doesn't parse; against them the pusher halves the
-batch (without backing off) until the refused record is alone, skips that one record, and
-goes back to full batches. Any other failure (a timeout, `5xx`, `413`) is retried with
-backoff as before. A skipped record reaches the peer again only when it is written again
-after the peer has been upgraded.
+**Unreadable items are skipped, not the batch.** An item record the receiver can't read (a
+status from a newer hub, a missing or malformed field) is left out and listed in `skipped` as
+`{"kind": "item", "id": "<id or null>", "reason": "<short text>"}`; the rest of the batch is
+applied and the response is still `200`. The pusher treats the listed records as delivered
+(it logs them and counts them in its peer status, below) instead of retrying them. The
+receiver keeps each skipped item record in a local quarantine (until `retention_days`) and
+applies it at its next start once it can read it, so upgrading the hub brings it in.
+
+**Unreadable tokens and invites fail closed.** Token and invite records are security state (a
+revocation, a role, a redemption), so one the receiver can't read is never skipped: the whole
+batch is a `400 invalid` (`"field": "tokens"` or `"invites"`, the message names the record id,
+never its hash) and nothing in it is applied. The pusher keeps that record, and what is queued
+behind it, retries with backoff, and reports it in its peer status as `blocked`. The same
+holds for a pull: the puller's cursor stays before such a record. Replication resumes by itself
+once both hubs run a version that reads it. A body that isn't a JSON object, or a
+`tokens`/`items`/`invites` that isn't an array, is a `400` too.
+
+Hubs up to 0.1.2 have no `skipped` and answer `400` for the whole batch when any record
+doesn't parse; against them the pusher halves the batch (without backing off) until the
+refused record is alone, then skips it if it is an item and holds it (as above) if it is a
+token or invite, and goes back to full batches. Any other failure (a timeout, `5xx`, `413`) is
+retried with backoff as before.
 
 Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
@@ -631,9 +643,10 @@ Every stored version gets a per-hub sequence number. The response is
 ```
 
 Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
-paging while `more` is true. A record in a page that the puller can't read is skipped (logged
-and counted, like a skipped push) and the cursor still moves past it; a transient failure
-(the local database busy, the peer unreachable) leaves the cursor where it was. Because applying a replicated version also gives it a local
+paging while `more` is true. An item record in a page that the puller can't read is skipped
+(logged, counted and quarantined, like a skipped push) and the cursor still moves past it; a
+token or invite it can't read, or a transient failure (the local database busy, the peer
+unreachable), leaves the cursor where it was. Because applying a replicated version also gives it a local
 sequence number, pull is transitive: a hub that was down catches up from any surviving peer.
 `epoch` is a random id minted when a database is created; if a peer's epoch changes (its
 database was replaced) or its `max_seq` is below the cursor, the puller restarts from 0.

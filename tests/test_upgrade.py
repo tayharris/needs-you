@@ -130,9 +130,9 @@ class UpgradeFromMain(HubTestCase):
         with st.lock:
             after = {t: sorted(tuple(r) for r in st.conn.execute("SELECT * FROM %s" % t)) for t in TABLES}
         # (plus the columns later migrations added, at their defaults: items.steps = '[]',
-        # peer_state skipped_push = skipped_pull = 0, last_skipped = NULL)
+        # peer_state skipped_push = skipped_pull = 0, last_skipped = blocked = NULL)
         before["items"] = sorted(tuple(r) + ("[]",) for r in before["items"])
-        before["peer_state"] = sorted(tuple(r) + (0, 0, None) for r in before["peer_state"])
+        before["peer_state"] = sorted(tuple(r) + (0, 0, None, None) for r in before["peer_state"])
         self.assertEqual(after, before)
         # and it works: old tokens authenticate, the old item is listed, the outbox is pending
         hub.start()
