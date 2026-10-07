@@ -655,7 +655,13 @@ final class AppModel: ObservableObject {
         expandedByUser = byUser
         previewItem = nil
         digest = nil
-        if visibility.isHidden(at: Date()) && !peeking { visibility = .shown }
+        if visibility.isHidden(at: Date()) && !peeking {
+            // The shortcut or the morning summary ends a snooze: what it held is delivered,
+            // as when it runs out (no peek; the list is opening).
+            let wasSnoozed = visibility != .hidden
+            visibility = .shown
+            if wasSnoozed { releaseLater(.snoozeEnded, peek: false) }
+        }
         isExpanded = true
         if byUser { refreshSetupFacts() }
         markVisibleSeen()
