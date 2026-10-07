@@ -18,6 +18,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Mac app: **Show Floating Panel** in the menu bar menu shows the panel while it's open for a moment from a menu item (hidden, unchecked). It used to hide it instead.
 - Mac app: clicking the pill opens the panel at the newest card the pill counts as new, including one whose content changed or that turned into a `needs` item since you last looked. Only newly created cards were considered, so the panel could open at the top while the changed card sat below the fold.
 - Mac app: a new-item preview goes away when its item does (its sender resolved it, say an agent you already answered, it expired, or you closed it from the menu bar). It used to stay out for its full time.
+- Mac app: with previews on the work screen (Settings → Alerts → On the work screen), a preview dragged to another display stays where it's dropped. It used to jump back to the work display until it ended.
 
 ## [0.1.2] - 2026-10-07
 
