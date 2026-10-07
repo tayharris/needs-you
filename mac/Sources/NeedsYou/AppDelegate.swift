@@ -162,8 +162,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let jump = OrcaJump.parse(url) { OrcaJumpRunner.run(jump) }
             return
         }
-        connect.connect(url.absoluteString)
         settingsWindow.show(tab: .hubs)
+        guard let link = ConnectLink.parse(url.absoluteString) else {
+            connect.connect(url.absoluteString)   // shows why the link isn't usable
+            return
+        }
+        // Any web page can open a needsyou:// link, so ask before joining its hub.
+        let prompt = link.confirmation
+        let alert = NSAlert()
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.message
+        alert.addButton(withTitle: "Connect")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { connect.connect(link) }
     }
 
     /// Accessory apps have no visible menu bar, but text fields still need an Edit menu

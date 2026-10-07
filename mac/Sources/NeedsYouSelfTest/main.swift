@@ -31,6 +31,7 @@ let entries =
     + testEntries(CardLayoutTests.self, CardLayoutTests.allTests)
     + testEntries(HotKeyComboTests.self, HotKeyComboTests.allTests)
     + testEntries(CardAgeTests.self, CardAgeTests.allTests)
+    + testEntries(SecurityAuditTests.self, SecurityAuditTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

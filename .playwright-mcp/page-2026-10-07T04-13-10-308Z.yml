@@ -1,0 +1,82 @@
+- generic [active] [ref=f4e1]:
+  - link "Skip to content" [ref=f4e2] [cursor=pointer]:
+    - /url: "#main"
+  - banner [ref=f4e3]:
+    - generic [ref=f4e4]:
+      - link "needs-you" [ref=f4e5] [cursor=pointer]:
+        - /url: "#main"
+      - navigation "Primary" [ref=f4e7]:
+        - link "How it works" [ref=f4e8] [cursor=pointer]:
+          - /url: "#how"
+        - link "Install" [ref=f4e9] [cursor=pointer]:
+          - /url: "#install"
+        - link "Source" [ref=f4e10] [cursor=pointer]:
+          - /url: "#source"
+  - main [ref=f4e11]:
+    - region [ref=f4e12]:
+      - heading "One inbox for “you have to do something.”" [level=1] [ref=f4e13]
+      - paragraph [ref=f4e14]: Your agents, servers and CI jobs post when they need you. A small pill on your Mac shows it. When it's handled, it goes away.
+      - 'img "Mock of the needs-you pill showing one item: Approve the DB migration, from devbox, with Open, Done and Snooze buttons." [ref=f4e15]':
+        - generic [ref=f4e18]: "1"
+        - generic [aria-hidden] [ref=f4e19]:
+          - generic [ref=f4e20]: Approve the DB migration
+          - paragraph [ref=f4e23]: Deploy is paused on step 3 of 5. Needs a yes before it runs.
+          - paragraph [ref=f4e24]: devbox · claude-code · 2m
+          - generic [ref=f4e25]:
+            - generic [ref=f4e26]: Open PR
+            - generic [ref=f4e27]: Done
+            - generic [ref=f4e28]: Snooze
+    - region [ref=f4e29]:
+      - heading "How it works" [level=2] [ref=f4e30]
+      - list [ref=f4e31]:
+        - listitem [ref=f4e32]:
+          - strong [ref=f4e33]: Agents post.
+          - text: A Claude session, a cron job or a CI step says “I need you for this” with one command.
+        - listitem [ref=f4e34]:
+          - strong [ref=f4e35]: The pill shows it.
+          - text: It floats over everything on your Mac and never takes focus from what you're typing.
+        - listitem [ref=f4e36]:
+          - strong [ref=f4e37]: It goes away when handled.
+          - text: The sender clears it, or you click Done. Nothing piles up.
+    - region [ref=f4e38]:
+      - heading "Install" [level=2] [ref=f4e39]
+      - paragraph [ref=f4e40]:
+        - link "Download for Mac" [ref=f4e41] [cursor=pointer]:
+          - /url: https://github.com/tayharris/needs-you/releases/latest
+      - paragraph [ref=f4e42]:
+        - text: The latest release has
+        - code [ref=f4e43]: NeedsYou-<version>.dmg
+        - text: (open it, drag the app to Applications) and the same app as a
+        - code [ref=f4e44]: .zip
+        - text: . macOS 14 or later.
+      - paragraph [ref=f4e45]:
+        - text: The app is ad-hoc signed, not notarized, so macOS blocks the first launch. Right-click the app →
+        - strong [ref=f4e46]: Open
+        - text: →
+        - strong [ref=f4e47]: Open
+        - text: . On macOS 15 and later, use System Settings → Privacy & Security →
+        - strong [ref=f4e48]: Open Anyway
+        - text: .
+      - paragraph [ref=f4e49]:
+        - text: Then add your other machines. In the app,
+        - strong [ref=f4e50]: Invite a machine
+        - text: "gives you a link; on the machine, run:"
+      - generic [ref=f4e51]:
+        - code [ref=f4e53]: curl -fsSL <join_url>/install.sh | bash -s -- --yes
+        - button "Copy command to clipboard" [ref=f4e54] [cursor=pointer]: Copy
+    - region [ref=f4e55]:
+      - heading "Open source" [level=2] [ref=f4e56]
+      - paragraph [ref=f4e57]:
+        - text: The app, the hub and the sender CLI are on
+        - link "GitHub" [ref=f4e58] [cursor=pointer]:
+          - /url: https://github.com/tayharris/needs-you
+        - text: . Apache-2.0. No cloud, no accounts, no telemetry.
+    - region [ref=f4e59]:
+      - heading "Support" [level=2] [ref=f4e60]
+      - paragraph [ref=f4e61]:
+        - text: needs-you is free. If it saves you time,
+        - link "support the project" [ref=f4e62] [cursor=pointer]:
+          - /url: "#donate-tbd"
+        - text: .
+  - contentinfo [ref=f4e63]:
+    - paragraph [ref=f4e64]: needs-you · Apache-2.0

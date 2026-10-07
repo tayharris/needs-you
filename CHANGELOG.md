@@ -25,6 +25,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - The installer's `--uninstall` (and a re-install) no longer stops halfway on a crontab that holds only the needs-you flush line.
+- Security (audit 2026-10-07, [details](docs/security/audit-2026-10-07.md)): the hub's access log no longer shows invite codes (it also reached the macOS log through the app's local hub); a request with a negative `Content-Length` can't make the hub read without limit; idle connections time out after 60 s; timestamps outside 1970–9999 are refused (a far-future `expires_at` used to break every listing); bidi override characters and invisible characters in URLs are refused; replicated items keep only allowed links. The Mac app asks before joining a hub from a `needsyou://connect` link opened outside the app, a new hub can't replace the tokens of hubs you already have, and card text drops bidi overrides. The invite installer refuses a hub answer or `--hub` URL with shell syntax before writing the env file. The CLI escapes control characters in what hubs send before printing it.
 - Agent cards from a killed Claude session (closed terminal, reboot, OOM) no longer stay forever. The hook leases each card to its Claude process, and `needs-you flush` (every 5 minutes) resolves the card once that process is gone. Cards also expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`, `0` turns it off).
 
 ### Changed

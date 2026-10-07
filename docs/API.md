@@ -13,6 +13,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   `2026-10-06T17:04:05.123Z`. These sort correctly as strings. On input the hub accepts
   ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset, or no
   zone (taken as UTC), or a number of epoch seconds. Precision below 1 ms is dropped.
+  Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a 400.
 - **Auth:** `Authorization: Bearer <token>`. Every token has one role:
 
   | Role | Can call |
@@ -111,7 +112,7 @@ Create an item, or update the open item with the same `key`.
 | Field | Type | Rule | Default |
 |---|---|---|---|
 | `key` | string | ≤ 200 chars, only `A-Z a-z 0-9 . _ : - / @ # + =` | the new item's id (so no dedupe) |
-| `title` | string | required, 1–100 chars after trimming, no control characters | |
+| `title` | string | required, 1–100 chars after trimming, no control characters (see below) | |
 | `body` | string | ≤ 2,000 chars, markdown; newlines and tabs allowed | empty |
 | `context` | string | `work` or `personal` (case-insensitive) | `work` |
 | `kind` | string | `needs`, `done` or `info` | `needs` |
@@ -129,6 +130,14 @@ Link URLs must use one of these schemes (case-insensitive): `https`, `orca`, `sl
 hex or `-`) and the environment name (letters, digits, space, `.`, `_`, `-`; ≤ 64) and runs
 `orca terminal switch` with them as arguments, never through a shell; anything else does
 nothing. Text strings are trimmed.
+
+Control characters are refused in every text field (`title`, `body` except newline and tab,
+link labels, `source` fields): C0, DEL, C1 (U+0080–U+009F), and the bidi embedding, override
+and isolate controls U+202A–U+202E and U+2066–U+2069, which can make text read as something
+it isn't. Ordinary right-to-left text, marks (U+200E/U+200F) and joiners (U+200C/U+200D) are
+fine. Link URLs may not contain whitespace or invisible format characters at all (percent-encode
+a space as `%20`). Item records that arrive by replication keep only links that pass these
+rules.
 
 Semantics:
 
