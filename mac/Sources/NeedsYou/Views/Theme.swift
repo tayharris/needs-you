@@ -31,17 +31,11 @@ enum Theme {
 enum Format {
     /// "now", "5m", "2h", "3d".
     static func age(from date: Date, now: Date) -> String {
-        let s = max(0, now.timeIntervalSince(date))
-        switch s {
-        case ..<60: return "now"
-        case ..<3600: return "\(Int(s / 60))m"
-        case ..<86_400: return "\(Int(s / 3600))h"
-        default: return "\(Int(s / 86_400))d"
-        }
+        CardAge.short(now.timeIntervalSince(date))
     }
 
-    /// `devbox · orca:redo-fixer · 2h`
-    static func meta(_ item: Item, now: Date) -> String {
-        ((item.source?.displayParts ?? []) + [age(from: item.createdAt, now: now)]).joined(separator: " · ")
+    /// `devbox · orca:redo-fixer · 2h`. Without the age when the card shows an age badge.
+    static func meta(_ item: Item, now: Date, includeAge: Bool = true) -> String {
+        ((item.source?.displayParts ?? []) + (includeAge ? [age(from: item.createdAt, now: now)] : [])).joined(separator: " · ")
     }
 }

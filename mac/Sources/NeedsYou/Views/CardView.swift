@@ -14,13 +14,20 @@ struct CardView: View {
                 .frame(maxHeight: .infinity)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(item.title)
-                    .font(Theme.title(m))
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .help(item.key)
+                let badge = CardAge.badge(createdAt: item.createdAt, now: model.now)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.title)
+                        .font(Theme.title(m))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(item.key)
+                    if let badge {
+                        Spacer(minLength: 0)
+                        AgeBadge(text: badge, stale: CardAge.isStale(createdAt: item.createdAt, now: model.now), metrics: m)
+                    }
+                }
 
-                Text(Format.meta(item, now: model.now))
+                Text(Format.meta(item, now: model.now, includeAge: badge == nil))
                     .font(Theme.meta(m))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
@@ -136,7 +143,41 @@ struct CardActions: View {
             .menuIndicator(.hidden)
             .fixedSize()
             Spacer()
+            if let host = ItemStore.host(of: item) {
+                let count = model.itemsFromSameHost(as: item).count
+                Menu {
+                    Button("Dismiss All from \(host) (\(count))") { model.dismissAll(fromHostOf: item) }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: model.metrics.actionFont, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                        .frame(width: 18)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("More")
+            }
         }
+    }
+}
+
+/// "5 h" / "2 d" next to an old card's title; amber once it's probably stale.
+private struct AgeBadge: View {
+    let text: String
+    let stale: Bool
+    let metrics: PanelMetrics
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: metrics.metaFont, weight: .medium).monospacedDigit())
+            .foregroundStyle(stale ? Theme.normal.opacity(0.9) : Theme.muted)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Capsule().fill(Color.white.opacity(stale ? 0.10 : 0.06)))
+            .fixedSize()
+            .help(stale ? "Waiting a long time: it may be stale. Dismiss it, or all from this host (… menu)." : "Waiting since this long ago")
     }
 }
 

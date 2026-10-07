@@ -406,6 +406,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// What "Dismiss All from <host>" closes: everything shown in this context from that host.
+    func itemsFromSameHost(as item: Item) -> [Item] {
+        guard let host = ItemStore.host(of: item) else { return [] }
+        return store.visibleItems(fromHost: host, in: context, now: now)
+    }
+
+    /// Dismiss every card and Recent row from the item's host (stale-items.md, option D).
+    /// One PATCH per item, like Dismiss.
+    func dismissAll(fromHostOf item: Item) {
+        for other in itemsFromSameHost(as: item) { dismiss(other) }
+    }
+
     func snoozeCard(_ item: Item, _ option: SnoozeOption) {
         store.snoozeCard(id: item.id, until: option.until(from: Date()))
     }

@@ -30,6 +30,7 @@ let entries =
     + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)
     + testEntries(CardLayoutTests.self, CardLayoutTests.allTests)
     + testEntries(HotKeyComboTests.self, HotKeyComboTests.allTests)
+    + testEntries(CardAgeTests.self, CardAgeTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
