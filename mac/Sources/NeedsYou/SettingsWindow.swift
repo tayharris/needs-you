@@ -57,7 +57,7 @@ final class SettingsWindowController {
 
 /// The Settings tabs.
 enum SettingsTab: String, CaseIterable, Hashable {
-    case hubs, panel, alerts, integrations, advanced
+    case hubs, panel, alerts, integrations, updates, advanced
 
     var title: String {
         switch self {
@@ -65,6 +65,7 @@ enum SettingsTab: String, CaseIterable, Hashable {
         case .panel: return "Panel"
         case .alerts: return "Alerts"
         case .integrations: return "Integrations"
+        case .updates: return "Updates"
         case .advanced: return "Advanced"
         }
     }
@@ -189,6 +190,13 @@ struct SettingsView: View {
             }
             .tabItem { Label(SettingsTab.integrations.title, systemImage: "puzzlepiece.extension") }
             .tag(SettingsTab.integrations)
+
+            // Filled by the app delegate (UpdatesSettingsView).
+            tabForm {
+                extra[.updates]
+            }
+            .tabItem { Label(SettingsTab.updates.title, systemImage: "arrow.down.circle") }
+            .tag(SettingsTab.updates)
 
             tabForm {
                 advancedSection

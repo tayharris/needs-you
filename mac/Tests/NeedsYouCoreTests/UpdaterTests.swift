@@ -33,7 +33,43 @@ final class UpdaterTests: XCTestCase {
         ("testAuthChain", testAuthChain),
         ("testSource", testSource),
         ("testLocalFeedRelease", testLocalFeedRelease),
+        ("testPrefs", testPrefs),
     ]
+
+    func testPrefs() throws {
+        let suite = "ny-updateprefs-\(UUID().uuidString)"
+        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        let fresh = UpdatePrefs.load(from: d)
+        XCTAssertEqual(fresh, UpdatePrefs())
+        XCTAssertTrue(fresh.checkAutomatically)
+        XCTAssertTrue(fresh.installAutomatically)
+        XCTAssertEqual(fresh.channel, .stable)
+        XCTAssertEqual(fresh.soakHours, 2)
+        XCTAssertEqual(fresh.policy(rolledBack: nil).soak, UpdatePolicy.defaultSoak)
+
+        var p = fresh
+        p.checkAutomatically = false
+        p.channel = .prerelease
+        p.soakHours = 0
+        p.skip(SemVer(0, 2, 0))
+        p.skip(SemVer(0, 2, 0))
+        p.lastCheck = now
+        p.save(to: d)
+        let back = UpdatePrefs.load(from: d)
+        XCTAssertEqual(back, p)
+        XCTAssertEqual(back.skipped, ["0.2.0"])
+        XCTAssertEqual(back.policy(rolledBack: "0.1.9"), UpdatePolicy(channel: .prerelease, soak: 0, skipped: ["0.2.0"], rolledBack: "0.1.9"))
+
+        // Garbage falls back to the defaults.
+        d.set("nightly", forKey: UpdatePrefs.Key.channel)
+        d.set(-3, forKey: UpdatePrefs.Key.soakHours)
+        d.set(["0.3.0", "not-a-version"], forKey: UpdatePrefs.Key.skipped)
+        let bad = UpdatePrefs.load(from: d)
+        XCTAssertEqual(bad.channel, .stable)
+        XCTAssertEqual(bad.soakHours, 2)
+        XCTAssertEqual(bad.skipped, ["0.3.0"])
+    }
 
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let current = SemVer(0, 1, 1)

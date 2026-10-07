@@ -595,3 +595,62 @@ public enum UpdatePaths {
     public static let installLog = "install.log"
     public static let attemptFile = "installing-version"
 }
+
+// MARK: - Settings → Updates
+
+/// The updater's settings, plain keys in the app's defaults (`defaults read
+/// app.needsyou.mac`). Missing or invalid values fall back to the defaults.
+public struct UpdatePrefs: Equatable, Sendable {
+    public enum Key {
+        public static let check = "updateCheckAutomatically"
+        public static let install = "updateInstallAutomatically"
+        public static let channel = "updateChannel"
+        public static let soakHours = "updateSoakHours"
+        public static let skipped = "updateSkippedVersions"
+        public static let lastCheck = "updateLastCheck"
+        /// Testing: a local feed directory (file:// URL or path) instead of GitHub.
+        public static let feedURL = "updateFeedURL"
+        /// Another GitHub repo ("owner/repo").
+        public static let repository = "updateRepository"
+    }
+
+    public var checkAutomatically = true
+    public var installAutomatically = true
+    public var channel: UpdateChannel = .stable
+    public var soakHours: Double = UpdatePolicy.defaultSoak / 3600
+    public var skipped: [String] = []
+    public var lastCheck: Date?
+
+    public init() {}
+
+    public static func load(from d: UserDefaults) -> UpdatePrefs {
+        var p = UpdatePrefs()
+        if d.object(forKey: Key.check) != nil { p.checkAutomatically = d.bool(forKey: Key.check) }
+        if d.object(forKey: Key.install) != nil { p.installAutomatically = d.bool(forKey: Key.install) }
+        if let raw = d.string(forKey: Key.channel), let c = UpdateChannel(rawValue: raw) { p.channel = c }
+        if let n = d.object(forKey: Key.soakHours) as? NSNumber, n.doubleValue >= 0, n.doubleValue <= 24 * 30 {
+            p.soakHours = n.doubleValue
+        }
+        p.skipped = (d.stringArray(forKey: Key.skipped) ?? []).filter { SemVer($0) != nil }
+        p.lastCheck = d.object(forKey: Key.lastCheck) as? Date
+        return p
+    }
+
+    public func save(to d: UserDefaults) {
+        d.set(checkAutomatically, forKey: Key.check)
+        d.set(installAutomatically, forKey: Key.install)
+        d.set(channel.rawValue, forKey: Key.channel)
+        d.set(soakHours, forKey: Key.soakHours)
+        d.set(skipped, forKey: Key.skipped)
+        if let lastCheck { d.set(lastCheck, forKey: Key.lastCheck) } else { d.removeObject(forKey: Key.lastCheck) }
+    }
+
+    public func policy(rolledBack: String?) -> UpdatePolicy {
+        UpdatePolicy(channel: channel, soak: soakHours * 3600, skipped: Set(skipped), rolledBack: rolledBack)
+    }
+
+    public mutating func skip(_ v: SemVer) {
+        if !skipped.contains(v.description) { skipped.append(v.description) }
+        if skipped.count > 20 { skipped.removeFirst(skipped.count - 20) }
+    }
+}

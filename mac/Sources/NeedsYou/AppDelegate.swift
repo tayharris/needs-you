@@ -1,5 +1,6 @@
 import AppKit
 import NeedsYouCore
+import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var connect: ConnectController!
     private var menuBar: MenuBarController!
     private var edgeGlow: EdgeGlowController!
+    private var updates: UpdateController!
     private var termSource: DispatchSourceSignal?
     /// needsyou:// URLs that arrived before launch finished.
     private var pendingURLs: [URL] = []
@@ -42,6 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let phase3 {
             settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
         }
+        // Self-update (docs/roadmap/rollout-updates.md). Checks and installs never activate
+        // the app; Settings → Updates is the only UI.
+        updates = UpdateController(defaults: settings.defaults, model: model)
+        let updates = self.updates!, connect = self.connect!
+        settingsWindow.extraSettings[.updates] = { AnyView(UpdatesSettingsView(updates: updates, connect: connect)) }
 
         panel = PanelController(model: model)
         menuBar = MenuBarController(model: model)
@@ -74,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
         // Starting (and later restarting) the hub child never activates the app.
         localHub.apply()
+        updates.start()
         launched = true
         let pending = pendingURLs
         pendingURLs = []
@@ -134,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ notification: Notification) {
+        updates?.appWillTerminate()
         localHub?.stop()
     }
 
