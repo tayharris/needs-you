@@ -378,7 +378,10 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
     assert label is not None and url is not None
     if _URL_BAD_RE.search(url):
         raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
-    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    try:
+        scheme = urllib.parse.urlsplit(url).scheme.lower()
+    except ValueError:  # e.g. an unbalanced '[' in the host ("Invalid IPv6 URL")
+        raise _invalid(path + ".url", "%s.url is not a valid URL" % path)
     if len(url) <= len(scheme) + 1:
         raise _invalid(path + ".url", "%s.url is empty" % path)
     if (scheme in LINK_SCHEMES or scheme == "needsyou") and not LINK_RAW_RE.fullmatch(url):

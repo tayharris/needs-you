@@ -11,6 +11,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
+- Hub: a link URL with an unbalanced `[` in its host (`https://[x/y`) is a `400 invalid` naming the field, not a `500 internal`.
 
 ## [0.1.2] - 2026-10-07
 
