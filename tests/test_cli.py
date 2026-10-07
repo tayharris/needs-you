@@ -126,6 +126,25 @@ class Outbox(CliTestCase):
         self.assertEqual(self.queued(), [])
         self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), 1)
 
+    def test_malformed_queued_entries_move_to_failed(self):
+        """Valid JSON of the wrong shape in the outbox must not crash every later
+        invocation (they all flush first): it goes to failed/ like unreadable JSON."""
+        os.makedirs(self.outbox)
+        bad = ["[]", "null", '{"method": "POST"}', '{"method": 1, "path": "/v1/items"}',
+               '{"method": "POST", "path": "/v1/items", "body": "x"}', "{not json"]
+        for i, text in enumerate(bad):
+            with open(os.path.join(self.outbox, "%020d-%05d.json" % (time.time_ns() + i, 1)), "w") as fh:
+                fh.write(text)
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        r = self.run_cli("add", "--key", "after", "--title", "t", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("created", r.stdout)
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), len(bad))
+        self.assertEqual([i["key"] for i in self.items(hub, reader, "open")], ["after"])
+
     def test_missing_config_still_exits_zero(self):
         r = self.run_cli("add", "--key", "a", "--title", "t", urls=None, token=None)
         self.assertEqual(r.returncode, 0)

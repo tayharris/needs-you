@@ -392,6 +392,15 @@ def _lock():  # type: ignore[no-untyped-def]
         return None
 
 
+def _remove(path: str) -> None:
+    """Delete a sent entry. Another invocation's prune() (which runs without the lock) may
+    have dropped it already; that's fine."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
     """Send queued entries oldest first. Stops at the first unreachable attempt.
     Returns (sent, dropped, remaining)."""
@@ -411,18 +420,22 @@ def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
                 with open(path, "r", encoding="utf-8") as fh:
                     entry = json.load(fh)
             except (OSError, ValueError):
-                _move_failed(path)
+                entry = None
+            if not (isinstance(entry, dict) and isinstance(entry.get("method"), str)
+                    and isinstance(entry.get("path"), str) and entry["path"].startswith("/")
+                    and isinstance(entry.get("body"), (dict, type(None)))):
+                _move_failed(path)  # unreadable, or not an entry this CLI wrote
                 dropped += 1
                 continue
             try:
                 url, _status, _body = send(cfg, entry["method"], entry["path"], entry.get("body"))
-                os.remove(path)
+                _remove(path)
                 sent += 1
                 if verbose:
                     warn("sent queued %s %s via %s" % (entry["method"], entry["path"], url))
             except Rejected as e:
                 if e.status == 404 and entry["path"].endswith("/resolve"):
-                    os.remove(path)  # nothing open with that key: the resolve is moot
+                    _remove(path)  # nothing open with that key: the resolve is moot
                     sent += 1
                     continue
                 warn("hub rejected a queued request (%s); moved it to outbox/failed/" % e)
