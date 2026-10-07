@@ -24,6 +24,12 @@ SCHEDULE=1
 FORCE=0
 UNINSTALL=0
 HUB_GIVEN=""
+ALERTS=""
+AGENT_LINK=""
+ORCA_ENV=""
+SSH_ALIAS=""
+CONTEXT_ALERT=""
+SET_PATH=1
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'needs-you install: %s\n' "$*" >&2; }
@@ -39,19 +45,33 @@ Options:
   --claude-hooks user|project|none
                                 Claude Code hooks: post when a session waits on you
                                 (project = the current directory's repo; default none)
+  --alerts                      turn the hooks on for every Claude Code session here
+                                (NEEDS_YOU_AGENT_ALERTS=1 in the env file); without it
+                                they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
+  --context-alert PCT           card suggesting /compact or /clear once a session's
+                                context is PCT% full (default 80; 0 = off)
+  --ssh-alias NAME              the name the Mac's ~/.ssh/config (VS Code Remote-SSH)
+                                uses for this machine: cards get a Remote-SSH link
+  --agent-link 'LABEL=URL'      one link template for agent cards instead of the
+                                automatic editor links ({cwd} {host} {session} {handle};
+                                'none' = no editor links)
+  --orca-environment NAME       on a paired Orca server: its name in the Mac's Orca
   --orca                        write the Orca automation snippet and print it
   --context work|personal       default context for this machine's items
   --host NAME                   this machine's name (default: short hostname)
   --hub URL                     use this URL for the hub (saved first in the hub list)
   --no-schedule                 don't add the 5-minute `needs-you flush`
+  --no-path                     don't add ~/.local/bin to PATH in your shell profile
+                                (prints the line to add instead)
   --force                       redeem again and replace an existing token
   --uninstall                   remove the CLI, config, flush schedule, skill and hooks
   -h, --help                    this help
 
 Needs bash, curl and python3 3.9+. Writes only under $HOME (plus your crontab on
-Linux, or a LaunchAgent on macOS, for the flush). Re-running is safe and keeps the
-token; it works until the link expires, even with no uses left.
+Linux, or a LaunchAgent on macOS, for the flush, and one tagged PATH line in your
+shell profile). Re-running is safe and keeps the token; it works until the link
+expires, even with no uses left. Settings you don't pass again are kept.
 EOF
 }
 
@@ -68,6 +88,16 @@ while [ $# -gt 0 ]; do
     --hub) HUB_GIVEN=${2:-}; shift 2 || die "--hub needs a URL" ;;
     --hub=*) HUB_GIVEN=${1#*=}; shift ;;
     --no-schedule) SCHEDULE=0; shift ;;
+    --no-path) SET_PATH=0; shift ;;
+    --alerts) ALERTS=1; shift ;;
+    --context-alert) CONTEXT_ALERT=${2:-}; shift 2 || die "--context-alert needs a percentage" ;;
+    --context-alert=*) CONTEXT_ALERT=${1#*=}; shift ;;
+    --ssh-alias) SSH_ALIAS=${2:-}; shift 2 || die "--ssh-alias needs a name" ;;
+    --ssh-alias=*) SSH_ALIAS=${1#*=}; shift ;;
+    --agent-link) AGENT_LINK=${2:-}; shift 2 || die "--agent-link needs 'Label=url'" ;;
+    --agent-link=*) AGENT_LINK=${1#*=}; shift ;;
+    --orca-environment) ORCA_ENV=${2:-}; shift 2 || die "--orca-environment needs a name" ;;
+    --orca-environment=*) ORCA_ENV=${1#*=}; shift ;;
     --force) FORCE=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -82,6 +112,24 @@ if [ -n "$HUB_GIVEN" ]; then
   HUB_URL=$HUB_GIVEN
 fi
 HUB_URL=${HUB_URL%/}
+if [ -n "$CONTEXT_ALERT" ]; then
+  case "$CONTEXT_ALERT" in *[!0-9]*) die "--context-alert must be a whole number from 0 to 100" ;; esac
+  [ "$CONTEXT_ALERT" -le 100 ] || die "--context-alert must be a whole number from 0 to 100"
+fi
+if [ -n "$SSH_ALIAS" ] && ! printf '%s' "$SSH_ALIAS" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$'; then
+  die "--ssh-alias must be a host alias (letters, digits, . _ @ -)"
+fi
+if [ -n "$ORCA_ENV" ] && ! printf '%s' "$ORCA_ENV" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$'; then
+  die "--orca-environment must be an Orca environment name (letters, digits, spaces, . _ -)"
+fi
+if [ -n "$AGENT_LINK" ] && [ "$AGENT_LINK" != none ]; then
+  case "$AGENT_LINK" in
+    *=*://*) ;;
+    *) die "--agent-link must look like 'Label=scheme://...' (or none)" ;;
+  esac
+  case "$AGENT_LINK" in *[\'\"\\\`\$]*) die "--agent-link can't contain quotes, backslashes, \` or \$" ;; esac
+  [ "${#AGENT_LINK}" -le 500 ] || die "--agent-link is too long"
+fi
 
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"
 ENV_FILE="$CONF_DIR/env"
@@ -91,6 +139,7 @@ SKILL_DIR="$HOME/.claude/skills/needs-you"
 LABEL="io.needs-you.flush"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 CRON_TAG="# needs-you-flush"
+PATH_TAG="# added by needs-you"
 OS=$(uname -s)
 
 # ---------------------------------------------------------------- schedule
@@ -126,7 +175,7 @@ EOF
     if printf '%s\n' "$current" | grep -qxF "$line"; then
       say "flush: crontab entry already present"
     else
-      { printf '%s\n' "$current" | grep -vF "$CRON_TAG" | sed '/^$/d'; printf '%s\n' "$line"; } | crontab -
+      { printf "%s\n" "$current" | { grep -vF "$CRON_TAG" || true; } | sed "/^$/d"; printf "%s\n" "$line"; } | crontab -
       say "flush: crontab runs \`needs-you flush\` every 5 minutes"
     fi
   else
@@ -141,14 +190,56 @@ schedule_remove() {
   elif command -v crontab >/dev/null 2>&1; then
     current=$(crontab -l 2>/dev/null || true)
     if printf '%s\n' "$current" | grep -qF "$CRON_TAG"; then
-      printf '%s\n' "$current" | grep -vF "$CRON_TAG" | sed '/^$/d' | crontab -
+      printf "%s\n" "$current" | { grep -vF "$CRON_TAG" || true; } | sed "/^$/d" | crontab -
     fi
   fi
+}
+
+# ---------------------------------------------------------------- PATH
+# One tagged line in the login shell's profile, so `needs-you` works in new shells.
+profile_file() {
+  case "${SHELL##*/}" in
+    zsh) printf '%s' "${ZDOTDIR:-$HOME}/.zshrc" ;;
+    bash) if [ "$OS" = Darwin ]; then printf '%s' "$HOME/.bash_profile"; else printf '%s' "$HOME/.bashrc"; fi ;;
+    *) printf '%s' "$HOME/.profile" ;;
+  esac
+}
+
+path_setup() {
+  case ":$PATH:" in *":$BIN_DIR:"*) return 0 ;; esac
+  local shown=$BIN_DIR rc line
+  case "$BIN_DIR" in "$HOME"/*) shown="\$HOME/${BIN_DIR#"$HOME"/}" ;; esac
+  line="export PATH=\"$shown:\$PATH\""
+  if [ "$SET_PATH" -eq 0 ]; then
+    say "PATH: $BIN_DIR is not on PATH. Add this line to your shell profile:"
+    say "  $line"
+    return 0
+  fi
+  rc=$(profile_file)
+  if [ -f "$rc" ] && awk -v a="$shown" -v b="$BIN_DIR" -v t="$PATH_TAG" \
+      'index($0, t) || (!/^[[:space:]]*#/ && /PATH/ && (index($0, a) || index($0, b))) { f = 1 } END { exit !f }' "$rc"; then
+    say "PATH: $rc already adds $shown"
+  else
+    printf '\n%s  %s\n' "$line" "$PATH_TAG" >>"$rc"
+    say "PATH: added $shown to PATH in $rc"
+  fi
+  say "  (new shells pick it up; in this one run: $line)"
+}
+
+path_remove() {
+  local rc
+  for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    [ -f "$rc" ] && grep -qF "$PATH_TAG" "$rc" || continue
+    # cat > keeps the file's inode, mode and any symlink (dotfile managers)
+    { grep -vF "$PATH_TAG" "$rc" || true; } >"$rc.needs-you.tmp" && cat "$rc.needs-you.tmp" >"$rc"
+    rm -f "$rc.needs-you.tmp"
+  done
 }
 
 # ---------------------------------------------------------------- uninstall
 if [ "$UNINSTALL" -eq 1 ]; then
   schedule_remove
+  path_remove
   if [ -f "$HOME/.claude/hooks/needs-you-hook.sh" ] && [ -f "$HOME/.claude/settings.json" ] &&
      command -v curl >/dev/null 2>&1; then
     tmp=$(mktemp -d)
@@ -194,7 +285,7 @@ say "needs-you: connect $HOST_NAME to $HUB_URL (invite $INVITE_NAME)"
 say "  CLI     -> $CLI"
 say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && printf ' (already set up: keeping the token)')"
 [ "$SCHEDULE" -eq 1 ] && say "  flush   -> every 5 minutes ($([ "$OS" = Darwin ] && echo LaunchAgent || echo crontab))"
-[ "$HOOKS" != none ] && say "  hooks   -> Claude Code ($HOOKS level)"
+[ "$HOOKS" != none ] && say "  hooks   -> Claude Code ($HOOKS level)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
@@ -242,9 +333,10 @@ if [ "$HAVE_TOKEN" -eq 0 ] || [ "$FORCE" -eq 1 ]; then
 fi
 
 # Rewrite the env file: keep unrelated lines, replace ours. The token never touches argv.
-python3 - "$ENV_FILE" "$TMP/resp.json" "$CONTEXT" "$HUB_GIVEN" <<'PY'
-import json, os, sys
-path, resp_path, context, given = sys.argv[1:5]
+python3 - "$ENV_FILE" "$TMP/resp.json" "$CONTEXT" "$HUB_GIVEN" "$ALERTS" "$CONTEXT_ALERT" \
+  "$SSH_ALIAS" "$AGENT_LINK" "$ORCA_ENV" <<'PY'
+import json, os, re, sys
+path, resp_path, context, given, alerts, ctx_alert, ssh_alias, agent_link, orca_env = sys.argv[1:10]
 lines = []
 if os.path.exists(path):
     with open(path, encoding="utf-8") as fh:
@@ -271,6 +363,11 @@ if urls is not None:
     updates["NEEDS_YOU_URL"] = urls[0] if urls else ""
 if context:
     updates["NEEDS_YOU_DEFAULT_CONTEXT"] = context
+for k, v in (("NEEDS_YOU_AGENT_ALERTS", alerts), ("NEEDS_YOU_CONTEXT_ALERT_PCT", ctx_alert),
+             ("NEEDS_YOU_SSH_ALIAS", ssh_alias), ("NEEDS_YOU_AGENT_LINK", agent_link),
+             ("NEEDS_YOU_ORCA_ENVIRONMENT", orca_env)):
+    if v:
+        updates[k] = v if re.match(r"^[A-Za-z0-9._:/,@+%-]*$", v) else "'%s'" % v
 out, seen = [], set()
 for line in lines:
     k = line.strip()
@@ -304,6 +401,7 @@ PY
 
 # ---------------------------------------------------------------- extras
 [ "$SCHEDULE" -eq 1 ] && schedule_install
+path_setup
 
 if [ "$HOOKS" != none ]; then
   for f in install-hooks.sh needs-you-hook.sh hooks.json; do

@@ -228,13 +228,19 @@ if [ "$ACTION" = "install" ]; then
     mv -f "$HOOKS_DIR/needs-you-hook.sh.tmp" "$HOOKS_DIR/needs-you-hook.sh"
     echo "hook: installed"
   fi
-  cat <<'EOF'
-
-Next:
+  ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"
+  echo ""
+  echo "Next:"
+  if grep -Eqs "^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_AGENT_ALERTS=['\"]?(1|true|yes|on)['\"]?[[:space:]]*$" "$ENV_FILE"; then
+    echo "  - Alerts are on for every Claude Code session here (NEEDS_YOU_AGENT_ALERTS=1 in $ENV_FILE)."
+  else
+    cat <<'EOF'
   - The hooks stay quiet until opted in. Either run Claude from Orca, or set
     NEEDS_YOU_AGENT_ALERTS=1 (in your shell profile, or as a line in
-    ~/.config/needs-you/env to opt in every session on this machine).
+    ~/.config/needs-you/env to opt in every session on this machine; the
+    invite installer's --alerts writes that line).
 EOF
+  fi
   # The invite installer sets NEEDS_YOU_INSTALLER=1: it has just installed the CLI.
   if [ "${NEEDS_YOU_INSTALLER:-}" != 1 ]; then
     cat <<'EOF'
