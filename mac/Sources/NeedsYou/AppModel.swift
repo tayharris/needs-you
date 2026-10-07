@@ -449,10 +449,28 @@ final class AppModel: ObservableObject {
         digest = shown
         pulse = PulseRequest(times: 1, priority: top, ambient: true)
         digestTask?.cancel()
-        digestTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled, let self, self.digest == shown else { return }
-            self.digest = nil
+        digestTask = holdPeek(while: { [weak self] in self?.digest == shown }) { [weak self] in
+            self?.digest = nil
+        }
+    }
+
+    /// Keeps an arrival peek (the new-item preview or the Later digest) out for Settings →
+    /// Alerts → Show new items for. The clock stops while the pointer is over the panel and
+    /// resumes when it leaves (PeekCountdown). Ends early, without calling `end`, once
+    /// `showing` is false (clicked, replaced or collapsed).
+    func holdPeek(while showing: @escaping () -> Bool, end: @escaping () -> Void) -> Task<Void, Never> {
+        let seconds = settings.ui.previewSeconds
+        return Task { [weak self] in
+            var countdown = PeekCountdown(seconds: seconds)
+            let step: TimeInterval = 0.25
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled, let self, showing() else { return }
+                if countdown.advance(by: step, hovering: self.hovering) {
+                    end()
+                    return
+                }
+            }
         }
     }
 
