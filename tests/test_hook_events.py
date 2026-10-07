@@ -599,9 +599,62 @@ class OwnItemTests(HookHarness):
             self.real_cli("resolve", "--key", "work:ACME-6:%s" % agent)
             self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"}, **term)
             self.assertTrue(self.agent_turn_ended(agent, event, **term), agent)
-        # Outside Orca there's no shared id: both cards, as before.
-        self.real_cli("add", "--key", "work:ACME-7:x", "--title", "t", CODEX_THREAD_ID="agent-sess-1")
+
+    def test_other_agents_outside_orca(self):
+        # Codex gives its commands $CODEX_SESSION_ID (older: $CODEX_THREAD_ID), the hook's
+        # session_id; the opencode plugin sets $NEEDS_YOU_OPENCODE_SESSION through shell.env.
+        for agent, env in (("codex", {"CODEX_SESSION_ID": "agent-sess-1", "CODEX_THREAD_ID": "agent-sess-2"}),
+                           ("codex", {"CODEX_THREAD_ID": "agent-sess-1"}),
+                           ("opencode", {"NEEDS_YOU_OPENCODE_SESSION": "agent-sess-1"})):
+            key = "work:ACME-7:%s" % agent
+            self.assertTrue(self.agent_turn_ended(agent, "Stop"), agent)
+            self.real_cli("add", "--key", key, "--title", "t", **env)
+            self.assertFalse(self.agent_turn_ended(agent, "Stop"), (agent, env))
+            # another session of the same agent isn't affected
+            self.assertTrue(self.agent_turn_ended(agent, "Stop", {"session_id": "agent-sess-9"}), agent)
+            self.real_cli("resolve", "--key", key)
+            self.assertTrue(self.agent_turn_ended(agent, "Stop"), agent)
+        # a subagent thread's own id isn't the session's: Codex's hooks name the root session
+        self.real_cli("add", "--key", "work:ACME-8:x", "--title", "t",
+                      CODEX_SESSION_ID="agent-sess-9", CODEX_THREAD_ID="agent-sess-1")
         self.assertTrue(self.agent_turn_ended("codex", "Stop"))
+        self.real_cli("resolve", "--key", "work:ACME-8:x")
+
+    def test_gemini_outside_orca_by_process(self):
+        # Gemini CLI gives its commands no session id, only GEMINI_CLI=1: the CLI notes the key
+        # for the Gemini process (its first ancestor that isn't a shell), which is the process
+        # the hook's lease names. Here that's this test process for both.
+        self.assertTrue(self.agent_turn_ended("gemini", "AfterAgent"))
+        self.real_cli("add", "--key", "work:ACME-9:x", "--title", "t", GEMINI_CLI="1")
+        self.assertFalse(self.agent_turn_ended("gemini", "AfterAgent"))
+        self.assertTrue(self.agent_turn_ended("gemini", "Notification", {
+            "notification_type": "ToolPermission", "details": {"type": "exec", "rootCommand": "ls"}}))
+        # a hook under another Gemini process isn't affected
+        wrapped = [sys.executable, "-c", "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:]).returncode)"]
+        before = len(self.calls())
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
+               "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux",
+               "NY_HOOK_BG": "1"}
+        payload = {"session_id": "agent-sess-1", "cwd": self.cwd, "hook_event_name": "AfterAgent"}
+        subprocess.run(wrapped + [BASH, HOOK, "notify", "gemini"], input=json.dumps(payload), env=env,
+                       capture_output=True, text=True, timeout=30)
+        self.assertEqual(len(self.calls()), before + 1)
+        # the session ending forgets it
+        self.run_hook("end", {"hook_event_name": "SessionEnd"})  # (a Claude session: no effect)
+        self.assertFalse(self.agent_turn_ended("gemini", "AfterAgent"))
+        self.agent_end("gemini")
+        self.assertTrue(self.agent_turn_ended("gemini", "AfterAgent"))
+        # outside Gemini nothing is noted for the process
+        self.real_cli("add", "--key", "work:ACME-10:x", "--title", "t")
+        self.assertTrue(self.agent_turn_ended("gemini", "AfterAgent"))
+
+    def agent_end(self, agent):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
+               "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NY_HOOK_BG": "1"}
+        payload = {"session_id": "agent-sess-1", "cwd": self.cwd, "hook_event_name": "SessionEnd"}
+        r = subprocess.run([BASH, HOOK, "end", agent], input=json.dumps(payload), env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
 
     def test_outside_claude_nothing_is_recorded(self):
         self.real_cli("add", "--key", "work:ACME-5:x", "--title", "t", CLAUDE_CODE_SESSION_ID="sess-1234-abcd")

@@ -155,23 +155,52 @@ state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
 ctx_marker="$state_dir/$id.context"
 # Open `needs` items the agent itself posted from this session (`needs-you add` records them
-# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>).
-items_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items/$id"
+# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>). The
+# session is named as here: the Orca handle, else the agent's session id, which Claude Code,
+# Codex and (through the plugin) opencode also give the agent's commands. Gemini CLI doesn't,
+# so the CLI notes its items under pid-<the Gemini process> with start=, matched to the lease.
+items_base="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items"
+items_dir="$items_base/$id"
+
+# items_open DIR [START]: an unexpired record in DIR (with START: only one for that process).
+items_open() {
+  [ -d "$1" ] || return 1
+  local f exp now st
+  now=$(date +%s)
+  for f in "$1"/*; do
+    [ -f "$f" ] || continue
+    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
+    case "$exp" in ''|*[!0-9]*) continue ;; esac
+    [ "$exp" -gt "$now" ] || continue
+    if [ -n "${2:-}" ]; then
+      st=$(sed -n 's/^start=//p' "$f" 2>/dev/null | head -n 1)
+      [ "$st" = "$2" ] || continue
+    fi
+    return 0
+  done
+  return 1
+}
+
+# The lease's start time with runs of blanks squeezed, as the CLI records it.
+lease_start_norm() {
+  local IFS=' '
+  set -f
+  # shellcheck disable=SC2086
+  set -- $lease_start
+  set +f
+  printf '%s' "$*"
+}
 
 # own_item_open: true while the agent's own blocker for this session is open and unexpired.
 # Read-only; the CLI prunes expired records.
 own_item_open() {
-  case "$id" in .|..) return 1 ;; esac
-  [ -d "$items_dir" ] || return 1
-  local f exp now
-  now=$(date +%s)
-  for f in "$items_dir"/*; do
-    [ -f "$f" ] || continue
-    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
-    case "$exp" in ''|*[!0-9]*) continue ;; esac
-    [ "$exp" -gt "$now" ] && return 0
-  done
-  return 1
+  case "$id" in .|..) ;; *) items_open "$items_dir" && return 0 ;; esac
+  # Gemini: the items of the agent process this hook belongs to (ps only when there are any).
+  set -- "$items_base"/pid-*
+  [ -e "$1" ] || return 1
+  lease
+  [ -n "$lease_pid" ] || return 1
+  items_open "$items_base/pid-$lease_pid" "$(lease_start_norm)"
 }
 
 # The Claude process this hook belongs to: the first ancestor that isn't a
@@ -917,6 +946,10 @@ case "$mode" in
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
     case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
+    if [ "$agent" = gemini ] && [ -d "$items_base" ]; then
+      lease
+      [ -n "$lease_pid" ] && rm -rf "$items_base/pid-$lease_pid"
+    fi
     ;;
 
   notify)

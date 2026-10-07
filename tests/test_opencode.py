@@ -173,6 +173,32 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
         self.assertTrue(wait_until(lambda: [c[0] for c in self.calls()][-1:] == ["resolve"], timeout=10),
                         self.calls())
 
+    def test_shell_env_names_the_session(self):
+        # The agent's commands learn their session (for the CLI's one-card-for-one-wait note),
+        # and a terminal without a session or a junk call gets nothing and never throws.
+        driver = os.path.join(self.home, "env-driver.mjs")
+        with open(driver, "w") as fh:
+            fh.write(r"""
+import { pathToFileURL } from "node:url"
+const mod = await import(pathToFileURL(process.argv[2]).href)
+const hooks = await mod[Object.keys(mod)[0]]({ directory: process.argv[3] })
+const out = []
+for (const input of [{ cwd: "/x", sessionID: "ses_0123abc" }, { cwd: "/x" }, { cwd: "/x", sessionID: 5 }]) {
+  const o = { env: {} }
+  await hooks["shell.env"](input, o)
+  out.push(o.env)
+}
+await hooks["shell.env"](null, null)
+console.log(JSON.stringify(out))
+""")
+        self.install()
+        with open(os.path.join(self.oc, "plugins", "package.json"), "w") as fh:
+            fh.write('{"type": "module"}\n')
+        r = subprocess.run([NODE, driver, os.path.join(self.oc, "plugins", "needs-you.js"), self.cwd],
+                           env=self.env(), capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout), [{"NEEDS_YOU_OPENCODE_SESSION": "ses_0123abc"}, {}, {}])
+
     def test_missing_hook_is_harmless(self):
         os.makedirs(os.path.join(self.oc, "plugins"))
         shutil.copy(PLUGIN, os.path.join(self.oc, "plugins", "needs-you.js"))

@@ -885,25 +885,69 @@ def reap_leases(cfg: Config, verbose: bool = False) -> int:
 # The agent's own open items, per agent session. When an agent in a session posts a `needs`
 # item (the skill), the hook skips its generic "waiting for you" / "turn ended" card for
 # that session while the item is open: one card for one wait. The session is named as the
-# hook names it: $ORCA_TERMINAL_HANDLE in Orca (any agent), else Claude Code's session id
-# ($CLAUDE_CODE_SESSION_ID in the agent's commands, session_id in the hook input). Codex,
-# Gemini CLI and opencode don't give their commands a session id, so outside Orca they get
-# both cards.
+# hook names it (agent_session below): $ORCA_TERMINAL_HANDLE in Orca (any agent), else the
+# agent's session id as its commands see it and its hooks get it as session_id. Gemini CLI
+# gives its commands no session id, so there it's the Gemini process: "pid-<pid>", which the
+# hook matches against its lease (the same process, by pid and start time).
 SESSION_ITEM_MAX_HOURS = 48.0
+# What the hook's lease search skips on the way up to the agent process (keep in step).
+_LEASE_SKIP = ("sh", "-sh", "bash", "-bash", "dash", "zsh", "-zsh", "env", "timeout", "nohup")
 
 
 def session_items_dir() -> str:
     return os.path.join(state_dir(), "session-items")
 
 
-def claude_session() -> str:
-    """This command's agent session as the hook names it, sanitized like the hook's id: the
-    Orca terminal handle, else (inside Claude Code) its session id; "" when there is none."""
-    raw = os.environ.get("ORCA_TERMINAL_HANDLE") or ""
-    if not raw and os.environ.get("CLAUDECODE"):
-        raw = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+def _session_name(raw: str) -> str:
+    """An id sanitized like the hook's (A-Za-z0-9._- kept, 80 chars); never "." or ".."."""
     sess = re.sub(rb"[^A-Za-z0-9._-]", b"_", raw.encode("utf-8"))[:80].decode("ascii")
-    return sess if sess.strip(".") else ""  # never "." or ".."
+    return sess if sess.strip(".") else ""
+
+
+def _agent_process() -> Tuple[int, str]:
+    """(pid, start) of the agent that ran this command, found as the hook finds its lease: the
+    first ancestor that isn't a shell. (0, "") when it can't be told."""
+    import subprocess
+
+    def ps(field: str, pid: int) -> str:
+        r = subprocess.run(["ps", "-o", field + "=", "-p", str(pid)], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=5, env=dict(os.environ, LC_ALL="C"))
+        return r.stdout.strip()
+
+    pid, hops = os.getppid(), 0
+    while hops < 8 and pid > 1:
+        try:
+            comm, ppid = os.path.basename(ps("comm", pid)), ps("ppid", pid)
+        except (OSError, subprocess.SubprocessError):
+            return 0, ""
+        if not comm or not ppid.isdigit():
+            return 0, ""
+        if comm not in _LEASE_SKIP:
+            start = _process_start(pid)
+            return (pid, start) if start else (0, "")
+        pid, hops = int(ppid), hops + 1
+    return 0, ""
+
+
+def agent_session() -> Tuple[str, str]:
+    """(session, start) for this command's agent session as the hook names it: the Orca
+    terminal handle; else Claude Code's $CLAUDE_CODE_SESSION_ID; Codex's $CODEX_SESSION_ID
+    (the root session, which its hooks get; before Codex had it, $CODEX_THREAD_ID); opencode's
+    session, which the needs-you plugin puts in $NEEDS_YOU_OPENCODE_SESSION; or, in Gemini CLI
+    ($GEMINI_CLI=1), "pid-<pid>" of the Gemini process with its start time. ("", "") outside
+    any of these."""
+    env = os.environ
+    raw = env.get("ORCA_TERMINAL_HANDLE") or ""
+    if not raw and env.get("CLAUDECODE"):
+        raw = env.get("CLAUDE_CODE_SESSION_ID") or ""
+    raw = raw or env.get("CODEX_SESSION_ID") or env.get("CODEX_THREAD_ID") or env.get("NEEDS_YOU_OPENCODE_SESSION") or ""
+    if raw:
+        return _session_name(raw), ""
+    if env.get("GEMINI_CLI") == "1":
+        pid, start = _agent_process()
+        if pid:
+            return "pid-%d" % pid, start
+    return "", ""
 
 
 def _prune_session_items(base: str) -> None:
@@ -942,7 +986,7 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
                 except OSError:
                     pass
             return
-        sess = claude_session()
+        sess, start = agent_session()
         if not sess:
             return
         hours = expires_in if expires_in is not None and 0 < expires_in < SESSION_ITEM_MAX_HOURS \
@@ -951,8 +995,10 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
             _prune_session_items(base)
         d = os.path.join(base, sess)
         os.makedirs(d, mode=0o700, exist_ok=True)
-        _write_atomic(os.path.join(d, name), ("key=%s\nexpires=%d\n" % (clean(key), time.time() + hours * 3600))
-                      .encode("utf-8"), 0o600)
+        text = "key=%s\nexpires=%d\n" % (clean(key), time.time() + hours * 3600)
+        if start:  # a process, not a session id: the hook also checks it's the same process
+            text += "start=%s\n" % start
+        _write_atomic(os.path.join(d, name), text.encode("utf-8"), 0o600)
     except (OSError, ValueError):
         pass
 
