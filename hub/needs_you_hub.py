@@ -226,7 +226,10 @@ def _parse_ts(value: Any) -> int:
     if zone and zone not in ("Z", "z"):
         sign = 1 if zone[0] == "+" else -1
         digits = zone[1:].replace(":", "")
-        offset_min = int(digits[:2]) * 60 + int(digits[2:])
+        hours, minutes = int(digits[:2]), int(digits[2:])
+        if hours > 23 or minutes > 59:  # RFC 3339 time-numoffset
+            raise ValueError("bad timestamp offset: %r" % value)
+        offset_min = hours * 60 + minutes
         epoch_ms -= sign * offset_min * 60 * 1000
     return epoch_ms
 

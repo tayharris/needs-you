@@ -19,7 +19,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   environment); `*` turns the check off.
 - **Timestamps:** the hub always emits RFC 3339 UTC with exactly three fractional digits:
   `2026-10-06T17:04:05.123Z`. These sort correctly as strings. On input the hub accepts
-  ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset, or no
+  ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset (hours
+  00–23, minutes 00–59; anything else is a 400), or no
   zone (taken as UTC), or a number of epoch seconds. Precision below 1 ms is dropped.
   Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a 400.
 - **Auth:** `Authorization: Bearer <token>`. Every token has one role:
