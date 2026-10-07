@@ -18,6 +18,12 @@ def link(url, label="L"):
     return {"label": label, "url": url}
 
 
+def step(text, **kw):
+    d = {"text": text}
+    d.update(kw)
+    return d
+
+
 class ValidateItemInput(unittest.TestCase):
     CASES = [
         # (name, payload, expected error substring or None)
@@ -70,6 +76,29 @@ class ValidateItemInput(unittest.TestCase):
         ("source field too long", with_(source={"agent": "a" * 101}), "longer than 100"),
         ("bad expires_at", with_(expires_at="tomorrow"), "expires_at"),
         ("body not object", ["x"], "JSON object"),
+        # steps: a checklist, links checked like item links
+        ("steps null", with_(steps=None), None),
+        ("steps not list", with_(steps="do it"), "steps must be a list"),
+        ("10 steps ok", with_(steps=[step("s%d" % i) for i in range(10)]), None),
+        ("11 steps", with_(steps=[step("s%d" % i) for i in range(11)]), "at most 10 steps"),
+        ("step not object", with_(steps=["do it"]), "steps[0] must be an object"),
+        ("step text missing", with_(steps=[{"done": True}]), "steps[0].text is required"),
+        ("step text blank", with_(steps=[step("  ")]), "steps[0].text must not be empty"),
+        ("step text 200 ok", with_(steps=[step("x" * 200)]), None),
+        ("step text 201", with_(steps=[step("x" * 201)]), "steps[0].text is longer than 200"),
+        ("step text newline", with_(steps=[step("a\nb")]), "control characters"),
+        ("step done not bool", with_(steps=[step("a", done="yes")]), "steps[0].done must be true or false"),
+        ("step link https", with_(steps=[step("a", link=link("https://a.b"))]), None),
+        ("step link app terminal",
+         with_(steps=[step("a", link=link("needsyou://orca/terminal?handle=term_ab12cd34"))]), None),
+        ("step link http", with_(steps=[step("ok"), step("a", link=link("http://a.b"))]),
+         "steps[1].link.url scheme 'http' is not allowed"),
+        ("step link javascript", with_(steps=[step("a", link=link("javascript:alert(1)"))]), "not allowed"),
+        ("step link not object", with_(steps=[step("a", link="https://a.b")]), "steps[0].link must be an object"),
+        ("step link label missing", with_(steps=[step("a", link={"url": "https://a"})]),
+         "steps[0].link.label is required"),
+        ("step link url too long", with_(steps=[step("a", link=link("https://a/" + "x" * 2000))]),
+         "longer than 2000"),
     ]
 
     def test_table(self):
@@ -91,7 +120,20 @@ class ValidateItemInput(unittest.TestCase):
         self.assertEqual((out["context"], out["kind"], out["priority"]), ("work", "needs", "normal"))
         self.assertEqual(out["title"], "t")
         self.assertEqual(out["links"], [])
+        self.assertEqual(out["steps"], [])
         self.assertIsNone(out["key"])
+
+    def test_steps_normalised_and_unknown_fields_ignored(self):
+        out = hubmod.validate_item_input(with_(steps=[
+            {"text": " Approve the deploy ", "link": {"label": " Deploy ", "url": "https://ci/x",
+                                                     "icon": "rocket"},
+             "done": True, "id": 7, "due": "soon"},
+            {"text": "Tell **the team**", "link": None},
+        ]))
+        self.assertEqual(out["steps"], [
+            {"text": "Approve the deploy", "done": True, "link": {"label": "Deploy", "url": "https://ci/x"}},
+            {"text": "Tell **the team**", "done": False},
+        ])
 
 
 class Timestamps(unittest.TestCase):

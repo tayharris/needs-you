@@ -125,6 +125,37 @@ class Upsert(ApiTestCase):
         self.assertEqual(d["links"], [{"label": "PR", "url": "https://pr"}])
         self.assertEqual(len(self.list()[1]["items"]), 1)
 
+    def test_steps(self):
+        steps = [{"text": "Approve **prod** deploy", "link": {"label": "Approve", "url": "https://ci/run/9"},
+                  "owner": "ignored"},
+                 {"text": "Post in #releases", "done": True}]
+        s1, a = self.post({"key": "steps", "title": "Ship it", "steps": steps, "future": {"x": 1}})
+        self.assertEqual(s1, 201)
+        want = [{"text": "Approve **prod** deploy", "done": False,
+                 "link": {"label": "Approve", "url": "https://ci/run/9"}},
+                {"text": "Post in #releases", "done": True}]
+        self.assertEqual(a["steps"], want)
+        _, got = request("GET", self.base + "/v1/items/" + a["id"], self.reader)
+        self.assertEqual(got["steps"], want)
+        # the same steps again: not a visible change
+        self.clock.advance(60)
+        _, b = self.post({"key": "steps", "title": "Ship it", "steps": steps})
+        self.assertFalse(b["changed"])
+        # a changed step (here: one more done) is content: it re-animates
+        self.clock.advance(60)
+        steps[0]["done"] = True
+        _, c = self.post({"key": "steps", "title": "Ship it", "steps": steps})
+        self.assertTrue(c["changed"])
+        self.assertEqual(c["content_updated_at"], c["updated_at"])
+        # a re-post is the full view: no steps clears them (and is a change)
+        self.clock.advance(60)
+        _, d = self.post({"key": "steps", "title": "Ship it"})
+        self.assertEqual(d["steps"], [])
+        self.assertTrue(d["changed"])
+        # items without steps carry an empty list
+        _, e = self.post({"key": "plain", "title": "t"})
+        self.assertEqual(e["steps"], [])
+
     def test_updated_at_strictly_increases_even_with_a_frozen_clock(self):
         _, a = self.post({"key": "k", "title": "t"})
         _, b = self.post({"key": "k", "title": "t"})
@@ -152,6 +183,10 @@ class Upsert(ApiTestCase):
             ({"key": "has space", "title": "t"}, "key"),
             ({"key": "k", "title": "t", "priority": "high"}, "priority"),
             ({"key": "k", "title": "t", "source": {"agent": "a" * 101}}, "source.agent"),
+            ({"key": "k", "title": "t", "steps": [{"text": "a"}, {"text": "b", "link": {
+                "label": "x", "url": "file:///etc/passwd"}}]}, "steps[1].link.url"),
+            ({"key": "k", "title": "t", "steps": [{"text": "x" * 201}]}, "steps[0].text"),
+            ({"key": "k", "title": "t", "steps": [{"text": "s"}] * 11}, "steps"),
         ]
         for body, field in cases:
             with self.subTest(field):

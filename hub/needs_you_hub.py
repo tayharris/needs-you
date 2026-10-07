@@ -56,6 +56,8 @@ MAX_KEY = 200
 MAX_LINKS = 6
 MAX_LINK_LABEL = 80
 MAX_LINK_URL = 2000
+MAX_STEPS = 10
+MAX_STEP_TEXT = 200
 MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
@@ -253,22 +255,51 @@ def validate_links(links: Any) -> List[Dict[str, str]]:
         raise _invalid("links", "links must be a list")
     if len(links) > MAX_LINKS:
         raise _invalid("links", "at most %d links" % MAX_LINKS)
+    return [_validate_link(link, "links[%d]" % i) for i, link in enumerate(links)]
+
+
+def _validate_link(link: Any, path: str) -> Dict[str, str]:
+    """One {"label", "url"} object (an item link or a step's link); `path` names it in errors."""
+    if not isinstance(link, dict):
+        raise _invalid(path, "%s must be an object" % path)
+    label = _str_field(link, "label", MAX_LINK_LABEL, required=True, path=path + ".label")
+    url = _str_field(link, "url", MAX_LINK_URL, required=True, path=path + ".url")
+    assert label is not None and url is not None
+    if _URL_BAD_RE.search(url):
+        raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if not link_allowed(url):
+        raise _invalid(path + ".url", "%s.url scheme %r is not allowed (allowed: %s, %s...)"
+                       % (path, scheme, ", ".join(LINK_SCHEMES), APP_LINK_PREFIX))
+    if len(url) <= len(scheme) + 1:
+        raise _invalid(path + ".url", "%s.url is empty" % path)
+    return {"label": label, "url": url}
+
+
+def validate_steps(steps: Any) -> List[Dict[str, Any]]:
+    """Optional checklist: at most MAX_STEPS of {"text", "link"?, "done"?}. Unknown step
+    fields are ignored. Normalised to {"text", "done"} plus "link" when one was given."""
+    if steps is None:
+        return []
+    if not isinstance(steps, list):
+        raise _invalid("steps", "steps must be a list")
+    if len(steps) > MAX_STEPS:
+        raise _invalid("steps", "at most %d steps" % MAX_STEPS)
     out = []
-    for i, link in enumerate(links):
-        if not isinstance(link, dict):
-            raise _invalid("links[%d]" % i, "links[%d] must be an object" % i)
-        label = _str_field(link, "label", MAX_LINK_LABEL, required=True, path="links[%d].label" % i)
-        url = _str_field(link, "url", MAX_LINK_URL, required=True, path="links[%d].url" % i)
-        assert label is not None and url is not None
-        if _URL_BAD_RE.search(url):
-            raise _invalid("links[%d].url" % i, "links[%d].url contains spaces or invisible characters" % i)
-        scheme = urllib.parse.urlsplit(url).scheme.lower()
-        if not link_allowed(url):
-            raise _invalid("links[%d].url" % i, "links[%d].url scheme %r is not allowed (allowed: %s, %s...)"
-                           % (i, scheme, ", ".join(LINK_SCHEMES), APP_LINK_PREFIX))
-        if len(url) <= len(scheme) + 1:
-            raise _invalid("links[%d].url" % i, "links[%d].url is empty" % i)
-        out.append({"label": label, "url": url})
+    for i, step in enumerate(steps):
+        path = "steps[%d]" % i
+        if not isinstance(step, dict):
+            raise _invalid(path, "%s must be an object" % path)
+        text = _str_field(step, "text", MAX_STEP_TEXT, required=True, path=path + ".text")
+        done = step.get("done")
+        if done is None:
+            done = False
+        elif not isinstance(done, bool):
+            raise _invalid(path + ".done", "%s.done must be true or false" % path)
+        rec: Dict[str, Any] = {"text": text, "done": done}
+        if step.get("link") is not None:
+            rec["link"] = _validate_link(step["link"], path + ".link")
+        out.append(rec)
     return out
 
 
@@ -301,6 +332,7 @@ def validate_item_input(data: Any) -> Dict[str, Any]:
     out["kind"] = _enum_field(data, "kind", KINDS, "needs")
     out["priority"] = _enum_field(data, "priority", PRIORITIES, "normal")
     out["links"] = validate_links(data.get("links"))
+    out["steps"] = validate_steps(data.get("steps"))
     out["source"] = validate_source(data.get("source"))
     out["expires_at"] = None
     if data.get("expires_at") is not None:
@@ -477,11 +509,15 @@ CREATE TABLE IF NOT EXISTS invites (
 );
 CREATE INDEX IF NOT EXISTS invites_seq ON invites(seq);
 """,
+    # 3: item steps (a JSON array, like links)
+    """
+ALTER TABLE items ADD COLUMN steps TEXT NOT NULL DEFAULT '[]';
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
 
-ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "source",
+ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "steps", "source",
              "status", "created_at", "updated_at", "content_updated_at", "seen_at", "expires_at",
              "token_id", "origin_hub", "updated_by", "superseded_by", "seq", "local_at")
 TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked_at",
@@ -563,12 +599,23 @@ class Store:
                          % (self.path, version, dest))
         return dest
 
+    _ADD_COLUMN_RE = re.compile(r"^\s*ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(\w+)", re.I)
+
+    def _column_exists(self, stmt: str) -> bool:
+        """True for an `ALTER TABLE t ADD COLUMN c` whose column is already there, so
+        re-running a migration (user_version rewound by hand) is harmless like IF NOT EXISTS."""
+        m = self._ADD_COLUMN_RE.match(stmt)
+        if not m:
+            return False
+        cols = [r[1] for r in self.conn.execute("PRAGMA table_info(%s)" % m.group(1))]
+        return m.group(2) in cols
+
     def _migrate(self, version: int) -> None:
         for n in range(version + 1, SCHEMA_VERSION + 1):
             self.conn.execute("BEGIN IMMEDIATE")
             try:
                 for stmt in MIGRATIONS[n - 1].split(";"):
-                    if stmt.strip():
+                    if stmt.strip() and not self._column_exists(stmt):
                         self.conn.execute(stmt)
                 self.conn.execute("PRAGMA user_version = %d" % n)
             except BaseException:
@@ -631,6 +678,8 @@ class Store:
 
     def _write_item(self, rec: Dict[str, Any]) -> None:
         rec = dict(rec)
+        if rec.get("steps") is None:
+            rec["steps"] = "[]"
         rec["seq"] = self.next_seq()
         rec["local_at"] = self.now_ms()  # when *this* hub stored this version: the `since` cursor
         cols = ",".join(ITEM_COLS)
@@ -668,14 +717,15 @@ class Store:
             if existing:
                 cur = existing[0]
                 changed = (cur["title"] != fields["title"] or cur["body"] != fields["body"]
-                           or cur["priority"] != fields["priority"])
+                           or cur["priority"] != fields["priority"]
+                           or _json_val(cur.get("steps"), []) != fields["steps"])
                 updated = self.bump(cur["updated_at"])
                 rec = dict(cur)
                 rec.update({
                     "context": fields["context"], "kind": fields["kind"],
                     "priority": fields["priority"], "title": fields["title"], "body": fields["body"],
-                    "links": json.dumps(fields["links"]), "source": json.dumps(fields["source"]),
-                    "updated_at": updated, "updated_by": self.hub_id, "expires_at": expires,
+                    "links": json.dumps(fields["links"]), "steps": json.dumps(fields["steps"]),
+                    "source": json.dumps(fields["source"]), "updated_at": updated, "updated_by": self.hub_id, "expires_at": expires,
                     "token_id": token["id"] if token else cur["token_id"],
                 })
                 if changed:
@@ -696,6 +746,7 @@ class Store:
                 "id": item_id, "key": fields["key"] or item_id, "context": fields["context"],
                 "kind": fields["kind"], "priority": fields["priority"], "title": fields["title"],
                 "body": fields["body"], "links": json.dumps(fields["links"]),
+                "steps": json.dumps(fields["steps"]),
                 "source": json.dumps(fields["source"]), "status": "open",
                 "created_at": now, "updated_at": now, "content_updated_at": now,
                 "seen_at": None, "expires_at": expires, "token_id": token["id"] if token else None,
@@ -781,6 +832,7 @@ class Store:
 
     def apply_item(self, rec: Dict[str, Any], from_peer: Optional[str] = None) -> bool:
         """Last-writer-wins apply of a replicated item record. Returns True if it changed local state."""
+        knows_steps = isinstance(rec, dict) and "steps" in rec
         rec = normalise_item_record(rec)
         if self.past_retention(rec):
             return False  # we purge these; applying would resurrect a purged item
@@ -789,6 +841,11 @@ class Store:
             if row is not None and not self.newer(rec["updated_at"], rec["updated_by"],
                                                   row["updated_at"], row["updated_by"]):
                 return False
+            if (not knows_steps and row is not None
+                    and row["content_updated_at"] == rec["content_updated_at"]):
+                # A hub older than `steps` wrote this version (a resolve, a seen_at, an
+                # unchanged re-post). It never had the steps, so keep ours.
+                rec["steps"] = row["steps"]
             self._write_item(rec)
             now = self.now_ms()
             if rec["status"] == "open" and (rec["expires_at"] is None or rec["expires_at"] > now):
@@ -799,7 +856,7 @@ class Store:
             self._settle_content(rec["superseded_by"] or rec["id"])
             return True
 
-    CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "source", "expires_at",
+    CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "source", "expires_at",
                     "token_id", "content_updated_at")
 
     @staticmethod
@@ -1279,6 +1336,15 @@ class Store:
                  st["last_error"]))
 
 
+def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
+    """A replicated step, kept as sent except a link this hub would refuse (dropped, the
+    step stays), like replicated item links."""
+    link = step.get("link")
+    if link is not None and not (isinstance(link, dict) and link_allowed(link.get("url"))):
+        step = {k: v for k, v in step.items() if k != "link"}
+    return step
+
+
 def normalise_item_record(rec: Any) -> Dict[str, Any]:
     """Accept a replicated item record (wire form: ISO timestamps, JSON links/source)."""
     if not isinstance(rec, dict):
@@ -1295,6 +1361,10 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         links = rec.get("links") or []
         out["links"] = json.dumps([lk for lk in (links if isinstance(links, list) else [])
                                    if isinstance(lk, dict) and link_allowed(lk.get("url"))])
+        steps = rec.get("steps") or []
+        if not isinstance(steps, list):
+            raise ValueError("steps")
+        out["steps"] = json.dumps([_peer_step(st) for st in steps if isinstance(st, dict)])
         out["source"] = json.dumps(rec.get("source") or {})
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
@@ -1370,6 +1440,13 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
     return out
 
 
+def _json_val(v: Any, default: Any) -> Any:
+    """A stored JSON column (str), an already-decoded value, or the default when absent."""
+    if v is None:
+        return default
+    return json.loads(v) if isinstance(v, str) else v
+
+
 def item_public(rec: Dict[str, Any], now_ms: int) -> Dict[str, Any]:
     status = rec["status"]
     if status == "open" and rec["expires_at"] is not None and rec["expires_at"] <= now_ms:
@@ -1380,6 +1457,7 @@ def item_public(rec: Dict[str, Any], now_ms: int) -> Dict[str, Any]:
         "id": rec["id"], "key": rec["key"], "context": rec["context"], "kind": rec["kind"],
         "priority": rec["priority"], "title": rec["title"], "body": rec["body"] or None,
         "links": json.loads(links) if isinstance(links, str) else links,
+        "steps": _json_val(rec.get("steps"), []),
         "source": json.loads(source) if isinstance(source, str) else source,
         "status": status,
         "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"]),
