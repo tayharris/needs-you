@@ -121,17 +121,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        let open = ClosureMenuItem(title: model.isExpanded ? "Collapse Panel" : "Open Panel") { [weak model] in
+            model?.toggleExpanded()
+        }
+        // Shown as a hint only; the global shortcut (Settings → Panel) is what does it.
+        let combo = model.settings.hotKey
+        if let key = combo.menuKeyEquivalent {
+            open.keyEquivalent = key
+            open.keyEquivalentModifierMask = HotKeyController.menuModifiers(combo)
+        }
+        menu.addItem(open)
         let show = ClosureMenuItem(title: "Show Floating Panel") { [weak model] in
             guard let model else { return }
             if !model.toggleVisibility() { NSSound.beep() }
         }
         show.state = MenuBarFormat.panelMenuChecked(visibility: model.visibility, now: now) ? .on : .off
-        // Shown as a hint only; the global shortcut (Settings → Panel) is what does it.
-        let combo = model.settings.hotKey
-        if let key = combo.menuKeyEquivalent {
-            show.keyEquivalent = key
-            show.keyEquivalentModifierMask = HotKeyController.menuModifiers(combo)
-        }
         menu.addItem(show)
 
         let snooze = NSMenuItem(title: "Snooze", action: nil, keyEquivalent: "")

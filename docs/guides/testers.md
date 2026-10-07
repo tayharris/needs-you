@@ -129,7 +129,7 @@ Tick off what you get to; anything that surprises you is worth a report.
 - [ ] **Never steals focus:** keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.
 - [ ] **Work and personal:** post one item with `--context work` and one with `--context personal`. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.
 - [ ] **Focus and snooze:** right-click the pill → **Focus** (Agents and urgent only, Urgent only, Everything later) and **Snooze**.
-- [ ] **Make it yours:** **Settings → Panel** (size, card text, opacity, shortcut) and **Alerts** (how loud). **⌃⌥Space** shows or hides the panel.
+- [ ] **Make it yours:** **Settings → Panel** (size, card text, opacity, shortcut) and **Alerts** (how loud). **⌃⌥Space** opens or collapses the card list.
 - [ ] **Mac asleep or app quit:** quit Needs You, post from another machine (the CLI says it queued and exits 0), reopen the app. The item arrives within about 5 minutes.
 - [ ] **Access:** **Settings → Access → Refresh** lists your machines (names and roles, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
 - [ ] **Updates:** **Settings → Updates** shows the version and the last check. While the repo is private, the app needs a GitHub login to check: install the [GitHub CLI](https://cli.github.com) and run `gh auth login` once (collaborators only). It only installs releases the owner has published, never drafts. A failed check here is expected without `gh`.
