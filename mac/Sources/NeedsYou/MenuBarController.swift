@@ -6,7 +6,7 @@ import NeedsYouCore
 /// the highest priority colour, a small dot when the hub can't be reached, and a menu.
 ///
 /// Focus rule: opening the menu or clicking its items never activates the app, except
-/// Settings…, Invite a Machine… and About, which are explicit user requests for a window.
+/// Settings…, Connect a Machine… and About, which are explicit user requests for a window.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let model: AppModel
@@ -166,7 +166,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         if model.settings.hasOwnerHub && !model.isDemo {
-            menu.addItem(ClosureMenuItem(title: "Invite a Machine…") { [weak model] in model?.openInvite() })
+            menu.addItem(ClosureMenuItem(title: "Connect a Machine…") { [weak model] in model?.openInvite() })
         }
         menu.addItem(ClosureMenuItem(title: "Settings…") { [weak model] in model?.openSettings() })
         menu.addItem(ClosureMenuItem(title: "About Needs You") { AboutPanel.show() })
