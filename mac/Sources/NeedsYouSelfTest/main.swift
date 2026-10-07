@@ -33,6 +33,10 @@ let entries =
     + testEntries(CardAgeTests.self, CardAgeTests.allTests)
     + testEntries(SecurityAuditTests.self, SecurityAuditTests.allTests)
     + testEntries(StepsTests.self, StepsTests.allTests)
+    + testEntries(DeliveryPolicyTests.self, DeliveryPolicyTests.allTests)
+    + testEntries(FocusStateTests.self, FocusStateTests.allTests)
+    + testEntries(BypassRuleTests.self, BypassRuleTests.allTests)
+    + testEntries(NoisySenderGuardTests.self, NoisySenderGuardTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

@@ -62,7 +62,8 @@ public enum SnoozeBreakthrough {
         visibility: PanelVisibility, announced: [Item],
         urgentBreaksThrough: Bool, now: Date
     ) -> Bool {
-        guard urgentBreaksThrough, visibility.isHidden(at: now) else { return false }
-        return announced.contains { $0.kind == .needs && $0.priority == .urgent && $0.status == .open }
+        // The tier table with no focus and no rules (DeliveryPolicy).
+        HiddenArrivalPolicy.decide(visibility: visibility, announced: announced, urgentBreaksSnooze: urgentBreaksThrough,
+                                   urgentShowsHiddenPanel: urgentBreaksThrough, now: now) == .showPanel
     }
 }
