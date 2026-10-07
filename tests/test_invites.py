@@ -64,7 +64,8 @@ class Create(InviteCase):
                          % body["join_url"])
         self.assertEqual(body["agent_prompt"],
                          "Set up needs-you alerts on this machine: read %s and follow it. If this machine "
-                         "runs Claude Code, use --claude-hooks user --skill --alerts." % body["join_url"])
+                         "runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, "
+                         "add --codex-hooks user." % body["join_url"])
         # >= 128 bits, url-safe, and only the hash is stored
         code = body["code"]
         self.assertGreaterEqual(len(code) - len("nyi_"), 22)

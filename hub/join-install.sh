@@ -19,6 +19,7 @@ SHA256S=__NY_CHECKSUMS__
 
 YES=0
 HOOKS=none
+CODEX_HOOKS=none
 SKILL=0
 ORCA=0
 CONTEXT=""
@@ -66,9 +67,12 @@ Options:
   --claude-hooks user|project|none
                                 Claude Code hooks: post when a session waits on you
                                 (project = the current directory's repo; default none)
-  --alerts                      turn the hooks on for every Claude Code session here
-                                (NEEDS_YOU_AGENT_ALERTS=1 in the env file); without it
-                                they stay quiet except in Orca
+  --codex-hooks user|none       OpenAI Codex CLI hooks in ~/.codex/hooks.json: post when
+                                a Codex session asks for approval or finishes its turn
+                                (trust them once with /hooks in Codex; default none)
+  --alerts                      turn the hooks on for every Claude Code and Codex session
+                                here (NEEDS_YOU_AGENT_ALERTS=1 in the env file); without
+                                it they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
   --auto-update                 let `needs-you flush` run `needs-you update` once a day
                                 (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
@@ -104,6 +108,8 @@ while [ $# -gt 0 ]; do
     --yes|-y) YES=1; shift ;;
     --claude-hooks) HOOKS=${2:-}; shift 2 || die "--claude-hooks needs user, project or none" ;;
     --claude-hooks=*) HOOKS=${1#*=}; shift ;;
+    --codex-hooks) CODEX_HOOKS=${2:-}; shift 2 || die "--codex-hooks needs user or none" ;;
+    --codex-hooks=*) CODEX_HOOKS=${1#*=}; shift ;;
     --skill) SKILL=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
@@ -131,6 +137,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, project or none" ;; esac
+case "$CODEX_HOOKS" in user|none) ;; *) die "--codex-hooks must be user or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
@@ -278,6 +285,17 @@ if [ "$UNINSTALL" -eq 1 ]; then
     fi
     rm -rf "$tmp"
   fi
+  CODEX_DIR=${CODEX_HOME:-$HOME/.codex}
+  if [ -f "$CODEX_DIR/hooks/needs-you-hook.sh" ] && command -v curl >/dev/null 2>&1; then
+    tmp=$(mktemp -d)
+    if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-codex-hooks.sh" -o "$tmp/install-codex-hooks.sh" &&
+       verify install-codex-hooks.sh "$tmp/install-codex-hooks.sh"; then
+      bash "$tmp/install-codex-hooks.sh" --codex-home "$CODEX_DIR" --uninstall || warn "removing the Codex hooks failed"
+    else
+      warn "hub unreachable; remove the Codex hooks with integrations/codex/install-codex-hooks.sh --uninstall"
+    fi
+    rm -rf "$tmp"
+  fi
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
@@ -314,6 +332,7 @@ say "  CLI     -> $CLI"
 say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && printf ' (already set up: keeping the token)')"
 [ "$SCHEDULE" -eq 1 ] && say "  flush   -> every 5 minutes ($([ "$OS" = Darwin ] && echo LaunchAgent || echo crontab))"
 [ "$HOOKS" != none ] && say "  hooks   -> Claude Code ($HOOKS level)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$CODEX_HOOKS" != none ] && say "  hooks   -> Codex CLI (${CODEX_HOME:-~/.codex}/hooks.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
@@ -482,6 +501,36 @@ PY
     fi
   else
     NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --project "$PWD"
+  fi
+fi
+
+if [ "$CODEX_HOOKS" = user ]; then
+  for f in install-codex-hooks.sh needs-you-hook.sh codex-hooks.json; do
+    fetch "$f" "$TMP/$f" || die "could not download the Codex hooks ($f)"
+  done
+  NEEDS_YOU_INSTALLER=1 bash "$TMP/install-codex-hooks.sh" --codex-home "${CODEX_HOME:-$HOME/.codex}"
+  # As for Claude: record the codex-hooks.json merged, so `needs-you doctor` and `update`
+  # don't call these fresh entries out of date.
+  cj=""
+  for kv in $SHA256S; do [ "${kv%%=*}" = codex-hooks.json ] && cj=${kv#*=}; done
+  if [ -n "$cj" ]; then
+    python3 - "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you" "$cj" <<'PY' || true
+import json, os, sys
+d, sha = sys.argv[1], sys.argv[2]
+p = os.path.join(d, "update.json")
+try:
+    with open(p, encoding="utf-8") as fh:
+        st = json.load(fh)
+    st = st if isinstance(st, dict) else {}
+except (OSError, ValueError):
+    st = {}
+st["codex_hooks_json_sha256"] = sha
+os.makedirs(d, mode=0o700, exist_ok=True)
+fd = os.open(p + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as fh:
+    json.dump(st, fh, sort_keys=True)
+os.replace(p + ".tmp", p)
+PY
   fi
 fi
 
