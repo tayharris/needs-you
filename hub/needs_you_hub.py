@@ -207,10 +207,13 @@ def _parse_ts(value: Any) -> int:
     if isinstance(value, bool):
         raise ValueError("not a timestamp")
     if isinstance(value, (int, float)):
-        f = float(value)
-        if f != f or f in (float("inf"), float("-inf")):
-            raise ValueError("not a timestamp")
-        return int(round(f * 1000))
+        try:
+            f = float(value) * 1000
+            if f != f or f in (float("inf"), float("-inf")):
+                raise ValueError("not a timestamp")
+            return int(round(f))
+        except OverflowError:  # 10**400, or 1e306 * 1000
+            raise ValueError("timestamp out of range")
     if not isinstance(value, str):
         raise ValueError("not a timestamp")
     s = value.strip()
@@ -1829,7 +1832,8 @@ class Store:
             return self.apply_item(rec), None
         except ApiError as e:
             reason = e.message
-        except (ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError) as e:
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError, sqlite3.IntegrityError,
+                sqlite3.InterfaceError, sqlite3.ProgrammingError) as e:
             reason = "%s: %s" % (type(e).__name__, e)
         rid = rec.get("id") if isinstance(rec, dict) else None
         skip = {"kind": kind, "id": safe_text(rid, 100) if isinstance(rid, str) else None,
@@ -1854,7 +1858,8 @@ class Store:
         for r in rows:
             try:
                 self.apply_item(json.loads(r["record"]))
-            except (ApiError, ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError):
+            except (ApiError, ValueError, TypeError, KeyError, AttributeError, OverflowError,
+                    sqlite3.IntegrityError, sqlite3.InterfaceError, sqlite3.ProgrammingError):
                 continue
             with self.tx():
                 self.conn.execute("DELETE FROM quarantine WHERE id = ?", (r["id"],))
@@ -1876,7 +1881,7 @@ def check_security_record(kind: str, rec: Any) -> None:
     """Raise Unreadable unless this token/invite record parses."""
     try:
         (normalise_token_record if kind == "token" else normalise_invite_record)(rec)
-    except (ApiError, ValueError, TypeError, KeyError, AttributeError) as e:
+    except (ApiError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
         rid = rec.get("id") if isinstance(rec, dict) else None
         reason = e.message if isinstance(e, ApiError) else type(e).__name__
         raise Unreadable(kind, safe_text(rid, 100) if isinstance(rid, str) else None, safe_text(reason, 200))
@@ -1890,11 +1895,20 @@ def safe_text(value: Any, limit: int) -> str:
 
 def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
     """A replicated step, kept as sent except a link this hub would refuse (dropped, the
-    step stays), like replicated item links."""
+    step stays), like replicated item links. Its text and done must have their types."""
+    if not isinstance(step.get("text"), str) or not isinstance(step.get("done", False), bool):
+        raise ValueError("steps")
     link = step.get("link")
     if link is not None and not (isinstance(link, dict) and link_allowed(link.get("url"))):
         step = {k: v for k, v in step.items() if k != "link"}
     return step
+
+
+def _opt_str(rec: Dict[str, Any], name: str) -> Optional[str]:
+    v = rec.get(name)
+    if v is not None and not isinstance(v, str):
+        raise ValueError(name)
+    return v
 
 
 def normalise_item_record(rec: Any) -> Dict[str, Any]:
@@ -1908,7 +1922,7 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
             if not isinstance(v, str) or not v:
                 raise ValueError(c)
             out[c] = v
-        out["body"] = rec.get("body") or ""
+        out["body"] = _opt_str(rec, "body") or ""
         # Defence in depth: a peer (or an older hub) can't hand us a link this hub would refuse.
         links = rec.get("links") or []
         out["links"] = json.dumps([lk for lk in (links if isinstance(links, list) else [])
@@ -1917,16 +1931,21 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         if not isinstance(steps, list):
             raise ValueError("steps")
         out["steps"] = json.dumps([_peer_step(st) for st in steps if isinstance(st, dict)])
-        out["source"] = json.dumps(rec.get("source") or {})
+        source = rec.get("source") or {}
+        if not isinstance(source, dict):
+            raise ValueError("source")
+        out["source"] = json.dumps(source)
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
         out["content_updated_at"] = parse_ts(rec.get("content_updated_at") or rec["updated_at"])
         for c in ("seen_at", "expires_at"):
             out[c] = parse_ts(rec[c]) if rec.get(c) is not None else None
-        out["token_id"] = rec.get("token_id")
-        out["origin_hub"] = rec.get("origin_hub") or ""
-        out["updated_by"] = rec.get("updated_by") or ""
-        out["superseded_by"] = rec.get("superseded_by")
+        # Stored as given: anything but a string (or nothing) would fail in SQLite, or reach
+        # readers as the wrong type.
+        out["token_id"] = _opt_str(rec, "token_id")
+        out["origin_hub"] = _opt_str(rec, "origin_hub") or ""
+        out["updated_by"] = _opt_str(rec, "updated_by") or ""
+        out["superseded_by"] = _opt_str(rec, "superseded_by")
     except (KeyError, ValueError, TypeError) as e:
         raise ApiError(400, "invalid", "bad item record: %s" % e)
     if out["status"] not in STATUSES:

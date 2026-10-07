@@ -85,6 +85,28 @@ class Receiver(HubTestCase):
             hubmod.STATUSES = orig
         self.assertIsNotNone(hub.store.get_item(bad["id"]))
 
+    def test_malformed_field_types_are_skipped_not_a_500(self):
+        # Fields stored as given (body, ids, source, steps) used to reach SQLite as a dict or
+        # a list and fail the whole batch with 500, retried forever; a huge number timestamp
+        # overflowed. Each is one unreadable item now.
+        hub = self.make_hub("hub-b", clock=None)
+        bads = [dict(body={"x": 1}), dict(body=5), dict(token_id=["a"]), dict(superseded_by={}),
+                dict(origin_hub=[]), dict(updated_by={"a": 1}), dict(source="text"), dict(source=[1]),
+                dict(created_at=1e306), dict(expires_at=1.7e308), dict(seen_at=10 ** 400),
+                dict(steps=[{"text": {"a": 1}}]), dict(steps=[{"text": "x", "done": "yes"}])]
+        for n, extra in enumerate(bads):
+            bad, good = item_rec(100 + n, **extra), item_rec(200 + n)
+            s, body = request("POST", hub.url + "/v1/replicate", PEER_SECRET,
+                              {"from_hub": "hub-z", "items": [bad, good]})
+            self.assertEqual(s, 200, (extra, body))
+            self.assertEqual(body["applied"], 1, extra)
+            self.assertEqual([r["id"] for r in body["skipped"]], [bad["id"]], extra)
+            self.assertIsNotNone(hub.store.get_item(good["id"]))
+        # a token record with such a timestamp fails closed (400), never a 500
+        tok = dict(token_rec(), created_at=1e306)
+        s, body = request("POST", hub.url + "/v1/replicate", PEER_SECRET, {"from_hub": "hub-z", "tokens": [tok]})
+        self.assertEqual(s, 400, body)
+
     def test_unreadable_token_or_invite_fails_the_batch_closed(self):
         hub = self.make_hub("hub-b", clock=None)
         hub.store.apply_token(token_rec())
@@ -135,6 +157,37 @@ class Mesh(HubTestCase):
         self.assertEqual(st["skipped_pull"], 1)
         self.assertIn(bad, st["last_skipped"])
         self.assertTrue(wait_until(lambda: a.store.peer_state(b.url)["cursor"] == b.store.max_seq()))
+
+
+class MalformedPullPeer(HubTestCase):
+    def test_pull_moves_past_a_malformed_record(self):
+        bad, good = item_rec(1, body={"x": 1}), item_rec(2)
+        page = {"hub_id": "hub-z", "epoch": "E1", "max_seq": 2, "next_after": 2, "more": False,
+                "items": [bad, good], "tokens": [], "invites": []}
+
+        class P(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                data = json.dumps(page).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_POST(self):
+                self.do_GET()
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), P)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        peer = "http://127.0.0.1:%d" % srv.server_address[1]
+        a = self.make_hub("hub-a", peers=[peer])
+        self.assertTrue(wait_until(lambda: a.store.get_item(good["id"]) is not None), a.peer_status(peer))
+        self.assertTrue(wait_until(lambda: a.store.peer_state(peer)["cursor"] == 2), a.peer_status(peer))
+        self.assertEqual(a.peer_status(peer)["skipped_pull"], 1)
 
 
 class OldPeer:
