@@ -167,6 +167,7 @@ struct SettingsView: View {
                 youSection
                 lookSection
                 visibilitySection
+                OpenPanelSettingsSection(settings: settings)
                 keyboardSection
                 extra[.panel]
             }
@@ -175,6 +176,7 @@ struct SettingsView: View {
 
             tabForm {
                 alertStyleSection
+                ArrivalSettingsSection(settings: settings)
                 DeliverySection(settings: settings)
                 breakthroughSection
                 BypassRulesSection(settings: settings)
