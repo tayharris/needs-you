@@ -193,6 +193,32 @@ vacuum every 10 minutes and a full `VACUUM` at most daily. Replicated records ol
 cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` shows
 `db_bytes`, item counts and outbox depth.
 
+## Resource use
+
+Measured 2026-10-07. The Mac numbers are the running app and its bundled hub on an Apple
+Silicon MacBook Pro (macOS 15, Python 3.9), after a day of normal use. The server numbers are
+a throwaway hub on a desktop Linux machine (8-core AMD Ryzen, Python 3.12, no peers).
+
+| What | Measured | How |
+|---|---|---|
+| Mac app, idle | 0.4% of one core (0.46 s of CPU in 120 s), 55 MB memory footprint | `ps` CPU time over two idle minutes; `footprint` |
+| Mac's hub, idle | 0.2% of one core (0.21 s in 120 s), 27 MB footprint | same |
+| Mac's `hub.db` | 0.9 MB with 138 items (0.2 MB database + 0.7 MB WAL) | `ls` |
+| Server hub, idle | under 0.1% of one core (0.03%), 33 MB RSS | `/proc` CPU time over 60 s |
+| 1,000 posts, one after another | 1.2 s (about 850 a second); 1.1 ms median, 2.2 ms p99; hub at 77% of one core during the burst; RSS 33 to 34 MB | `POST /v1/items` over urllib |
+| Database growth | about 600 bytes per item (realistic title, body, one link); the WAL reached 4.8 MB during the burst and is truncated at the next maintenance pass | file size after `wal_checkpoint(TRUNCATE)` |
+| Mac poll, nothing new | 82 bytes, 1 ms | `GET /v1/items?since=` |
+| Mac full poll, 1,000 open items | 630 KB, 36 ms | `GET /v1/items?status=open` |
+| `needs-you add` | about 120 ms per call (Python start-up and imports), the same when failing over from a refused hub or queuing offline (210 bytes per queued request) | wall time of 20 calls |
+
+Nothing else runs: no Docker, no database server, no pip packages, no cloud account. Network
+use is a poll every 30 seconds (`NEEDS_YOU_POLL_SECONDS`), a full snapshot every 10th poll,
+and one `/v1/stream` connection that carries a 15-second ping when idle. Peered hubs push
+writes as they happen and pull each peer once a minute. Disk stays bounded by the
+[housekeeping](#housekeeping) above and by `max_open_per_token` (60 open items per sender
+token); a failover that waits on an unreachable (not refused) hub costs up to
+`NEEDS_YOU_TIMEOUT` (3 s) per hub.
+
 ## Upgrading
 
 Upgrades never lose config or data.
