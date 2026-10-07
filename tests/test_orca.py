@@ -71,21 +71,27 @@ class OrcaSnippetTests(unittest.TestCase):
                 fh.write("NEEDS_YOU_ORCA_ENVIRONMENT='%s'\n" % orca_env)
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
                "ORCA_WORKTREE_ID": "repo1::/home/me/wt/ACME-1", "ORCA_TERMINAL_HANDLE": "term_abc"}
-        r = subprocess.run([BASH, "-c", script + '\nprintf "%s" "$body"'], env=env,
+        r = subprocess.run([BASH, "-c", script + '\nprintf "%s\\n--\\n%s" "$term_link" "$body"'], env=env,
                            capture_output=True, text=True, timeout=10)
         self.assertEqual(r.returncode, 0, r.stderr)
-        return r.stdout
+        self.term_link, _, body = r.stdout.partition("\n--\n")
+        return body
 
     def test_block_body_names_worktree_and_switch_command(self):
         body = self.body_from_block()
         self.assertIn("Orca worktree: `/home/me/wt/ACME-1`", body)
         self.assertIn("`orca terminal switch --terminal term_abc`", body)
         self.assertNotIn("$", body)
+        self.assertEqual(self.term_link, "needsyou://orca/terminal?handle=term_abc")
 
     def test_block_adds_environment_from_env_file(self):
         body = self.body_from_block("My Devbox")
         self.assertIn('`orca terminal switch --environment "My Devbox" --terminal term_abc`', body)
         self.assertNotIn("NEEDS_YOU_TOKEN", body)
+        self.assertEqual(self.term_link, "needsyou://orca/terminal?handle=term_abc&environment=My%20Devbox")
+
+    def test_block_posts_the_terminal_link(self):
+        self.assertIn('--link "Terminal=$term_link"', installer_snippet())
 
 
 class HookOrcaBodyTests(unittest.TestCase):
@@ -136,6 +142,30 @@ class HookOrcaBodyTests(unittest.TestCase):
             fh.write("NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'\n")
         body = self.body(self.notify())
         self.assertIn("`orca terminal switch --environment 'My Devbox' --terminal term_abc`", body)
+
+    def links(self, argv):
+        return [argv[i + 1] for i, a in enumerate(argv) if a == "--link"]
+
+    def test_terminal_link_for_a_real_handle(self):
+        h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
+        argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="ACME Sandbox")
+        self.assertEqual(self.links(argv),
+                         ["Terminal=needsyou://orca/terminal?handle=%s&environment=ACME%%20Sandbox" % h])
+        argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="-bad;env")
+        self.assertEqual(self.links(argv), ["Terminal=needsyou://orca/terminal?handle=" + h])
+
+    def test_no_terminal_link_for_an_odd_handle(self):
+        self.assertEqual(self.links(self.notify(ORCA_TERMINAL_HANDLE="term_ABC;x")), [])
+
+    def test_retries_without_the_link_on_an_old_hub(self):
+        h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
+        with open(self.cli, "w") as fh:
+            fh.write(FAKE_CLI + "sys.exit(2 if any(a.startswith('Terminal=') for a in sys.argv) else 0)\n")
+        self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_AGENT_LINK="VS Code=vscode://file{cwd}")
+        with open(self.log) as fh:
+            calls = [json.loads(l) for l in fh]
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file/home/me/wt/ACME-1/api"])
 
     def test_outside_orca_no_switch_command(self):
         argv = self.notify(ORCA_TERMINAL_HANDLE="", ORCA_WORKTREE_ID="", NEEDS_YOU_AGENT_ALERTS="1")

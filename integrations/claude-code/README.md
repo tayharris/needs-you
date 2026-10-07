@@ -78,6 +78,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
 - **Key:** `agent:<short-hostname>:<id>`, where `<id>` is `$ORCA_TERMINAL_HANDLE` if set, else the Claude `session_id`. Characters outside `A-Za-z0-9._-` become `_`. Re-posting the same key updates the item, so a session that asks five times shows one card.
 - **Title:** what's needed plus the project, e.g. `Claude needs permission: my-repo` or `Claude is waiting for you: my-repo`. The project is the basename of `$CLAUDE_PROJECT_DIR` (else `cwd`).
 - **Body:** Claude's notification message (trimmed to 400 characters), the working directory and host, and the short session id. In Orca, instead: the worktree path (from `$ORCA_WORKTREE_ID`) and the command that jumps to the terminal, `orca terminal switch --terminal <handle>` (plus `--environment <name>` when `NEEDS_YOU_ORCA_ENVIRONMENT` is set). No prompt text, transcript or tool input is sent.
+- **Links:** in Orca, a **Terminal** link, `needsyou://orca/terminal?handle=<handle>[&environment=<name>]`, which the Mac app shows as a button that runs the same switch and brings Orca forward. A hub too old to accept it gets the card without it.
 - **Source:** `--agent claude-code --project <project>`; the CLI adds the host.
 
 The resolve side keeps a marker file per session in `~/.local/state/needs-you/claude-hooks/`, so `Stop` and `PostToolUse` (which fire constantly) cost a file check and no network call unless there is something to resolve.
@@ -105,8 +106,8 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 Link examples:
 
 ```bash
-# Orca has no terminal or worktree deep link (1.4.220); the card body carries
-# the `orca terminal switch` command instead.
+# Orca cards already get a Terminal button (needsyou://orca/terminal?...);
+# Orca itself has no terminal or worktree deep link (1.4.220).
 
 # Open the folder in VS Code or Cursor on the Mac (only useful if the path exists there)
 NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'

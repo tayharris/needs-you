@@ -146,8 +146,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The user clicked a connect link, so showing Settings (and activating) is allowed.
+    /// A terminal link opened from outside runs the Orca jump and never shows Settings.
     private func handleOpen(_ url: URL) {
         guard url.scheme?.lowercased() == ConnectLink.scheme else { return }
+        if url.host?.lowercased() == OrcaJump.host {
+            if let jump = OrcaJump.parse(url) { OrcaJumpRunner.run(jump) }
+            return
+        }
         connect.connect(url.absoluteString)
         settingsWindow.show()
     }
