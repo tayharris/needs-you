@@ -33,7 +33,7 @@ struct CardView: View {
                 }
 
                 if !item.links.isEmpty {
-                    LinkRow(links: item.links, model: model)
+                    LinkRow(item: item, model: model)
                         .padding(.top, 2)
                 }
 
@@ -50,15 +50,17 @@ struct CardView: View {
 
 /// Allowed links are buttons that open via NSWorkspace; anything else is plain text.
 struct LinkRow: View {
-    let links: [ItemLink]
+    let item: Item
     @ObservedObject var model: AppModel
+
+    private var links: [ItemLink] { item.links }
 
     var body: some View {
         FlowLayout(spacing: 6, lineSpacing: 6) {
             ForEach(Array(links.prefix(6).enumerated()), id: \.offset) { _, link in
                 if LinkPolicy.isAllowed(link.url) {
                     Button {
-                        model.open(link.url)
+                        model.open(link.url, from: item)
                     } label: {
                         HStack(spacing: 3) {
                             Text(link.label.isEmpty ? link.url : link.label).lineLimit(1)
@@ -148,7 +150,7 @@ struct RecentRow: View {
                     .font(Theme.meta)
                     .foregroundStyle(Theme.faint)
                 if !item.links.isEmpty {
-                    LinkRow(links: item.links, model: model)
+                    LinkRow(item: item, model: model)
                 }
             }
             Spacer(minLength: 0)
