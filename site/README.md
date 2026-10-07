@@ -4,7 +4,7 @@ The needs-you site: the landing page, and the guides from `docs/` as pages. Plai
 
 | File | What |
 |---|---|
-| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, screenshots, under the hood (architecture diagram and measured resource use), Works with, Install, Open source |
+| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, how agents use it (a posted card and its preview button), screenshots, under the hood (architecture diagram and measured resource use), Works with, Install, Open source |
 | `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the mock's amber matches the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`) |
 | `site.js` | `REPO_URL`, the one GitHub constant, and copy buttons on code blocks (the page works without JS) |
 | `guides/` | **Generated, don't edit.** One page per guide, plus `guides/index.html`, built from the markdown by `scripts/build_site_guides.py` (see [Guides](#guides)) |

@@ -326,6 +326,7 @@ code, pre { font-family: var(--font-mono); }
 .shot img { display: block; max-width: 100%; height: auto; }
 .shot-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-3); }
 .shot-window img { border: 1px solid var(--hud-border); border-radius: var(--radius); }
+#agents .code, .shot-agent { margin: 0 0 var(--space-3); }
 .shot figcaption {
   align-self: stretch;
   color: var(--hud-secondary);
