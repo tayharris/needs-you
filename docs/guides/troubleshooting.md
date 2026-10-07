@@ -102,6 +102,13 @@ Other checks:
 - A card that doesn't clear: the resolve runs only if this session posted (marker files in `~/.local/state/needs-you/claude-hooks/`). Deleting that directory is safe. A session that was killed is cleared by the next `needs-you flush` once its Claude process is gone (`needs-you doctor` shows whether the flush is scheduled), or 48 hours after its last post.
 - Too noisy? `idle_prompt` fires after about a minute of waiting. Opt in only on machines where agents run unattended.
 
+## GitHub poller
+
+- `needs-you-github -v` prints what it saw (notifications, PRs) and any `gh` error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "GitHub alerts stopped on <host>".
+- `gh: Bad credentials` or `gh auth login` errors: log in again as the user cron runs as. cron and systemd have a short `PATH`; set `NEEDS_YOU_GITHUB_GH` to the full path of `gh` if it isn't in `/usr/bin`.
+- Too many cards: narrow it with `NEEDS_YOU_GITHUB_EXCLUDE`, `NEEDS_YOU_GITHUB_REASONS` or `NEEDS_YOU_GITHUB_PR_DAYS` ([integrations/github](../../integrations/github/README.md#config)).
+- A card that doesn't clear: it clears on the run after the condition goes away, or 15 minutes after the poller stops. Notification cards clear when you read the thread on GitHub.
+
 ## Orca automations
 
 - `needs-you` must be on the `PATH` that Orca's agent terminals get. From an Orca terminal: `command -v needs-you`.

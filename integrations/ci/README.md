@@ -5,7 +5,8 @@ Jobs that run unattended should tell you when they fail and clear the alert when
 | File | Use it for |
 |---|---|
 | [`github-actions.yml`](github-actions.yml) | GitHub Actions: joins the tailnet with the Tailscale action, then `curl`s the hub (with failover). No CLI install. |
-| [`run-or-alert.sh`](run-or-alert.sh) | Wrap any command: failure posts, success resolves, exit code passes through. |
+| `needs-you run -- CMD` | Built into the CLI: like `run-or-alert.sh`, plus the last stderr lines in the card (`--no-output` to leave them out) and a `done` FYI after a long run. See [AGENT-GUIDE.md](../../docs/AGENT-GUIDE.md#wrapping-a-command-needs-you-run). |
+| [`run-or-alert.sh`](run-or-alert.sh) | Wrap any command: failure posts, success resolves, exit code passes through. Never includes output. |
 | [`crontab.example`](crontab.example) | cron lines: `needs-you flush`, a wrapped nightly job, a `done` FYI. |
 | [`systemd/needs-you-failed@.service`](systemd/needs-you-failed@.service) | `OnFailure=` template for any unit. |
 | [`systemd/backup.service.example`](systemd/backup.service.example) | A job unit wired to it, with resolve-on-success. |

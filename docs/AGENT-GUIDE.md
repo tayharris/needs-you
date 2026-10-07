@@ -92,6 +92,24 @@ sends on its next call or the 5-minute flush. The command still exits 0, so a do
 hub never fails your job; don't retry in a loop. The outbox keeps at most 500 requests and 7
 days. `needs-you self-update` replaces the CLI with the hub's current copy.
 
+### Wrapping a command: `needs-you run`
+
+For a cron job, a long build or anything the person would otherwise have to watch:
+
+```bash
+needs-you run --key "work:devbox:nightly-import" --title "Nightly import failed" \
+  --link "Logs=https://logs.example.com/import" -- ./import.sh --all
+```
+
+It runs the command (no shell), passes its output through and exits with its exit code.
+On failure it posts a `needs` card with the exit code and the last 5 lines of stderr (escape
+sequences removed, obvious tokens redacted, lines truncated); on success it resolves the key,
+and if the run took at least `--done-after` seconds (default 300) it posts a `done` FYI under
+the same key. The default key is `<context>:<host>:run:<command name>`. **Use `--no-output`
+for any command that might print a secret** (a deploy that echoes its config, `env`, a curl
+with a header): the redaction is best effort, and `--no-output` keeps stderr out of the card
+entirely. Reporting never changes the exit code, and the outbox queues as usual.
+
 ### With curl
 
 ```bash
@@ -220,3 +238,6 @@ duplicate these. Details: [integrations/claude-code](../integrations/claude-code
 2. Get an invite link from the person and run its installer (or give the link to the agent).
 3. Decide the key prefix and default context for its items.
 4. Give its agents this file, the Claude Code skill (`--skill`) or the Orca snippet (`--orca`).
+5. GitHub review requests, deploy approvals and the person's own PRs are covered by one poller
+   on one always-on machine with `gh` logged in ([guides/github.md](guides/github.md)). Agents
+   don't need to post those themselves.
