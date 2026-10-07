@@ -1,0 +1,631 @@
+#!/usr/bin/env python3
+"""needs-you-github: turn GitHub notifications and your open PRs into needs-you cards.
+
+  needs-you-github [--dry-run] [--verbose] [--state PATH]
+
+Run it every ~5 minutes (cron, a systemd user timer or a LaunchAgent) on one machine
+that has `gh` logged in. Each run:
+
+  1. GET /notifications (unread only), conditional on If-Modified-Since, at most once
+     per X-Poll-Interval; a full refresh every 30 minutes so read threads drop off.
+  2. One GraphQL query for your open PRs (review decision, mergeable, checks) and the
+     open PRs that request your review.
+  3. Posts a card per condition with a stable key, re-posts it while it holds (so its
+     --expires-in keeps moving) and resolves it once the condition clears.
+
+It shells out to `gh api`, so auth is your gh login; it never reads or prints the token.
+Everything it reads from GitHub is untrusted: only titles (cleaned and truncated) and
+check names reach a card; bodies and comments never do. It always exits 0.
+
+Config (environment, else ~/.config/needs-you/env; all optional):
+  NEEDS_YOU_GITHUB_INCLUDE   comma list of owner or owner/repo to watch (default: all)
+  NEEDS_YOU_GITHUB_EXCLUDE   comma list of owner or owner/repo to ignore (wins over include)
+  NEEDS_YOU_GITHUB_CONTEXTS  owner=work|personal,... (default NEEDS_YOU_DEFAULT_CONTEXT, else work)
+  NEEDS_YOU_GITHUB_REASONS   reasons to post, comma list; "-mention,-assign" turns some off.
+                             review deploy ci mention assign merge changes conflict checks
+  NEEDS_YOU_GITHUB_INTERVAL  minutes between runs (default 5); cards expire after 3x this
+  NEEDS_YOU_GITHUB_PR_DAYS   only your PRs updated in the last N days (default 14)
+  NEEDS_YOU_GITHUB_MAX_CARDS at most this many cards open at once (default 20; urgent first)
+  NEEDS_YOU_GITHUB_GH        path to gh (default: gh on PATH)
+  NEEDS_YOU_BIN              path to the needs-you CLI (default: on PATH, else ~/.local/bin)
+
+State: ~/.local/state/needs-you/github.json (mode 600): what it posted, Last-Modified.
+Python 3.9+ standard library only.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.parse
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+ALL_REASONS = ("review", "deploy", "ci", "mention", "assign", "merge", "changes", "conflict", "checks")
+MIN_POLL = 60
+FULL_REFRESH_S = 30 * 60
+FAILS_BEFORE_CARD = 3
+TITLE_MAX = 100
+SUBJECT_MAX = 70
+KEY_SAFE = re.compile(r"[^A-Za-z0-9._:/@#+=-]")
+FAILING_CHECK = ("FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED", "ERROR")
+
+GRAPHQL = """
+query($mine: String!, $review: String!) {
+  mine: search(query: $mine, type: ISSUE, first: 50) {
+    nodes { ... on PullRequest {
+      number title url isDraft reviewDecision mergeable headRefName
+      repository { nameWithOwner url }
+      commits(last: 1) { nodes { commit { statusCheckRollup { state
+        contexts(first: 50) { nodes { __typename
+          ... on CheckRun { name conclusion status detailsUrl }
+          ... on StatusContext { context state targetUrl } } } } } } }
+    } }
+  }
+  review: search(query: $review, type: ISSUE, first: 100) {
+    nodes { ... on PullRequest { number repository { nameWithOwner } } }
+  }
+}
+"""
+MINE_Q = "is:pr is:open author:@me archived:false updated:>=%s"
+REVIEW_Q = "is:pr is:open review-requested:@me archived:false"
+
+
+# ---------------------------------------------------------------------------
+# Config, state, text hygiene
+# ---------------------------------------------------------------------------
+
+def warn(msg: str) -> None:
+    sys.stderr.write("needs-you-github: %s\n" % msg)
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].strip()
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
+def state_base() -> str:
+    return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+
+
+def outbox_has_backlog() -> bool:
+    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
+    try:
+        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
+    except OSError:
+        return False
+
+
+def _csv(value: str) -> List[str]:
+    return [p.strip() for p in (value or "").split(",") if p.strip()]
+
+
+class Config:
+    def __init__(self) -> None:
+        if os.environ.get("NEEDS_YOU_CONFIG"):
+            path = os.environ["NEEDS_YOU_CONFIG"]
+        else:
+            base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+            path = os.path.join(base, "needs-you", "env")
+        f = read_env_file(path)
+        get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
+        self.include = [s.lower() for s in _csv(get("NEEDS_YOU_GITHUB_INCLUDE"))]
+        self.exclude = [s.lower() for s in _csv(get("NEEDS_YOU_GITHUB_EXCLUDE"))]
+        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
+        self.default_context = ctx if ctx in ("work", "personal") else "work"
+        self.contexts: Dict[str, str] = {}
+        for pair in _csv(get("NEEDS_YOU_GITHUB_CONTEXTS")):
+            owner, _, c = pair.partition("=")
+            if c.strip().lower() in ("work", "personal"):
+                self.contexts[owner.strip().lower()] = c.strip().lower()
+        raw = _csv(get("NEEDS_YOU_GITHUB_REASONS"))
+        if raw and all(r.startswith("-") for r in raw):
+            off = {r[1:].lower() for r in raw}
+            self.reasons = {r for r in ALL_REASONS if r not in off}
+        elif raw:
+            self.reasons = {r.lower() for r in raw if r.lower() in ALL_REASONS}
+        else:
+            self.reasons = set(ALL_REASONS)
+        try:
+            self.interval_min = max(1.0, float(get("NEEDS_YOU_GITHUB_INTERVAL", "5")))
+        except ValueError:
+            self.interval_min = 5.0
+        try:
+            self.pr_days = max(1, int(get("NEEDS_YOU_GITHUB_PR_DAYS", "14")))
+        except ValueError:
+            self.pr_days = 14
+        try:
+            self.max_cards = max(1, int(get("NEEDS_YOU_GITHUB_MAX_CARDS", "20")))
+        except ValueError:
+            self.max_cards = 20
+        self.gh = get("NEEDS_YOU_GITHUB_GH") or shutil.which("gh") or ""
+        local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
+        self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
+        self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
+
+    def watched(self, repo: str) -> bool:
+        repo = repo.lower()
+        owner = repo.split("/", 1)[0]
+        if repo in self.exclude or owner in self.exclude:
+            return False
+        return not self.include or repo in self.include or owner in self.include
+
+    def context(self, repo: str) -> str:
+        return self.contexts.get(repo.split("/", 1)[0].lower(), self.default_context)
+
+
+_STRIP = re.compile("[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
+
+
+def safe_text(value: Any, limit: int) -> str:
+    """Untrusted GitHub text, made fit for a card title: no control, bidi or zero-width
+    characters, whitespace collapsed, truncated with an ellipsis."""
+    s = " ".join(_STRIP.sub(" ", str(value or "")).split())
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def md_escape(s: str) -> str:
+    """Step text is inline markdown: an untrusted name must not become a link or emphasis."""
+    return re.sub(r"([\\`*_\[\]()<>#!|~])", r"\\\1", s)
+
+
+def https(url: Any) -> str:
+    u = str(url or "")
+    return u if u.startswith("https://") and not _STRIP.search(u) and " " not in u else ""
+
+
+def load_state(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(path: str, state: Dict[str, Any]) -> None:
+    d = os.path.dirname(path)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    tmp = path + ".%d.tmp" % os.getpid()
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, indent=1, sort_keys=True)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------------
+# gh
+# ---------------------------------------------------------------------------
+
+class GhError(Exception):
+    pass
+
+
+def gh(cfg: Config, args: List[str]) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+    if not cfg.gh:
+        raise GhError("gh not found (install GitHub CLI and run `gh auth login`)")
+    try:
+        return subprocess.run([cfg.gh] + args, stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise GhError("cannot run gh: %s" % type(e).__name__)
+
+
+def gh_error(r: subprocess.CompletedProcess) -> GhError:  # type: ignore[type-arg]
+    first = (r.stderr or "").strip().splitlines()
+    return GhError("gh exited %d%s" % (r.returncode, ": " + safe_text(first[0], 160) if first else ""))
+
+
+def fetch_notifications(cfg: Config, since: str) -> Tuple[int, Dict[str, str], Any]:
+    """(status, headers, parsed body). 304 has no body."""
+    args = ["api", "-i", "/notifications?per_page=50"]
+    if since:
+        args[2:2] = ["-H", "If-Modified-Since: " + since]
+    r = gh(cfg, args)
+    out = r.stdout or ""
+    head, _, body = out.replace("\r\n", "\n").partition("\n\n")
+    lines = head.split("\n")
+    m = re.match(r"HTTP/\S+\s+(\d{3})", lines[0]) if lines else None
+    if not m:
+        raise gh_error(r)
+    status = int(m.group(1))
+    headers = {}
+    for line in lines[1:]:
+        k, sep, v = line.partition(":")
+        if sep:
+            headers[k.strip().lower()] = v.strip()
+    if status == 304:
+        return status, headers, None
+    if status != 200 or r.returncode != 0:
+        raise gh_error(r)
+    try:
+        parsed = json.loads(body or "[]")
+    except ValueError:
+        raise GhError("gh returned notifications that aren't JSON")
+    if not isinstance(parsed, list):
+        raise GhError("unexpected notifications shape")
+    return status, headers, parsed
+
+
+def fetch_prs(cfg: Config) -> Dict[str, Any]:
+    since = time.strftime("%Y-%m-%d", time.gmtime(time.time() - cfg.pr_days * 86400))
+    r = gh(cfg, ["api", "graphql", "-f", "query=" + GRAPHQL, "-f", "mine=" + MINE_Q % since,
+                 "-f", "review=" + REVIEW_Q])
+    if r.returncode != 0:
+        raise gh_error(r)
+    try:
+        data = json.loads(r.stdout or "{}")["data"]
+        mine = data["mine"]["nodes"]
+        review = data["review"]["nodes"]
+    except (ValueError, KeyError, TypeError):
+        raise GhError("unexpected GraphQL response")
+    return {"mine": [n for n in mine if isinstance(n, dict) and n.get("number")],
+            "review": [n for n in review if isinstance(n, dict) and n.get("number")]}
+
+
+# ---------------------------------------------------------------------------
+# Notifications -> thread records (only the fields we use, already cleaned)
+# ---------------------------------------------------------------------------
+
+_SUBJECT_URL = re.compile(r"/repos/[^/]+/[^/]+/(pulls|issues)/(\d+)$")
+_RUN_URL = re.compile(r"/actions/runs/(\d+)")
+
+
+def thread_record(t: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    repo = t.get("repository") or {}
+    subject = t.get("subject") or {}
+    full = str(repo.get("full_name") or "")
+    if not re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", full):
+        return None
+    html = https(repo.get("html_url")) or "https://github.com/" + full
+    rec: Dict[str, Any] = {"id": safe_text(t.get("id"), 40), "reason": safe_text(t.get("reason"), 40),
+                           "type": safe_text(subject.get("type"), 40), "repo": full, "repo_url": html,
+                           "title": safe_text(subject.get("title"), 200),
+                           "updated_at": safe_text(t.get("updated_at"), 40)}
+    url = str(subject.get("url") or "")
+    m = _SUBJECT_URL.search(url)
+    if m:
+        rec["number"] = int(m.group(2))
+        rec["path"] = "pull" if m.group(1) == "pulls" else "issues"
+    m = _RUN_URL.search(url)
+    if m:
+        rec["run_id"] = m.group(1)
+    return rec
+
+
+# ---------------------------------------------------------------------------
+# Cards
+# ---------------------------------------------------------------------------
+
+def _title(prefix: str, subject: str) -> str:
+    room = TITLE_MAX - len(prefix) - 2
+    return prefix + (": " + safe_text(subject, min(SUBJECT_MAX, room)) if subject and room > 10 else "")
+
+
+def card(cfg: Config, repo: str, key_rest: str, title: str, priority: str, src: str,
+         links: List[Tuple[str, str]], steps: Optional[List[Dict[str, Any]]] = None,
+         body: str = "") -> Dict[str, Any]:
+    ctx = cfg.context(repo)
+    c: Dict[str, Any] = {"key": KEY_SAFE.sub("-", "%s:gh:%s" % (ctx, key_rest))[:200], "title": title[:TITLE_MAX],
+                         "priority": priority, "context": ctx, "project": repo, "src": src,
+                         "links": [[label, url] for label, url in links if https(url)][:6]}
+    if steps:
+        c["steps"] = steps
+    if body:
+        c["body"] = body
+    return c
+
+
+def step(text: str, label: str = "", url: str = "") -> Dict[str, Any]:
+    s: Dict[str, Any] = {"text": text}
+    if label and https(url):
+        s["link"] = {"label": label, "url": url}
+    return s
+
+
+_CI_TITLE = re.compile(r"\bfor (?P<branch>\S+) branch\s*$", re.I)
+
+
+def notification_cards(cfg: Config, threads: List[Dict[str, Any]], review_set: Optional[Set[Tuple[str, int]]],
+                       my_heads: Set[Tuple[str, str]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    latest_ci: Dict[str, Dict[str, Any]] = {}
+    for t in threads:
+        repo, reason = t["repo"], t["reason"]
+        if not cfg.watched(repo):
+            continue
+        n = t.get("number")
+        ref = "%s#%s" % (repo, n)
+        page = "%s/%s/%s" % (t["repo_url"], t.get("path", "pull"), n) if n else t["repo_url"]
+        if reason == "review_requested" and "review" in cfg.reasons and n and t.get("path") == "pull":
+            if review_set is not None and (repo.lower(), n) not in review_set:
+                continue  # already reviewed, or the PR closed
+            out.append(card(cfg, repo, "%s:review" % ref, _title("Review %s" % ref, t["title"]), "normal",
+                            "both", [("PR", page)],
+                            [step("Read the diff", "Files", page + "/files"),
+                             step("Approve, or request changes", "Review", page + "/files")]))
+        elif reason == "approval_requested" and "deploy" in cfg.reasons:
+            rid = t.get("run_id") or t["id"]
+            run = "%s/actions/runs/%s" % (t["repo_url"], t["run_id"]) if t.get("run_id") else t["repo_url"] + "/actions"
+            out.append(card(cfg, repo, "deploy:%s:%s" % (repo, rid), _title("Approve the deploy: %s" % repo, t["title"]),
+                            "urgent", "notif", [("Run", run)],
+                            [step("Open the run and choose **Review deployments**", "Run", run),
+                             step("Approve or reject the deployment")]))
+        elif reason == "ci_activity" and "ci" in cfg.reasons:
+            m = _CI_TITLE.search(t["title"])
+            if not m:
+                continue
+            branch = m.group("branch")
+            if "checks" in cfg.reasons and (repo.lower(), branch) in my_heads:
+                continue  # the PR's own "Fix failing checks" card covers it
+            key = "%s:ci:%s" % (repo, branch)
+            prev = latest_ci.get(key)
+            if prev is None or t["updated_at"] >= prev["updated_at"]:
+                latest_ci[key] = dict(t, branch=branch)
+        elif reason in ("mention", "team_mention") and "mention" in cfg.reasons and n:
+            out.append(card(cfg, repo, "%s:mention" % ref, _title("You were mentioned in %s" % ref, t["title"]),
+                            "low", "notif", [("Open", page)]))
+        elif reason == "assign" and "assign" in cfg.reasons and n:
+            out.append(card(cfg, repo, "%s:assign" % ref, _title("Assigned to you: %s" % ref, t["title"]),
+                            "low", "notif", [("Open", page)]))
+    for key, t in sorted(latest_ci.items()):
+        if not re.search(r"\bfailed\b", t["title"], re.I):
+            continue  # the latest run on that branch didn't fail
+        branch = safe_text(t["branch"], 60)
+        runs = "%s/actions?query=%s" % (t["repo_url"], urllib.parse.quote("branch:" + t["branch"], safe=""))
+        out.append(card(cfg, t["repo"], key, _title("CI failed on %s: %s" % (branch, t["repo"]), t["title"]),
+                        "normal", "both", [("Runs", runs)]))
+    return out
+
+
+def _rollup(pr: Dict[str, Any]) -> Tuple[Optional[str], List[Tuple[str, str]]]:
+    try:
+        roll = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]
+    except (KeyError, IndexError, TypeError):
+        roll = None
+    if not roll:
+        return None, []
+    failing = []
+    for c in ((roll.get("contexts") or {}).get("nodes") or []):
+        if not isinstance(c, dict):
+            continue
+        if c.get("__typename") == "CheckRun" and c.get("conclusion") in FAILING_CHECK:
+            failing.append((safe_text(c.get("name"), 60), https(c.get("detailsUrl"))))
+        elif c.get("__typename") == "StatusContext" and c.get("state") in FAILING_CHECK:
+            failing.append((safe_text(c.get("context"), 60), https(c.get("targetUrl"))))
+    return roll.get("state"), failing
+
+
+def pr_cards(cfg: Config, prs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for pr in prs:
+        repo = str((pr.get("repository") or {}).get("nameWithOwner") or "")
+        if not repo or pr.get("isDraft") or not cfg.watched(repo):
+            continue
+        n = pr["number"]
+        ref = "%s#%s" % (repo, n)
+        url = https(pr.get("url")) or "https://github.com/%s/pull/%s" % (repo, n)
+        title = pr.get("title")
+        state, failing = _rollup(pr)
+        decision, mergeable = pr.get("reviewDecision"), pr.get("mergeable")
+        if mergeable == "CONFLICTING" and "conflict" in cfg.reasons:
+            out.append(card(cfg, repo, "%s:conflict" % ref, _title("Resolve conflicts in %s" % ref, title), "normal",
+                            "pr", [("Conflicts", url + "/conflicts"), ("PR", url)],
+                            [step("Resolve the conflicts (on GitHub or locally)", "Conflicts", url + "/conflicts"),
+                             step("Push, and wait for the checks")]))
+        if state in ("FAILURE", "ERROR") and "checks" in cfg.reasons:
+            steps = [step("Read **%s**" % md_escape(name), "Logs", link or url + "/checks")
+                     for name, link in failing[:3]]
+            if len(failing) > 3:
+                steps.append(step("%d more failing" % (len(failing) - 3), "Checks", url + "/checks"))
+            steps.append(step("Push a fix, or re-run a flaky check"))
+            out.append(card(cfg, repo, "%s:checks" % ref, _title("Fix failing checks on %s" % ref, title), "normal",
+                            "pr", [("Checks", url + "/checks"), ("PR", url)], steps))
+        if decision == "CHANGES_REQUESTED" and "changes" in cfg.reasons:
+            out.append(card(cfg, repo, "%s:changes" % ref, _title("Changes requested on %s" % ref, title), "normal",
+                            "pr", [("PR", url)],
+                            [step("Read the review", "Review", url), step("Push the changes"),
+                             step("Re-request review", "PR", url)]))
+        if (decision == "APPROVED" and state in (None, "SUCCESS") and mergeable == "MERGEABLE"
+                and "merge" in cfg.reasons):
+            out.append(card(cfg, repo, "%s:merge" % ref, _title("Merge %s" % ref, title), "normal", "pr",
+                            [("PR", url)], body="Approved, and every check is green."))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Posting through the CLI
+# ---------------------------------------------------------------------------
+
+def card_hash(c: Dict[str, Any]) -> str:
+    keep = {k: c.get(k) for k in ("title", "priority", "context", "links", "steps", "body", "project")}
+    return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
+    argv = [cfg.cli, "-q", "add", "--key=" + c["key"], "--title=" + c["title"], "--priority=" + c["priority"],
+            "--context=" + c["context"], "--agent=github", "--project=" + c["project"]]
+    if expires_h:
+        argv.append("--expires-in=%.3f" % expires_h)
+    for label, url in c.get("links") or []:
+        argv.append("--link=%s=%s" % (label, url))
+    if c.get("steps"):
+        argv.append("--steps-json=" + json.dumps(c["steps"]))
+    if c.get("body"):
+        argv.append("--body=" + c["body"])
+    return _cli(argv)
+
+
+def resolve(cfg: Config, key: str) -> bool:
+    return _cli([cfg.cli, "-q", "resolve", "--key=" + key])
+
+
+def _cli(argv: List[str]) -> bool:
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        warn("cannot run needs-you: %s" % type(e).__name__)
+        return False
+    if r.returncode != 0:
+        warn("needs-you %s exited %d: %s" % (argv[2], r.returncode, safe_text(r.stderr, 300)))
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# One run
+# ---------------------------------------------------------------------------
+
+def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None:
+    state = load_state(state_path)
+    now = time.time()
+    failed: Set[str] = set()
+    errors: List[str] = []
+
+    # 1. Notifications (conditional, at most once per X-Poll-Interval).
+    threads = state.get("threads") if isinstance(state.get("threads"), list) else []
+    poll = max(MIN_POLL, int(state.get("poll_interval") or MIN_POLL))
+    if now - float(state.get("notif_at") or 0) >= poll - 5:
+        full = now - float(state.get("full_at") or 0) >= FULL_REFRESH_S
+        try:
+            status, headers, body = fetch_notifications(cfg, "" if full else str(state.get("last_modified") or ""))
+            state["notif_at"] = now
+            try:
+                state["poll_interval"] = max(MIN_POLL, int(headers.get("x-poll-interval") or MIN_POLL))
+            except ValueError:
+                pass
+            if status == 200:
+                threads = [r for r in (thread_record(t) for t in body if isinstance(t, dict)) if r]
+                state["threads"] = threads
+                state["full_at"] = now if full else state.get("full_at", now)
+                if headers.get("last-modified"):
+                    state["last_modified"] = headers["last-modified"]
+            if verbose:
+                warn("notifications: HTTP %d, %d unread threads" % (status, len(threads)))
+        except GhError as e:
+            failed.add("notif")
+            errors.append(str(e))
+    elif verbose:
+        warn("notifications: skipped (X-Poll-Interval %ds)" % poll)
+
+    # 2. My PRs and the PRs waiting on my review.
+    prs: List[Dict[str, Any]] = []
+    review_set: Optional[Set[Tuple[str, int]]] = None
+    if cfg.reasons & {"merge", "changes", "conflict", "checks", "review", "ci"}:
+        try:
+            data = fetch_prs(cfg)
+            prs = data["mine"]
+            review_set = {(str((n.get("repository") or {}).get("nameWithOwner") or "").lower(), n["number"])
+                          for n in data["review"]}
+            if verbose:
+                warn("PRs: %d open by you, %d waiting on your review" % (len(prs), len(review_set)))
+        except GhError as e:
+            failed.add("pr")
+            if str(e) not in errors:
+                errors.append(str(e))
+    if failed & {"notif", "pr"}:
+        failed.add("both")  # cards that need both lists (review filter, CI dedupe)
+
+    my_heads = {(str((p.get("repository") or {}).get("nameWithOwner") or "").lower(), str(p.get("headRefName") or ""))
+                for p in prs}
+    posted: Dict[str, Any] = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+    cards = (notification_cards(cfg, threads, review_set, my_heads) if "notif" not in failed else []) \
+        + (pr_cards(cfg, prs) if "pr" not in failed else [])
+    # Urgent first, then what's already on the panel, so the cap never churns cards.
+    rank = {"urgent": 0, "normal": 1, "low": 2}
+    cards = sorted((c for c in cards if c["src"] not in failed),
+                   key=lambda c: (rank.get(c["priority"], 3), c["key"] not in posted, c["key"]))
+    desired: Dict[str, Dict[str, Any]] = {}
+    for c in cards:
+        if c["key"] in desired:
+            continue
+        if len(desired) >= cfg.max_cards:
+            if verbose:
+                warn("over NEEDS_YOU_GITHUB_MAX_CARDS=%d: skipped %s" % (cfg.max_cards, c["key"]))
+            continue
+        desired[c["key"]] = c
+
+    # 3. One card if gh keeps failing (one stable key, posted once, never one per run).
+    fails = int(state.get("fails") or 0) + 1 if errors else 0
+    state["fails"] = fails
+    health_key = "%s:gh:%s:poller-failing" % (cfg.default_context, KEY_SAFE.sub("-", cfg.host))
+    if errors:
+        warn("; ".join(errors))
+        if fails >= FAILS_BEFORE_CARD:
+            desired[health_key] = {
+                "key": health_key, "title": "GitHub alerts stopped on %s: check gh" % cfg.host, "priority": "low",
+                "context": cfg.default_context, "project": "github", "src": "health", "links": [],
+                "body": "`needs-you-github` on `%s` can't read GitHub through `gh` (the error is in its log). "
+                        "Run `gh auth status` there." % cfg.host}
+
+    # 4. Post new/changed/renewed, resolve cleared.
+    if not dry_run and not cfg.cli:
+        warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
+        return
+    expires_h = 3 * cfg.interval_min / 60.0
+    backlog = outbox_has_backlog()
+    for key, c in sorted(desired.items()):
+        h = card_hash(c)
+        prev = posted.get(key) or {}
+        changed = prev.get("h") != h
+        if not changed and (backlog or (c["src"] == "health" and prev)):
+            continue  # hub unreachable: don't fill the outbox with renewals
+        if dry_run:
+            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+            continue
+        if post(cfg, c, None if c["src"] == "health" else expires_h):
+            posted[key] = {"h": h, "t": now, "src": c["src"]}
+    for key in sorted(set(posted) - set(desired)):
+        if (posted[key] or {}).get("src") in failed:
+            continue  # couldn't look: leave it to its expiry
+        if dry_run:
+            print("resolve %s" % key)
+            continue
+        if resolve(cfg, key):
+            del posted[key]
+    if not dry_run:
+        state["posted"] = posted
+        save_state(state_path, state)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(prog="needs-you-github", description=__doc__.split("\n")[0])
+    p.add_argument("--dry-run", action="store_true", help="print what would be posted; change nothing")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--state", help="state file (default ~/.local/state/needs-you/github.json)")
+    args = p.parse_args(argv)
+    path = args.state or os.path.join(state_base(), "needs-you", "github.json")
+    try:
+        run_once(Config(), path, args.dry_run, args.verbose)
+    except Exception as e:  # never fail the scheduler: one line, exit 0
+        warn("unexpected error: %s: %s" % (type(e).__name__, safe_text(e, 200)))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
