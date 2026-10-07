@@ -433,7 +433,8 @@ one-line install command, the installer's options, and the posting rules. For a 
 `owner` invite it says to open the `needsyou://` link on the Mac instead. Viewing the page
 doesn't spend a use. A used-up invite's page is still served, with a note that it can't set
 up a new machine. Unknown, expired and revoked codes get a plain-text `404` (and count as a
-failed attempt).
+failed attempt). A sender invite's page ends with **Files and checksums**: each `/dl` file
+and its sha256, the same values as `/dl/manifest.json`.
 
 ### `GET /join/<code>/install.sh` (no token)
 
@@ -441,6 +442,13 @@ A bash script (bash, curl and python3 only) with this hub's URL, the code and th
 baked in. See [guides/add-a-sender.md](guides/add-a-sender.md) for its flags. It is served
 until the invite expires or is revoked, also after its uses are spent: re-runs and
 `--uninstall` on a machine that is already set up don't redeem.
+
+The script also carries the sha256 of every `/dl` file at the moment it was served
+(`SHA256S`, the page's list). It checks each file it downloads (the CLI, hooks, skill, Orca
+snippet) against that list and refuses a file that doesn't match or isn't listed, before
+installing anything from it. This is integrity, not authenticity (the list and the files come
+from the same hub): it catches corrupt or partial downloads and a hub whose files changed
+between the page and the download.
 
 For an unknown, expired or revoked code (or a rate-limited client) the response is still
 `200`, with header `X-Needs-You-Invite: unusable (HTTP 404)` (or `429`) and a script that
