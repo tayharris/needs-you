@@ -226,6 +226,78 @@ class DefaultContext(CliTestCase):
         self.assertEqual(items, {"a": "personal", "b": "work"})
 
 
+def load_cli():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("needs_you_cli", CLI)
+    spec = importlib.util.spec_from_loader("needs_you_cli", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+class Steps(CliTestCase):
+    def test_parse_step(self):
+        parse = load_cli().parse_step
+        cases = [
+            ("Approve the deploy", {"text": "Approve the deploy"}),
+            ("Set FOO=bar in .env", {"text": "Set FOO=bar in .env"}),       # '=' in text, no URL
+            ("Run a=b:c", {"text": "Run a=b:c"}),                          # not a scheme we know
+            ("Approve=https://ci/x?a=b&c=d",                               # '=' in the query kept
+             {"text": "Approve", "link": {"label": "Open", "url": "https://ci/x?a=b&c=d"}}),
+            ("Set FOO=bar = https://x/y",                                  # first '=' that starts a URL
+             {"text": "Set FOO=bar", "link": {"label": "Open", "url": "https://x/y"}}),
+            ("Reply=slack://channel?team=T&id=C",
+             {"text": "Reply", "link": {"label": "Open", "url": "slack://channel?team=T&id=C"}}),
+            ("Insecure=http://x",                                          # split; the hub rejects it
+             {"text": "Insecure", "link": {"label": "Open", "url": "http://x"}}),
+        ]
+        for raw, want in cases:
+            with self.subTest(raw):
+                self.assertEqual(parse(raw), want)
+
+    def test_steps_end_to_end(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        path = os.path.join(self.tmp, "steps.json")
+        with open(path, "w") as fh:
+            json.dump([{"text": "Check **staging**", "done": True}], fh)
+        r = self.run_cli("add", "--key", "s", "--title", "Ship",
+                         "--steps-json", "@" + path,
+                         "--step", "Approve=https://ci/run/9?x=1",
+                         "--step", "Set MODE=live", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        item = self.items(a, reader, "open")[0]
+        self.assertEqual(item["steps"], [
+            {"text": "Check **staging**", "done": True},
+            {"text": "Approve", "done": False, "link": {"label": "Open", "url": "https://ci/run/9?x=1"}},
+            {"text": "Set MODE=live", "done": False},
+        ])
+        r = self.run_cli("add", "--key", "j", "--title", "t", "--steps-json",
+                         '[{"text": "a", "link": {"label": "Doc", "url": "https://d"}}]',
+                         urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_bad_steps_exit_2_and_are_not_queued(self):
+        a = self.make_hub("hub-a")
+        sender, _ = self.tokens(a)
+        eleven = []
+        for i in range(11):
+            eleven += ["--step", "s%d" % i]
+        cases = [
+            ["--step", "x=http://insecure"],            # the hub rejects the scheme
+            ["--steps-json", "{not json"],
+            ["--steps-json", '{"text": "not a list"}'],
+            ["--steps-json", "@" + os.path.join(self.tmp, "missing.json")],
+            eleven,
+        ]
+        for extra in cases:
+            with self.subTest(extra[:2]):
+                r = self.run_cli("add", "--key", "k", "--title", "t", *extra, urls=[a.url], token=sender)
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertEqual(self.queued(), [])
+
+
 class SelfUpdate(CliTestCase):
     def test_replaces_itself_atomically(self):
         a = self.make_hub("hub-a")
