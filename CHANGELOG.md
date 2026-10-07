@@ -4,7 +4,13 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed (API)
+
+- `GET /v1/items` without `cursor` or `since` (a full poll) that has more items than `limit` (`more: true`) now gives a `next` that continues it: a `cursor` poll with it returns the rest, then whatever changed since. Before, that `next` pointed past everything, so following the documented polling loop never delivered the rest. Full polls are ordered by the hub's write order now. Nothing else changes shape. See [API.md](docs/API.md#get-v1items-reader).
+
 ### Fixed
+
+- Mac app: **with more than 500 open items, the rest never showed up.** The app's full poll got the first 500 and its cursor then skipped the others. It now asks for up to 2,000 at once and follows the hub's `next` for the rest (a hub from 0.1.3 or earlier still stops at 2,000; update it with the Mac).
 
 - Mac app: a card you mark **Done** (or dismiss) right after opening the panel no longer flashes back for a poll. Opening the panel marks cards seen, and a poll that brought the seen version before the Done reached the hub put the card back; now only a change from its sender (new title, body, priority or steps) brings a closed card back.
 - Mac app: **changing hubs, or turning Run hub on this Mac on or off, keeps your card snoozes, what's held under Later and the cards you just closed.** They were wiped, so held cards rejoined the list without a peek and snoozed or just-closed ones came back. They now apply to the same items on the new hub (by item id, or by the sender's key on a hub that doesn't replicate with the old one; a Done stays with the hub it was sent to).

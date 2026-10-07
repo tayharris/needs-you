@@ -16,6 +16,8 @@ final class HubPagingTests: XCTestCase {
     static var asyncTests = [
         ("testPagingFollowsNext", testPagingFollowsNext),
         ("testPagingWithoutNextUsesServerTime", testPagingWithoutNextUsesServerTime),
+        ("testFullPollPagesByNext", testFullPollPagesByNext),
+        ("testFullPollFromAnOlderHubIsNotAuthoritative", testFullPollFromAnOlderHubIsNotAuthoritative),
         ("testFailoverPassesCursorOnlyToTheSameHub", testFailoverPassesCursorOnlyToTheSameHub),
     ]
 
@@ -78,6 +80,44 @@ final class HubPagingTests: XCTestCase {
         XCTAssertEqual(sent.map { $0["cursor"] }, ["E1.10.5", "E1.12.5"])
         // `since` goes along every time, for a hub that ignores the cursor
         XCTAssertEqual(sent[1]["since"], "2026-10-06T17:04:05.122Z")
+    }
+
+    func testFullPollPagesByNext() async throws {
+        // More open items than one page: the full poll asks for the most the hub gives, then
+        // follows `next` (without `since`, which can't continue a full poll) to the rest.
+        StubURLProtocol.handler = { request in
+            let q = Self.query(request)
+            switch q["cursor"] {
+            case nil: return (200, Self.body(["a", "b"], serverTime: "2026-10-06T17:04:05.122Z", more: true, next: "E1.2.9"))
+            case "E1.2.9": return (200, Self.body(["c"], serverTime: "2026-10-06T17:04:05.200Z", more: true, next: "E1.3.9"))
+            case "E1.3.9": return (200, Self.body(["d"], serverTime: "2026-10-06T17:04:05.300Z", more: false, next: "E1.4.9"))
+            default: return (500, Data())
+            }
+        }
+        let client = HubClient(config: config, session: StubURLProtocol.session())
+        let page = try await client.fetchPage(since: nil, cursor: nil)
+        XCTAssertEqual(page.items.map(\.id), ["a", "b", "c", "d"])
+        XCTAssertFalse(page.more)
+        XCTAssertEqual(page.next, "E1.4.9")
+        XCTAssertEqual(page.cursor, HubJSON.parseDate("2026-10-06T17:04:05.300Z"))
+        // Hubs up to 0.1.3 send a `next` that skips the rest, so a paged full poll is merged,
+        // never used to drop what's missing.
+        XCTAssertFalse(page.isFullSnapshot)
+        let sent = StubURLProtocol.recorded.map { Self.query($0.request) }
+        XCTAssertEqual(sent.map { $0["cursor"] }, [nil, "E1.2.9", "E1.3.9"])
+        XCTAssertTrue(sent.allSatisfy { $0["since"] == nil })
+        XCTAssertTrue(sent.allSatisfy { $0["limit"] == String(HubClient.fullPollLimit) })
+    }
+
+    func testFullPollFromAnOlderHubIsNotAuthoritative() async throws {
+        // A hub before `next` cut the full poll short: nothing to page by, and missing items
+        // mustn't be taken as closed.
+        StubURLProtocol.handler = { _ in (200, Self.body(["a"], serverTime: "2026-10-06T17:04:05.122Z", more: true, next: nil)) }
+        let client = HubClient(config: config, session: StubURLProtocol.session())
+        let page = try await client.fetchPage(since: nil, cursor: nil)
+        XCTAssertEqual(page.items.map(\.id), ["a"])
+        XCTAssertFalse(page.isFullSnapshot)
+        XCTAssertEqual(StubURLProtocol.recorded.count, 1)
     }
 
     func testPagingWithoutNextUsesServerTime() async throws {
