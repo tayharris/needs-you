@@ -11,10 +11,11 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
-from support import ROOT, hubmod
+from support import CLI, ROOT, hubmod
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -509,6 +510,65 @@ class ContextTests(HookHarness):
         self.assertEqual(m["pid"], str(os.getpid()))
         self.assertTrue(m["key"].startswith("agent:"))
         self.assertTrue(m["start"])
+
+
+class OwnItemTests(HookHarness):
+    """One card for one wait: an agent that posted its own blocker from the session (the
+    skill, through the real CLI) gets no extra "Claude is waiting for you" card."""
+
+    def real_cli(self, *args, **env):
+        e = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+             "NEEDS_YOU_URLS": "http://127.0.0.1:9", "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1"}
+        e.update(env)
+        r = subprocess.run([sys.executable, CLI] + list(args), env=e, capture_output=True, text=True,
+                           timeout=60, cwd=self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)  # the hub is down: queued, exit 0
+
+    def idle(self, **extra):
+        before = len(self.calls())
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"}, **extra)
+        return len(self.calls()) > before
+
+    def test_waiting_card_skipped_while_the_agents_item_is_open(self):
+        in_session = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "sess-1234-abcd"}
+        self.real_cli("add", "--key", "work:ACME-1:decide", "--title", "Choose A or B", **in_session)
+        self.assertFalse(self.idle())
+        # agent_needs_input is the same wait; a permission prompt is a different one
+        before = len(self.calls())
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "agent_needs_input"})
+        self.assertEqual(len(self.calls()), before)
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                 "tool_input": {"command": "git push"}})
+        self.assertEqual(len(self.calls()), before + 1)
+        # another session isn't affected
+        self.assertTrue(self.idle(ORCA_TERMINAL_HANDLE="term_0123abcd"))
+        self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})  # clears the permission card
+        self.assertFalse(self.idle())
+        # resolved (from anywhere): the waiting card is back
+        self.real_cli("resolve", "--key", "work:ACME-1:decide")
+        self.assertTrue(self.idle())
+
+    def test_orca_handle_done_expiry_and_session_end(self):
+        orca = {"CLAUDECODE": "1", "ORCA_TERMINAL_HANDLE": "term_0123abcd", "CLAUDE_CODE_SESSION_ID": "x"}
+        term = {"ORCA_TERMINAL_HANDLE": "term_0123abcd"}
+        self.real_cli("add", "--key", "work:ACME-2:x", "--title", "t", **orca)
+        self.assertFalse(self.idle(**term))
+        self.real_cli("done", "--key", "work:ACME-2:x", "--title", "t", **orca)  # no longer needs anyone
+        self.assertTrue(self.idle(**term))
+        # expired records don't count
+        self.real_cli("add", "--key", "work:ACME-3:x", "--title", "t", "--expires-in", "0.0000001", **orca)
+        self.assertTrue(self.idle(**term))
+        # SessionEnd forgets the session's records
+        self.real_cli("add", "--key", "work:ACME-4:x", "--title", "t", **orca)
+        self.assertFalse(self.idle(**term))
+        self.run_hook("end", {"hook_event_name": "SessionEnd"}, **term)
+        self.assertTrue(self.idle(**term))
+
+    def test_outside_claude_nothing_is_recorded(self):
+        self.real_cli("add", "--key", "work:ACME-5:x", "--title", "t", CLAUDE_CODE_SESSION_ID="sess-1234-abcd")
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you", "session-items")))
+        self.real_cli("add", "--key", "work:ACME-5:x", "--title", "t", CLAUDECODE="1", CLAUDE_CODE_SESSION_ID="..")
+        self.assertTrue(self.idle())
 
 
 if __name__ == "__main__":

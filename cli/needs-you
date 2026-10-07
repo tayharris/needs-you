@@ -701,6 +701,78 @@ def reap_leases(cfg: Config, verbose: bool = False) -> int:
     return reaped
 
 
+# The agent's own open items, per Claude Code session. When an agent in a session posts a
+# `needs` item (the skill), the hook skips its generic "Claude is waiting for you" card for
+# that session while the item is open: one card for one wait. The session is named as the
+# hook names it: $ORCA_TERMINAL_HANDLE in Orca, else Claude's session id
+# ($CLAUDE_CODE_SESSION_ID in the agent's commands, session_id in the hook input).
+SESSION_ITEM_MAX_HOURS = 48.0
+
+
+def session_items_dir() -> str:
+    return os.path.join(state_dir(), "session-items")
+
+
+def claude_session() -> str:
+    """This command's Claude Code session, sanitized like the hook's id; "" outside one."""
+    if not os.environ.get("CLAUDECODE"):
+        return ""
+    raw = os.environ.get("ORCA_TERMINAL_HANDLE") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+    sess = re.sub(rb"[^A-Za-z0-9._-]", b"_", raw.encode("utf-8"))[:80].decode("ascii")
+    return sess if sess.strip(".") else ""  # never "." or ".."
+
+
+def _prune_session_items(base: str) -> None:
+    """Drop expired records, and session directories left empty (sessions that ended)."""
+    now = time.time()
+    for sess in os.listdir(base):
+        d = os.path.join(base, sess)
+        if os.path.islink(d) or not os.path.isdir(d):
+            continue
+        for name in os.listdir(d):
+            p = os.path.join(d, name)
+            try:
+                exp = float(_read_lease(p).get("expires") or 0)
+            except ValueError:
+                exp = 0
+            if exp < now:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        try:
+            os.rmdir(d)  # only when empty
+        except OSError:
+            pass
+
+
+def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None) -> None:
+    """Record (open_) or forget an item key for the hook. Never raises."""
+    try:
+        name = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+        base = session_items_dir()
+        if not open_:  # resolved, or now done/info: no session waits on it any more
+            for sess in os.listdir(base) if os.path.isdir(base) else []:
+                try:
+                    os.remove(os.path.join(base, sess, name))
+                except OSError:
+                    pass
+            return
+        sess = claude_session()
+        if not sess:
+            return
+        hours = expires_in if expires_in is not None and 0 < expires_in < SESSION_ITEM_MAX_HOURS \
+            else SESSION_ITEM_MAX_HOURS
+        if os.path.isdir(base):
+            _prune_session_items(base)
+        d = os.path.join(base, sess)
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        _write_atomic(os.path.join(d, name), ("key=%s\nexpires=%d\n" % (clean(key), time.time() + hours * 3600))
+                      .encode("utf-8"), 0o600)
+    except (OSError, ValueError):
+        pass
+
+
 def _move_failed(path: str) -> None:
     d = os.path.join(os.path.dirname(path), "failed")
     os.makedirs(d, mode=0o700, exist_ok=True)
@@ -917,7 +989,10 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return health(cfg, remaining)
     if args.cmd == "resolve":
         body = {"key": args.key} if args.key else {"id": args.id}
-        return deliver(cfg, "POST", "/v1/items/resolve", body, args.quiet, args.json)
+        rc = deliver(cfg, "POST", "/v1/items/resolve", body, args.quiet, args.json)
+        if rc == 0 and args.key:
+            note_session_item(args.key, open_=False)
+        return rc
     kind = args.kind if args.cmd == "add" else args.cmd
     if args.link and len(args.link) > 6:
         warn("at most 6 links")
@@ -931,7 +1006,10 @@ def _main(argv: Optional[List[str]] = None) -> int:
     if len(args.steps_json or []) + len(args.step or []) > MAX_STEPS:
         warn("at most %d steps" % MAX_STEPS)
         return 2
-    return deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+    rc = deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+    if rc == 0:
+        note_session_item(args.key, open_=kind == "needs", expires_in=args.expires_in)
+    return rc
 
 
 # ---------------------------------------------------------------------------

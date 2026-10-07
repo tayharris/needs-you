@@ -127,6 +127,25 @@ key="agent:$host:$id"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
 ctx_marker="$state_dir/$id.context"
+# Open `needs` items the agent itself posted from this session (`needs-you add` records them
+# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>).
+items_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items/$id"
+
+# own_item_open: true while the agent's own blocker for this session is open and unexpired.
+# Read-only; the CLI prunes expired records.
+own_item_open() {
+  case "$id" in .|..) return 1 ;; esac
+  [ -d "$items_dir" ] || return 1
+  local f exp now
+  now=$(date +%s)
+  for f in "$items_dir"/*; do
+    [ -f "$f" ] || continue
+    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
+    case "$exp" in ''|*[!0-9]*) continue ;; esac
+    [ "$exp" -gt "$now" ] && return 0
+  done
+  return 1
+}
 
 # The Claude process this hook belongs to: the first ancestor that isn't a
 # shell (Claude Code may start hooks through `sh -c`). `needs-you flush`
@@ -749,9 +768,23 @@ case "$mode" in
     resolve_marker "$marker" "$key"
     resolve_marker "$ctx_marker"
     [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+    # The session is over, so nothing of its waits on input any more. (The agent's own items
+    # stay open on the hub until it, or a later run, resolves them.)
+    case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
     ;;
 
   notify)
+    # One card for one wait: when the agent has posted its own blocker from this session (the
+    # skill), the generic "waiting for input" card would only repeat it. Permission prompts,
+    # questions and errors still post: they are a different thing to act on.
+    case "$(json_str notification_type)" in
+      idle_prompt|agent_needs_input)
+        if own_item_open; then
+          log "notify $key -> skipped: the agent's own item for this session is open"
+          exit 0
+        fi
+        ;;
+    esac
     # Build the item from the hook JSON and call the CLI with an argv list
     # (no shell quoting of untrusted text). Prints what posted it.
     kind=$(run_py notify)

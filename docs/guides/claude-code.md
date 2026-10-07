@@ -57,7 +57,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 
 | Claude Code event | Hook runs | What it does |
 |---|---|---|
-| `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. |
+| `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. An `idle_prompt` or `agent_needs_input` posts nothing while the agent's own blocker from this session is open ([below](#one-card-for-one-wait)). |
 | `PermissionRequest` (any tool) | `notify` | Posts the session's card, titled by the tool: plan approval, a question, the program a command runs, the file an edit changes. Skipped when the request doesn't need your approval. |
 | `StopFailure` | `notify` | Posts the session's card, titled by the API error. |
 | `UserPromptSubmit`, `PostToolUse` | `resolve` | Resolves the session's card, if it posted one. |
@@ -90,6 +90,12 @@ The body holds Claude's notification text, the directory and host, and where the
 - **Keys:** `agent:<host>:<session>` for the session's card, `agent:<host>:<session>:context` for the context card. `<session>` is the Orca terminal handle in Orca, otherwise Claude's session id. Re-posting updates the card, so a session that asks five times shows one card.
 - **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, or the end of the session. The context card clears once the context is back under the threshold.
 - **Killed sessions** never send `SessionEnd`. The hook records the Claude process id in `~/.local/state/needs-you/claude-hooks/`; the 5-minute `needs-you flush` the installer schedules resolves the card once that process is gone. As a backstop, every card expires 48 hours after its last post ([details](claude-code-everywhere.md#when-a-session-dies)).
+
+### One card for one wait
+
+With the skill, an agent that's stuck posts its own blocker ("ACME-123: choose how to unblock the push") and then waits for your answer. Without more, the hooks would add a second card for the same wait, "Claude is waiting for you". They don't: when `needs-you add` (kind `needs`) runs inside a Claude Code session (`$CLAUDECODE` set), the CLI notes the key under `~/.local/state/needs-you/session-items/<session>/`, where `<session>` is the Orca terminal handle or `$CLAUDE_CODE_SESSION_ID`, the same id the hooks use. While a noted item is open, the hooks skip `idle_prompt` and `agent_needs_input` for that session. Permission prompts, plan approvals, questions and API errors still post: they're different things to act on.
+
+The note goes away when the item is resolved by key (`needs-you resolve --key`, from any session or a later run), re-posted as `done` or `info`, expires (its `--expires-in`, at most 48 hours), or the session ends. An item resolved by `--id` or from another machine keeps the note until it expires or the session ends; until then that session's "waiting" card stays off.
 
 The hooks always exit 0 and print nothing, so they can't block a tool call, keep Claude from stopping, or put text into the conversation. When no hub answers, the CLI queues the post and the flush sends it later.
 
