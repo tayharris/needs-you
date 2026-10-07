@@ -36,7 +36,7 @@ The installer downloads `install-hooks.sh`, `needs-you-hook.sh` and `hooks.json`
 
 With `--alerts`, the installer also writes `NEEDS_YOU_AGENT_ALERTS=1` into `~/.config/needs-you/env`. With `--skill`, it writes `~/.claude/skills/needs-you/SKILL.md`. Restart open Claude Code sessions (or open `/hooks` in them) to pick up the hooks.
 
-`--claude-hooks project` writes the same into the current directory instead: `./.claude/hooks/needs-you-hook.sh` and `./.claude/settings.json`, with commands that start `"$CLAUDE_PROJECT_DIR/.claude/hooks/..."` so the file works for everyone who clones the repo once it's committed. `needs-you update` and `needs-you doctor` only look at the user-level install.
+`--claude-hooks project` writes the same into the current directory instead: `./.claude/hooks/needs-you-hook.sh` and `./.claude/settings.json`, with commands that start `"$CLAUDE_PROJECT_DIR/.claude/hooks/..."` so the file works for everyone who clones the repo once it's committed. The installer records each project install in `~/.local/state/needs-you/claude-projects.json`. `needs-you doctor` and `needs-you update` see a project's hooks when you run them inside that project (any directory under it): doctor adds a `claude project hooks` line, and update refreshes the project's hook script and re-merges its entries, as it does for the user level (only for a project this machine installed into: see below).
 
 `scripts/setup-sender.sh` (the manual sender setup) doesn't install the hooks. It writes the same settings (`--alerts` and the rest) to the env file and tells you to run `integrations/claude-code/install-hooks.sh`.
 
@@ -57,7 +57,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 
 | Claude Code event | Hook runs | What it does |
 |---|---|---|
-| `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. |
+| `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. An `idle_prompt` or `agent_needs_input` posts nothing while the agent's own blocker from this session is open ([below](#one-card-for-one-wait)). |
 | `PermissionRequest` (any tool) | `notify` | Posts the session's card, titled by the tool: plan approval, a question, the program a command runs, the file an edit changes. Skipped when the request doesn't need your approval. |
 | `StopFailure` | `notify` | Posts the session's card, titled by the API error. |
 | `UserPromptSubmit`, `PostToolUse` | `resolve` | Resolves the session's card, if it posted one. |
@@ -76,7 +76,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Any other permission prompt | **Claude needs permission for <tool>: my-repo** (MCP tools as `<server> <tool>`) |
 | Idle, waiting for your input | **Claude is waiting for you: my-repo** |
 | MCP server asks for input / a sign-in | **Claude needs an answer: my-repo** / **Claude needs you to sign in: my-repo** |
-| Claude Code's `agent_needs_input` notification | **Agent needs input: my-repo** |
+| Claude Code's `agent_needs_input` notification | **Claude needs your input: my-repo** |
 | Usage limit, won't resume on its own | **Claude hit its usage limit: my-repo** |
 | Turn ended on an API error | **Claude hit a rate limit**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
 | Context at 80% or more (low priority, a card of its own) | **Claude's context is 85% full: my-repo**, suggesting `/compact` or `/clear` |
@@ -90,6 +90,14 @@ The body holds Claude's notification text, the directory and host, and where the
 - **Keys:** `agent:<host>:<session>` for the session's card, `agent:<host>:<session>:context` for the context card. `<session>` is the Orca terminal handle in Orca, otherwise Claude's session id. Re-posting updates the card, so a session that asks five times shows one card.
 - **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, or the end of the session. The context card clears once the context is back under the threshold.
 - **Killed sessions** never send `SessionEnd`. The hook records the Claude process id in `~/.local/state/needs-you/claude-hooks/`; the 5-minute `needs-you flush` the installer schedules resolves the card once that process is gone. As a backstop, every card expires 48 hours after its last post ([details](claude-code-everywhere.md#when-a-session-dies)).
+
+### One card for one wait
+
+With the skill, an agent that's stuck posts its own blocker ("ACME-123: choose how to unblock the push") and then waits for your answer. Without more, the hooks would add a second card for the same wait, "Claude is waiting for you". They don't: when `needs-you add` (kind `needs`) runs inside a Claude Code session (`$CLAUDECODE` set), the CLI notes the key under `~/.local/state/needs-you/session-items/<session>/`, where `<session>` is the Orca terminal handle or `$CLAUDE_CODE_SESSION_ID`, the same id the hooks use. While a noted item is open, the hooks skip `idle_prompt` and `agent_needs_input` for that session. Permission prompts, plan approvals, questions and API errors still post: they're different things to act on.
+
+The note goes away when the item is resolved by key (`needs-you resolve --key`, from any session or a later run), re-posted as `done` or `info`, expires (its `--expires-in`, at most 48 hours), or the session ends. An item resolved by `--id` or from another machine keeps the note until it expires or the session ends; until then that session's "waiting" card stays off.
+
+Codex, Gemini CLI and opencode don't tell the agent's commands their session id, so for them this works only in Orca, where the terminal handle names the session for both the CLI and the hook: their "turn ended" card is skipped the same way. Outside Orca they get both cards.
 
 The hooks always exit 0 and print nothing, so they can't block a tool call, keep Claude from stopping, or put text into the conversation. When no hub answers, the CLI queues the post and the flush sends it later.
 
@@ -108,7 +116,7 @@ Installed hooks do nothing until a session is opted in, so everyday interactive 
 NEEDS_YOU_AGENT_ALERTS=1 claude      # one session
 ```
 
-The environment wins over the file. A good pattern: leave it off on your laptop, turn it on for the VMs where agents run unattended.
+The environment wins over the file. The hooks read the same env file as the CLI: `$XDG_CONFIG_HOME/needs-you/env` when `XDG_CONFIG_HOME` is set (`~/.config/needs-you/env` otherwise), or the file `NEEDS_YOU_CONFIG` names; `NEEDS_YOU_ENV_FILE` points only the hooks somewhere else. A good pattern: leave it off on your laptop, turn it on for the VMs where agents run unattended.
 
 ## Options
 
@@ -151,11 +159,12 @@ needs-you: use key prefix `acme:` and context `work` for this repo.
 needs-you doctor
 ```
 
-It's read-only and never posts. The two Claude Code lines:
+It's read-only and never posts. The Claude Code lines:
 
 | Line | OK means | Otherwise |
 |---|---|---|
 | `claude hooks` | `~/.claude/hooks/needs-you-hook.sh` exists, is executable and current, and `~/.claude/settings.json` references it. The line also says whether alerts are on (and where that's set), the context alert threshold, and any SSH alias or link template. | `INFO` not installed; `WARN` with the problem (script missing, not executable, not referenced, or an old hook) and the command to re-run. If alerts are off, the hint gives the line to turn them on. |
+| `claude project hooks` | Only when run inside a project with project-level hooks: the project's `.claude/hooks/needs-you-hook.sh` exists, is executable and current, and which of `.claude/settings.json` / `settings.local.json` reference it. | `WARN` with the problem and the command to fix it (`needs-you update` there), or that the settings weren't installed from this machine (a repo that ships them), which `needs-you update` leaves alone. |
 | `claude skill` | `~/.claude/skills/needs-you/SKILL.md` exists. | `INFO` not installed (optional). |
 
 `needs-you doctor --json` prints the same for an agent. Then post a fake permission prompt and clear it:
@@ -176,16 +185,10 @@ Add `NEEDS_YOU_HOOK_LOG=/dev/stderr` to either line to see what the hook did. No
 | Quiet one session | Start it with `NEEDS_YOU_AGENT_ALERTS=0 claude`. |
 | Quiet every session here, keep the hooks | Set `NEEDS_YOU_AGENT_ALERTS=0` in `~/.config/needs-you/env` (or delete the `=1` line; Orca sessions then still post). |
 | Stop only the context card | `NEEDS_YOU_CONTEXT_ALERT_PCT=0` in the env file. |
-| Remove the hooks | `integrations/claude-code/install-hooks.sh --uninstall` from a checkout (add `--project DIR [--local]` for a project install). It backs up `settings.json`, removes only the needs-you entries, and deletes `~/.claude/hooks/needs-you-hook.sh` unless another settings file next to it still uses it. Restart open sessions. |
+| Remove the hooks | `needs-you uninstall-hooks`. It works offline (no hub, no invite link) and removes the user-level hooks, the project hooks covering the current directory, and every project install recorded in `~/.local/state/needs-you/claude-projects.json`. With no option it also removes the Codex and Gemini CLI hooks and the opencode plugin; `--user`, `--project [DIR]`, `--codex`, `--gemini` or `--opencode` pick some; `--dry-run` only says what it would change. For each settings file it backs up the file (`.bak-<timestamp>`), removes only the needs-you entries, and deletes the copied `needs-you-hook.sh` once no settings file next to it uses it. Restart open sessions. From a checkout, `integrations/claude-code/install-hooks.sh --uninstall [--project DIR [--local]]` does the same for one settings file. |
 | Remove the skill | `rm -rf ~/.claude/skills/needs-you` |
-| Remove everything needs-you put on this machine | `curl -fsSL <join_url>/install.sh \| bash -s -- --uninstall` with any invite link from this hub that hasn't expired or been revoked: the CLI, the env file, the flush schedule, the PATH line, the state directory, the skill and the user-level hooks. |
+| Remove everything needs-you put on this machine | `curl -fsSL <join_url>/install.sh \| bash -s -- --uninstall` with any invite link from this hub that hasn't expired or been revoked: the CLI, the env file, the flush schedule, the PATH line, the state directory, the skill and the hooks (user level and recorded projects, as `needs-you uninstall-hooks` does). |
 
-Without a checkout, fetch the uninstaller from your hub:
+The invite installer's `--uninstall` runs `needs-you uninstall-hooks` before it deletes the CLI (with a CLI from before `uninstall-hooks` it downloads `install-hooks.sh` from the hub instead, for the user level only). The installer itself comes from the hub, so with an expired link or a hub that's gone, run `needs-you uninstall-hooks` and then remove the rest by hand ([Removing a sender](add-a-sender.md#removing-a-sender)). Then revoke the machine's token.
 
-```bash
-. ~/.config/needs-you/env; d=$(mktemp -d)
-curl -fsS "$NEEDS_YOU_URL/dl/install-hooks.sh" -o "$d/install-hooks.sh"
-bash "$d/install-hooks.sh" --uninstall; rm -rf "$d"
-```
-
-The invite installer's `--uninstall` downloads the same script from the hub to remove the hooks. If the hub doesn't answer, it says so and leaves the hooks in place; remove them with one of the commands above. It doesn't touch project-level installs. Then revoke the machine's token ([Removing a sender](add-a-sender.md#removing-a-sender)).
+A project's `.claude` is part of the repo, so needs-you treats it as untrusted: its settings are only read as data (never run), `needs-you update` only refreshes a project this machine installed into (recorded by `install-hooks.sh --project`), and nothing is written or deleted there through a symlink.

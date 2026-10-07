@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import time
 import unittest
 
-from support import (PEER_SECRET, HubTestCase, hubmod, request, snapshot, token_snapshot,
+from support import (PEER_SECRET, HubTestCase, garbage_server, hubmod, request, snapshot, token_snapshot,
                      wait_until)
 
 
@@ -37,6 +38,57 @@ class Mesh(HubTestCase):
                 print(h.hub_id, [(i["id"][-6:], i["key"], i["status"], i["title"]) for i in snapshot(h)],
                       [h.peer_status(p) for p in h.cfg["peers"]])
         self.assertTrue(ok, "hubs did not converge")
+
+
+class WorkerSurvives(Mesh):
+    def test_broken_peer_responses_dont_kill_the_worker(self):
+        """A peer URL that speaks something other than HTTP, cuts a response short, or answers
+        with JSON of the wrong shape raises outside (OSError, ValueError). The per-peer thread
+        must log it and retry, not die (replication to that peer would stop until restart)."""
+        payloads = {
+            "not http": b"SSH-2.0-OpenSSH_9.6\r\n",
+            "truncated": b"HTTP/1.0 200 OK\r\nContent-Length: 500\r\n\r\n{\"ok\"",
+            "json list": b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n[]",
+            "null max_seq": (b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n"
+                             b"{\"hub_id\": \"hub-z\", \"epoch\": \"\", \"max_seq\": null}"),
+        }
+        urls = {name: garbage_server(self, p) for name, p in payloads.items()}
+        a = self.make_hub("hub-a", start=False)
+        a.set_peers(list(urls.values()))
+        a.start()
+        sender, _ = self.tokens(a)
+        request("POST", a.url + "/v1/items", sender, {"key": "k", "title": "t"})
+        for name, url in urls.items():
+            with self.subTest(name):
+                w = a.workers[url]
+                self.assertTrue(wait_until(lambda: a.store.peer_state(url)["last_error"]
+                                           or a.store.peer_state(url)["last_push_ok"], 10))
+                time.sleep(0.5)  # a few more rounds of push and pull
+                self.assertTrue(w.is_alive(), "worker for %s died" % name)
+
+
+class BigBatches(Mesh):
+    def test_push_batches_stay_under_the_peer_body_limit(self):
+        """200 outbox rows of large items (non-ASCII text is \\u-escaped on the wire, 6 bytes
+        a character) can exceed the receiver's 8 MiB /v1/replicate limit. The receiver says
+        413 every time, the same rows are retried forever and the push to that peer is stuck."""
+        a, b = self.mesh(["hub-a", "hub-b"], start=False)
+        url = "https://ci.example/" + "x" * 1950
+        cjk = "漢" * 199
+        for i in range(200):
+            a.store.upsert_item(hubmod.validate_item_input({
+                "key": "big-%d" % i, "title": "big %d" % i, "body": "字" * 2000,
+                "links": [{"label": "L%d" % n, "url": url} for n in range(6)],
+                "steps": [{"text": cjk, "link": {"label": "S", "url": url}} for _ in range(10)],
+            }), None, 0, 0)
+        rows = a.store.outbox_batch(b.url, 200)
+        items, _t, _i = a.store.records_for(rows)
+        size = len(json.dumps({"items": [hubmod.item_wire(r) for r in items]}))
+        self.assertGreater(size, hubmod.MAX_REPLICATE_BYTES)  # the premise
+        a.start()
+        b.start()
+        self.assertTrue(wait_until(lambda: a.store.outbox_pending(b.url) == 0, 20),
+                        a.peer_status(b.url))
 
 
 class Convergence(Mesh):

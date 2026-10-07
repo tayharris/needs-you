@@ -11,6 +11,17 @@
 #                               resolve this process's earlier cards
 #   needs-you-hook.sh end       SessionEnd: resolve the session's cards
 #
+# A second argument names the agent. Default: claude.
+#   codex    OpenAI Codex CLI (integrations/codex/, ~/.codex/hooks.json):
+#            PermissionRequest and Stop (the turn ended) call `notify`.
+#   gemini   Gemini CLI (integrations/gemini/, ~/.gemini/settings.json):
+#            Notification (ToolPermission) and AfterAgent call `notify`. Gemini
+#            waits for every hook, so the hook reads its input and finishes the
+#            work in the background.
+#   opencode opencode, through integrations/opencode/needs-you.js (a plugin that
+#            starts this hook with a small JSON object): PermissionRequest,
+#            Question and Stop (the session went idle) call `notify`.
+#
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
 # it can (VS Code folder, Remote-SSH window, the VS Code Claude tab, the Orca
@@ -22,7 +33,9 @@
 #   ORCA_TERMINAL_HANDLE is set       session started by Orca
 # NEEDS_YOU_AGENT_ALERTS=0 turns it off even inside Orca.
 #
-# Optional settings (environment, or lines in ~/.config/needs-you/env):
+# Optional settings (environment, or lines in the sender env file: the same
+# file the CLI reads, $NEEDS_YOU_CONFIG or $XDG_CONFIG_HOME/needs-you/env,
+# by default ~/.config/needs-you/env; NEEDS_YOU_ENV_FILE overrides it here):
 #   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: NEEDS_YOU_DEFAULT_CONTEXT, else work)
 #   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
@@ -58,6 +71,8 @@
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
+#   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode: 0 = no card when a turn ends,
+#                             just approval prompts (default: on)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -66,11 +81,19 @@ set +e
 trap 'exit 0' INT TERM HUP
 
 mode=${1:-}
+case "${2:-}" in
+  codex) agent=codex ;;
+  gemini) agent=gemini ;;
+  opencode) agent=opencode ;;
+  *) agent=claude ;;
+esac
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
-# The environment wins over the file.
-env_file="${NEEDS_YOU_ENV_FILE:-$HOME/.config/needs-you/env}"
+# The environment wins over the file. Found the way the CLI finds it
+# (NEEDS_YOU_CONFIG, else $XDG_CONFIG_HOME/needs-you/env, else ~/.config/...),
+# so `--alerts` on a machine with XDG_CONFIG_HOME set isn't silently ignored.
+env_file="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
 file_val() {
   [ -r "$env_file" ] || return 0
   sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$env_file" | tail -n 1 |
@@ -87,9 +110,17 @@ esac
 
 input=$(cat 2>/dev/null)
 
+# Gemini CLI waits for each hook (and reads its stdout and stderr as JSON): hand
+# the work to a background copy with no stdio and return at once. The copy
+# starts the lease search from this hook's parent.
+if [ "$agent" = gemini ] && [ -z "${NY_HOOK_BG:-}" ]; then
+  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=$PPID bash "$0" "$mode" gemini >/dev/null 2>&1 &
+  exit 0
+fi
+
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
-           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW; do
+           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -123,12 +154,31 @@ key="agent:$host:$id"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
 ctx_marker="$state_dir/$id.context"
+# Open `needs` items the agent itself posted from this session (`needs-you add` records them
+# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>).
+items_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items/$id"
+
+# own_item_open: true while the agent's own blocker for this session is open and unexpired.
+# Read-only; the CLI prunes expired records.
+own_item_open() {
+  case "$id" in .|..) return 1 ;; esac
+  [ -d "$items_dir" ] || return 1
+  local f exp now
+  now=$(date +%s)
+  for f in "$items_dir"/*; do
+    [ -f "$f" ] || continue
+    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
+    case "$exp" in ''|*[!0-9]*) continue ;; esac
+    [ "$exp" -gt "$now" ] && return 0
+  done
+  return 1
+}
 
 # The Claude process this hook belongs to: the first ancestor that isn't a
 # shell (Claude Code may start hooks through `sh -c`). `needs-you flush`
 # resolves the card once that pid is gone or reused (different start time).
 agent_pid() {
-  local p=$PPID n=0 comm
+  local p=${NY_HOOK_PPID:-$PPID} n=0 comm
   while [ "$n" -lt 8 ] && [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null; do
     comm=$(ps -o comm= -p "$p" 2>/dev/null) || return 0
     case "${comm##*/}" in
@@ -183,6 +233,11 @@ resolve_marker() {
   [ -n "$k" ] || k=${2:-}
   rm -f "$1"
   [ -n "$k" ] || return 0
+  if [ "${resolve_bg:-}" = 1 ]; then
+    ( "$cli" resolve --key "$k" ) </dev/null >/dev/null 2>&1 &
+    log "resolve $k (background)"
+    return 0
+  fi
   "$cli" resolve --key "$k" </dev/null >/dev/null 2>&1
   log "resolve $k -> $?"
 }
@@ -193,12 +248,14 @@ run_py() {
   lease
   NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
-  NY_PID=$lease_pid NY_START=$lease_start \
+  NY_PID=$lease_pid NY_START=$lease_start NY_AGENT=$agent \
   python3 - 2>/dev/null <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
+AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini", "opencode") else "claude"
+AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -400,7 +457,8 @@ def make_links():
         return links
     # No template: the deepest editor links this machine can name.
     # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
-    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode" and re.match(r"^[A-Za-z0-9-]{8,64}$", session):
+    if (AGENT == "claude" and os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"
+            and re.match(r"^[A-Za-z0-9-]{8,64}$", session)):
         links.append("Claude=vscode://anthropic.claude-code/open?session=" + session)
     if not cwd.startswith("/"):
         return links
@@ -420,7 +478,7 @@ def base_args(key, title, body, priority):
         args += ["--context", context]
     # --opt=value: a title, body or project starting with "-" isn't taken for an option
     args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
-             "--agent", "claude-code", "--project=" + project]
+             "--agent", AGENT_ID, "--project=" + project]
     try:
         expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
     except ValueError:
@@ -494,10 +552,111 @@ def tool_label(tool):
 
 
 # ---------------------------------------------------------------- notify
+PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
+
+
+def codex_card():
+    """(kind, what, msg) for a Codex hook event, or None for no card."""
+    if event == "PermissionRequest":
+        tool = field("tool_name")
+        ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+        if tool in ("Bash", "shell", "exec_command", "local_shell"):
+            word = command_word(ti.get("command") if isinstance(ti.get("command"), str) else "")
+            what = "Codex wants to run %s" % word if word else "Codex wants to run a command"
+        elif tool == "apply_patch":
+            cmd = ti.get("command") if isinstance(ti.get("command"), str) else ""
+            names = [file_name(m.strip()) for m in PATCH_FILE.findall(cmd[:200000])]
+            names = [n for n in names if n]
+            if len(names) == 1:
+                what = "Codex wants to edit %s" % names[0]
+            elif names:
+                what = "Codex wants to edit %d files" % len(set(names))
+            else:
+                what = "Codex wants to edit files"
+        else:
+            what = "Codex needs permission for %s" % tool_label(tool)
+        return "permission", what, "Codex is asking to use %s." % tool_label(tool)
+    if event == "Stop":
+        if not turn_cards():
+            return None
+        return "notify", "Codex is waiting for you", "Codex finished its turn and is waiting for your next message."
+    return None
+
+
+def turn_cards():
+    return (os.environ.get("NEEDS_YOU_AGENT_TURN_CARDS") or "").lower() not in ("0", "false", "no", "off")
+
+
+def gemini_card():
+    """(kind, what, msg) for a Gemini CLI hook event, or None for no card. A ToolPermission
+    notification's details are Gemini's confirmation: type exec (rootCommand), edit
+    (fileName), mcp (serverName, toolName) or info."""
+    if event == "Notification":
+        if ntype != "ToolPermission":
+            return None
+        d = data.get("details") if isinstance(data.get("details"), dict) else {}
+        t = d.get("type")
+        if t == "exec":
+            word = command_word(d.get("rootCommand") if isinstance(d.get("rootCommand"), str) else "")
+            what = "Gemini wants to run %s" % word if word else "Gemini wants to run a command"
+        elif t == "edit":
+            name = file_name(d.get("fileName") or d.get("filePath"))
+            what = "Gemini wants to edit %s" % name if name else "Gemini wants to edit a file"
+        elif t == "mcp":
+            server = d.get("serverName") if isinstance(d.get("serverName"), str) else ""
+            tool = d.get("toolName") if isinstance(d.get("toolName"), str) else ""
+            what = "Gemini needs permission for %s" % tool_label("mcp__%s__%s" % (server, tool))
+        elif t == "info":
+            what = "Gemini wants to fetch a page"
+        else:
+            what = "Gemini needs your approval"
+        return "permission", what, "Gemini is waiting for you to approve a tool call."
+    if event == "AfterAgent":
+        if not turn_cards():
+            return None
+        return "notify", "Gemini is waiting for you", "Gemini finished its turn and is waiting for your next message."
+    return None
+
+
+def opencode_card():
+    """(kind, what, msg) for an event the opencode plugin forwards, or None. A permission
+    request carries opencode's permission name and its patterns (for bash, the command; for
+    edits, the paths): the card takes at most the program or a basename from them."""
+    if event == "PermissionRequest":
+        perm = field("tool_name")
+        pats = data.get("patterns") if isinstance(data.get("patterns"), list) else []
+        first = pats[0] if pats and isinstance(pats[0], str) else ""
+        if perm == "bash":
+            word = command_word(first)
+            what = "opencode wants to run %s" % word if word else "opencode wants to run a command"
+        elif perm in ("edit", "write", "patch"):
+            name = file_name(first)
+            what = "opencode wants to edit %s" % name if name else "opencode wants to edit a file"
+        elif perm == "webfetch":
+            what = "opencode wants to fetch a page"
+        elif perm == "external_directory":
+            what = "opencode wants to use a folder outside the project"
+        else:
+            what = "opencode needs permission for %s" % tool_label(perm)
+        return "permission", what, "opencode is waiting for you to allow or deny it."
+    if event == "Question":
+        return "notify", "opencode asked you a question", "opencode is waiting for your answer."
+    if event == "Stop":
+        if not turn_cards():
+            return None
+        return "notify", "opencode is waiting for you", "opencode finished its turn and is waiting for your next message."
+    return None
+
+
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if event == "PermissionRequest":
+    if AGENT in ("codex", "gemini", "opencode"):
+        card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card}[AGENT]()
+        if card is None:
+            return 3
+        kind, what, msg = card
+    elif event == "PermissionRequest":
         if data.get("requires_user_approval") is False:
             return 3
         kind = "permission"
@@ -544,7 +703,7 @@ def notify():
             "idle_prompt": "Claude is waiting for you",
             "elicitation_dialog": "Claude needs an answer",
             "elicitation_url_dialog": "Claude needs you to sign in",
-            "agent_needs_input": "Agent needs input",
+            "agent_needs_input": "Claude needs your input",
             "quota_auto_resume_disabled": "Claude hit its usage limit",
         }.get(ntype, "Claude needs you")
         msg = oneline(data.get("message"), 400)
@@ -702,6 +861,8 @@ PY
 
 case "$mode" in
   resolve)
+    # Codex's Interrupt hook is synchronous with a 1-3 s limit: don't wait on the hub.
+    [ "$agent" = codex ] && resolve_bg=1
     resolve_marker "$marker" "$key"
     ;;
 
@@ -717,7 +878,7 @@ case "$mode" in
   start)
     # Remember the model (the transcript has no [1m] suffix) for the context check.
     model=$(json_str model)
-    if [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
+    if [ "$agent" = claude ] && [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
       printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
       find "$state_dir" -name '.model-*' -mtime +7 -exec rm -f {} + 2>/dev/null
     fi
@@ -742,12 +903,36 @@ case "$mode" in
     ;;
 
   end)
-    resolve_marker "$marker" "$key"
-    resolve_marker "$ctx_marker"
-    [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+    if [ "$agent" = codex ]; then
+      # Codex runs SessionEnd synchronously with a 1-3 s limit: resolve in the
+      # background (the CLI queues if no hub answers; flush reaps the lease if
+      # this is cut short).
+      resolve_bg=1
+      resolve_marker "$marker" "$key"
+    else
+      resolve_marker "$marker" "$key"
+      resolve_marker "$ctx_marker"
+      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+    fi
+    # The session is over, so nothing of its waits on input any more. (The agent's own items
+    # stay open on the hub until it, or a later run, resolves them.)
+    case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
     ;;
 
   notify)
+    # One card for one wait: when the agent has posted its own blocker from this session (the
+    # skill), the generic "waiting for input" card would only repeat it. Permission prompts,
+    # questions and errors still post: they are a different thing to act on.
+    # The same wait in each agent: Claude's idle / needs-input notifications, and the "turn
+    # ended" card of Codex (Stop), Gemini (AfterAgent) and opencode (Stop: session idle).
+    case "$agent:$(json_str notification_type):$(json_str hook_event_name)" in
+      claude:idle_prompt:*|claude:agent_needs_input:*|codex::Stop|opencode::Stop|gemini::AfterAgent)
+        if own_item_open; then
+          log "notify $key -> skipped: the agent's own item for this session is open"
+          exit 0
+        fi
+        ;;
+    esac
     # Build the item from the hook JSON and call the CLI with an argv list
     # (no shell quoting of untrusted text). Prints what posted it.
     kind=$(run_py notify)

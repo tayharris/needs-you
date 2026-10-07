@@ -109,6 +109,10 @@ class ValidateItemInput(unittest.TestCase):
          "steps[0].link.label is required"),
         ("step link url too long", with_(steps=[step("a", link=link("https://a/" + "x" * 2000))]),
          "longer than 2000"),
+        # urlsplit raises on an unbalanced '[' in the host: a 400, never a 500
+        ("link unbalanced bracket", with_(links=[link("https://[x/y")]), "links[0].url"),
+        ("step link unbalanced bracket", with_(steps=[step("a", link=link("vscode://[::1"))]),
+         "steps[0].link.url"),
     ]
 
     def test_table(self):

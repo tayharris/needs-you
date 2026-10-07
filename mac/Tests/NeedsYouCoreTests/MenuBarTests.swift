@@ -133,6 +133,15 @@ final class MenuBarTests: XCTestCase {
         XCTAssertEqual(ExpandFocus.target(clicked: nil, items: items, lastOpenedAt: opened), "new2")
         XCTAssertNil(ExpandFocus.target(clicked: nil, items: items, lastOpenedAt: now))
         XCTAssertNil(ExpandFocus.target(clicked: nil, items: items, lastOpenedAt: nil))
+
+        // A card whose content changed since then counts as new on the pill (ItemStore.freshAt),
+        // so the panel opens at it too.
+        var changed = old
+        changed.contentUpdatedAt = now.addingTimeInterval(-10)
+        let store = ItemStore(items: [changed, new1])
+        XCTAssertEqual(store.newNeedsCount(in: .work, since: opened, now: now), 2)
+        XCTAssertEqual(ExpandFocus.target(clicked: nil, items: [changed, new1], lastOpenedAt: opened,
+                                          freshAt: store.freshAt), "old")
     }
 
     func testPanelMenuCheckmark() {

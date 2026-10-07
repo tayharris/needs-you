@@ -11,10 +11,11 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
-from support import ROOT, hubmod
+from support import CLI, ROOT, hubmod
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -47,6 +48,7 @@ class HookHarness(unittest.TestCase):
                "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
                "NEEDS_YOU_HOOK_PLATFORM": "linux"}
         env.update(extra)
+        env = {k: v for k, v in env.items() if v is not None}  # None: unset it
         payload = {"session_id": "sess-1234-abcd", "cwd": self.cwd}
         payload.update(data)
         r = subprocess.run([BASH, HOOK, mode], input=json.dumps(payload), env=env,
@@ -180,6 +182,10 @@ class FailureTests(HookHarness):
                                  "message": "Usage limit reached"})
         self.assertEqual(self.opt(self.last(), "--title"), "Claude hit its usage limit: my-repo")
 
+    def test_agent_needs_input_title_names_claude(self):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "agent_needs_input"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude needs your input: my-repo")
+
     def test_hooks_json_registers_the_events(self):
         with open(HOOKS_JSON) as fh:
             hooks = json.load(fh)["hooks"]
@@ -217,6 +223,30 @@ class LinkTests(HookHarness):
         with open(os.path.join(conf, "env"), "w") as fh:
             fh.write("NEEDS_YOU_SSH_ALIAS=devbox\n")
         self.assertEqual(self.notify_links(), ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+
+    def test_env_file_follows_xdg_config_home_like_the_cli(self):
+        # --alerts writes NEEDS_YOU_AGENT_ALERTS=1 where the CLI looks; the hook must look there too.
+        xdg = os.path.join(self.home, "xdg")
+        conf = os.path.join(xdg, "needs-you")
+        os.makedirs(conf)
+        with open(os.path.join(conf, "env"), "w") as fh:
+            fh.write("NEEDS_YOU_AGENT_ALERTS=1\nNEEDS_YOU_SSH_ALIAS=devbox\n")
+        env = {"NEEDS_YOU_AGENT_ALERTS": None}  # not in the environment: only the file opts in
+        data = {"hook_event_name": "Notification", "notification_type": "idle_prompt"}
+        self.run_hook("notify", data, **env)
+        self.assertEqual(self.calls(), [])  # ~/.config/needs-you/env doesn't exist
+        self.run_hook("notify", data, XDG_CONFIG_HOME=xdg, **env)
+        self.assertEqual(self.links(self.last()), ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+        # NEEDS_YOU_CONFIG (the CLI's override) wins over XDG, NEEDS_YOU_ENV_FILE over both
+        other = os.path.join(self.home, "other.env")
+        with open(other, "w") as fh:
+            fh.write("NEEDS_YOU_AGENT_ALERTS=0\n")
+        n = len(self.calls())
+        self.run_hook("notify", data, XDG_CONFIG_HOME=xdg, NEEDS_YOU_CONFIG=other, **env)
+        self.assertEqual(len(self.calls()), n)
+        self.run_hook("notify", data, XDG_CONFIG_HOME=xdg, NEEDS_YOU_CONFIG=other,
+                      NEEDS_YOU_ENV_FILE=os.path.join(conf, "env"), **env)
+        self.assertEqual(len(self.calls()), n + 1)
 
     def test_path_is_percent_encoded(self):
         self.cwd = os.path.join(self.home, "my repo")
@@ -484,6 +514,100 @@ class ContextTests(HookHarness):
         self.assertEqual(m["pid"], str(os.getpid()))
         self.assertTrue(m["key"].startswith("agent:"))
         self.assertTrue(m["start"])
+
+
+class OwnItemTests(HookHarness):
+    """One card for one wait: an agent that posted its own blocker from the session (the
+    skill, through the real CLI) gets no extra "Claude is waiting for you" card."""
+
+    def real_cli(self, *args, **env):
+        e = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+             "NEEDS_YOU_URLS": "http://127.0.0.1:9", "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1"}
+        e.update(env)
+        r = subprocess.run([sys.executable, CLI] + list(args), env=e, capture_output=True, text=True,
+                           timeout=60, cwd=self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)  # the hub is down: queued, exit 0
+
+    def idle(self, **extra):
+        before = len(self.calls())
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"}, **extra)
+        return len(self.calls()) > before
+
+    def test_waiting_card_skipped_while_the_agents_item_is_open(self):
+        in_session = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "sess-1234-abcd"}
+        self.real_cli("add", "--key", "work:ACME-1:decide", "--title", "Choose A or B", **in_session)
+        self.assertFalse(self.idle())
+        # agent_needs_input is the same wait; a permission prompt is a different one
+        before = len(self.calls())
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "agent_needs_input"})
+        self.assertEqual(len(self.calls()), before)
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                 "tool_input": {"command": "git push"}})
+        self.assertEqual(len(self.calls()), before + 1)
+        # another session isn't affected
+        self.assertTrue(self.idle(ORCA_TERMINAL_HANDLE="term_0123abcd"))
+        self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})  # clears the permission card
+        self.assertFalse(self.idle())
+        # resolved (from anywhere): the waiting card is back
+        self.real_cli("resolve", "--key", "work:ACME-1:decide")
+        self.assertTrue(self.idle())
+
+    def test_orca_handle_done_expiry_and_session_end(self):
+        orca = {"CLAUDECODE": "1", "ORCA_TERMINAL_HANDLE": "term_0123abcd", "CLAUDE_CODE_SESSION_ID": "x"}
+        term = {"ORCA_TERMINAL_HANDLE": "term_0123abcd"}
+        self.real_cli("add", "--key", "work:ACME-2:x", "--title", "t", **orca)
+        self.assertFalse(self.idle(**term))
+        self.real_cli("done", "--key", "work:ACME-2:x", "--title", "t", **orca)  # no longer needs anyone
+        self.assertTrue(self.idle(**term))
+        # expired records don't count
+        self.real_cli("add", "--key", "work:ACME-3:x", "--title", "t", "--expires-in", "0.0000001", **orca)
+        self.assertTrue(self.idle(**term))
+        # SessionEnd forgets the session's records
+        self.real_cli("add", "--key", "work:ACME-4:x", "--title", "t", **orca)
+        self.assertFalse(self.idle(**term))
+        self.run_hook("end", {"hook_event_name": "SessionEnd"}, **term)
+        self.assertTrue(self.idle(**term))
+
+    def agent_turn_ended(self, agent, event, data=None, **extra):
+        """The agent's card for `event`; True if it posted."""
+        before = len(self.calls())
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
+               "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux",
+               "NY_HOOK_BG": "1"}  # Gemini: run in the foreground, as its background copy does
+        env.update(extra)
+        payload = {"session_id": "agent-sess-1", "cwd": self.cwd, "hook_event_name": event}
+        payload.update(data or {})
+        r = subprocess.run([BASH, HOOK, "notify", agent], input=json.dumps(payload), env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        return len(self.calls()) > before
+
+    def test_other_agents_in_orca_skip_their_turn_ended_card(self):
+        # Codex, Gemini CLI and opencode give their commands no session id; in Orca the
+        # terminal handle names the session for both the CLI and the hook.
+        term = {"ORCA_TERMINAL_HANDLE": "term_0123abcd"}
+        permission = {"codex": ("PermissionRequest", {"tool_name": "Bash"}),
+                      "opencode": ("PermissionRequest", {"tool_name": "bash"}),
+                      "gemini": ("Notification", {"notification_type": "ToolPermission",
+                                                  "details": {"type": "exec", "command": "ls"}})}
+        for agent, event in (("codex", "Stop"), ("gemini", "AfterAgent"), ("opencode", "Stop")):
+            self.assertTrue(self.agent_turn_ended(agent, event, **term), agent)
+            self.real_cli("add", "--key", "work:ACME-6:%s" % agent, "--title", "t", **term)
+            self.assertFalse(self.agent_turn_ended(agent, event, **term), agent)
+            # a permission prompt still posts
+            self.assertTrue(self.agent_turn_ended(agent, permission[agent][0], permission[agent][1], **term), agent)
+            self.real_cli("resolve", "--key", "work:ACME-6:%s" % agent)
+            self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"}, **term)
+            self.assertTrue(self.agent_turn_ended(agent, event, **term), agent)
+        # Outside Orca there's no shared id: both cards, as before.
+        self.real_cli("add", "--key", "work:ACME-7:x", "--title", "t", CODEX_THREAD_ID="agent-sess-1")
+        self.assertTrue(self.agent_turn_ended("codex", "Stop"))
+
+    def test_outside_claude_nothing_is_recorded(self):
+        self.real_cli("add", "--key", "work:ACME-5:x", "--title", "t", CLAUDE_CODE_SESSION_ID="sess-1234-abcd")
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you", "session-items")))
+        self.real_cli("add", "--key", "work:ACME-5:x", "--title", "t", CLAUDECODE="1", CLAUDE_CODE_SESSION_ID="..")
+        self.assertTrue(self.idle())
 
 
 if __name__ == "__main__":

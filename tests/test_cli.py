@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
+import threading
 import time
 import sys
 
-from support import CLI, HubTestCase, free_port, request
+from support import CLI, HubTestCase, free_port, garbage_server, request
 
 
 class CliTestCase(HubTestCase):
@@ -17,7 +19,7 @@ class CliTestCase(HubTestCase):
         self.outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
         self.dead = "http://127.0.0.1:%d" % free_port()
 
-    def run_cli(self, *args, urls=None, token="t", config_file=None, extra_env=None, cli=CLI):
+    def run_cli(self, *args, urls=None, token="t", config_file=None, extra_env=None, cli=CLI, cwd=None):
         env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
                "NEEDS_YOU_HOST": "testbox", "NEEDS_YOU_GH": "none"}
         env.update(extra_env or {})
@@ -25,7 +27,8 @@ class CliTestCase(HubTestCase):
             env["NEEDS_YOU_URL"] = ",".join(urls)
         if token is not None:
             env["NEEDS_YOU_TOKEN"] = token
-        return subprocess.run([sys.executable, cli] + list(args), env=env, capture_output=True,
+        # cwd: a temp dir by default, so project-level hooks in a checkout are never seen
+        return subprocess.run([sys.executable, cli] + list(args), env=env, capture_output=True, cwd=cwd or self.tmp,
                               text=True, timeout=60)
 
     def queued(self):
@@ -97,6 +100,85 @@ class Outbox(CliTestCase):
         self.assertEqual(self.queued(), [])
         self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), 1)
 
+    def test_malformed_queued_entries_move_to_failed(self):
+        """Valid JSON of the wrong shape in the outbox must not crash every later
+        invocation (they all flush first): it goes to failed/ like unreadable JSON."""
+        os.makedirs(self.outbox)
+        bad = ["[]", "null", '{"method": "POST"}', '{"method": 1, "path": "/v1/items"}',
+               '{"method": "POST", "path": "/v1/items", "body": "x"}', "{not json"]
+        for i, text in enumerate(bad):
+            with open(os.path.join(self.outbox, "%020d-%05d.json" % (time.time_ns() + i, 1)), "w") as fh:
+                fh.write(text)
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        r = self.run_cli("add", "--key", "after", "--title", "t", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("created", r.stdout)
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), len(bad))
+        self.assertEqual([i["key"] for i in self.items(hub, reader, "open")], ["after"])
+
+    def test_queued_entries_only_replay_what_the_cli_queues(self):
+        """An outbox file is replayed with this machine's token. Only the two requests the CLI
+        ever queues are sent: a planted `path` like "@evil.example/x" would otherwise turn
+        url + path into http://hub@evil.example/x and hand the token to another host."""
+        caught = []
+
+        class Catch(threading.Thread):
+            daemon = True
+
+            def __init__(self):
+                super().__init__()
+                self.srv = socket.socket()
+                self.srv.bind(("127.0.0.1", 0))
+                self.srv.listen(4)
+
+            def run(self):
+                while True:
+                    try:
+                        conn, _ = self.srv.accept()
+                    except OSError:
+                        return
+                    caught.append(conn.recv(65536))
+                    conn.close()
+
+        evil = Catch()
+        evil.start()
+        self.addCleanup(evil.srv.close)
+        os.makedirs(self.outbox)
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        planted = [
+            {"method": "POST", "path": "@127.0.0.1:%d/steal" % evil.srv.getsockname()[1], "body": {}},
+            {"method": "DELETE", "path": "/v1/tokens/x", "body": None},
+            {"method": "GET", "path": "/v1/items", "body": None},
+            {"method": "POST", "path": "/v1/items?x=1", "body": {"title": "t"}},
+        ]
+        for i, entry in enumerate(planted):
+            with open(os.path.join(self.outbox, "%020d-%05d.json" % (time.time_ns() + i, 1)), "w") as fh:
+                json.dump(entry, fh)
+        r = self.run_cli("flush", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        time.sleep(0.2)
+        self.assertEqual(caught, [], "the token went to another host")
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(len(os.listdir(os.path.join(self.outbox, "failed"))), len(planted))
+
+    def test_failed_dir_symlink_is_not_followed(self):
+        os.makedirs(self.outbox)
+        elsewhere = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(elsewhere)
+        os.symlink(elsewhere, os.path.join(self.outbox, "failed"))
+        with open(os.path.join(self.outbox, "%020d-%05d.json" % (time.time_ns(), 1)), "w") as fh:
+            fh.write("[]")
+        hub = self.make_hub("hub-a")
+        sender, _ = self.tokens(hub)
+        r = self.run_cli("flush", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertEqual(self.queued(), [])
+
     def test_missing_config_still_exits_zero(self):
         r = self.run_cli("add", "--key", "a", "--title", "t", urls=None, token=None)
         self.assertEqual(r.returncode, 0)
@@ -144,6 +226,34 @@ class Failover(CliTestCase):
         self.assertIn("role=sender", r.stdout)
         r = self.run_cli("health", urls=[self.dead], token=sender)
         self.assertEqual(r.returncode, 1)
+
+    def test_broken_http_fails_over_and_queues(self):
+        """A URL that answers with something that isn't HTTP (another service on the port) or
+        cuts the response short raises http.client.HTTPException, which isn't an OSError: the
+        CLI must treat it like a dead hub, not crash with a traceback (hard rule 8)."""
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        for name, payload in (("not http", b"SSH-2.0-OpenSSH_9.6\r\n"),
+                              ("truncated", b"HTTP/1.1 201 Created\r\nContent-Length: 500\r\n\r\n{\"id\"")):
+            with self.subTest(name):
+                bad = garbage_server(self, payload)
+                r = self.run_cli("add", "--key", "g-" + name[:3], "--title", "t", urls=[bad, a.url],
+                                 token=sender)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("created", r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+                r = self.run_cli("add", "--key", "q-" + name[:3], "--title", "t", urls=[bad], token=sender)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("queued", r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
+                r = self.run_cli("health", urls=[bad, a.url], token=sender)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("DOWN", r.stdout)
+                self.assertNotIn("Traceback", r.stderr)
+        # `health` flushed the queued ones through the second URL
+        self.assertEqual(self.queued(), [])
+        self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")),
+                         ["g-not", "g-tru", "q-not", "q-tru"])
 
     def test_urls_precedence(self):
         a = self.make_hub("hub-a")

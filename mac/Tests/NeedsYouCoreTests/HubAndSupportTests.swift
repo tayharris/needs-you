@@ -17,7 +17,57 @@ final class HubClientTests: XCTestCase {
         ("testDateFormats", testDateFormats),
         ("testPollPlannerAlternatesFullAndIncremental", testPollPlannerAlternatesFullAndIncremental),
         ("testMisdirectedErrorNamesTheHostCheck", testMisdirectedErrorNamesTheHostCheck),
+        ("testIncrementalPageKeepsClosedItemsAndServerTime", testIncrementalPageKeepsClosedItemsAndServerTime),
+        ("testFullPageIsOpenOnlyAndAuthoritative", testFullPageIsOpenOnlyAndAuthoritative),
+        ("testTruncatedFullPageIsNotAuthoritative", testTruncatedFullPageIsNotAuthoritative),
     ]
+
+    private static func listJSON(_ items: [(id: String, status: String)], serverTime: String = "2026-10-06T17:04:05.122Z",
+                                 more: Bool = false) -> Data {
+        let rows = items.map {
+            #"{"id":"\#($0.id)","key":"k:\#($0.id)","title":"T","status":"\#($0.status)","created_at":"2026-10-06T10:00:00Z","updated_at":"2026-10-06T10:05:00Z"}"#
+        }
+        return Data(#"{"items":[\#(rows.joined(separator: ","))],"server_time":"\#(serverTime)","hub_id":"hub-a","more":\#(more)}"#.utf8)
+    }
+
+    // docs/API.md "The polling loop": a `since` response holds items in any status, so a
+    // sender's resolve reaches the Mac on the next poll, and `server_time` is the next cursor.
+    func testIncrementalPageKeepsClosedItemsAndServerTime() throws {
+        let since = Date(timeIntervalSince1970: 1_791_280_000)
+        let page = try HubClient.page(from: Self.listJSON([("a", "open"), ("b", "resolved"), ("c", "dismissed")]), since: since)
+        XCTAssertEqual(page.items.map(\.id), ["a", "b", "c"])
+        XCTAssertFalse(page.isFullSnapshot)
+        XCTAssertEqual(page.cursor, HubJSON.parseDate("2026-10-06T17:04:05.122Z"))
+        XCTAssertFalse(page.more)
+
+        // Merged, the resolved one leaves the open set without waiting for a full poll.
+        let t = Date(timeIntervalSince1970: 1_791_280_000)
+        var store = ItemStore(items: [Item(id: "b", key: "k:b", title: "T", createdAt: t)])
+        let result = store.merge(page.items, isFullSnapshot: page.isFullSnapshot, now: t)
+        XCTAssertNil(store.items["b"])
+        XCTAssertEqual(result.removed.map(\.id), ["b"])
+        XCTAssertNil(store.items["c"])
+        XCTAssertNotNil(store.items["a"])
+    }
+
+    func testFullPageIsOpenOnlyAndAuthoritative() throws {
+        let page = try HubClient.page(from: Self.listJSON([("a", "open"), ("b", "resolved")]), since: nil)
+        XCTAssertEqual(page.items.map(\.id), ["a"])   // belt and braces: a full snapshot is open items
+        XCTAssertTrue(page.isFullSnapshot)
+        XCTAssertNotNil(page.cursor)
+        // A bare array (an older hub) still works, with no cursor.
+        let bare = try HubClient.page(from: Data(#"[{"id":"a","title":"T","created_at":"2026-10-06T10:00:00Z"}]"#.utf8), since: nil)
+        XCTAssertEqual(bare.items.map(\.id), ["a"])
+        XCTAssertNil(bare.cursor)
+    }
+
+    // A full snapshot cut off at the hub's limit doesn't list every open item, so it must
+    // not close the ones it left out.
+    func testTruncatedFullPageIsNotAuthoritative() throws {
+        let page = try HubClient.page(from: Self.listJSON([("a", "open")], more: true), since: nil)
+        XCTAssertFalse(page.isFullSnapshot)
+        XCTAssertTrue(page.more)
+    }
 
     // Security audit #16: a 421 from the hub's Host check says what to change.
     func testMisdirectedErrorNamesTheHostCheck() {

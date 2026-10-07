@@ -21,6 +21,8 @@ integrations/claude-code/
 └── skill/needs-you/SKILL.md
 ```
 
+The same hook serves OpenAI Codex CLI, Gemini CLI and opencode when started with a `codex`, `gemini` or `opencode` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md), [integrations/gemini](../gemini/README.md) and [integrations/opencode](../opencode/README.md).
+
 ## Hooks
 
 ### Install
@@ -46,8 +48,14 @@ The installer:
 - backs up the settings file to `settings.json.bak-<timestamp>` before changing it,
 - replaces any earlier needs-you entries and leaves every other setting and hook alone,
 - doesn't rewrite the file if nothing changed, so it's safe to run from provisioning scripts,
-- writes through a symlinked settings file (dotfile managers) and keeps its mode,
-- refuses to touch a settings file that isn't valid JSON.
+- writes through a symlinked user-level settings file (dotfile managers) and keeps its mode,
+- refuses to touch a settings file that isn't valid JSON,
+- records a project install in `~/.local/state/needs-you/claude-projects.json` (and forgets it on `--uninstall`), so `needs-you doctor`, `needs-you update` and `needs-you uninstall-hooks` can find it,
+- refuses a project whose `.claude`, `.claude/hooks`, hook script or settings file is a symlink (a repo's `.claude` is untrusted).
+
+**One card for one wait.** `needs-you add` (kind `needs`) run inside a Claude Code session (`$CLAUDECODE` set) notes the key in `~/.local/state/needs-you/session-items/<id>/` (`<id>`: `$ORCA_TERMINAL_HANDLE`, else `$CLAUDE_CODE_SESSION_ID`, sanitized as the hook does; one file per key with `key=` and `expires=<epoch>`, at most 48 hours). `notify` skips `idle_prompt` and `agent_needs_input` (and the Codex `Stop`, Gemini `AfterAgent` and opencode `Stop` cards) while an unexpired note exists for its session. Outside Orca only Claude Code's commands know their session id (`$CLAUDE_CODE_SESSION_ID`); with `$ORCA_TERMINAL_HANDLE` set the CLI notes the key for any agent. `needs-you resolve --key` and a `done`/`info` with the same key remove the note; `end` removes the session's directory.
+
+`needs-you uninstall-hooks` removes the hooks without this script or a hub (user level, the current directory's project, recorded project installs).
 
 Restart running sessions (or open `/hooks` in Claude Code) to pick up the change.
 

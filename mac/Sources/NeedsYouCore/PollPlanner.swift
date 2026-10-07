@@ -2,10 +2,11 @@ import Foundation
 
 /// Decides whether the next poll is incremental (`since`) or a full snapshot.
 ///
-/// `GET /v1/items?status=open&since=` only returns *open* items, so an incremental poll
-/// can never tell the Mac that a sender resolved something. A periodic full poll (no
-/// `since`) is treated as authoritative and drops anything no longer open. Full polls
-/// also happen first, after a wake, and after an error.
+/// An incremental poll (`since` = the hub's last `server_time`) returns everything that
+/// changed, closed items included, so resolves arrive at once. A periodic full poll (no
+/// `since`) is still treated as authoritative and drops anything no longer open, as a
+/// resync (an older hub, a missed page). Full polls also happen first, after a wake, and
+/// after an error.
 public struct PollPlanner: Sendable {
     public var fullEvery: Int
     private var incrementalSinceFull: Int?

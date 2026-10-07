@@ -7,7 +7,7 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Connect a machine** (or **Connect a Machine…** in the menu bar menu), keep *A server or agent that sends alerts*, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
    - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`. The last three options set up Claude Code alerts; on a machine without Claude Code, drop them ([Options](#options)),
-   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts."*
+   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin."* ([Codex](codex.md))
 2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
 3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**). On the machine, open a new terminal and run `needs-you doctor`: every line should be `OK` or `INFO`.
 
@@ -33,7 +33,10 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 |---|---|
 | `--yes` | Don't ask. Needed when piped (there's no terminal to confirm on). |
 | `--claude-hooks user\|project\|none` | Install the Claude Code hooks for every repo (`user`), or the current directory's repo (`project`). Default `none`. See [claude-code.md](claude-code.md). |
-| `--alerts` | Turn the Claude Code hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
+| `--codex-hooks user\|none` | Install the OpenAI Codex CLI hooks in `~/.codex/hooks.json` (trust them once with `/hooks` in Codex). Default `none`. See [codex.md](codex.md). |
+| `--gemini-hooks user\|none` | Install the Gemini CLI hooks in `~/.gemini/settings.json`. Default `none`. See [gemini.md](gemini.md). |
+| `--opencode-plugin` | Install the opencode plugin in `~/.config/opencode/plugins/`. See [opencode.md](opencode.md). |
+| `--alerts` | Turn the Claude Code, Codex, Gemini CLI and opencode hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
 | `--skill` | Install the needs-you skill to `~/.claude/skills/needs-you/`. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day (`NEEDS_YOU_AUTO_UPDATE=1`). Updates come only from this hub. See [Keeping up to date](updates.md). |
 | `--context-alert PCT` | Card suggesting `/compact` or `/clear` once a Claude session's context is PCT% full. Default 80; `0` off. |
@@ -112,7 +115,13 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
 
    `invite list --all` and `invite revoke <name>` work the same way for links.
 
-2. **Clean up the machine.** Either run a live invite's installer with `--uninstall`, or by hand. First the Claude Code hooks, if they were installed: `integrations/claude-code/install-hooks.sh --uninstall` from a checkout of this repo, or without one:
+2. **Clean up the machine.** Either run a live invite's installer with `--uninstall`, or by hand. First the Claude Code hooks, if they were installed (offline; user level, the current directory's project and every recorded project install):
+
+   ```bash
+   needs-you uninstall-hooks
+   ```
+
+   With a CLI older than `uninstall-hooks`: `integrations/claude-code/install-hooks.sh --uninstall` from a checkout, or fetch it from the hub:
 
    ```bash
    . ~/.config/needs-you/env; d=$(mktemp -d)

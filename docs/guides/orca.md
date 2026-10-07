@@ -113,7 +113,7 @@ Keys are `<prefix>:<thing>:<reason>`, with a fixed `<reason>` word and never a t
 
 Include the host when the same automation runs on several servers and the thing is per server (`work:$(hostname -s):memory`). Leave it out when the key describes one shared thing (`work:ACME-123:redo-blocked`), so two servers working the same ticket update one card.
 
-If the hooks are installed too, the automation's Claude session also gets the hooks' own card (`agent:<host>:<terminal handle>`) while it sits on a permission prompt or waits for input. That one clears itself when the session moves; the automation's item is the specific question, and the automation resolves it.
+If the hooks are installed too, the automation's Claude session also gets the hooks' own card (`agent:<host>:<terminal handle>`) while it sits on a permission prompt. That one clears itself when the session moves; the automation's item is the specific question, and the automation resolves it. While the automation's own `needs` item from that terminal is open, the hooks don't add a "Claude is waiting for you" card on top of it ([one card for one wait](claude-code.md#one-card-for-one-wait)).
 
 ## Worked example: hand off to a human and resume
 
@@ -153,7 +153,7 @@ The card disappears from every Mac reading the hub; the `done` note shows as an 
 
 **If nobody had answered by 11:00,** the run would see the same blocker and post the same `add` again: still one card, its expiry pushed to 14:00. If the fixer stopped running altogether, the card would expire three hours after its last post instead of sitting there for days.
 
-**The same hand-off in one live session.** An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click **Terminal**, Orca switches to the agent's terminal, you type the answer, and the agent runs the `resolve` before it carries on. With the hooks installed, the session's own "Claude is waiting for you" card appears while it sits idle and clears when you type.
+**The same hand-off in one live session.** An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click **Terminal**, Orca switches to the agent's terminal, you type the answer, and the agent runs the `resolve` before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal ([one card for one wait](claude-code.md#one-card-for-one-wait)). Once the agent resolves its item, an idle session gets the hooks' card again.
 
 ## Check it works
 

@@ -61,6 +61,33 @@ def request(method: str, url: str, token: Optional[str] = None, body: Any = None
         return e.code, json.loads(e.read().decode("utf-8") or "{}")
 
 
+def garbage_server(test, payload):
+    """A loopback TCP server that answers every connection with `payload` and hangs up.
+    Returns its URL; it is closed when the test ends."""
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(16)
+
+    def serve():
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            try:
+                conn.settimeout(2)
+                conn.recv(65536)
+                conn.sendall(payload)
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    test.addCleanup(srv.close)
+    return "http://127.0.0.1:%d" % srv.getsockname()[1]
+
+
 def wait_until(pred: Callable[[], bool], timeout: float = 15.0, interval: float = 0.05) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:

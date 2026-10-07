@@ -225,6 +225,16 @@ struct PreviewPill: View {
                 Button { onOpen(link) } label: {
                     HStack(spacing: 3) {
                         Text(LinkRowPolicy.label(link, maxLength: 14)).lineLimit(1)
+                        if let destination = LinkRowPolicy.destination(link) {
+                            // Where it really goes, as on the cards, so a label can't pass
+                            // for another site.
+                            Text(destination)
+                                .fontWeight(.regular)
+                                .foregroundStyle(Theme.linkDestination)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: 90)
+                        }
                         Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
                     }
                     .font(.system(size: metrics.linkFont, weight: .medium))

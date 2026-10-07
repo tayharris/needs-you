@@ -68,6 +68,19 @@ else
   echo "warning: $REPO/integrations/claude-code not found; joiners won't get the Claude Code files" >&2
 fi
 
+for agent in codex gemini; do
+  if [[ -d "$REPO/integrations/$agent" ]]; then
+    mkdir -p "$RES/integrations/$agent"
+    cp "$REPO/integrations/$agent/install-$agent-hooks.sh" "$REPO/integrations/$agent/$agent-hooks.json" \
+      "$RES/integrations/$agent/"
+  fi
+done
+if [[ -d "$REPO/integrations/opencode" ]]; then
+  mkdir -p "$RES/integrations/opencode"
+  cp "$REPO/integrations/opencode/needs-you.js" "$REPO/integrations/opencode/install-opencode-plugin.sh" \
+    "$RES/integrations/opencode/"
+fi
+
 if [[ -f "$REPO/integrations/orca/snippet.md" ]]; then
   mkdir -p "$RES/integrations/orca"
   cp "$REPO/integrations/orca/snippet.md" "$RES/integrations/orca/snippet.md"

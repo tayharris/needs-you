@@ -1,0 +1,54 @@
+{
+  "_needs_you_version": "0.1.2",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" notify codex", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" notify codex", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" resolve codex", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" resolve codex", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" resolve codex", "timeout": 3 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" start codex", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" end codex", "timeout": 3 }
+        ]
+      }
+    ]
+  }
+}
