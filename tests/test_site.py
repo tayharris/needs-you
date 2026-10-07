@@ -1,5 +1,8 @@
 """site/: the static landing page. Offline checks only (stdlib html.parser).
 
+Every page: the landing page and the generated guides in site/guides/ (their freshness and
+markdown rendering are in test_site_guides.py).
+
 Structure (balanced tags, one h1, title, description), in-page anchors, local files,
 every link into this repo on GitHub points at a path that exists here, the sections and
 links the landing page promises, and no personal hostnames.
@@ -18,7 +21,8 @@ from support import ROOT
 SITE = os.path.join(ROOT, "site")
 # The site's own origin (canonical and og:url).
 SITE_ORIGIN = "https://needsyou.app/"
-# Hosts the site may link to. Anything else (a personal domain, a tailnet name) fails.
+# Hosts the landing page may link to. Anything else (a personal domain, a tailnet name) fails.
+# The guides link wherever the docs do (tailscale.com, ...); test_no_personal_hostnames covers them.
 LINK_HOSTS = {"github.com", "needsyou.app"}
 REPO_LINK = re.compile(r"^https://github\.com/tayharris/needs-you/(?:blob|tree)/main/(.+?)/?(?:#.*)?$")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
@@ -113,13 +117,14 @@ class SiteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.pages = {}
-        for name in sorted(os.listdir(SITE)):
-            if name.endswith(".html"):
-                p = Page()
-                with open(os.path.join(SITE, name), encoding="utf-8") as fh:
-                    p.feed(fh.read())
-                p.close()
-                cls.pages[name] = p
+        names = [n for n in os.listdir(SITE) if n.endswith(".html")]
+        names += ["guides/" + n for n in os.listdir(os.path.join(SITE, "guides")) if n.endswith(".html")]
+        for name in sorted(names):
+            p = Page()
+            with open(os.path.join(SITE, name), encoding="utf-8") as fh:
+                p.feed(fh.read())
+            p.close()
+            cls.pages[name] = p
 
     def test_has_an_index(self):
         self.assertIn("index.html", self.pages)
@@ -151,12 +156,17 @@ class SiteTests(unittest.TestCase):
                             self.assertTrue(os.path.exists(os.path.join(ROOT, m.group(1))),
                                             "not in the repo: " + m.group(1))
                     else:
-                        local = link.split("#", 1)[0].split("?", 1)[0]
-                        self.assertTrue(os.path.exists(os.path.join(SITE, local)), "missing file")
+                        local, _, frag = link.split("?", 1)[0].partition("#")
+                        target = os.path.normpath(os.path.join(os.path.dirname(name), local)).replace(os.sep, "/")
+                        self.assertTrue(os.path.exists(os.path.join(SITE, target)), "missing file")
+                        if frag and target in self.pages:
+                            self.assertIn(frag, self.pages[target].ids, "no element with this id there")
 
 
     def test_link_hosts(self):
         for name, p in self.pages.items():
+            if name.startswith("guides/"):
+                continue
             for link in p.links:
                 m = re.match(r"^https://([^/]+)", link)
                 if m:
@@ -167,7 +177,7 @@ class SiteTests(unittest.TestCase):
         # Stylesheets and fonts are same-origin only: no third-party font or CSS hosts.
         for name, p in self.pages.items():
             for href in p.assets:
-                if href == SITE_ORIGIN:   # rel="canonical", not an asset
+                if href.startswith(SITE_ORIGIN):   # rel="canonical", not an asset
                     continue
                 with self.subTest(page=name, href=href[:80]):
                     self.assertNotRegex(href, r"^(?:[a-z]+:)?//", "<link> must be same-origin")
@@ -203,7 +213,8 @@ class SiteTests(unittest.TestCase):
 
     def test_no_personal_hostnames(self):
         # Only the documented placeholders: hub-a.example.ts.net, <tailnet>, devbox.
-        for name in sorted(os.listdir(SITE)):
+        names = sorted(os.listdir(SITE)) + ["guides/" + n for n in sorted(os.listdir(os.path.join(SITE, "guides")))]
+        for name in names:
             path = os.path.join(SITE, name)
             if not os.path.isfile(path) or name.endswith(".woff2"):
                 continue
@@ -211,8 +222,10 @@ class SiteTests(unittest.TestCase):
             with self.subTest(file=name):
                 for host in re.findall(r"[\w.-]+\.ts\.net", text):
                     self.assertTrue(host.endswith("example.ts.net"), host)
-                self.assertNotRegex(text, r"\b(?:100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+)\b",
-                                    "tailnet IP")
+                # The docs' examples stay in 100.64.0.x (the range's first block, as in
+                # "100.64.0.0/10" and the ACL example); any other tailnet address fails.
+                ips = re.findall(r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+\b", text)
+                self.assertEqual([ip for ip in ips if not ip.startswith("100.64.0.")], [], "tailnet IP")
 
     def test_sections(self):
         p = self.pages["index.html"]
