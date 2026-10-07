@@ -386,9 +386,11 @@ token. Codes are <code>nyi_</code> plus 192 random bits (URL-safe base64); hubs 
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin."}</code></pre></div>
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}</code></pre></div>
 <p><code>install_command</code> and <code>agent_prompt</code> are only present for <code>sender</code> invites. Both set up Claude
-Code alerts (<code>--claude-hooks user --skill --alerts</code>); the join page lists the other options. The URLs use the
+Code alerts (<code>--claude-hooks user --skill --alerts</code>); the join page lists the other options.
+The prompt ends by having the agent run <code>needs-you doctor</code> and act on, or relay, the next step
+under each <code>WARN</code> or <code>FAIL</code> line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's <code>public_url</code> (config <code>public_url</code> / <code>--public-url</code>; without it, the first bind address).</p>
 <h3 id="get-v1invites-owner"><code>GET /v1/invites</code> (owner) <a class="anchor" href="#get-v1invites-owner" aria-label="Link to this section">#</a></h3>
 <p><code>{"invites": [{"id", "name", "role", "uses", "left", "created_at", "expires_at"}, ...]}</code>: every

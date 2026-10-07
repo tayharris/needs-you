@@ -4,6 +4,16 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **MCP server** for agents that speak MCP but have no shell: `integrations/mcp/needs_you_mcp.py`, one stdlib Python file with the tools `needs_you_add`, `needs_you_resolve` and `needs_you_doctor`. It runs the `needs-you` CLI for each call, so posts get the same failover, offline queue and rules. Install it by hand for now: [MCP server guide](docs/guides/mcp.md). There's no tool to list your open items, since senders can't read the inbox. Design: [ADR 0008](docs/adr/0008-mcp-server.md) (proposed).
+
+### Changed
+
+- **`needs-you doctor` says what to do next.** Every `WARN` and `FAIL` line now has one next step under it: a command to run as is (quoted, so odd paths and URLs can't turn into a second command), or exactly what to ask you for, such as a new invite link. A hub that can't be reached gets a step for its kind (`open -a NeedsYou`, `tailscale ping <host>`, `curl <url>/v1/health`), and a hub URL that isn't plain `http(s)://host:port` gets "fix `NEEDS_YOU_URLS`" instead of a command.
+- **Invite agent prompt:** it now ends by having the agent run `needs-you doctor`, act on or pass on the next step under each `WARN` or `FAIL`, and ask you for a new link if the old one is used up. The join page says the same. The Mac app uses its own wording with older hubs.
+- **The Claude Code skill and the agent guide are shorter and sharper:** a "Don't post" list (no progress updates, nothing you can find out yourself, no second card for the same wait, no test items), what makes a good key, title and link, resolving what you posted, and one card per wait. A test checks that every `needs-you` command and flag they mention exists.
+
 ## [0.1.3] - 2026-10-07
 
 ### Upgrade note
