@@ -41,7 +41,7 @@ Orca worktree: `/home/me/orca/workspaces/my-repo/ACME-123`
 Jump to its terminal: `orca terminal switch --environment 'My Devbox' --terminal term_6f1c...`
 ```
 
-On a paired Orca server, the Mac's Orca only finds the terminal with `--environment <name>`, and the server can't know the name the Mac gave it. Tell it once (the name is the one `orca environment list` shows on the Mac):
+On a paired Orca server, the Mac's Orca only finds the terminal with `--environment <name>`, and the server can't know the name the Mac gave it. The **Terminal** button copes (without a name, it tries each paired environment in turn), but the command in the body needs it. Tell the server once (the name is the one `orca environment list` shows on the Mac):
 
 ```bash
 echo "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'" >> ~/.config/needs-you/env

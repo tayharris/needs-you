@@ -7,6 +7,8 @@ Two independent pieces. Use either or both, in any repo or VM, with or without O
 | **Hooks** | When a Claude Code session stops to ask for permission or sits waiting for input, a `needs` item appears on your Mac. It's resolved automatically as soon as the session moves again. | `./install-hooks.sh` |
 | **Skill** | Teaches the agent when and how to post a specific blocker ("choose A or B for ACME-123") and to resolve it afterwards. | copy `skill/needs-you` to `~/.claude/skills/` |
 
+Shortest setup, and how it works over SSH, in tmux, VS Code Remote-SSH and Orca: [docs/guides/claude-code-everywhere.md](../../docs/guides/claude-code-everywhere.md).
+
 Both call the `needs-you` CLI, so set the machine up as a sender first: an invite link from the Mac app (its installer can add the hooks and the skill too, with `--claude-hooks user --skill`), or [`scripts/setup-sender.sh`](../../scripts/setup-sender.sh) ([guide](../../docs/guides/add-a-sender.md)).
 
 ## Files
@@ -99,7 +101,7 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
 | `NEEDS_YOU_AGENT_LINK` | unset | One link, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. |
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | A card expires this many hours after its last post; `0` never expires |
-| `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal |
+| `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal. Without it, the Mac app's Terminal button tries each paired environment in turn. |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
 | `NEEDS_YOU_HOOK_LOG` | unset | Append one debug line per call to this file |
 
@@ -113,9 +115,9 @@ Link examples:
 NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'
 
 # On a VM you open with VS Code Remote-SSH: bring that window forward. Use the
-# SSH host name VS Code uses and the folder the window has open (a different
-# folder opens a new window).
-NEEDS_YOU_AGENT_LINK='VS Code=vscode://vscode-remote/ssh-remote+devbox/home/me'
+# SSH host name VS Code uses; {cwd} is the session's folder (if the window has a
+# different folder open, VS Code opens a new window).
+NEEDS_YOU_AGENT_LINK='VS Code=vscode://vscode-remote/ssh-remote+devbox{cwd}'
 ```
 
 ### Guarantees

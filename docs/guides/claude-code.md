@@ -9,7 +9,7 @@ Quickest: an invite link installs both. Paste the link's agent prompt into Claud
 
 Prerequisite for the manual route: the machine is a sender (an invite link, or `./scripts/setup-sender.sh`), so `needs-you` works in a shell there. The commands below run from a checkout of this repo.
 
-Full reference: [integrations/claude-code/README.md](../../integrations/claude-code/README.md).
+Sessions over SSH, in tmux, VS Code Remote-SSH or Orca, and the shortest copy-paste setup: [claude-code-everywhere.md](claude-code-everywhere.md). Full reference: [integrations/claude-code/README.md](../../integrations/claude-code/README.md).
 
 ## Hooks
 
@@ -49,7 +49,7 @@ A good pattern: leave it off on your laptop, turn it on for the VMs where agents
 | Idle, waiting for your input | **Claude is waiting for you: my-repo** |
 | MCP server asks for input / sign-in | **Claude needs an answer** / **Claude needs you to sign in** |
 
-Each session has one card (key `agent:<host>:<session>`), updated rather than duplicated. It's resolved on your next prompt, the next tool call, the end of the turn, or the end of the session.
+Each session has one card (key `agent:<host>:<session>`), updated rather than duplicated. It's resolved on your next prompt, the next tool call, the end of the turn, or the end of the session. A session that's killed instead is cleaned up by the 5-minute `needs-you flush` once its Claude process is gone, or expires 48 hours after its last post ([details](claude-code-everywhere.md#when-a-session-dies)).
 
 The body holds Claude's notification text, the directory and host. No prompts, transcript or tool input are sent.
 
@@ -61,6 +61,7 @@ Set in the environment or in `~/.config/needs-you/env`:
 NEEDS_YOU_AGENT_CONTEXT=personal      # default: NEEDS_YOU_DEFAULT_CONTEXT, else work
 NEEDS_YOU_AGENT_PRIORITY=low          # default normal
 NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'     # one link, placeholders {handle} {session} {cwd} {host}
+NEEDS_YOU_AGENT_EXPIRY_HOURS=48       # a card expires this long after its last post; 0 = never
 NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'                # paired Orca server: its name in the Mac's Orca
 ```
 
