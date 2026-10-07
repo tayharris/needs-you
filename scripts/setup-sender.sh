@@ -8,10 +8,14 @@
 #      machine's token (hidden input), and writes ~/.config/needs-you/env
 #      with mode 600.
 #   3. Checks GET /v1/health on every hub.
-#   4. Offers to post a test `info` item.
+#   4. Schedules `needs-you flush` every 5 minutes (crontab on Linux, a
+#      LaunchAgent on macOS), like the invite installer.
+#   5. Puts the CLI's directory on PATH with one tagged line in your login
+#      shell's profile (--no-path prints the line instead).
+#   6. Offers to post a test `info` item.
 #
 # Hard requirements: bash (3.2+ is fine), curl, python3 (3.9+). No package
-# installs, no jq, and it never edits your shell dotfiles.
+# installs, no jq.
 #
 # Run with --help for flags. See docs/guides/add-a-sender.md.
 
@@ -36,6 +40,13 @@ TEST_CONTEXT="personal"
 CLI_MODE=""             # "" = ask/auto; "skip"; "path"; "url"
 CLI_SOURCE=""
 REQUIRE_HEALTH=0
+SCHEDULE=1
+SET_PATH=1
+ALERTS=""
+CONTEXT_ALERT=""
+SSH_ALIAS=""
+AGENT_LINK=""
+ORCA_ENV=""
 
 usage() {
   cat <<EOF
@@ -63,6 +74,16 @@ Checks:
   --no-test              Don't post a test item.
   --test-context CTX     Context for the test item: work | personal (default: personal).
   --require-health       Exit 3 if no hub answers /v1/health (default: warn only).
+  --no-schedule          Don't schedule the 5-minute 'needs-you flush'.
+  --no-path              Don't edit your shell profile; print the PATH line instead.
+
+Claude Code hook settings (written to the env file; see
+integrations/claude-code/README.md):
+  --alerts               Hooks on for every session here (NEEDS_YOU_AGENT_ALERTS=1).
+  --context-alert PCT    Card suggesting /compact or /clear at PCT% context (default 80; 0 = off).
+  --ssh-alias NAME       This host's alias in the Mac's ~/.ssh/config: Remote-SSH links.
+  --agent-link 'L=URL'   One link template instead of the automatic editor links ('none' = off).
+  --orca-environment N   On a paired Orca server: its name in the Mac's Orca.
 
 Mode:
   --non-interactive      Never prompt. Needs --url and a token (flag, stdin or
@@ -100,6 +121,17 @@ while [ $# -gt 0 ]; do
     --test-context) [ $# -ge 2 ] || die "--test-context needs a value"; TEST_CONTEXT=$2; shift 2 ;;
     --test-context=*) TEST_CONTEXT=${1#*=}; shift ;;
     --require-health) REQUIRE_HEALTH=1; shift ;;
+    --no-schedule) SCHEDULE=0; shift ;;
+    --no-path) SET_PATH=0; shift ;;
+    --alerts) ALERTS=1; shift ;;
+    --context-alert) [ $# -ge 2 ] || die "--context-alert needs a value"; CONTEXT_ALERT=$2; shift 2 ;;
+    --context-alert=*) CONTEXT_ALERT=${1#*=}; shift ;;
+    --ssh-alias) [ $# -ge 2 ] || die "--ssh-alias needs a value"; SSH_ALIAS=$2; shift 2 ;;
+    --ssh-alias=*) SSH_ALIAS=${1#*=}; shift ;;
+    --agent-link) [ $# -ge 2 ] || die "--agent-link needs a value"; AGENT_LINK=$2; shift 2 ;;
+    --agent-link=*) AGENT_LINK=${1#*=}; shift ;;
+    --orca-environment) [ $# -ge 2 ] || die "--orca-environment needs a value"; ORCA_ENV=$2; shift 2 ;;
+    --orca-environment=*) ORCA_ENV=${1#*=}; shift ;;
     --non-interactive|--yes|-y) NON_INTERACTIVE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" 2 ;;
@@ -107,6 +139,21 @@ while [ $# -gt 0 ]; do
 done
 
 case "$TEST_CONTEXT" in work|personal) ;; *) die "--test-context must be work or personal" 2 ;; esac
+if [ -n "$CONTEXT_ALERT" ]; then
+  case "$CONTEXT_ALERT" in *[!0-9]*) die "--context-alert must be a whole number from 0 to 100" 2 ;; esac
+  [ "$CONTEXT_ALERT" -le 100 ] || die "--context-alert must be a whole number from 0 to 100" 2
+fi
+if [ -n "$SSH_ALIAS" ] && ! printf '%s' "$SSH_ALIAS" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$'; then
+  die "--ssh-alias must be a host alias (letters, digits, . _ @ -)" 2
+fi
+if [ -n "$ORCA_ENV" ] && ! printf '%s' "$ORCA_ENV" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$'; then
+  die "--orca-environment must be an Orca environment name (letters, digits, spaces, . _ -)" 2
+fi
+if [ -n "$AGENT_LINK" ] && [ "$AGENT_LINK" != none ]; then
+  case "$AGENT_LINK" in *=*://*) ;; *) die "--agent-link must look like 'Label=scheme://...' (or none)" 2 ;; esac
+  case "$AGENT_LINK" in *[\'\"\\\`\$]*) die "--agent-link can't contain quotes, backslashes, \` or \$" 2 ;; esac
+  [ "${#AGENT_LINK}" -le 500 ] || die "--agent-link is too long" 2
+fi
 
 # Interactive prompts read from the terminal, not stdin, so --token-stdin and
 # prompts can be mixed. If there is no terminal, fall back to non-interactive.
@@ -231,12 +278,6 @@ fi
 if [ "$CLI_MODE" = "repo" ]; then
   [ -n "$CLI_SOURCE" ] || CLI_SOURCE=$REPO_CLI
   install_cli "$CLI_SOURCE"
-  case ":$PATH:" in
-    *":$BIN_DIR:"*) ;;
-    *) warn "$BIN_DIR is not on your PATH. Add this to your shell profile:"
-       # shellcheck disable=SC2016  # literal $PATH: it's text for the user to paste
-       printf '    export PATH="%s:$PATH"\n' "$BIN_DIR" >&2 ;;
-  esac
 fi
 
 # ---------------------------------------------------------------- 2. URLs and token
@@ -300,6 +341,23 @@ esac
 mkdir -p "$CONFIG_DIR"
 chmod 700 "$CONFIG_DIR" 2>/dev/null || true
 
+# Hook settings passed as flags replace the same keys in the file; the rest stay.
+SETTINGS=""
+OWNED="URLS|URL|TOKEN"
+add_setting() { # add_setting KEY VALUE (no-op for an empty value)
+  [ -n "$2" ] || return 0
+  local v=$2
+  case "$v" in *[!A-Za-z0-9._:/,@+%-]*) v="'$v'" ;; esac
+  SETTINGS="$SETTINGS$1=$v
+"
+  OWNED="$OWNED|${1#NEEDS_YOU_}"
+}
+add_setting NEEDS_YOU_AGENT_ALERTS "$ALERTS"
+add_setting NEEDS_YOU_CONTEXT_ALERT_PCT "$CONTEXT_ALERT"
+add_setting NEEDS_YOU_SSH_ALIAS "$SSH_ALIAS"
+add_setting NEEDS_YOU_AGENT_LINK "$AGENT_LINK"
+add_setting NEEDS_YOU_ORCA_ENVIRONMENT "$ORCA_ENV"
+
 TMP_ENV=$(umask 077; mktemp "$CONFIG_DIR/.env.XXXXXX")
 trap 'rm -f "$TMP_ENV"' EXIT
 {
@@ -311,9 +369,10 @@ trap 'rm -f "$TMP_ENV"' EXIT
   printf 'NEEDS_YOU_TOKEN=%s\n' "$TOKEN"
   if [ -f "$ENV_FILE" ]; then
     # Keep any extra settings the user added (e.g. NEEDS_YOU_AGENT_CONTEXT).
-    grep -v -E '^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_(URLS|URL|TOKEN)=' "$ENV_FILE" |
+    grep -v -E "^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_($OWNED)=" "$ENV_FILE" |
       grep -v -E '^# (needs-you sender config|NEEDS_YOU_URLS:|NEEDS_YOU_URL: )' || true
   fi
+  printf '%s' "$SETTINGS"
 } >"$TMP_ENV"
 chmod 600 "$TMP_ENV"
 if [ -f "$ENV_FILE" ] && cmp -s "$TMP_ENV" "$ENV_FILE"; then
@@ -350,7 +409,108 @@ if [ -z "$HEALTHY" ]; then
   [ "$REQUIRE_HEALTH" -eq 0 ] || exit 3
 fi
 
-# ---------------------------------------------------------------- 4. test item
+# ---------------------------------------------------------------- 4. flush schedule
+# Same schedule as the invite installer (hub/join-install.sh), so `needs-you
+# flush` sends queued items and resolves cards of Claude sessions that died.
+OS=$(uname -s)
+FLUSH_LABEL="io.needs-you.flush"
+PLIST="$HOME/Library/LaunchAgents/$FLUSH_LABEL.plist"
+CRON_TAG="# needs-you-flush"
+CLI_PATH=""
+if [ -x "$BIN_DIR/needs-you" ]; then
+  CLI_PATH="$BIN_DIR/needs-you"
+elif command -v needs-you >/dev/null 2>&1; then
+  CLI_PATH=$(command -v needs-you)
+fi
+
+schedule_install() {
+  local cli=$1
+  if [ "$OS" = "Darwin" ]; then
+    mkdir -p "$(dirname "$PLIST")"
+    cat >"$PLIST.tmp" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$FLUSH_LABEL</string>
+  <key>ProgramArguments</key>
+  <array><string>$cli</string><string>-q</string><string>flush</string></array>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>/dev/null</string>
+</dict>
+</plist>
+EOF
+    if [ -f "$PLIST" ] && cmp -s "$PLIST.tmp" "$PLIST"; then
+      rm -f "$PLIST.tmp"
+      info "flush: LaunchAgent $FLUSH_LABEL already set up"
+      return 0
+    fi
+    mv -f "$PLIST.tmp" "$PLIST"
+    launchctl bootout "gui/$(id -u)/$FLUSH_LABEL" >/dev/null 2>&1 || true
+    if launchctl bootstrap "gui/$(id -u)" "$PLIST" >/dev/null 2>&1; then
+      info "flush: LaunchAgent $FLUSH_LABEL runs 'needs-you flush' every 5 minutes"
+    else
+      warn "could not load $PLIST; it loads at next login"
+    fi
+  elif command -v crontab >/dev/null 2>&1; then
+    local line current
+    line="*/5 * * * * \"$cli\" -q flush >/dev/null 2>&1 $CRON_TAG"
+    current=$(crontab -l 2>/dev/null || true)
+    if printf '%s\n' "$current" | grep -qxF "$line"; then
+      info "flush: crontab entry already present"
+    else
+      { printf '%s\n' "$current" | { grep -vF "$CRON_TAG" || true; } | sed '/^$/d'; printf '%s\n' "$line"; } | crontab -
+      info "flush: crontab runs 'needs-you flush' every 5 minutes"
+    fi
+  else
+    warn "no crontab here; run '$cli flush' every few minutes yourself (e.g. a systemd timer)"
+  fi
+}
+
+if [ "$SCHEDULE" -eq 1 ]; then
+  if [ -n "$CLI_PATH" ]; then
+    schedule_install "$CLI_PATH"
+  else
+    info "flush: not scheduled (no needs-you CLI found; re-run with --install-cli)"
+  fi
+fi
+
+# ---------------------------------------------------------------- 5. PATH
+PATH_TAG="# added by needs-you"
+profile_file() {
+  case "${SHELL##*/}" in
+    zsh) printf '%s' "${ZDOTDIR:-$HOME}/.zshrc" ;;
+    bash) if [ "$OS" = Darwin ]; then printf '%s' "$HOME/.bash_profile"; else printf '%s' "$HOME/.bashrc"; fi ;;
+    *) printf '%s' "$HOME/.profile" ;;
+  esac
+}
+if [ -x "$BIN_DIR/needs-you" ]; then
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *)
+      SHOWN=$BIN_DIR
+      case "$BIN_DIR" in "$HOME"/*) SHOWN="\$HOME/${BIN_DIR#"$HOME"/}" ;; esac
+      PATH_LINE="export PATH=\"$SHOWN:\$PATH\""
+      if [ "$SET_PATH" -eq 0 ]; then
+        warn "$BIN_DIR is not on your PATH. Add this line to your shell profile:"
+        printf '    %s\n' "$PATH_LINE" >&2
+      else
+        RC=$(profile_file)
+        if [ -f "$RC" ] && awk -v a="$SHOWN" -v b="$BIN_DIR" -v t="$PATH_TAG" \
+            'index($0, t) || (!/^[[:space:]]*#/ && /PATH/ && (index($0, a) || index($0, b))) { f = 1 } END { exit !f }' "$RC"; then
+          info "PATH: $RC already adds $SHOWN"
+        else
+          printf '\n%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"
+          info "PATH: added $SHOWN to PATH in $RC (new shells pick it up; in this one run: $PATH_LINE)"
+        fi
+      fi ;;
+  esac
+fi
+
+# ---------------------------------------------------------------- 6. test item
 if [ -z "$TEST_MODE" ]; then
   if [ "$NON_INTERACTIVE" -eq 1 ] || [ -z "$HEALTHY" ]; then
     TEST_MODE="no"
@@ -397,8 +557,11 @@ say "Done. Next:"
 if command -v needs-you >/dev/null 2>&1 || [ -x "$BIN_DIR/needs-you" ]; then
   info "needs-you add --key \"personal:$HOST_SHORT:hello\" --context personal --title \"Hello from $HOST_SHORT\""
   info "needs-you resolve --key \"personal:$HOST_SHORT:hello\""
-  info "Add 'needs-you flush' to cron if this machine runs jobs while hubs may be down."
 else
   info "curl: . $ENV_FILE && curl -fsS \"\$NEEDS_YOU_URL/v1/health\""
 fi
-info "Claude Code alerts: integrations/claude-code/install-hooks.sh"
+if [ -n "$ALERTS" ]; then
+  info "Claude Code alerts (on for every session here): integrations/claude-code/install-hooks.sh"
+else
+  info "Claude Code alerts: integrations/claude-code/install-hooks.sh, then re-run this with --alerts"
+fi

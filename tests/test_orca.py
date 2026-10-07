@@ -107,7 +107,8 @@ class HookOrcaBodyTests(unittest.TestCase):
     def notify(self, **extra):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
                "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log,
-               "ORCA_TERMINAL_HANDLE": "term_abc", "ORCA_WORKTREE_ID": "repo1::/home/me/wt/ACME-1"}
+               "ORCA_TERMINAL_HANDLE": "term_abc", "ORCA_WORKTREE_ID": "repo1::/home/me/wt/ACME-1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux"}  # no automatic vscode://file link on a Mac runner
         cwd = extra.pop("_cwd", "/home/me/wt/ACME-1/api")
         env.update(extra)
         data = json.dumps({"session_id": "s1", "cwd": cwd,
@@ -121,7 +122,7 @@ class HookOrcaBodyTests(unittest.TestCase):
             return json.loads(fh.read().splitlines()[-1])
 
     def body(self, argv):
-        return argv[argv.index("--body") + 1]
+        return [a for a in argv if a.startswith("--body=")][0][len("--body="):]
 
     def test_orca_card_names_worktree_and_switch_command(self):
         argv = self.notify()

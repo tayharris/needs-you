@@ -1,0 +1,374 @@
+"""The Claude Code hook beyond the plain Notification card: PermissionRequest titles
+(never the tool input), StopFailure and usage-limit cards, automatic editor links,
+the context-usage card, and SessionStart/SessionEnd cleanup.
+
+The hook runs with a temporary HOME and a fake `needs-you` CLI that records its argv,
+so nothing touches the real ~/.claude or ~/.config.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+from support import ROOT
+
+BASH = shutil.which("bash") or "/bin/bash"
+HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
+HOOKS_JSON = os.path.join(ROOT, "integrations", "claude-code", "hooks.json")
+
+FAKE_CLI = """#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ["FAKE_CLI_LOG"], "a") as fh:
+    fh.write(json.dumps(sys.argv[1:]) + "\\n")
+"""
+
+SECRET = "sk-test-SECRET-0123456789"
+
+
+class HookHarness(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-hookev-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.cli = os.path.join(self.home, "fake-needs-you")
+        with open(self.cli, "w") as fh:
+            fh.write(FAKE_CLI)
+        os.chmod(self.cli, 0o755)
+        self.log = os.path.join(self.home, "calls.log")
+        self.state = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks")
+        self.cwd = os.path.join(self.home, "src", "my-repo")
+        os.makedirs(self.cwd)
+
+    def run_hook(self, mode, data, **extra):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux"}
+        env.update(extra)
+        payload = {"session_id": "sess-1234-abcd", "cwd": self.cwd}
+        payload.update(data)
+        r = subprocess.run([BASH, HOOK, mode], input=json.dumps(payload), env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout, "")
+        return r
+
+    def calls(self):
+        try:
+            with open(self.log) as fh:
+                return [json.loads(l) for l in fh]
+        except OSError:
+            return []
+
+    def last(self):
+        return self.calls()[-1]
+
+    @staticmethod
+    def opt(argv, name):
+        for i, a in enumerate(argv):
+            if a.startswith(name + "="):
+                return a[len(name) + 1:]
+            if a == name:
+                return argv[i + 1]
+        raise ValueError(name)
+
+    @staticmethod
+    def links(argv):
+        return [argv[i + 1] for i, a in enumerate(argv) if a == "--link"]
+
+    def marker(self, name="sess-1234-abcd"):
+        with open(os.path.join(self.state, name)) as fh:
+            return dict(l.rstrip("\n").split("=", 1) for l in fh)
+
+
+class PermissionTests(HookHarness):
+    def permission(self, tool, tool_input, **extra):
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": tool,
+                                 "tool_input": tool_input, "permission_mode": "default"}, **extra)
+        return self.last()
+
+    def assert_clean(self, argv):
+        text = json.dumps(argv)
+        self.assertNotIn(SECRET, text)
+        self.assertNotIn("Authorization", text)
+
+    def test_plan_approval(self):
+        argv = self.permission("ExitPlanMode", {"plan": "1. leak %s" % SECRET})
+        self.assertEqual(self.opt(argv, "--title"), "Approve Claude's plan: my-repo")
+        self.assertTrue(self.opt(argv, "--key").endswith(":sess-1234-abcd"))
+        self.assertNotIn("leak", json.dumps(argv))
+        self.assert_clean(argv)
+        self.assertEqual(self.marker()["kind"], "permission")
+
+    def test_question(self):
+        argv = self.permission("AskUserQuestion", {"questions": [{"question": "Use %s?" % SECRET}]})
+        self.assertEqual(self.opt(argv, "--title"), "Claude asked you a question: my-repo")
+        self.assert_clean(argv)
+
+    def test_bash_names_only_the_program(self):
+        argv = self.permission("Bash", {"command": "TOKEN=%s sudo -E /usr/bin/curl -H 'Authorization: Bearer %s' x"
+                                                   % (SECRET, SECRET), "description": "call %s" % SECRET})
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants to run curl: my-repo")
+        self.assert_clean(argv)
+        argv = self.permission("Bash", {"command": "'unbalanced %s" % SECRET})
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants to run a command: my-repo")
+        self.assert_clean(argv)
+
+    def test_edit_names_only_the_basename(self):
+        argv = self.permission("Write", {"file_path": "/home/me/secret-dir/config.yml", "content": SECRET})
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants to edit config.yml: my-repo")
+        self.assertNotIn("secret-dir", json.dumps(argv))
+        self.assert_clean(argv)
+
+    def test_other_tools(self):
+        argv = self.permission("mcp__github__create_issue", {"body": SECRET})
+        self.assertEqual(self.opt(argv, "--title"), "Claude needs permission for github create_issue: my-repo")
+        self.assert_clean(argv)
+        argv = self.permission("Weird tool; rm", {})
+        self.assertEqual(self.opt(argv, "--title"), "Claude needs permission for a tool: my-repo")
+
+    def test_no_card_when_approval_not_required(self):
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                 "tool_input": {"command": "ls"}, "requires_user_approval": False})
+        self.assertEqual(self.calls(), [])
+
+    def test_generic_prompt_does_not_overwrite_it(self):
+        self.permission("ExitPlanMode", {})
+        n = len(self.calls())
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                 "message": "Claude needs your permission"})
+        self.assertEqual(len(self.calls()), n)
+        # once resolved, a later prompt posts again
+        self.run_hook("resolve", {"hook_event_name": "PostToolUse"})
+        self.assertEqual(self.last()[:1], ["resolve"])
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude needs permission: my-repo")
+
+
+class FailureTests(HookHarness):
+    def test_stop_failure_card(self):
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                 "error_message": "Rate limit exceeded"})
+        argv = self.last()
+        self.assertEqual(self.opt(argv, "--title"), "Claude hit a rate limit: my-repo")
+        self.assertIn("Rate limit exceeded", self.opt(argv, "--body"))
+        self.assertEqual(self.marker()["kind"], "failure")
+        # Stop doesn't clear it (the turn ended on the error); the next prompt does
+        self.run_hook("stop", {"hook_event_name": "Stop"}, NEEDS_YOU_CONTEXT_ALERT_PCT="0")
+        self.assertEqual(self.last()[0], "add")
+        self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
+        self.assertEqual(self.last()[:3], ["resolve", "--key", self.opt(argv, "--key")])
+
+    def test_dash_project_and_error_survive_the_cli(self):
+        # real CLI argparse, offline: the card queues instead of failing on "-x" values
+        self.cwd = os.path.join(self.home, "-odd")
+        os.makedirs(self.cwd)
+        cli = os.path.join(ROOT, "cli", "needs-you")
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_message": "--bad"},
+                      NEEDS_YOU_BIN=cli, NEEDS_YOU_URL="http://127.0.0.1:9", NEEDS_YOU_TOKEN="t",
+                      NEEDS_YOU_TIMEOUT="1")
+        self.assertEqual(self.marker()["kind"], "failure")  # the CLI exited 0 (queued)
+
+    def test_unknown_error_type(self):
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "something_new"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude stopped on an API error: my-repo")
+
+    def test_usage_limit_notification(self):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "quota_auto_resume_disabled",
+                                 "message": "Usage limit reached"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude hit its usage limit: my-repo")
+
+    def test_hooks_json_registers_the_events(self):
+        with open(HOOKS_JSON) as fh:
+            hooks = json.load(fh)["hooks"]
+        modes = {ev: g[0]["hooks"][0]["command"].split()[-1] for ev, g in hooks.items()}
+        self.assertEqual(modes, {"Notification": "notify", "PermissionRequest": "notify", "StopFailure": "notify",
+                                 "UserPromptSubmit": "resolve", "PostToolUse": "resolve", "Stop": "stop",
+                                 "SessionStart": "start", "SessionEnd": "end"})
+        self.assertIn("quota_auto_resume_disabled", hooks["Notification"][0]["matcher"])
+        for groups in hooks.values():
+            for h in groups[0]["hooks"]:
+                self.assertTrue(h["async"])
+
+
+class LinkTests(HookHarness):
+    def notify_links(self, **extra):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"}, **extra)
+        return self.links(self.last())
+
+    def test_mac_gets_a_folder_link(self):
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin"),
+                         ["VS Code=vscode://file" + self.cwd])
+
+    def test_mac_over_ssh_without_alias_gets_none(self):
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin", SSH_CONNECTION="1 2 3 4"), [])
+
+    def test_remote_host_with_alias(self):
+        self.assertEqual(self.notify_links(NEEDS_YOU_SSH_ALIAS="devbox"),
+                         ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+        self.assertEqual(self.notify_links(NEEDS_YOU_SSH_ALIAS="bad alias;x"), [])
+        self.assertEqual(self.notify_links(), [])
+
+    def test_alias_from_env_file(self):
+        conf = os.path.join(self.home, ".config", "needs-you")
+        os.makedirs(conf)
+        with open(os.path.join(conf, "env"), "w") as fh:
+            fh.write("NEEDS_YOU_SSH_ALIAS=devbox\n")
+        self.assertEqual(self.notify_links(), ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+
+    def test_path_is_percent_encoded(self):
+        self.cwd = os.path.join(self.home, "my repo")
+        os.makedirs(self.cwd)
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin"),
+                         ["VS Code=vscode://file" + self.cwd.replace(" ", "%20")])
+
+    def test_vscode_extension_session_gets_the_claude_tab(self):
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin", CLAUDE_CODE_ENTRYPOINT="claude-vscode"),
+                         ["Claude=vscode://anthropic.claude-code/open?session=sess-1234-abcd",
+                          "VS Code=vscode://file" + self.cwd])
+        # a CLI in VS Code's terminal isn't an extension session
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin", TERM_PROGRAM="vscode"),
+                         ["VS Code=vscode://file" + self.cwd])
+
+    def test_template_wins_and_none_turns_them_off(self):
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin",
+                                           NEEDS_YOU_AGENT_LINK="Cursor=cursor://file{cwd}"),
+                         ["Cursor=cursor://file" + self.cwd])
+        self.assertEqual(self.notify_links(NEEDS_YOU_HOOK_PLATFORM="darwin", NEEDS_YOU_AGENT_LINK="none",
+                                           NEEDS_YOU_SSH_ALIAS="devbox"), [])
+
+
+def usage_line(total, model="claude-opus-5", sidechain=False, cache=True):
+    u = ({"input_tokens": 10, "cache_read_input_tokens": total - 1010, "cache_creation_input_tokens": 1000,
+          "output_tokens": 999} if cache else {"input_tokens": total, "output_tokens": 5})
+    return json.dumps({"type": "assistant", "isSidechain": sidechain,
+                       "message": {"model": model, "role": "assistant", "usage": u,
+                                   "content": [{"type": "text", "text": "hi"}]}})
+
+
+class ContextTests(HookHarness):
+    def setUp(self):
+        super().setUp()
+        self.transcript = os.path.join(self.home, "t.jsonl")
+        self.write([usage_line(20000)])
+
+    def write(self, lines, filler=0):
+        with open(self.transcript, "w") as fh:
+            for l in lines[:-1]:
+                fh.write(l + "\n")
+            # big tool results between messages: the hook only reads the tail
+            for _ in range(filler):
+                fh.write(json.dumps({"type": "user", "message": {"content": "x" * 10000}}) + "\n")
+            fh.write(lines[-1] + "\n")
+
+    def stop(self, **extra):
+        return self.run_hook("stop", {"hook_event_name": "Stop", "transcript_path": self.transcript}, **extra)
+
+    def context_calls(self):
+        return [c for c in self.calls() if any(str(a).endswith(":context") for a in c)]
+
+    def test_posts_once_over_the_threshold_and_resolves_below(self):
+        self.stop()
+        self.assertEqual(self.context_calls(), [])
+        self.write([usage_line(170000)])
+        self.stop()
+        argv = self.context_calls()[-1]
+        self.assertEqual(argv[0], "add")
+        self.assertTrue(self.opt(argv, "--key").endswith(":sess-1234-abcd:context"))
+        self.assertEqual(self.opt(argv, "--priority"), "low")
+        self.assertEqual(self.opt(argv, "--title"), "Claude's context is 85% full: my-repo")
+        body = self.opt(argv, "--body")
+        for want in ("170k of its 200k-token context (85%)", "/compact", "/clear"):
+            self.assertIn(want, body)
+        self.assertEqual(self.marker("sess-1234-abcd.context")["pct"], "85")
+        # about the same level: no re-post every turn
+        self.write([usage_line(172000)])
+        self.stop()
+        self.assertEqual(len(self.context_calls()), 1)
+        self.write([usage_line(185000)])
+        self.stop()
+        self.assertEqual(self.opt(self.context_calls()[-1], "--title"), "Claude's context is 92% full: my-repo")
+        # after /compact the transcript has a compact boundary: resolved
+        self.write([usage_line(185000), json.dumps({"type": "system", "subtype": "compact_boundary"})])
+        self.stop()
+        self.assertEqual(self.context_calls()[-1][:1], ["resolve"])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "sess-1234-abcd.context")))
+
+    def test_reads_only_the_tail_and_skips_subagents(self):
+        self.write([usage_line(190000), usage_line(5000, sidechain=True)], filler=40)
+        self.stop()
+        self.assertEqual(self.opt(self.context_calls()[-1], "--title"), "Claude's context is 95% full: my-repo")
+
+    def test_threshold_and_window_settings(self):
+        self.write([usage_line(120000)])
+        self.stop(NEEDS_YOU_CONTEXT_ALERT_PCT="50")
+        self.assertIn("60% full", self.opt(self.context_calls()[-1], "--title"))
+        self.stop(NEEDS_YOU_CONTEXT_ALERT_PCT="50", NEEDS_YOU_CONTEXT_WINDOW="400000")
+        self.assertEqual(self.context_calls()[-1][0], "resolve")  # 30% of 400k
+        self.stop(NEEDS_YOU_CONTEXT_ALERT_PCT="0")
+        self.assertEqual(len(self.context_calls()), 2)
+
+    def test_one_million_models(self):
+        self.write([usage_line(300000)])  # more than 200k: must be a 1M window
+        self.stop()
+        self.assertEqual(self.context_calls(), [])
+        self.write([usage_line(850000)])
+        self.stop()
+        self.assertIn("85% full", self.opt(self.context_calls()[-1], "--title"))
+        # a [1m] model from SessionStart (the transcript names the model without it)
+        self.run_hook("end", {"hook_event_name": "SessionEnd"})
+        self.run_hook("start", {"hook_event_name": "SessionStart", "source": "startup",
+                                "model": "claude-opus-5[1m]"})
+        self.write([usage_line(170000)])
+        self.stop()
+        self.assertEqual(self.context_calls()[-1][0], "resolve")  # end resolved it; 17% now: nothing new
+        self.assertNotIn("add", [c[0] for c in self.context_calls()[2:]])
+        self.stop(ANTHROPIC_MODEL="opus[1m]")
+        self.assertEqual(len([c for c in self.context_calls() if c[0] == "add"]), 1)
+
+    def test_unknown_transcript_is_quiet(self):
+        self.run_hook("stop", {"hook_event_name": "Stop", "transcript_path": os.path.join(self.home, "nope")})
+        with open(self.transcript, "w") as fh:
+            fh.write("not json\n{\"type\": \"assistant\", \"message\": {\"usage\": \"x\"}}\n")
+        self.stop()
+        self.assertEqual(self.calls(), [])
+
+    def test_clear_resolves_the_old_sessions_cards(self):
+        self.write([usage_line(170000)])
+        self.stop()
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"})
+        ctx_key = self.opt(self.context_calls()[-1], "--key")
+        main_key = self.opt(self.last(), "--key")
+        # /clear: a new session id in the same Claude process (the test process here)
+        self.run_hook("start", {"hook_event_name": "SessionStart", "source": "clear", "session_id": "sess-new"})
+        resolved = sorted(c[2] for c in self.calls() if c[0] == "resolve")
+        self.assertEqual(resolved, sorted([ctx_key, main_key]))
+        self.assertEqual([n for n in os.listdir(self.state) if not n.startswith(".")], [])
+
+    def test_startup_resolves_nothing(self):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"})
+        self.run_hook("start", {"hook_event_name": "SessionStart", "source": "startup", "session_id": "other"})
+        self.assertEqual([c[0] for c in self.calls()], ["add"])
+
+    def test_session_end_resolves_both(self):
+        self.write([usage_line(170000)])
+        self.stop()
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"})
+        self.run_hook("end", {"hook_event_name": "SessionEnd", "reason": "other"})
+        self.assertEqual(sorted(c[0] for c in self.calls()[-2:]), ["resolve", "resolve"])
+        self.assertEqual([n for n in os.listdir(self.state) if not n.startswith(".")], [])
+
+    def test_context_card_lease_is_reaped_by_flush(self):
+        # the marker carries the lease, so `needs-you flush` resolves it when Claude dies
+        self.write([usage_line(170000)])
+        self.stop()
+        m = self.marker("sess-1234-abcd.context")
+        self.assertEqual(m["pid"], str(os.getpid()))
+        self.assertTrue(m["key"].startswith("agent:"))
+        self.assertTrue(m["start"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -174,6 +174,75 @@ class InstallScript(HubTestCase):
         self.assertIn("no uses left", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
 
+    def test_one_line_claude_setup_settings_and_path(self):
+        inv = self.invite(uses=1)
+        zshrc = os.path.join(self.home, ".zshrc")
+        with open(zshrc, "w") as fh:
+            fh.write("alias ll='ls -l'\n")
+        flags = ["--yes", "--host", "box2", "--claude-hooks", "user", "--alerts", "--context-alert", "70",
+                 "--ssh-alias", "devbox", "--agent-link", "'VS Code=vscode://file{cwd}'",
+                 "--orca-environment", "'My Devbox'"]
+        r = self.install(inv, *flags, SHELL="/bin/zsh", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        env = self.envfile()
+        self.assertEqual(env["NEEDS_YOU_AGENT_ALERTS"], "1")
+        self.assertEqual(env["NEEDS_YOU_CONTEXT_ALERT_PCT"], "70")
+        self.assertEqual(env["NEEDS_YOU_SSH_ALIAS"], "devbox")
+        self.assertEqual(env["NEEDS_YOU_AGENT_LINK"], "'VS Code=vscode://file{cwd}'")
+        self.assertEqual(env["NEEDS_YOU_ORCA_ENVIRONMENT"], "'My Devbox'")
+        self.assertIn("Alerts are on for every Claude Code session here", r.stdout)
+        self.assertNotIn(env["NEEDS_YOU_TOKEN"], r.stdout + r.stderr)
+        with open(zshrc) as fh:
+            rc = fh.read()
+        self.assertIn("alias ll='ls -l'\n", rc)
+        self.assertEqual(rc.count('export PATH="$HOME/.local/bin:$PATH"  # added by needs-you'), 1)
+        # the hook reads the quoted values back
+        hook = os.path.join(self.home, ".claude", "hooks", "needs-you-hook.sh")
+        self.assertTrue(os.access(hook, os.X_OK))
+
+        # re-run with no settings flags: same token, settings kept, one PATH line, one cron line
+        r = self.install(inv, "--yes", "--host", "box2", "--claude-hooks", "user", SHELL="/bin/zsh",
+                         STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile(), env)
+        with open(zshrc) as fh:
+            self.assertEqual(fh.read(), rc)
+        self.assertIn("already adds", r.stdout)
+        with open(self.cron) as fh:
+            self.assertEqual(fh.read().count("needs-you-flush"), 1)
+        # a new value replaces the old one in place
+        r = self.install(inv, "--yes", "--host", "box2", "--context-alert", "0", SHELL="/bin/zsh",
+                         STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile()["NEEDS_YOU_CONTEXT_ALERT_PCT"], "0")
+        with open(os.path.join(self.home, ".config", "needs-you", "env")) as fh:
+            self.assertEqual(fh.read().count("NEEDS_YOU_CONTEXT_ALERT_PCT="), 1)
+
+        # --uninstall takes the PATH line back out and leaves the rest
+        r = self.install(inv, "--uninstall", SHELL="/bin/zsh", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(zshrc) as fh:
+            self.assertEqual(fh.read().strip(), "alias ll='ls -l'")
+        with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
+            self.assertEqual(fh.read().strip(), "")
+
+    def test_no_path_prints_the_line_and_bad_values_fail(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--host", "box3", "--no-path", "--no-schedule")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('export PATH="$HOME/.local/bin:$PATH"', r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".profile")))
+        r = self.install(inv, "--yes", "--host", "box3", "--no-schedule", SHELL="/bin/sh")  # -> ~/.profile
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.home, ".profile")) as fh:
+            self.assertIn("# added by needs-you", fh.read())
+        for bad in (["--context-alert", "101"], ["--context-alert", "x"], ["--ssh-alias", "'a b'"],
+                    ["--agent-link", "nolink"], ["--agent-link", "'X=https://a/$(id)'"],
+                    ["--orca-environment", "';rm'"]):
+            r = self.install(inv, "--yes", *bad)
+            self.assertEqual(r.returncode, 1, bad)
+        self.assertNotIn("NEEDS_YOU_SSH_ALIAS", self.envfile())
+
     def test_dead_link_fails_loudly(self):
         inv = self.invite()
         self.hub.store.revoke_invite("srv")

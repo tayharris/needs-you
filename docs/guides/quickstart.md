@@ -33,17 +33,10 @@ Paste that into Claude Code on the Mac. The agent reads the page, picks the opti
 To do it yourself instead, paste the **Shell one-liner** and add the options you want:
 
 ```bash
-curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill
+curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts
 ```
 
-The installer prints a `Note:` if `~/.local/bin` isn't on your `PATH` (it isn't by default on macOS). Add it before going on, or `needs-you` below is "command not found":
-
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh     # macOS (zsh)
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && exec bash   # Linux (bash)
-```
-
-Then `needs-you doctor` checks the setup (config, hubs, token, hooks, skill, flush schedule) and prints a fix for anything wrong.
+The installer puts `~/.local/bin` on your `PATH` with one line in your shell profile (`~/.zshrc` for zsh; `--no-path` prints the line instead). Open a new terminal tab so `needs-you` is found, then `needs-you doctor` checks the setup (config, hubs, token, hooks, skill, flush schedule) and prints a fix for anything wrong.
 
 Try a real item. It appears in the panel, then goes away when you resolve it:
 
@@ -52,13 +45,7 @@ needs-you add --key "personal:test:hello" --context personal --title "Say hi bac
 needs-you resolve --key "personal:test:hello"
 ```
 
-The hooks stay quiet until opted in (`NEEDS_YOU_AGENT_ALERTS=1`, or any session Orca starts). To get a card from every Claude Code session on this machine:
-
-```bash
-echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
-```
-
-Restart open Claude Code sessions to pick up the hooks. More, including SSH, tmux and VS Code Remote-SSH: [claude-code-everywhere.md](claude-code-everywhere.md).
+`--alerts` turns the hooks on for every Claude Code session on this machine; without it they stay quiet (except in sessions Orca starts). Restart open Claude Code sessions to pick up the hooks. More, including SSH, tmux and VS Code Remote-SSH: [claude-code-everywhere.md](claude-code-everywhere.md).
 
 **On the Mac itself,** the installer lists `http://127.0.0.1:8765` first in `~/.config/needs-you/env` (the hub sees the redeem come from its own machine), then the MagicDNS name, so local agents keep posting while Tailscale is down. Check with `grep NEEDS_YOU_URLS ~/.config/needs-you/env`.
 

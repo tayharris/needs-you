@@ -25,9 +25,10 @@ or `needs-you-admin invite create` on a server hub). It looks like
 `http://my-mac.example.ts.net:8765/join/nyi_...`. If you are an agent and were given one:
 
 1. Read the link. It's Markdown written for you: the install line, the options and these rules.
-2. Pick the options that fit this machine: `--claude-hooks user` and `--skill` if it runs
-   Claude Code, `--orca` if it runs Orca automations, `--context personal` if its items are
-   personal rather than work.
+2. Pick the options that fit this machine: `--claude-hooks user --skill --alerts` if it runs
+   Claude Code (add `--ssh-alias <name>` if the person reaches it from the Mac over SSH, with
+   the name their `~/.ssh/config` uses), `--orca` if it runs Orca automations, `--context
+   personal` if its items are personal rather than work.
 3. Run it:
 
    ```bash
@@ -35,12 +36,14 @@ or `needs-you-admin invite create` on a server hub). It looks like
    ```
 
 4. Report the health check output (a line like
-   `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token. If `~/.local/bin` isn't on `PATH`, the installer says so; call
-   `~/.local/bin/needs-you` by its full path until it is. Then run `needs-you doctor` and
+   `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token. The installer
+   puts `~/.local/bin` on `PATH` for new shells; in the current one, call
+   `~/.local/bin/needs-you` by its full path. Then run `needs-you doctor` and
    report any `WARN` or `FAIL` lines with their fixes. If the installer exits 1
    saying the link is unknown, expired or revoked, or has no uses left, ask the person for a new one.
-5. If you installed the hooks, say that they stay quiet until opted in
-   (`NEEDS_YOU_AGENT_ALERTS=1`, or a session Orca starts).
+5. If you installed the hooks without `--alerts`, say that they stay quiet until opted in
+   (`NEEDS_YOU_AGENT_ALERTS=1`, or a session Orca starts). Either way, open Claude Code
+   sessions load them after a restart.
 
 The installer puts the `needs-you` CLI in `~/.local/bin`, redeems the invite for a token of
 this machine's own, and writes `~/.config/needs-you/env` (mode 600):
@@ -157,11 +160,14 @@ orca worktree set --worktree active --workspace-status in-review --comment "Bloc
 
 ## Claude Code hooks
 
-The hooks post a `needs` item when a session waits on a permission prompt or for input, and
-resolve it as soon as the session moves again. Install them with the invite installer's
+The hooks post a `needs` item when a session waits on a permission prompt, a plan approval, a
+question or input, or stopped on an API error, and resolve it as soon as the session moves
+again. A separate `low` item suggests `/compact` or `/clear` when the session's context is 80%
+full (`NEEDS_YOU_CONTEXT_ALERT_PCT`). Install them with the invite installer's
 `--claude-hooks user` (or `project`), or with `integrations/claude-code/install-hooks.sh`. They
-are quiet unless the session is opted in (`NEEDS_YOU_AGENT_ALERTS=1`, or `$ORCA_TERMINAL_HANDLE`
-set by Orca). Details: [integrations/claude-code](../integrations/claude-code/README.md).
+are quiet unless the session is opted in (`--alerts`, which writes `NEEDS_YOU_AGENT_ALERTS=1`,
+or `$ORCA_TERMINAL_HANDLE` set by Orca). An agent that posts its own blockers doesn't need to
+duplicate these. Details: [integrations/claude-code](../integrations/claude-code/README.md).
 
 ## Networking
 

@@ -2,14 +2,19 @@
 # needs-you-hook.sh: Claude Code hook that mirrors "the agent is waiting on
 # you" to needs-you.
 #
-#   needs-you-hook.sh notify    (Notification hook)  -> needs-you add, kind needs
-#   needs-you-hook.sh resolve   (Stop, UserPromptSubmit, PostToolUse,
-#                                SessionEnd hooks)   -> needs-you resolve
+#   needs-you-hook.sh notify    Notification, PermissionRequest, StopFailure
+#                               -> needs-you add (kind needs)
+#   needs-you-hook.sh resolve   UserPromptSubmit, PostToolUse -> needs-you resolve
+#   needs-you-hook.sh stop      Stop: resolve, then the context-usage check
+#   needs-you-hook.sh start     SessionStart: after /clear, compact or /resume,
+#                               resolve this process's earlier cards
+#   needs-you-hook.sh end       SessionEnd: resolve the session's cards
 #
-# Reads the hook input JSON from stdin (session_id, cwd, message,
-# notification_type). The card says where the session runs: the tmux pane
-# (session:window.pane), VS Code, or SSH. Always exits 0 and never prints to stdout, so it can't
-# block or steer Claude. Installed by install-hooks.sh.
+# Reads the hook input JSON from stdin. The card says where the session runs:
+# the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
+# it can (VS Code folder, Remote-SSH window, the VS Code Claude tab, the Orca
+# terminal). Always exits 0 and never prints to stdout, so it can't block or
+# steer Claude. Installed by install-hooks.sh.
 #
 # Off unless one of these is true (so ordinary interactive use stays quiet):
 #   NEEDS_YOU_AGENT_ALERTS=1          opt in for this shell/VM
@@ -21,15 +26,25 @@
 #   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
 #                             {session}, {cwd}, {host}. Example:
-#                             "VS Code=vscode://file{cwd}". Orca has no terminal
-#                             or worktree deep link (1.4.220 opens only
+#                             "VS Code=vscode://file{cwd}". Unset: the hook
+#                             picks editor links itself (below). "none": no
+#                             editor links. Orca has no terminal or worktree
+#                             deep link (1.4.220 opens only
 #                             orca://skills/share/<id>), so Orca sessions get
-#                             the worktree and an `orca terminal switch`
-#                             command in the card body instead.
+#                             a needsyou://orca/terminal link and an
+#                             `orca terminal switch` command in the body.
+#   NEEDS_YOU_SSH_ALIAS       the name the Mac's ~/.ssh/config (or VS Code
+#                             Remote-SSH) uses for this host; on a host other
+#                             than the Mac it adds a Remote-SSH folder link
 #   NEEDS_YOU_AGENT_EXPIRY_HOURS  cards expire after this many hours without a
 #                             re-post (default 48; 0 = never), a backstop for
 #                             a session that dies on a machine that never
 #                             runs `needs-you flush` again
+#   NEEDS_YOU_CONTEXT_ALERT_PCT  post a low-priority card suggesting /compact
+#                             or /clear once the session's context is this
+#                             full, in percent (default 80; 0 = off)
+#   NEEDS_YOU_CONTEXT_WINDOW  the context window in tokens (default 200000,
+#                             or 1000000 for a [1m] model)
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
@@ -62,14 +77,15 @@ esac
 
 input=$(cat 2>/dev/null)
 
-[ -n "${NEEDS_YOU_AGENT_CONTEXT:-}" ]  || NEEDS_YOU_AGENT_CONTEXT=$(file_val NEEDS_YOU_AGENT_CONTEXT)
-[ -n "${NEEDS_YOU_AGENT_PRIORITY:-}" ] || NEEDS_YOU_AGENT_PRIORITY=$(file_val NEEDS_YOU_AGENT_PRIORITY)
-[ -n "${NEEDS_YOU_AGENT_LINK:-}" ]     || NEEDS_YOU_AGENT_LINK=$(file_val NEEDS_YOU_AGENT_LINK)
-[ -n "${NEEDS_YOU_BIN:-}" ]            || NEEDS_YOU_BIN=$(file_val NEEDS_YOU_BIN)
-[ -n "${NEEDS_YOU_ORCA_ENVIRONMENT:-}" ] || NEEDS_YOU_ORCA_ENVIRONMENT=$(file_val NEEDS_YOU_ORCA_ENVIRONMENT)
-[ -n "${NEEDS_YOU_AGENT_EXPIRY_HOURS:-}" ] || NEEDS_YOU_AGENT_EXPIRY_HOURS=$(file_val NEEDS_YOU_AGENT_EXPIRY_HOURS)
-export NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_ORCA_ENVIRONMENT
-export NEEDS_YOU_AGENT_EXPIRY_HOURS
+for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
+           NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
+           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW; do
+  if [ -z "${!var:-}" ]; then
+    val=$(file_val "$var")
+    printf -v "$var" '%s' "$val"
+  fi
+  export "${var?}"
+done
 
 log() {
   [ -n "${NEEDS_YOU_HOOK_LOG:-}" ] || return 0
@@ -78,9 +94,14 @@ log() {
 
 sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
 
-# session_id is a UUID; a sed grab avoids a python start-up on every event.
-session_id=$(printf '%s\n' "$input" |
-  sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+# A plain string field from the hook JSON. A sed grab avoids a python start-up
+# on every event; the values read this way are ids and fixed words.
+json_str() {
+  printf '%s\n' "$input" |
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
+}
+
+session_id=$(json_str session_id)
 
 host=$(hostname -s 2>/dev/null || hostname 2>/dev/null)
 host=$(sanitize "${host%%.*}")
@@ -91,6 +112,7 @@ key="agent:$host:$id"
 
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
+ctx_marker="$state_dir/$id.context"
 
 # The Claude process this hook belongs to: the first ancestor that isn't a
 # shell (Claude Code may start hooks through `sh -c`). `needs-you flush`
@@ -107,6 +129,28 @@ agent_pid() {
     n=$((n + 1))
   done
 }
+lease_pid=
+lease_start=
+lease() {  # fills lease_pid and lease_start once
+  [ -z "$lease_pid" ] || return 0
+  lease_pid=$(agent_pid)
+  [ -n "$lease_pid" ] && lease_start=$(LC_ALL=C ps -o lstart= -p "$lease_pid" 2>/dev/null)
+  [ -n "$lease_start" ] || lease_pid=
+}
+
+# write_marker FILE KEY [EXTRA LINE]: the marker is the lease: key, Claude's
+# pid and its start time (plus what posted it).
+write_marker() {
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  lease
+  local tmp="$state_dir/.${1##*/}.$$"
+  {
+    printf 'key=%s\n' "$2"
+    [ -n "$lease_start" ] && printf 'pid=%s\nstart=%s\n' "$lease_pid" "$lease_start"
+    [ -n "${3:-}" ] && printf '%s\n' "$3"
+  } >"$tmp" 2>/dev/null
+  mv -f "$tmp" "$1" 2>/dev/null || rm -f "$tmp"
+}
 
 # Find the CLI. Hooks run with Claude Code's PATH, which may not include
 # ~/.local/bin.
@@ -120,153 +164,479 @@ if [ -z "$cli" ]; then
 fi
 [ -n "$cli" ] || { log "needs-you CLI not found"; exit 0; }
 
-case "$mode" in
-  resolve)
-    # Only call the hub if this session actually posted something. Stop and
-    # PostToolUse fire constantly; the marker keeps them local and free.
-    [ -f "$marker" ] || exit 0
-    rm -f "$marker"
-    "$cli" resolve --key "$key" </dev/null >/dev/null 2>&1
-    log "resolve $key -> $?"
-    ;;
+# resolve_marker FILE [FALLBACK KEY]: resolve the card a marker stands for.
+# No marker, no network call: Stop and PostToolUse fire constantly.
+resolve_marker() {
+  [ -f "$1" ] || return 0
+  local k
+  k=$(sed -n 's/^key=//p' "$1" 2>/dev/null | head -n 1)
+  [ -n "$k" ] || k=${2:-}
+  rm -f "$1"
+  [ -n "$k" ] || return 0
+  "$cli" resolve --key "$k" </dev/null >/dev/null 2>&1
+  log "resolve $k -> $?"
+}
 
-  notify)
-    command -v python3 >/dev/null 2>&1 || { log "python3 not found"; exit 0; }
-    # Build the item from the hook JSON and call the CLI with an argv list
-    # (no shell quoting of untrusted text).
-    NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
-    python3 - <<'PY' >/dev/null 2>&1
-import json, os, re, shlex, subprocess
+# The card builder and the context check share one python program (below).
+run_py() {
+  command -v python3 >/dev/null 2>&1 || { log "python3 not found"; return 1; }
+  lease
+  NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
+  NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
+  NY_PID=$lease_pid NY_START=$lease_start \
+  python3 - 2>/dev/null <<'PY'
+import json, os, re, shlex, subprocess, sys
 from urllib.parse import quote
 
+mode = os.environ.get("NY_MODE", "")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
     data = {}
+if not isinstance(data, dict):
+    data = {}
 
-ntype = str(data.get("notification_type") or "")
-message = " ".join(str(data.get("message") or "").split())
-cwd = str(data.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+
+def field(name):
+    v = data.get(name)
+    return v if isinstance(v, str) else ""
+
+
+def oneline(text, limit):
+    return " ".join(str(text or "").split())[:limit]
+
+
+event = field("hook_event_name")
+ntype = field("notification_type")
+cwd = field("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
 project = os.path.basename(project_dir.rstrip("/")) or "claude"
-session = str(data.get("session_id") or "")
+session = field("session_id")
 handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
 # <repoId>::<path>; the path is the readable part.
 worktree = os.environ.get("ORCA_WORKTREE_ID", "").split("::", 1)[-1]
 host = os.environ["NY_HOST"]
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$")
 
-what = {
-    "permission_prompt": "Claude needs permission",
-    "idle_prompt": "Claude is waiting for you",
-    "elicitation_dialog": "Claude needs an answer",
-    "elicitation_url_dialog": "Claude needs you to sign in",
-    "agent_needs_input": "Agent needs input",
-}.get(ntype, "Claude needs you")
-title = ("%s: %s" % (what, project))[:100]
 
-home = os.path.expanduser("~")
-short_cwd = "~" + cwd[len(home):] if cwd.startswith(home) else cwd
-lines = []
-if message:
-    lines.append(message[:400])
-# Where the session runs, so a card from a tmux pane on a VM says which one.
-where = []
-pane = os.environ.get("TMUX_PANE", "")
-tmux_target = ""
-if os.environ.get("TMUX") and re.match(r"^%[0-9]+$", pane):
+def read_marker(path):
+    out = {}
     try:
-        tmux_target = subprocess.run(
-            ["tmux", "display-message", "-p", "-t", pane, "#S:#I.#P"], stdin=subprocess.DEVNULL,
-            capture_output=True, text=True, timeout=2).stdout.strip()[:80]
-    except Exception:
-        tmux_target = ""
-    if tmux_target:
-        where.append("tmux `%s`" % tmux_target)
-if os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK_CLI"):
-    where.append("VS Code")
-elif os.environ.get("SSH_CONNECTION") and not tmux_target:
-    where.append("SSH")
-lines.append("`%s` on `%s`%s" % (short_cwd, host, ", " + ", ".join(where) if where else ""))
-links = []
-orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
-if handle:
-    if worktree and worktree != cwd:
-        lines.append("Orca worktree `%s`" % worktree)
-    # The Mac app's Terminal button runs the same switch (it validates both values again).
-    if re.match(r"^term_[0-9a-f-]{8,64}$", handle):
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                k, sep, v = line.rstrip("\n").partition("=")
+                if sep:
+                    out[k] = v
+    except (OSError, UnicodeDecodeError):
+        pass
+    return out
+
+
+def where_lines():
+    """Where the session runs, so a card from a tmux pane on a VM says which one."""
+    home = os.path.expanduser("~")
+    short_cwd = "~" + cwd[len(home):] if cwd.startswith(home + "/") or cwd == home else cwd
+    lines, where = [], []
+    pane = os.environ.get("TMUX_PANE", "")
+    tmux_target = ""
+    if os.environ.get("TMUX") and re.match(r"^%[0-9]+$", pane):
+        try:
+            tmux_target = subprocess.run(
+                ["tmux", "display-message", "-p", "-t", pane, "#S:#I.#P"], stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, timeout=2).stdout.strip()[:80]
+        except Exception:
+            tmux_target = ""
+        if tmux_target:
+            where.append("tmux `%s`" % tmux_target)
+    if (os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK_CLI")
+            or os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"):
+        where.append("VS Code")
+    elif os.environ.get("SSH_CONNECTION") and not tmux_target:
+        where.append("SSH")
+    lines.append("`%s` on `%s`%s" % (short_cwd, host, ", " + ", ".join(where) if where else ""))
+    orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
+    if handle:
+        if worktree and worktree != cwd:
+            lines.append("Orca worktree `%s`" % worktree)
+        jump = "orca terminal switch%s --terminal %s" % (
+            " --environment " + shlex.quote(orca_env) if orca_env else "", shlex.quote(handle))
+        lines.append("Jump to its terminal: `%s`" % jump)
+    elif session:
+        lines.append("Session `%s`" % session[:8])
+    return lines
+
+
+def make_links():
+    links = []
+    orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
+    # The Mac app's Terminal button runs the Orca switch (it validates both values again).
+    if handle and re.match(r"^term_[0-9a-f-]{8,64}$", handle):
         url = "needsyou://orca/terminal?handle=" + handle
         if re.match(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$", orca_env):
             url += "&environment=" + quote(orca_env, safe="")
         links.append("Terminal=" + url)
-    jump = "orca terminal switch%s --terminal %s" % (
-        " --environment " + shlex.quote(orca_env) if orca_env else "", shlex.quote(handle))
-    lines.append("Jump to its terminal: `%s`" % jump)
-elif session:
-    lines.append("Session `%s`" % session[:8])
-body = "\n\n".join(lines)[:2000]
+    tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "").strip()
+    if tmpl.lower() == "none":
+        return links
+    if "=" in tmpl:
+        label, url = tmpl.split("=", 1)
+        needs_handle = "{handle}" in url
+        url = (url.replace("{handle}", quote(handle, safe=""))
+                  .replace("{session}", quote(session, safe=""))
+                  .replace("{cwd}", quote(cwd)).replace("{host}", quote(host, safe="")))
+        if label and url and not (needs_handle and not handle):
+            links.append("%s=%s" % (label, url))
+        return links
+    # No template: the deepest editor links this machine can name.
+    # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
+    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode" and re.match(r"^[A-Za-z0-9-]{8,64}$", session):
+        links.append("Claude=vscode://anthropic.claude-code/open?session=" + session)
+    if not cwd.startswith("/"):
+        return links
+    platform = os.environ.get("NEEDS_YOU_HOOK_PLATFORM") or sys.platform
+    alias = os.environ.get("NEEDS_YOU_SSH_ALIAS", "")
+    if platform == "darwin" and not os.environ.get("SSH_CONNECTION"):
+        links.append("VS Code=vscode://file" + quote(cwd))  # this is the Mac: the path exists there
+    elif SAFE_NAME.match(alias):
+        links.append("VS Code=vscode://vscode-remote/ssh-remote+%s%s" % (alias, quote(cwd)))
+    return links
 
-# No NEEDS_YOU_AGENT_CONTEXT: the CLI uses NEEDS_YOU_DEFAULT_CONTEXT, else work.
-context = os.environ.get("NEEDS_YOU_AGENT_CONTEXT") or ""
-priority = os.environ.get("NEEDS_YOU_AGENT_PRIORITY") or "normal"
-if priority not in ("urgent", "normal", "low"):
-    priority = "normal"
 
-args = [
-    os.environ["NY_CLI"], "add",
-    "--key", os.environ["NY_KEY"],
-] + (["--context", context] if context in ("work", "personal") else []) + [
-    "--priority", priority,
-    "--title", title,
-    "--body", body,
-    "--agent", "claude-code",
-    "--project", project,
-]
-try:
-    expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
-except ValueError:
-    expiry = 48.0
-if expiry > 0:
-    args += ["--expires-in", "%g" % expiry]
-tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "")
-if "=" in tmpl:
-    label, url = tmpl.split("=", 1)
-    needs_handle = "{handle}" in url
-    url = (url.replace("{handle}", quote(handle, safe=""))
-              .replace("{session}", quote(session, safe=""))
-              .replace("{cwd}", quote(cwd)).replace("{host}", quote(host, safe="")))
-    if label and url and not (needs_handle and not handle):
-        links.append("%s=%s" % (label, url))
-
-def post(links):
+def base_args(key, title, body, priority):
+    context = os.environ.get("NEEDS_YOU_AGENT_CONTEXT") or ""
+    args = [os.environ["NY_CLI"], "add", "--key", key]
+    if context in ("work", "personal"):  # else the CLI's NEEDS_YOU_DEFAULT_CONTEXT, else work
+        args += ["--context", context]
+    # --opt=value: a title, body or project starting with "-" isn't taken for an option
+    args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
+             "--agent", "claude-code", "--project=" + project]
     try:
-        return subprocess.run(args + [a for l in links for a in ("--link", l)],
-                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                              stderr=subprocess.DEVNULL, timeout=15).returncode
-    except Exception:
-        return 1
+        expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
+    except ValueError:
+        expiry = 48.0
+    if expiry > 0:
+        args += ["--expires-in", "%g" % expiry]
+    return args
 
-rc = post(links)
-if rc == 2 and links and links[0].startswith("Terminal="):
-    rc = post(links[1:])  # a hub older than the Terminal link rejects it; post without
+
+def post(args, links):
+    def run(ls):
+        try:
+            return subprocess.run(args + [a for l in ls for a in ("--link", l)],
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, timeout=15).returncode
+        except Exception:
+            return 1
+    rc = run(links)
+    if rc == 2 and links and links[0].startswith("Terminal="):
+        rc = run(links[1:])  # a hub older than the Terminal link rejects it; post without
+    return rc
+
+
+def agent_priority():
+    p = os.environ.get("NEEDS_YOU_AGENT_PRIORITY") or "normal"
+    return p if p in ("urgent", "normal", "low") else "normal"
+
+
+# ---------------------------------------------------------------- tool summaries
+# tool_input can hold secrets (a curl header, a file's content), so a card names
+# the tool plus at most a program name or a file's basename, never the input.
+WRAPPERS = ("sudo", "env", "command", "time", "nohup", "exec", "nice", "timeout", "xargs")
+
+
+def command_word(cmd):
+    if not isinstance(cmd, str):
+        return ""
+    first = cmd.strip().split("\n", 1)[0][:500]
+    try:
+        words = shlex.split(first)
+    except ValueError:
+        words = first.split()
+    for w in words[:12]:
+        if "=" in w or w.startswith("-") or w in WRAPPERS or w.isdigit():
+            continue
+        w = os.path.basename(w)
+        return w if re.match(r"^[A-Za-z][A-Za-z0-9._+-]{0,31}$", w) else ""
+    return ""
+
+
+def file_name(path):
+    if not isinstance(path, str):
+        return ""
+    name = os.path.basename(path.rstrip("/"))
+    return name if re.match(r"^[A-Za-z0-9._+-]{1,64}$", name) and name not in (".", "..") else ""
+
+
+def tool_label(tool):
+    m = re.match(r"^mcp__([A-Za-z0-9_-]{1,40})__([A-Za-z0-9_-]{1,40})$", tool)
+    if m:
+        return "%s %s" % (m.group(1), m.group(2))
+    return tool if re.match(r"^[A-Za-z][A-Za-z0-9_.-]{0,39}$", tool) else "a tool"
+
+
+# ---------------------------------------------------------------- notify
+def notify():
+    priority = agent_priority()
+    kind = "notify"
+    if event == "PermissionRequest":
+        if data.get("requires_user_approval") is False:
+            return 3
+        kind = "permission"
+        tool = field("tool_name")
+        ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+        if tool == "ExitPlanMode":
+            what, msg = "Approve Claude's plan", "Claude has a plan ready and is waiting for your approval."
+        elif tool == "AskUserQuestion":
+            what, msg = "Claude asked you a question", "Claude is waiting for your answer."
+        elif tool in ("Bash", "PowerShell"):
+            word = command_word(ti.get("command"))
+            what = "Claude wants to run %s" % word if word else "Claude wants to run a command"
+            msg = "Claude is asking to use %s." % tool
+        elif tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+            name = file_name(ti.get("file_path") or ti.get("notebook_path"))
+            what = "Claude wants to edit %s" % name if name else "Claude wants to edit a file"
+            msg = "Claude is asking to use %s." % tool
+        else:
+            what = "Claude needs permission for %s" % tool_label(tool)
+            msg = "Claude is asking to use %s." % tool_label(tool)
+    elif event == "StopFailure":
+        kind = "failure"
+        et = field("error_type")
+        what = {
+            "rate_limit": "Claude hit a rate limit",
+            "authentication_failed": "Claude needs you to sign in again",
+            "oauth_org_not_allowed": "Claude needs you to sign in again",
+            "cloud_credential_error": "Claude's cloud credentials failed",
+            "billing_error": "Claude stopped on a billing problem",
+            "account_on_hold": "Claude stopped: account on hold",
+            "max_output_tokens": "Claude stopped at its output limit",
+            "model_not_found": "Claude stopped: model not found",
+        }.get(et, "Claude stopped on an API error")
+        err = oneline(field("error_message"), 300)
+        msg = ((err + "\n\n") if err else "") + "The turn ended and won't continue on its own; send a message to retry."
+    else:
+        prior = read_marker(os.environ["NY_MARKER"]).get("kind")
+        # A PermissionRequest card is more specific than the generic prompt notifications
+        # that follow it; keep it.
+        if prior == "permission" and ntype in ("permission_prompt", "idle_prompt"):
+            return 3
+        what = {
+            "permission_prompt": "Claude needs permission",
+            "idle_prompt": "Claude is waiting for you",
+            "elicitation_dialog": "Claude needs an answer",
+            "elicitation_url_dialog": "Claude needs you to sign in",
+            "agent_needs_input": "Agent needs input",
+            "quota_auto_resume_disabled": "Claude hit its usage limit",
+        }.get(ntype, "Claude needs you")
+        msg = oneline(data.get("message"), 400)
+        if ntype == "quota_auto_resume_disabled":
+            kind = "failure"
+    title = "%s: %s" % (what, project)
+    body = "\n\n".join(([msg] if msg else []) + where_lines())
+    rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links())
+    if rc == 0:
+        sys.stdout.write(kind)
+    return rc
+
+
+# ---------------------------------------------------------------- context
+USAGE_KEYS = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+
+
+def transcript_usage(path):
+    """(tokens, model) from the newest main-thread assistant message, reading only the
+    tail of the transcript. (0, "") right after a compaction; None if unknown."""
+    if not path or not os.path.isfile(path):
+        return None
+    for size in (256 * 1024, 2 * 1024 * 1024):
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, 2)
+                end = fh.tell()
+                start = max(0, end - size)
+                fh.seek(start)
+                buf = fh.read(end - start)
+        except OSError:
+            return None
+        lines = buf.split(b"\n")
+        if start > 0:
+            lines = lines[1:]  # partial first line
+        for raw in reversed(lines):
+            if b'"usage"' not in raw and b"compact_boundary" not in raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(d, dict):
+                continue
+            if d.get("type") == "system" and d.get("subtype") == "compact_boundary":
+                return 0, ""
+            if d.get("type") != "assistant" or d.get("isSidechain"):
+                continue
+            m = d.get("message")
+            u = m.get("usage") if isinstance(m, dict) else None
+            if not isinstance(u, dict):
+                continue
+            model = m.get("model") if isinstance(m.get("model"), str) else ""
+            if model == "<synthetic>":
+                continue
+            try:
+                return sum(int(u.get(k) or 0) for k in USAGE_KEYS), model
+            except (TypeError, ValueError):
+                continue
+        if start == 0:
+            break
+    return None
+
+
+def model_names(transcript_model):
+    names = [transcript_model, os.environ.get("ANTHROPIC_MODEL", "")]
+    sid = re.sub(r"[^A-Za-z0-9._-]", "_", session)[:80]
+    if sid:
+        try:
+            with open(os.path.join(os.environ["NY_STATE"], ".model-" + sid), encoding="utf-8") as fh:
+                names.append(fh.read(200))
+        except OSError:
+            pass
+    try:
+        with open(os.path.expanduser("~/.claude/settings.json"), encoding="utf-8") as fh:
+            m = json.loads(fh.read(1024 * 1024)).get("model")
+        if isinstance(m, str):
+            names.append(m)
+    except Exception:
+        pass
+    return names
+
+
+def context_window(used, transcript_model):
+    try:
+        w = int(float(os.environ.get("NEEDS_YOU_CONTEXT_WINDOW") or 0))
+    except ValueError:
+        w = 0
+    if w > 0:
+        return w
+    if any("[1m]" in n.lower() for n in model_names(transcript_model)):
+        return 1000000
+    if used > 200000:  # usage can't exceed the window, so this is a 1M session
+        return 1000000
+    return 200000
+
+
+def context():
+    marker = os.environ["NY_CTX_MARKER"]
+    try:
+        threshold = float(os.environ.get("NEEDS_YOU_CONTEXT_ALERT_PCT") or 80)
+    except ValueError:
+        threshold = 80.0
+    usage = transcript_usage(field("transcript_path"))
+    if usage is None and threshold > 0:
+        return 0  # can't tell; leave any card as it is
+    used, model = usage or (0, "")
+    window = context_window(used, model)
+    pct = int(used * 100 // window)
+    prior = read_marker(marker)
+    if threshold <= 0 or pct < threshold:
+        if prior or os.path.exists(marker):
+            try:
+                os.remove(marker)
+            except OSError:
+                pass
+            key = prior.get("key") or os.environ["NY_KEY"] + ":context"
+            try:
+                subprocess.run([os.environ["NY_CLI"], "resolve", "--key", key], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+            except Exception:
+                pass
+        return 0
+    try:
+        if abs(int(prior.get("pct", "")) - pct) < 5:
+            return 0  # posted already at about this level; don't re-announce every turn
+    except ValueError:
+        pass
+    key = os.environ["NY_KEY"] + ":context"
+    title = "Claude's context is %d%% full: %s" % (pct, project)
+    msg = ("This session has used about %dk of its %dk-token context (%d%%). Run `/compact` to "
+           "summarize and keep going, or `/clear` to start fresh if the next task is unrelated."
+           % (used // 1000, window // 1000, pct))
+    body = "\n\n".join([msg] + where_lines())
+    rc = post(base_args(key, title, body, "low"), make_links())
+    if rc == 0:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        tmp = "%s.%d.tmp" % (marker, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("key=%s\n" % key)
+            if os.environ.get("NY_PID") and os.environ.get("NY_START"):
+                fh.write("pid=%s\nstart=%s\n" % (os.environ["NY_PID"], os.environ["NY_START"]))
+            fh.write("pct=%d\n" % pct)
+        os.replace(tmp, marker)
+    return rc
+
+
+try:
+    rc = notify() if mode == "notify" else context() if mode == "context" else 0
+except Exception:
+    rc = 1
 raise SystemExit(rc)
 PY
+}
+
+case "$mode" in
+  resolve)
+    resolve_marker "$marker" "$key"
+    ;;
+
+  stop)
+    # A StopFailure card stays until the next prompt: the turn ended on an error.
+    grep -qs '^kind=failure$' "$marker" || resolve_marker "$marker" "$key"
+    case "${NEEDS_YOU_CONTEXT_ALERT_PCT:-}" in
+      0|0.0|off|no|false) resolve_marker "$ctx_marker" ;;
+      *) run_py context >/dev/null; log "context $key -> $?" ;;
+    esac
+    ;;
+
+  start)
+    # Remember the model (the transcript has no [1m] suffix) for the context check.
+    model=$(json_str model)
+    if [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
+      printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
+      find "$state_dir" -name '.model-*' -mtime +7 -exec rm -f {} + 2>/dev/null
+    fi
+    case "$(json_str source)" in
+      clear|compact|resume)
+        # A new conversation in the same Claude process: cards from before it
+        # (the old session id after /clear, a full context before compaction)
+        # no longer apply. Find them by the lease's process.
+        lease
+        if [ -n "$lease_pid" ] && [ -d "$state_dir" ]; then
+          for f in "$state_dir"/*; do
+            [ -f "$f" ] || continue
+            if [ "$(sed -n 's/^pid=//p' "$f" 2>/dev/null)" = "$lease_pid" ] &&
+               [ "$(sed -n 's/^start=//p' "$f" 2>/dev/null)" = "$lease_start" ]; then
+              resolve_marker "$f"
+            fi
+          done
+        fi
+        resolve_marker "$ctx_marker"
+        ;;
+    esac
+    ;;
+
+  end)
+    resolve_marker "$marker" "$key"
+    resolve_marker "$ctx_marker"
+    [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+    ;;
+
+  notify)
+    # Build the item from the hook JSON and call the CLI with an argv list
+    # (no shell quoting of untrusted text). Prints what posted it.
+    kind=$(run_py notify)
     rc=$?
     log "notify $key -> $rc"
     # The CLI queues offline and exits 0, so a down hub still leaves a marker
     # and the later resolve is queued behind the add.
-    # The marker is the lease: key, Claude's pid and its start time.
-    if [ "$rc" -eq 0 ] && mkdir -p "$state_dir" 2>/dev/null; then
-      pid=$(agent_pid)
-      start=
-      [ -n "$pid" ] && start=$(LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null)
-      tmp="$state_dir/.$id.$$"
-      if [ -n "$start" ]; then
-        printf 'key=%s\npid=%s\nstart=%s\n' "$key" "$pid" "$start" >"$tmp"
-      else
-        printf 'key=%s\n' "$key" >"$tmp"
-      fi
-      mv -f "$tmp" "$marker" 2>/dev/null || rm -f "$tmp"
-    fi
+    [ "$rc" -eq 0 ] && write_marker "$marker" "$key" "kind=${kind:-notify}"
     ;;
 esac
 

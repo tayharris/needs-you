@@ -2235,19 +2235,32 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes
 It downloads the `needs-you` CLI from the hub into `~/.local/bin`, redeems this invite for a
 token of its own, writes `~/.config/needs-you/env` (mode 600), adds a 5-minute
 `needs-you flush` (cron on Linux, a LaunchAgent on macOS) so items queued while the hub is
-asleep or unreachable get delivered, checks health, and posts a test `info` item.
+asleep or unreachable get delivered, puts `~/.local/bin` on PATH in your shell profile (one
+tagged line), checks health, and posts a test `info` item.
+
+For Claude Code alerts from every session on this machine, the whole setup is:
+
+```bash
+curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts
+```
 
 ## Options (add after `--yes`)
 
 | Option | Use it when |
 |---|---|
 | `--claude-hooks user` | This machine runs Claude Code (or Orca): post an item when a session waits on a permission prompt or input. `project` installs into the current repo instead. Default `none`. |
+| `--alerts` | Turn the hooks on for every Claude Code session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
+| `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
+| `--ssh-alias NAME` | This machine is reached from the Mac over SSH: NAME is its host alias in the Mac's `~/.ssh/config` (VS Code Remote-SSH), so cards get a link that opens the session's folder there. |
+| `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links (`{cwd}`, `{host}`, `{session}`, `{handle}`); `none` turns editor links off. |
+| `--orca-environment NAME` | A paired Orca server: its name in the Mac's Orca (`orca environment list` there). |
 | `--orca` | This machine runs Orca automations: write the prompt snippet for them to `~/.config/needs-you/orca-snippet.md` and print it. |
 | `--context work\\|personal` | Default context for items from this machine (the CLI's `--context` still wins). |
 | `--host NAME` | Name for this machine (default: short hostname). |
 | `--hub URL` | Use another URL for this same hub, e.g. `http://127.0.0.1:8765` on the hub's own Mac when the name above doesn't resolve. It is saved first in this machine's hub list. |
 | `--no-schedule` | Don't add the 5-minute flush. |
+| `--no-path` | Don't edit the shell profile; print the PATH line to add instead. |
 | `--force` | Redeem again and replace an existing token. Without it, a machine that's already set up keeps its token. |
 | `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Works until the link expires or is revoked, even with no uses left. |
 
@@ -2255,13 +2268,14 @@ If you are an agent: pick the options that match this machine (look for `~/.clau
 `orca` on PATH), say which ones you chose, run the one line, and report the output of the
 health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
 
-- If the installer notes that `~/.local/bin` is not on PATH, call `~/.local/bin/needs-you`
-  by its full path, and tell the user the line to add to their shell profile.
+- The PATH change reaches new shells only: in the shell you ran it from, call
+  `~/.local/bin/needs-you` by its full path. With `--no-path`, tell the user the line it printed.
 - Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule)
   and report any `WARN` or `FAIL` lines with their fixes. `--json` gives the same as data.
-- If you added `--claude-hooks`, tell the user the hooks stay quiet until opted in:
-  `NEEDS_YOU_AGENT_ALERTS=1` in the environment or in `~/.config/needs-you/env` (sessions
-  started by Orca are opted in already).
+- If you added `--claude-hooks` without `--alerts`, tell the user the hooks stay quiet until
+  opted in: re-run with `--alerts`, or `NEEDS_YOU_AGENT_ALERTS=1` in the environment (sessions
+  started by Orca are opted in already). Either way, open Claude Code sessions pick up the hooks
+  after a restart (or `/hooks`).
 - If the installer exits 1 saying the link is unknown, expired or revoked, or that the hub
   refused the invite (no uses left), stop and ask the user for a new link.
 - Re-running on a machine that's already set up is safe and keeps its token, until the link
