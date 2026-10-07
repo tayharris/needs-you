@@ -29,13 +29,16 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
   NEEDS_YOU_OUTBOX_MAX       max queued requests kept (default 500)
   NEEDS_YOU_OUTBOX_MAX_DAYS  queued requests older than this are dropped (default 7)
 
-  needs-you update [--check] [--auto]                update the CLI, Claude Code hook (and its
+  needs-you update [--check] [--rollback] [--allow-downgrade]
+                                                     update the CLI, Claude Code hook (and its
                                                      settings entries), skill and Orca snippet
-                                                     that are installed here, from the first hub
-                                                     that answers (/dl/manifest.json, sha256
-                                                     checked; never a downgrade). --check only
-                                                     reports. `flush` runs it once a day
-                                                     (NEEDS_YOU_AUTO_UPDATE=0 turns that off)
+                                                     installed here, from the hub this machine
+                                                     was invited by (the first in NEEDS_YOU_URLS,
+                                                     or NEEDS_YOU_UPDATE_HUB; https, loopback or
+                                                     tailnet only), sha256-checked against its
+                                                     /dl/manifest.json and, with gh, the GitHub
+                                                     release. --check only reports. With
+                                                     NEEDS_YOU_AUTO_UPDATE=1, `flush` runs it daily
   needs-you self-update                              same as `update` (the old name)
 
 If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ and the
@@ -641,7 +644,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                             if name == "update" else "same as update")
         up.add_argument("--check", action="store_true", help="report what would change; change nothing")
         up.add_argument("--auto", action="store_true",
-                        help="quiet, never fails (what flush runs once a day)")
+                        help="quiet, never fails (what flush runs once a day with NEEDS_YOU_AUTO_UPDATE=1)")
+        up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
+        up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
     dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
     dp.add_argument("--json", dest="doctor_json", action="store_true",
                     help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
@@ -652,7 +657,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     cfg = Config()
     if args.cmd in ("update", "self-update"):
-        return update(cfg, check=args.check, auto=args.auto, quiet=args.quiet or args.auto, as_json=args.json)
+        if args.rollback:
+            return rollback(args.quiet, args.json)
+        return update(cfg, check=args.check, auto=args.auto, quiet=args.quiet or args.auto, as_json=args.json,
+                      allow_downgrade=args.allow_downgrade)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
@@ -854,19 +862,91 @@ def _report_run(cfg: Config, args: argparse.Namespace, key: str, context: str, n
 
 
 # ---------------------------------------------------------------------------
-# update: follow the hub. The hub's /dl/manifest.json lists each file's sha256; every
-# download is checked against it before it replaces anything. The checksum guards against
-# truncated or mixed-version downloads, not against the hub itself (the same trust as the
-# installer it served). Nothing new is installed: only pieces already on this machine.
+# update: follow the hub that invited this machine. The hub's /dl/manifest.json lists each
+# file's sha256; every download is checked against it, and (when `gh` can read the repo)
+# against the GitHub release of that version, before it replaces anything. See
+# docs/security/audit-2026-10-07.md item 17 for what this does and doesn't protect against.
+# Nothing new is installed: only pieces already on this machine.
 # ---------------------------------------------------------------------------
 
 AUTO_UPDATE_EVERY = 24 * 3600
 AUTO_UPDATE_RETRY = 3600
+RELEASE_REPO = "tayharris/needs-you"  # fixed in code; never from a hub or a setting
+# Where each /dl file sits in the release's server tarball (needs-you-server-X.Y.Z.tar.gz).
+RELEASE_PATHS = {
+    "needs-you": "cli/needs-you",
+    "needs-you-hook.sh": "integrations/claude-code/needs-you-hook.sh",
+    "install-hooks.sh": "integrations/claude-code/install-hooks.sh",
+    "hooks.json": "integrations/claude-code/hooks.json",
+    "SKILL.md": "integrations/claude-code/skill/needs-you/SKILL.md",
+    "orca-snippet.md": "integrations/orca/snippet.md",
+}
+
+
+class UpdateRefused(Exception):
+    pass
 
 
 def state_dir() -> str:
     base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
     return os.path.join(base, "needs-you")
+
+
+def _setting(cfg: Config, name: str) -> str:
+    return os.environ.get(name) or read_env_file(config_path()).get(name) or ""
+
+
+def _tailnet_ip(ip: str) -> bool:
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(ip.split("%", 1)[0])
+    except ValueError:
+        return False
+    if a.version == 4:
+        return a in ipaddress.ip_network("100.64.0.0/10")
+    return a in ipaddress.ip_network("fd7a:115c:a1e0::/48")
+
+
+def update_transport_ok(url: str, resolve: Any = None) -> Tuple[bool, str]:
+    """Updates are code, so they only travel over https, loopback, or the tailnet (Tailscale
+    encrypts it): a tailnet IP, or a *.ts.net name that resolves into the tailnet ranges.
+    Plain http to anything else is refused."""
+    import ipaddress
+    import urllib.parse
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower().rstrip(".")
+    if parts.scheme == "https" and host:
+        return True, "https"
+    if parts.scheme != "http" or not host:
+        return False, "not an http(s) URL"
+    if host == "localhost":
+        return True, "loopback"
+    try:
+        a = ipaddress.ip_address(host)
+        if a.is_loopback:
+            return True, "loopback"
+        if _tailnet_ip(host):
+            return True, "tailnet address"
+        return False, "plain http to %s, which isn't loopback or the tailnet" % host
+    except ValueError:
+        pass
+    if host.endswith(".ts.net"):
+        try:
+            addrs = (resolve or socket.getaddrinfo)(host, parts.port or 80, 0, socket.SOCK_STREAM)
+        except OSError:
+            return False, "%s doesn't resolve" % host
+        ips = {str(a[4][0]) for a in addrs}
+        if ips and all(_tailnet_ip(ip) for ip in ips):
+            return True, "tailnet name"
+        return False, "%s resolves outside the tailnet" % host
+    return False, "plain http to %s, which isn't loopback or the tailnet" % host
+
+
+def update_hub(cfg: Config) -> str:
+    """The one hub updates come from: NEEDS_YOU_UPDATE_HUB, else the first hub in the config
+    (the one the invite set up). Never a failover hub, never a URL a hub sent."""
+    explicit = _setting(cfg, "NEEDS_YOU_UPDATE_HUB").strip().rstrip("/")
+    return explicit or (cfg.urls[0] if cfg.urls else "")
 
 
 def _get_bytes(url: str, timeout: float) -> bytes:
@@ -878,24 +958,31 @@ def _get_bytes(url: str, timeout: float) -> bytes:
 
 
 def fetch_manifest(cfg: Config, errors: List[str]) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """(hub url, manifest) from the first hub that answers /v1/health and serves one."""
-    for url in cfg.urls:
-        try:
-            status, body = _call(url, cfg.token, "GET", "/v1/health", None, cfg.timeout)
-            if status != 200 or not body.get("ok"):
-                raise ValueError("HTTP %d" % status)
-            raw = _get_bytes(url + "/dl/manifest.json", max(cfg.timeout, 10))
-            manifest = json.loads(raw.decode("utf-8"))
-            if not isinstance(manifest, dict) or not isinstance(manifest.get("files"), dict):
-                raise ValueError("not a manifest")
-        except urllib.error.HTTPError as e:
-            errors.append("%s: HTTP %d for /dl/manifest.json%s" % (url, e.code, " (hub older than 0.1.2)" if e.code == 404 else ""))
-            continue
-        except (OSError, ValueError) as e:
-            errors.append("%s: %s" % (url, clean(getattr(e, "reason", e))))
-            continue
-        return url, manifest
-    return None
+    """(hub url, manifest) from the update hub, or None with the reason in `errors`."""
+    url = update_hub(cfg)
+    if not url:
+        errors.append("NEEDS_YOU_URLS is not set (%s)" % config_path())
+        return None
+    ok, why = update_transport_ok(url)
+    if not ok:
+        errors.append("%s: refusing to update over %s; use the hub's https or tailnet URL "
+                      "(or set NEEDS_YOU_UPDATE_HUB)" % (url, why))
+        return None
+    try:
+        status, body = _call(url, cfg.token, "GET", "/v1/health", None, cfg.timeout)
+        if status != 200 or not body.get("ok"):
+            raise ValueError("HTTP %d" % status)
+        raw = _get_bytes(url + "/dl/manifest.json", max(cfg.timeout, 10))
+        manifest = json.loads(raw.decode("utf-8"))
+        if not isinstance(manifest, dict) or not isinstance(manifest.get("files"), dict):
+            raise ValueError("not a manifest")
+    except urllib.error.HTTPError as e:
+        errors.append("%s: HTTP %d for /dl/manifest.json%s" % (url, e.code, " (hub older than 0.1.2)" if e.code == 404 else ""))
+        return None
+    except (OSError, ValueError) as e:
+        errors.append("%s: %s" % (url, clean(getattr(e, "reason", e))))
+        return None
+    return url, manifest
 
 
 def _valid_cli(data: bytes) -> bool:
@@ -927,15 +1014,16 @@ def _write_atomic(path: str, data: bytes, mode: int) -> None:
         raise
 
 
-def plan_update(manifest: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
+def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Which installed files differ from the hub's. Returns (changes, notes)."""
     files = manifest.get("files") or {}
     notes: List[str] = []
     changes: List[Dict[str, Any]] = []
     hub_v = _vtuple(manifest.get("version"))
     mine = _vtuple(VERSION)
-    if hub_v is None or (mine is not None and hub_v < mine):
-        notes.append("the hub serves %s, this CLI is %s: not downgrading" % (clean(manifest.get("version")), VERSION))
+    if hub_v is None or (mine is not None and hub_v < mine and not allow_downgrade):
+        notes.append("the hub serves %s, this CLI is %s: not downgrading (--allow-downgrade to do it anyway)"
+                     % (clean(manifest.get("version")), VERSION))
         return changes, notes
     for name, path in installed_paths().items():
         entry = files.get(name)
@@ -988,6 +1076,109 @@ def _write_state(**fields: Any) -> None:
         pass
 
 
+# -- the GitHub release cross-check -------------------------------------------------
+
+def _gh() -> Optional[str]:
+    """`gh`, or NEEDS_YOU_GH (a path; "none" turns the cross-check off, as tests do)."""
+    import shutil
+    forced = os.environ.get("NEEDS_YOU_GH")
+    if forced:
+        return forced if forced != "none" and os.access(forced, os.X_OK) else None
+    return shutil.which("gh")
+
+
+def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, str]], str]:
+    """sha256 of each named /dl file as the GitHub release vX.Y.Z of RELEASE_REPO has it,
+    from its server tarball (itself checked against the release's SHA256SUMS). Returns
+    (digests, "") or (None, why the cross-check couldn't run)."""
+    import subprocess
+    import tarfile
+    import tempfile
+    gh = _gh()
+    if not gh:
+        return None, "gh isn't installed"
+    if _vtuple(version) is None:
+        return None, "the hub's version %s isn't X.Y.Z" % clean(version)
+    v = "%d.%d.%d" % _vtuple(version)  # type: ignore[str-format]
+    tarball = "needs-you-server-%s.tar.gz" % v
+    with tempfile.TemporaryDirectory(prefix="needs-you-release-") as tmp:
+        try:
+            r = subprocess.run([gh, "release", "download", "v" + v, "--repo", RELEASE_REPO,
+                                "--pattern", "SHA256SUMS", "--pattern", tarball, "--dir", tmp],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as e:
+            return None, "gh failed (%s)" % type(e).__name__
+        if r.returncode != 0:
+            return None, "gh couldn't download release v%s (%s)" % (v, clean((r.stderr.strip().splitlines() or [""])[-1]))
+        sums: Dict[str, str] = {}
+        try:
+            with open(os.path.join(tmp, "SHA256SUMS"), "r", encoding="utf-8") as fh:
+                for line in fh:
+                    p = line.split()
+                    if len(p) == 2:
+                        sums[p[1].lstrip("*")] = p[0].lower()
+            tar_path = os.path.join(tmp, tarball)
+            if _sha256_file(tar_path) != sums.get(tarball):
+                raise UpdateRefused("the release's %s doesn't match its SHA256SUMS" % tarball)
+            out: Dict[str, str] = {}
+            with tarfile.open(tar_path, "r:gz") as tf:
+                for name in names:
+                    rel = RELEASE_PATHS.get(name)
+                    if not rel:
+                        continue
+                    try:
+                        member = tf.extractfile("needs-you-%s/%s" % (v, rel))
+                    except KeyError:
+                        member = None
+                    if member is not None:
+                        out[name] = hashlib.sha256(member.read()).hexdigest()
+            return out, ""
+        except (OSError, tarfile.TarError) as e:
+            return None, "couldn't read release v%s (%s)" % (v, type(e).__name__)
+
+
+def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, Any]]) -> str:
+    """Every file about to be installed must match the GitHub release of the hub's version.
+    Raises UpdateRefused on a mismatch; returns a note when the check couldn't run (and
+    raises instead with NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1)."""
+    names = sorted({c["file"] for c in changes} | ({"install-hooks.sh", "needs-you-hook.sh"}
+                                                  if any(c["file"] == "hooks.json" for c in changes) else set()))
+    digests, why = release_digests(str(manifest.get("version") or ""), names)
+    if digests is None:
+        if _setting(cfg, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH").strip().lower() in _ON:
+            raise UpdateRefused("can't check against the GitHub release (%s) and "
+                                "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH is on" % why)
+        return "not checked against the GitHub release: %s" % why
+    files = manifest.get("files") or {}
+    for name in names:
+        want = str((files.get(name) or {}).get("sha256") or "").lower()
+        if digests.get(name) != want:
+            raise UpdateRefused("%s from the hub doesn't match release v%s on GitHub; not updating anything"
+                                % (name, clean(manifest.get("version"))))
+    return "matches release v%s on GitHub" % clean(manifest.get("version"))
+
+
+# -- apply, back up, roll back --------------------------------------------------------
+
+def backup_dir() -> str:
+    return os.path.join(state_dir(), "backup")
+
+
+def _backup(name: str, path: str) -> None:
+    """Keep the file being replaced, for `update --rollback` (one generation)."""
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+        mode = os.stat(path).st_mode & 0o777
+    except OSError:
+        return
+    os.makedirs(backup_dir(), mode=0o700, exist_ok=True)
+    _write_atomic(os.path.join(backup_dir(), name), data, 0o600)
+    backups = _read_state().get("backups") or {}
+    backups[name] = {"path": path, "mode": mode, "version": _stamp(path) if name != "needs-you" else VERSION}
+    _write_state(backups=backups)
+
+
 def _download_verified(hub: str, name: str, manifest: Dict[str, Any], timeout: float) -> bytes:
     entry = (manifest.get("files") or {}).get(name) or {}
     data = _get_bytes(hub + "/dl/" + name, timeout)
@@ -1007,13 +1198,16 @@ def _apply(hub: str, manifest: Dict[str, Any], change: Dict[str, Any], timeout: 
             for f in ("install-hooks.sh", "needs-you-hook.sh", "hooks.json"):
                 with open(os.path.join(tmp, f), "wb") as fh:
                     fh.write(_download_verified(hub, f, manifest, timeout))
+            hook = _home(".claude", "hooks", "needs-you-hook.sh")
+            if os.path.isfile(hook) and "needs-you-hook.sh" not in (_read_state().get("backups") or {}):
+                _backup("needs-you-hook.sh", hook)
             r = subprocess.run(["bash", os.path.join(tmp, "install-hooks.sh"), "--user"], stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=60,
                                env=dict(os.environ, NEEDS_YOU_INSTALLER="1"))
             if r.returncode != 0:
                 raise ValueError("install-hooks.sh failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
         _write_state(hooks_json_sha256=change["sha256"])
-        return "re-merged the hook entries in ~/.claude/settings.json"
+        return "re-merged the hook entries in ~/.claude/settings.json (it keeps a .bak)"
     data = _download_verified(hub, name, manifest, timeout)
     path = change["path"]
     if name == "needs-you":
@@ -1025,15 +1219,45 @@ def _apply(hub: str, manifest: Dict[str, Any], change: Dict[str, Any], timeout: 
             mode = os.stat(path).st_mode & 0o777
         except OSError:
             mode = 0o644
+    _backup(name, path)
     _write_atomic(path, data, mode)
     return "updated %s: %s -> %s" % (_tilde(path), change["from"] or "?", change["to"])
 
 
-def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = False, as_json: bool = False) -> int:
-    """`needs-you update`. Exit 0 when up to date or updated (always with --auto); 1 when no
-    hub could serve an update or a file couldn't be replaced."""
+def rollback(quiet: bool, as_json: bool) -> int:
+    """`needs-you update --rollback`: put back the files the last update replaced."""
+    backups = _read_state().get("backups") or {}
+    restored, errors = [], []
+    for name, info in sorted(backups.items(), key=lambda kv: kv[0] == "needs-you"):
+        src = os.path.join(backup_dir(), name)
+        try:
+            with open(src, "rb") as fh:
+                data = fh.read()
+            _write_atomic(info["path"], data, int(info.get("mode") or 0o644))
+            restored.append(name)
+            if not quiet and not as_json:
+                print("restored %s (%s)" % (_tilde(info["path"]), info.get("version") or "?"))
+        except (OSError, KeyError, ValueError) as e:
+            errors.append("%s: %s" % (name, e))
+    if restored:
+        _write_state(backups={k: v for k, v in backups.items() if k not in restored},
+                     auto_ok_at=int(time.time()))  # and don't auto-update straight back
+    if as_json:
+        print(json.dumps({"ok": not errors, "restored": restored, "errors": errors}, sort_keys=True))
+    elif not restored and not quiet:
+        print("needs-you update --rollback: nothing to roll back")
+    for e in errors:
+        warn("couldn't restore %s" % e)
+    return 1 if errors else 0
+
+
+def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = False, as_json: bool = False,
+           allow_downgrade: bool = False) -> int:
+    """`needs-you update`. Exit 0 when up to date or updated (always with --auto); 1 when the
+    update hub couldn't serve one, it was refused, or a file couldn't be replaced."""
     result: Dict[str, Any] = {"ok": False, "cli": VERSION, "hub": None, "hub_version": None,
                               "changes": [], "applied": [], "notes": [], "errors": []}
+    say = (lambda msg: None) if quiet or as_json else print  # noqa: E731
 
     def finish(code: int) -> int:
         result["ok"] = code == 0
@@ -1041,34 +1265,36 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
             print(json.dumps(result, sort_keys=True))
         return 0 if auto else code
 
-    if not cfg.urls:
-        result["errors"].append("NEEDS_YOU_URLS is not set (%s)" % config_path())
-        if not quiet:
-            warn(result["errors"][-1])
-        return finish(1)
     errors: List[str] = []
     got = fetch_manifest(cfg, errors)
     if got is None:
         result["errors"] = errors
         if not quiet:
-            warn("no hub could serve an update: %s" % "; ".join(errors))
+            warn("no update: %s" % "; ".join(errors))
         return finish(1)
     hub, manifest = got
     result["hub"], result["hub_version"] = hub, manifest.get("version")
-    changes, notes = plan_update(manifest)
+    changes, notes = plan_update(manifest, allow_downgrade=allow_downgrade)
     result["notes"] = notes
     result["changes"] = [{k: c[k] for k in ("file", "from", "to")} for c in changes]
     for n in notes:
-        if not quiet and not as_json:
-            print("needs-you update: %s" % n)
+        say("needs-you update: %s" % n)
     if not changes:
-        if not quiet and not as_json:
-            print("needs-you %s is already up to date (%s)" % (VERSION, hub))
+        say("needs-you %s is already up to date (%s)" % (VERSION, hub))
         return finish(0)
+    say("from %s (hub %s):" % (hub, clean(manifest.get("version"))))
+    for c in changes:
+        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c["file"], c["from"] or "?", c["to"]))
+    try:
+        note = cross_check(cfg, manifest, changes)
+        result["notes"].append(note)
+        say("  " + note)
+    except UpdateRefused as e:
+        result["errors"].append(str(e))
+        if not quiet:
+            warn("update refused: %s" % e)
+        return finish(1)
     if check:
-        if not quiet and not as_json:
-            for c in changes:
-                print("would update %s (%s -> %s)" % (c["file"], c["from"] or "?", c["to"]))
         return finish(0)
     failed = False
     timeout = max(cfg.timeout, 10)
@@ -1077,26 +1303,24 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         try:
             msg = _apply(hub, manifest, c, timeout)
             result["applied"].append(c["file"])
-            if not quiet and not as_json:
-                print(msg + " (from %s)" % hub)
-        except (OSError, ValueError, Exception) as e:  # never a traceback for the caller
+            say(msg)
+        except Exception as e:  # noqa: BLE001 - never a traceback for the caller
             failed = True
             result["errors"].append("%s: %s" % (c["file"], clean(getattr(e, "reason", e))))
             if not quiet:
-                warn("couldn't update %s: %s" % (c["file"], result["errors"][-1]))
+                warn("couldn't update %s" % result["errors"][-1])
     _write_state(last_update_at=int(time.time()), last_update_hub=hub)
+    if result["applied"]:
+        say("needs-you update --rollback puts the previous files back")
     return finish(1 if failed else 0)
 
 
-def _setting(cfg: Config, name: str) -> str:
-    return os.environ.get(name) or read_env_file(config_path()).get(name) or ""
-
-
 def auto_update(cfg: Config) -> None:
-    """From `flush`: `update --auto` at most once a day (plus a per-host offset so a fleet
-    doesn't hit the hub at once), retried hourly after a failure. Never raises."""
+    """From `flush`, only with NEEDS_YOU_AUTO_UPDATE=1 (off by default): `update --auto` at
+    most once a day (plus a per-host offset so a fleet doesn't hit the hub at once), retried
+    hourly after a failure. Never raises, never prints."""
     try:
-        if _setting(cfg, "NEEDS_YOU_AUTO_UPDATE").strip().lower() in _OFF or not cfg.ok:
+        if _setting(cfg, "NEEDS_YOU_AUTO_UPDATE").strip().lower() not in _ON or not cfg.ok:
             return
         st = _read_state()
         now = time.time()
@@ -1106,10 +1330,7 @@ def auto_update(cfg: Config) -> None:
         if now - float(st.get("auto_tried_at") or 0) < AUTO_UPDATE_RETRY:
             return
         _write_state(auto_tried_at=int(now))
-        errors: List[str] = []
-        if fetch_manifest(cfg, errors) is None:
-            return
-        if update(cfg, auto=True, quiet=True) == 0:
+        if update(cfg, quiet=True) == 0:
             _write_state(auto_ok_at=int(now))
     except Exception:  # noqa: BLE001 - flush must never fail because of this
         pass
@@ -1517,10 +1738,10 @@ def _doctor_update(self: "Doctor") -> None:
     local = "CLI %s; hook %s; skill %s; orca %s" % (
         VERSION, _stamp(paths["needs-you-hook.sh"]) or "none", _stamp(paths["SKILL.md"]) or "none",
         _stamp(paths["orca-snippet.md"]) or "none")
-    auto = _setting(self.cfg, "NEEDS_YOU_AUTO_UPDATE").strip().lower() in _OFF
+    auto = _setting(self.cfg, "NEEDS_YOU_AUTO_UPDATE").strip().lower() in _ON
     st = _read_state()
     when = st.get("auto_ok_at") or st.get("last_update_at")
-    tail = "; daily auto-update %s" % ("off (NEEDS_YOU_AUTO_UPDATE=0)" if auto else "on")
+    tail = "; daily auto-update %s" % ("on (NEEDS_YOU_AUTO_UPDATE=1)" if auto else "off")
     if when:
         tail += ", last %s ago" % _age(time.time() - float(when))
     if not self.cfg.urls:

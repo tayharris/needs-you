@@ -2507,6 +2507,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--claude-hooks user` | This machine runs Claude Code (or Orca): post an item when a session waits on a permission prompt or input. `project` installs into the current repo instead. Default `none`. |
 | `--alerts` | Turn the hooks on for every Claude Code session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
+| `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
 | `--ssh-alias NAME` | This machine is reached from the Mac over SSH: NAME is its host alias in the Mac's `~/.ssh/config` (VS Code Remote-SSH), so cards get a link that opens the session's folder there. |
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links (`{cwd}`, `{host}`, `{session}`, `{handle}`); `none` turns editor links off. |
@@ -2535,7 +2536,8 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 - If the installer exits 1 saying the link is unknown, expired or revoked, or that the hub
   refused the invite (no uses left), stop and ask the user for a new link.
 - Re-running on a machine that's already set up is safe and keeps its token, until the link
-  expires (even with no uses left). `needs-you self-update` updates the CLI later without a link.
+  expires (even with no uses left). `needs-you update` updates the CLI, hook, skill and Orca
+  snippet later without a link.
 - On the hub's own machine, the installer lists `http://127.0.0.1:<port>` first, so local
   agents don't depend on the network.
 

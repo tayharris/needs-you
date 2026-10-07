@@ -19,7 +19,7 @@ class CliTestCase(HubTestCase):
 
     def run_cli(self, *args, urls=None, token="t", config_file=None, extra_env=None, cli=CLI):
         env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
-               "NEEDS_YOU_HOST": "testbox"}
+               "NEEDS_YOU_HOST": "testbox", "NEEDS_YOU_GH": "none"}
         env.update(extra_env or {})
         if urls is not None:
             env["NEEDS_YOU_URL"] = ",".join(urls)
@@ -309,7 +309,7 @@ class SelfUpdate(CliTestCase):
         with open(target, "w") as fh:
             fh.write(src.replace('VERSION = "', 'VERSION = "0.0.1-old" or "', 1))
         os.chmod(target, 0o755)
-        r = self.run_cli("self-update", urls=[self.dead, a.url], cli=target)
+        r = self.run_cli("self-update", urls=[a.url, self.dead], cli=target)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("updated", r.stdout)
         with open(target) as fh:

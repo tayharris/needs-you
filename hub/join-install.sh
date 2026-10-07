@@ -30,6 +30,7 @@ ORCA_ENV=""
 SSH_ALIAS=""
 CONTEXT_ALERT=""
 SET_PATH=1
+AUTO_UPDATE=""
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'needs-you install: %s\n' "$*" >&2; }
@@ -49,6 +50,8 @@ Options:
                                 (NEEDS_YOU_AGENT_ALERTS=1 in the env file); without it
                                 they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
+  --auto-update                 let `needs-you flush` run `needs-you update` once a day
+                                (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
   --context-alert PCT           card suggesting /compact or /clear once a session's
                                 context is PCT% full (default 80; 0 = off)
   --ssh-alias NAME              the name the Mac's ~/.ssh/config (VS Code Remote-SSH)
@@ -91,6 +94,7 @@ while [ $# -gt 0 ]; do
     --no-schedule) SCHEDULE=0; shift ;;
     --no-path) SET_PATH=0; shift ;;
     --alerts) ALERTS=1; shift ;;
+    --auto-update) AUTO_UPDATE=1; shift ;;
     --context-alert) CONTEXT_ALERT=${2:-}; shift 2 || die "--context-alert needs a percentage" ;;
     --context-alert=*) CONTEXT_ALERT=${1#*=}; shift ;;
     --ssh-alias) SSH_ALIAS=${2:-}; shift 2 || die "--ssh-alias needs a name" ;;
@@ -337,9 +341,9 @@ fi
 
 # Rewrite the env file: keep unrelated lines, replace ours. The token never touches argv.
 python3 - "$ENV_FILE" "$TMP/resp.json" "$CONTEXT" "$HUB_GIVEN" "$ALERTS" "$CONTEXT_ALERT" \
-  "$SSH_ALIAS" "$AGENT_LINK" "$ORCA_ENV" <<'PY'
+  "$SSH_ALIAS" "$AGENT_LINK" "$ORCA_ENV" "$AUTO_UPDATE" <<'PY'
 import json, os, re, sys
-path, resp_path, context, given, alerts, ctx_alert, ssh_alias, agent_link, orca_env = sys.argv[1:10]
+path, resp_path, context, given, alerts, ctx_alert, ssh_alias, agent_link, orca_env, auto_update = sys.argv[1:11]
 lines = []
 if os.path.exists(path):
     with open(path, encoding="utf-8") as fh:
@@ -379,7 +383,7 @@ if context:
     updates["NEEDS_YOU_DEFAULT_CONTEXT"] = context
 for k, v in (("NEEDS_YOU_AGENT_ALERTS", alerts), ("NEEDS_YOU_CONTEXT_ALERT_PCT", ctx_alert),
              ("NEEDS_YOU_SSH_ALIAS", ssh_alias), ("NEEDS_YOU_AGENT_LINK", agent_link),
-             ("NEEDS_YOU_ORCA_ENVIRONMENT", orca_env)):
+             ("NEEDS_YOU_ORCA_ENVIRONMENT", orca_env), ("NEEDS_YOU_AUTO_UPDATE", auto_update)):
     if v:
         updates[k] = v if re.match(r"^[A-Za-z0-9._:/,@+%-]*$", v) else "'%s'" % v
 out, seen = [], set()
