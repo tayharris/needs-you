@@ -92,6 +92,8 @@ printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
 
 Anything that can make an HTTP request can post; see [AGENT-GUIDE.md → With curl](../AGENT-GUIDE.md#with-curl). The trade-off: no outbox and no failover, so loop over `NEEDS_YOU_URLS` yourself (the [GitHub Actions example](../../integrations/ci/github-actions.yml) does) or accept that an alert is lost while the hub is down.
 
+To connect an agent or tool that has hooks, webhooks, plugins or a notification command, see [Custom connector](custom-connector.md): the full item format, how to map its events to cards, and tested examples.
+
 ## Picking keys and context
 
 - **Key:** `<prefix>:<project-or-ticket>:<reason>`, e.g. `personal:my-server:backup-failed`, `work:ACME-456:feature-flag`. Stable across runs, never a timestamp. The same key updates the item; `resolve` with the same key clears it.

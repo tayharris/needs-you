@@ -24,7 +24,7 @@ The agent-facing entry points are first-class product surface, not docs aftertho
 | `docs/` | `API.md` (wire contract), `HUB.md`, `AGENT-GUIDE.md`, `guides/` |
 | `docs/adr/` | Architecture decision records (0007 is the founding design) |
 | `docs/roadmap/` | Plans only, nothing implemented |
-| `site/` | Static landing page (Cloudflare Pages, no build) |
+| `site/` | Static site: landing page, and `guides/` generated from `docs/` (deployed on push to main by `.github/workflows/site.yml`) |
 | `.claude/skills/` | Project skills: `test-all`, `smoke-e2e`, `api-change`, `add-integration`, `release` |
 
 ## Build and test
@@ -34,6 +34,7 @@ The agent-facing entry points are first-class product surface, not docs aftertho
 mac/scripts/test.sh                                  # NeedsYouCore tests (XCTest, or MiniXCTest without Xcode)
 mac/scripts/bundle.sh                                # release build -> mac/dist/NeedsYou.app, ad-hoc signed
 NEEDS_YOU_DEMO=1 mac/dist/NeedsYou.app/Contents/MacOS/NeedsYou &   # run with fixture items, no hub
+python3 scripts/build_site_guides.py                 # after editing docs/: rebuild site/guides/ (commit it; a test fails if stale)
 python3 -m http.server -d site 8000                  # preview the site
 ```
 
