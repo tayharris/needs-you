@@ -17,6 +17,7 @@ final class UIPrefsTests: XCTestCase {
         ("testPillOptions", testPillOptions),
         ("testPanelBehaviourDefaults", testPanelBehaviourDefaults),
         ("testPanelBehaviourRoundTripAndFallback", testPanelBehaviourRoundTripAndFallback),
+        ("testBackdrop", testBackdrop),
     ]
 
     private var suite = ""
@@ -97,12 +98,13 @@ final class UIPrefsTests: XCTestCase {
         XCTAssertEqual(UIPrefs.load(from: store).pillDetail, .count)
     }
 
-    /// Arrival peeks stay out 14 s, the open panel stays open on clicks elsewhere, and the
-    /// list height is automatic. None of it is written until changed.
+    /// Arrival peeks stay out 14 s, the open panel collapses on clicks elsewhere, a 30%
+    /// backdrop, and the list height is automatic. None of it is written until changed.
     func testPanelBehaviourDefaults() {
         let p = UIPrefs.load(from: store)
         XCTAssertEqual(p.previewSeconds, 14)
-        XCTAssertFalse(p.collapseOnClickOutside)
+        XCTAssertTrue(p.collapseOnClickOutside)
+        XCTAssertEqual(p.backdrop, 0.3)
         XCTAssertEqual(p.expandedListHeight, 0)
         XCTAssertEqual(storedKeys, [])
     }
@@ -110,7 +112,7 @@ final class UIPrefsTests: XCTestCase {
     func testPanelBehaviourRoundTripAndFallback() {
         var p = UIPrefs()
         p.previewSeconds = PeekDuration.untilDismissed
-        p.collapseOnClickOutside = true
+        p.collapseOnClickOutside = false
         p.expandedListHeight = 380
         p.save(to: store, previous: UIPrefs())
         XCTAssertEqual(storedKeys, [UIPrefs.Key.previewSeconds, UIPrefs.Key.collapseOnClickOutside, UIPrefs.Key.expandedListHeight])
@@ -121,6 +123,20 @@ final class UIPrefsTests: XCTestCase {
         let loaded = UIPrefs.load(from: store)
         XCTAssertEqual(loaded.previewSeconds, PeekDuration.standard)
         XCTAssertEqual(loaded.expandedListHeight, 0)
-        XCTAssertTrue(loaded.collapseOnClickOutside)
+        XCTAssertFalse(loaded.collapseOnClickOutside)
+    }
+
+    func testBackdrop() {
+        var p = UIPrefs()
+        p.backdrop = 0.6
+        p.save(to: store, previous: UIPrefs())
+        XCTAssertEqual(storedKeys, [UIPrefs.Key.backdrop])
+        XCTAssertEqual(UIPrefs.load(from: store).backdrop, 0.6)
+        store.set(0.52, forKey: UIPrefs.Key.backdrop)       // snaps to a choice
+        XCTAssertEqual(UIPrefs.load(from: store).backdrop, 0.45)
+        store.set(Double.nan, forKey: UIPrefs.Key.backdrop)
+        XCTAssertEqual(UIPrefs.load(from: store).backdrop, PanelBackdrop.standard)
+        XCTAssertEqual(PanelBackdrop.title(0), "None (plain glass)")
+        XCTAssertEqual(PanelBackdrop.title(0.45), "45%")
     }
 }

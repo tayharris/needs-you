@@ -8,7 +8,7 @@ struct OpenPanelSettingsSection: View {
     var body: some View {
         Section {
             Toggle(isOn: $settings.ui.collapseOnClickOutside) {
-                LabelWithDetail("Collapse when clicking elsewhere", "Off: the open panel stays up, even after you open a card's link, so you can keep reading the card.")
+                LabelWithDetail("Collapse when clicking elsewhere", "On: a click anywhere else closes it. Off: it stays up, even after you open a card's link, so you can keep reading the card.")
             }
             HStack {
                 LabelWithDetail("List height", settings.ui.expandedListHeight > 0
@@ -21,7 +21,7 @@ struct OpenPanelSettingsSection: View {
         } header: {
             Text("Open panel")
         } footer: {
-            Text("The chevron and the shortcut always close it. Esc does too, except right after you click in another app (point at the panel again first). A dragged height replaces Cards before scrolling; double-click the edge to go back.")
+            Text("The chevron, a double-click on the header bar and the shortcut always close it. With the setting off, Esc does too, except right after you click in another app (point at the panel again first). A dragged height replaces Cards before scrolling; double-click the edge to go back.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

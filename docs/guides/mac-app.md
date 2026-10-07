@@ -33,7 +33,7 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 | `3` `2 new` | 2 of the 3 arrived (or changed, or turned into `needs`) since you last opened the panel. Opening it clears the badge. |
 | The pill springs out with a title | A new item just arrived. It stays out 14 s; point at it to keep it there, click it to open the panel. |
 
-- **Click** the pill to expand the cards. It stays open when you click in another app or open a card's link, so you can keep reading the card next to what it opened. **Escape**, the chevron in the header or the shortcut closes it. (Escape goes to the app you clicked into until you point at the panel again.) To have a click elsewhere close it, turn on **Settings → Panel → Open panel → Collapse when clicking elsewhere**.
+- **Click** the pill to expand the cards. A click anywhere else closes it, as do **Escape**, the chevron, a double-click on the header bar and the shortcut. To keep it up while you read a card next to the page its link opened, turn off **Settings → Panel → Open panel → Collapse when clicking elsewhere**. If the glass is hard to read over bright windows, raise **Settings → Panel → Opacity → Background darkness**.
 - Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or **Settings → Panel → Open panel → Automatic**, to go back to fitting the cards.
 - On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, `linear:`, ...). A **Terminal** button on an agent's card brings forward the terminal it runs in and marks the card done ([Terminal button](#terminal-button)).
 - A card with **steps** shows them as a numbered checklist at your card text size, each step's link as a button. Tick steps off as you go (the ticks stay on this Mac; steps the agent already marked done are ticked for you); once every step is ticked the card offers **All steps done: mark Done**. With **Card text** set to First lines or Title only, the card shows "3 steps" until you click it.
@@ -106,7 +106,7 @@ To follow a macOS Focus, first turn on **Allow focus links from other apps** (ot
 
 ## Make it yours
 
-Everything is in **Settings** (right-click the pill → **Settings…**). The defaults are the original look, except that new items stay out 14 s (was 4 s) and the open panel no longer collapses when you click elsewhere.
+Everything is in **Settings** (right-click the pill → **Settings…**). The defaults are the original look, except that new items stay out 14 s (was 4 s) and a light dark backdrop sits behind the glass.
 
 | Setting | Where | Choices (default first) |
 |---|---|---|
@@ -115,7 +115,8 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | How much of each card's text shows | Panel → Look → **Card text** | Full, First lines (3), Title only (click **Show details**) |
 | Links on one short row | Panel → Look → **Compact links** | Off, On (3 links, `+N` shows the rest) |
 | Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
-| Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | Off, On |
+| Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | On, Off |
+| How dark the layer behind the glass is | Panel → Opacity → **Background darkness** | 30% (default), None, 15%, 45%, 60%, 75% |
 | The open panel's list height | Panel → Open panel → **List height** (drag the panel's edge) | Automatic, or the height you dragged |
 | How see-through the collapsed pill and the open panel are | Panel → **Opacity**: Collapsed pill, Collapsed pill pointer over it, Open panel (also previews), Open panel pointer over it | 100% to 30% (defaults 85%, 100%, 100%, 100%) |
 | Size of the collapsed pill only | Panel → Collapsed pill → **Pill size** | Medium, Small, Large |

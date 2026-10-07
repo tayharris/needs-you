@@ -15,6 +15,7 @@ struct RootView: View {
         content(display)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(tint(display))
+            .background(backdrop(display))
             .clipShape(shape(display))
             .overlay(ring(display))
             .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: 0.5))
@@ -85,6 +86,18 @@ struct RootView: View {
                                         lineWidth: look.ringWidth)
         default:
             EmptyView()
+        }
+    }
+
+    /// Settings → Panel → Opacity → Background darkness: a dark layer behind the glass
+    /// (not the faint idle pill), so text reads over bright or busy windows.
+    @ViewBuilder
+    private func backdrop(_ display: PanelDisplay) -> some View {
+        switch display {
+        case .idle:
+            EmptyView()
+        default:
+            Color.black.opacity(model.settings.ui.backdrop)
         }
     }
 
