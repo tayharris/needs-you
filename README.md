@@ -6,9 +6,13 @@ Open source, [Apache-2.0](LICENSE). **Status: private preview (0.1.x).**
 
 ## Get started
 
-1. **Download** the latest release from the repository's **Releases** page: `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
+Testing a preview build as an invited collaborator? Start with **[the tester guide](docs/guides/testers.md)**: getting access while the repo is private, install, first run and how to report problems, on one page.
+
+Words used below: the **hub** is the small service that stores items (the Mac app runs one for you); a **sender** is any machine or agent that posts items; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac.
+
+1. **Download** the latest release from the repository's [Releases page](https://github.com/tayharris/needs-you/releases) (macOS 14 or later): `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
 2. **First launch.** The app is ad-hoc signed, not notarized, so macOS blocks it once. On macOS 14 and earlier: right-click `NeedsYou.app` → **Open** → **Open**. On macOS 15 and later: double-click it, then **System Settings → Privacy & Security → Open Anyway**. The release notes have the full steps (firewall prompt, managed Macs). The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools; if Settings says Python 3 isn't available, run `xcode-select --install` and reopen the app.
-3. **Invite a machine.** Right-click the pill → **Settings…** → **Invite a machine** → **Create invite**, then click **Agent prompt** and paste it into Claude Code (on this Mac or any server on your tailnet), or click **Shell one-liner** and run it there. The machine installs the `needs-you` CLI and posts a test card.
+3. **Invite a machine.** Right-click the pill (the small, faint shape at the top right of the screen) → **Settings…** → **Invite a machine** (under **Hubs** in the sidebar) → **Create invite**, then click **Agent prompt** and paste it into Claude Code (on this Mac or any server on your tailnet), or click **Shell one-liner** and run it there. The machine installs the `needs-you` CLI and posts a test card.
 
 Next:
 
@@ -60,6 +64,7 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 
 | Guide | For |
 |---|---|
+| [Testers](docs/guides/testers.md) | Invited testers: access, install, first run, reporting problems |
 | [Quickstart](docs/guides/quickstart.md) | The Mac app, local Claude Code, servers |
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
@@ -86,7 +91,7 @@ Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md]
 
 ## Requirements
 
-- Mac: macOS with `/usr/bin/python3` (the Command Line Tools). Tailscale if servers should reach it.
+- Mac: macOS 14 or later with `/usr/bin/python3` (the Command Line Tools). Tailscale if servers should reach it.
 - Senders and server hubs: `bash`, `curl` and `python3` 3.9+, stock on macOS and Ubuntu 22.04+. No pip, no brew, no build step.
 
 ## Repo layout
