@@ -6,6 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Changed
 
+- Mac app: new-item previews stay on the pill's display by default instead of following the monitor you're working on (Settings → Alerts → On the work screen brings that back).
 - Mac app: the global shortcut opens the card list, or collapses it when it's open (a hidden or snoozed panel comes back open), and double-clicking the open panel's header bar collapses it. The "Hotkey also opens the top card's first link" option is gone (change the shortcut in **Settings → Panel → Keyboard**).
 - Mac app: **Settings → Panel → Opacity** sets the collapsed pill and the open panel (and previews) separately, each with the pointer away and over it, down to 30%. Settings page titles now scroll with the page instead of being clipped under the title bar.
 - Mac app: **Settings is a sidebar of short pages**, like System Settings, instead of long tabs, and the window fits a laptop screen (every page scrolls). Pages: General (your name, open at login, demo mode); Hubs: This Mac, Join a hub, Invite a machine, Access, Hubs (manual); Panel, Alerts, Integrations, Updates, Advanced. **Invite a Machine…** opens Invite a machine; a `needsyou://connect` link opens Join a hub.

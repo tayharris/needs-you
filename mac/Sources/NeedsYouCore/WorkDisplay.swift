@@ -25,11 +25,11 @@ public struct WindowRecord: Equatable, Sendable {
 public enum PreviewDisplay: String, CaseIterable, Sendable {
     /// The display with the frontmost app's window (else the pointer); the pill goes back home after.
     case work
-    /// Always where the pill lives (the old behaviour).
+    /// Always where the pill lives (the default: an alert never jumps between monitors).
     case pill
 
     public static let defaultsKey = "previewDisplay"
-    public static let standard = PreviewDisplay.work
+    public static let standard = PreviewDisplay.pill
 
     public var title: String {
         switch self {
