@@ -124,6 +124,7 @@
 </table></div>
 <h2 id="without-the-cli">Without the CLI <a class="anchor" href="#without-the-cli" aria-label="Link to this section">#</a></h2>
 <p>Anything that can make an HTTP request can post; see <a href="agent-guide.html#with-curl">Agent guide → With curl</a>. The trade-off: no outbox and no failover, so loop over <code>NEEDS_YOU_URLS</code> yourself (the <a data-repo="/blob/main/integrations/ci/github-actions.yml" href="https://github.com/tayharris/needs-you/blob/main/integrations/ci/github-actions.yml">GitHub Actions example</a> does) or accept that an alert is lost while the hub is down.</p>
+<p>To connect an agent or tool that has hooks, webhooks, plugins or a notification command, see <a href="custom-connector.html">Custom connector</a>: the full item format, how to map its events to cards, and tested examples.</p>
 <h2 id="picking-keys-and-context">Picking keys and context <a class="anchor" href="#picking-keys-and-context" aria-label="Link to this section">#</a></h2>
 <ul>
 <li><strong>Key:</strong> <code>&lt;prefix&gt;:&lt;project-or-ticket&gt;:&lt;reason&gt;</code>, e.g. <code>personal:my-server:backup-failed</code>, <code>work:ACME-456:feature-flag</code>. Stable across runs, never a timestamp. The same key updates the item; <code>resolve</code> with the same key clears it.</li>

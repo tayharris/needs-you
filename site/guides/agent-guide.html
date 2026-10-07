@@ -140,6 +140,9 @@ curl -fsS -X POST "$NEEDS_YOU_URL/v1/items" \
        "links":[{"label":"Logs","url":"https://my-server.example.ts.net/logs"}],
        "source":{"agent":"cron:backup","project":"my-server"}}'</code></pre></div>
 <p>No outbox or failover with curl: loop over <code>NEEDS_YOU_URLS</code> yourself or accept the loss.</p>
+<p>Connecting a tool's hooks, a webhook or a notification command (rather than posting from
+your own logic)? <a href="custom-connector.html">Custom connector</a> has every field
+with its limits, a recipe for mapping events to cards, and tested examples.</p>
 <h3 id="steps-when-the-person-has-to-do-several-things">Steps: when the person has to do several things <a class="anchor" href="#steps-when-the-person-has-to-do-several-things" aria-label="Link to this section">#</a></h3>
 <p>When handling the item takes <strong>more than one action, in order</strong> (rotate a key, then restart
 a job, then confirm in a channel), send them as <code>steps</code> instead of a numbered list in the
