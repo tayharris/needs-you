@@ -85,7 +85,7 @@ final class WorkDisplayTests: XCTestCase {
     }
 
     func testSettingsDefaults() {
-        XCTAssertEqual(PreviewDisplay.standard, .work)
+        XCTAssertEqual(PreviewDisplay.standard, .pill)
         XCTAssertEqual(EdgeGlowMode.standard, .off, "the edge glow is opt-in")
         XCTAssertEqual(PreviewDisplay(rawValue: "pill"), .pill)
         XCTAssertNil(EdgeGlowMode(rawValue: "always"))

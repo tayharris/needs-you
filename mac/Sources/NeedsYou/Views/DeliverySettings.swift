@@ -95,7 +95,9 @@ struct WorkScreenSection: View {
             Picker(selection: $settings.previewDisplay) {
                 ForEach(PreviewDisplay.allCases, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("New items spring out on", "The display with the app you're using (else the pointer's). The pill goes back home after.")
+                LabelWithDetail("New items spring out on", settings.previewDisplay == .pill
+                                ? "Always where the pill is, whichever display you're using."
+                                : "The display with the app you're using (else the pointer's). The pill goes back home after.")
             }
             Picker(selection: $settings.edgeGlow) {
                 ForEach(EdgeGlowMode.allCases, id: \.self) { Text($0.title).tag($0) }

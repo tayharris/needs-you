@@ -131,7 +131,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Urgent items break through Focus | Alerts → Delivery | On, Off |
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
 | Bypass rules | Alerts → **Bypass rules** | None; up to 50 |
-| Where new items spring out | Alerts → On the work screen | The display you're working on, The pill's display |
+| Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 
 The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
