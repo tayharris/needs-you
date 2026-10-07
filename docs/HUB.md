@@ -62,7 +62,9 @@ needs-you-admin token list                                   # on hub B: tokens 
 
 With a token, `/v1/health` also lists each peer's `outbox_pending`, `last_push_ok`,
 `last_pull_ok` and `last_error`. A healthy pair has `outbox_pending` 0 and a recent
-`last_pull_ok`.
+`last_pull_ok`. `skipped_push` and `skipped_pull` count replicated records one side couldn't
+read (usually a hub running an older version than its peer: upgrade it), with the last one in
+`last_skipped`; replication carries on past them. The hub's log names each one.
 
 ### With the Mac's own hub
 

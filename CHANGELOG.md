@@ -7,6 +7,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Changed (API)
 
 - `GET /v1/items` responses carry **`next`**, an opaque cursor, and the hub accepts it back as **`cursor=`**. It follows the hub's per-write sequence, so paging always moves on and a page never holds more than `limit` items. Send `cursor=<next>&since=<server_time>`: an older hub ignores `cursor` and uses `since`, and a newer hub falls back to `since` when the cursor comes from a replaced database. `since` alone keeps working for older clients. See [API.md](docs/API.md#get-v1items-reader).
+- `POST /v1/replicate` applies the records it can read and lists the others in a new **`skipped`** array (`kind`, `id`, `reason`) with a `200`, instead of refusing the whole batch with `400`. `/v1/health` `peers[]` gains `skipped_push`, `skipped_pull` and `last_skipped`. Mixed versions keep replicating: against an older peer that still answers `400`, the pusher halves the batch to find the one record and skips it.
 
 ### Changed
 
@@ -15,6 +16,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - Mac app: polls send the hub's new `next` cursor back (with `since`, so older hubs keep working) and page by it, so a burst of more than 500 changes in one millisecond can no longer stall live updates.
+- Hub: **one record a peer couldn't read stopped replication to it for good.** A record with, say, a status from a newer hub made the peer refuse the whole push batch, which was retried forever with everything queued behind it, and a pull page with such a record never moved its cursor. Now the readable records go through, the unreadable one is skipped, logged and counted in `/v1/health` (`skipped_push` / `skipped_pull`), and timeouts and `5xx` are still retried.
 - Hub: **`since` paging could repeat the same page forever** when more than `limit` items were stored in one millisecond (a replicated batch) or expired since the last poll; `more` stayed true and `server_time` never moved. A `since` page that stops early now ends on a whole millisecond and holds every item up to it.
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
 - Mac app: an item a sender resolves or dismisses (`needs-you resolve`, a hook) now leaves the panel on the next poll, or at once with live updates. It used to stay up to 5 minutes, until the next full poll, because incremental polls threw away closed items. Polls also use the hub's `server_time` cursor and follow `more`, as `docs/API.md` describes, so an item stored in the same millisecond as a poll isn't missed.

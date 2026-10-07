@@ -111,6 +111,7 @@ MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
 PUSH_MAX_BYTES = MAX_REPLICATE_BYTES // 2  # a push batch stays well under the peer's limit
+PUSH_BATCH = 200  # outbox rows per push
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
@@ -726,6 +727,13 @@ CREATE TABLE IF NOT EXISTS token_update_requests (
   requested_at INTEGER NOT NULL,
   cli TEXT NOT NULL DEFAULT ''
 );
+""",
+    # 6: replicated records a peer couldn't read (pushed) or this hub couldn't (pulled), and
+    #    the last one, so they show in peer status instead of blocking replication.
+    """
+ALTER TABLE peer_state ADD COLUMN skipped_push INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peer_state ADD COLUMN skipped_pull INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peer_state ADD COLUMN last_skipped TEXT;
 """,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -1746,17 +1754,58 @@ class Store:
         if row:
             return dict(row)
         return {"peer": peer, "cursor": 0, "epoch": "", "last_push_ok": None,
-                "last_pull_ok": None, "last_error": None}
+                "last_pull_ok": None, "last_error": None, "skipped_push": 0, "skipped_pull": 0,
+                "last_skipped": None}
 
     def save_peer_state(self, peer: str, **fields: Any) -> None:
-        st = self.peer_state(peer)
-        st.update(fields)
+        with self.lock:
+            st = self.peer_state(peer)
+            st.update(fields)
+            with self.tx():
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO peer_state(peer, cursor, epoch, last_push_ok, last_pull_ok, "
+                    "last_error, skipped_push, skipped_pull, last_skipped) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (peer, st["cursor"], st["epoch"], st["last_push_ok"], st["last_pull_ok"],
+                     st["last_error"], st["skipped_push"], st["skipped_pull"], st["last_skipped"]))
+
+    def note_skipped(self, peer: str, direction: str, skipped: List[Dict[str, Any]]) -> None:
+        """Count records that couldn't be read in one direction ("push": the peer couldn't
+        read ours; "pull": we couldn't read the peer's) and keep the last one."""
+        if not skipped:
+            return
+        with self.lock:
+            st = self.peer_state(peer)
+            last = skipped[-1]
+            self.save_peer_state(peer, **{
+                "skipped_" + direction: int(st.get("skipped_" + direction) or 0) + len(skipped),
+                "last_skipped": "%s %s %s: %s" % (direction, last.get("kind"), last.get("id") or "?",
+                                                  last.get("reason"))})
+
+    def outbox_ack_ids(self, peer: str, ids: List[int]) -> None:
         with self.tx():
-            self.conn.execute(
-                "INSERT OR REPLACE INTO peer_state(peer, cursor, epoch, last_push_ok, last_pull_ok, "
-                "last_error) VALUES(?,?,?,?,?,?)",
-                (peer, st["cursor"], st["epoch"], st["last_push_ok"], st["last_pull_ok"],
-                 st["last_error"]))
+            self.conn.executemany("DELETE FROM outbox WHERE peer = ? AND id = ?", [(peer, i) for i in ids])
+
+    def apply_record(self, kind: str, rec: Any) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """Apply one replicated record. Returns (changed, skipped): `skipped` describes a
+        record this hub can't read (a newer hub's status or role, a malformed field), which
+        must not hold up the rest of a batch. Anything else (a locked database) raises, so
+        the batch is retried."""
+        apply = {"item": self.apply_item, "token": self.apply_token, "invite": self.apply_invite}[kind]
+        try:
+            return apply(rec), None
+        except ApiError as e:
+            reason = e.message
+        except (ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError) as e:
+            reason = "%s: %s" % (type(e).__name__, e)
+        rid = rec.get("id") if isinstance(rec, dict) else None
+        return False, {"kind": kind, "id": safe_text(rid, 100) if isinstance(rid, str) else None,
+                       "reason": safe_text(reason, 200)}
+
+
+def safe_text(value: Any, limit: int) -> str:
+    """Peer-supplied text for a log line or peer status: control characters escaped, secrets
+    redacted (redact_log), cut to `limit` characters."""
+    return redact_log(str(value))[:limit]
 
 
 def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
@@ -1931,6 +1980,7 @@ class PeerWorker(threading.Thread):
         self.next_push = 0.0
         self.next_pull = 0.0
         self.disabled = False
+        self.batch_limit = PUSH_BATCH  # lowered while isolating a record an older peer refuses
 
     def _request(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         data = json.dumps(body).encode("utf-8") if body is not None else None
@@ -1987,9 +2037,19 @@ class PeerWorker(threading.Thread):
         except sqlite3.Error:
             pass
 
+    def _skipped(self, direction: str, skipped: List[Dict[str, Any]]) -> None:
+        if not skipped:
+            return
+        if not self.hub.cfg.get("quiet"):
+            for s in skipped:
+                sys.stderr.write("peer %s: %s %s %s skipped, %s can't read it: %s\n"
+                                 % (self.peer, direction, s.get("kind"), s.get("id") or "?",
+                                    "the peer" if direction == "push" else "this hub", s.get("reason")))
+        self.hub.store.note_skipped(self.peer, direction, skipped)
+
     def push_once(self) -> bool:
         """Send one batch. Returns True if something was sent (so the caller loops again)."""
-        rows = self.hub.store.outbox_batch(self.peer, 200)
+        rows = self.hub.store.outbox_batch(self.peer, self.batch_limit)
         if not rows:
             self.failures = 0
             return False
@@ -2003,20 +2063,47 @@ class PeerWorker(threading.Thread):
                 break
             rows = rows[:len(rows) // 2]
         try:
-            self._request("POST", "/v1/replicate", payload)
+            resp = self._request("POST", "/v1/replicate", payload)
         except urllib.error.HTTPError as e:
             if e.code == 409:  # the "peer" is this hub
                 self.disabled = True
                 self.hub.store.outbox_ack(self.peer, max(r["id"] for r in rows))
                 return False
+            if e.code == 400:
+                return self._refused(rows, e)
             self._fail(e)
             return False
         except (OSError, ValueError) as e:
             self._fail(e)
             return False
         self.hub.store.outbox_ack(self.peer, max(r["id"] for r in rows))
+        # A peer that skipped records it can't read lists them; they are done here too.
+        skipped = resp.get("skipped")
+        if isinstance(skipped, list):
+            self._skipped("push", [{"kind": safe_text(s.get("kind"), 20), "id": safe_text(s.get("id"), 100),
+                                    "reason": safe_text(s.get("reason"), 200)}
+                                   for s in skipped if isinstance(s, dict)])
+        self.batch_limit = min(PUSH_BATCH, self.batch_limit * 2)
         self.failures = 0
         self.hub.store.save_peer_state(self.peer, last_push_ok=self.hub.store.now_ms(), last_error=None)
+        return True
+
+    def _refused(self, rows: List[Dict[str, Any]], err: urllib.error.HTTPError) -> bool:
+        """400 for a whole batch: an older peer that can't read one of its records (a newer
+        status or role) refuses them all. Halve the batch until the one record is alone, then
+        skip it, so the rest still gets through. Returns True: try again at once."""
+        if len(rows) > 1:
+            self.batch_limit = max(1, len(rows) // 2)
+            return True
+        try:
+            reason = json.loads(err.read().decode("utf-8") or "{}").get("message") or "HTTP 400"
+        except (ValueError, AttributeError, OSError):
+            reason = "HTTP 400"
+        row = rows[0]
+        self._skipped("push", [{"kind": row["kind"], "id": safe_text(row["record_id"], 100),
+                                "reason": safe_text(reason, 200)}])
+        self.hub.store.outbox_ack_ids(self.peer, [row["id"]])
+        self.batch_limit = PUSH_BATCH
         return True
 
     def pull(self) -> None:
@@ -2036,15 +2123,19 @@ class PeerWorker(threading.Thread):
                     if cursor != 0:
                         cursor = 0
                         continue
-                for t in resp.get("tokens", []):
-                    self.hub.store.apply_token(t)
-                for inv in resp.get("invites", []):
-                    self.hub.store.apply_invite(inv)
                 changed = False
-                for it in resp.get("items", []):
-                    changed = self.hub.store.apply_item(it, from_peer=self.peer) or changed
+                skipped: List[Dict[str, Any]] = []
+                for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
+                    for rec in resp.get(key) or []:
+                        did, skip = self.hub.store.apply_record(kind, rec)
+                        changed = changed or (did and kind == "item")
+                        if skip is not None:
+                            skipped.append(skip)
                 if changed:
                     self.hub.notify()
+                # Records this hub can't read are passed over (an upgrade reads them on a
+                # later write), not retried forever with the rest of the page behind them.
+                self._skipped("pull", skipped)
                 cursor = int(resp.get("next_after", cursor))
                 self.hub.store.save_peer_state(self.peer, cursor=cursor, epoch=epoch,
                                                last_pull_ok=self.hub.store.now_ms())
@@ -2578,15 +2669,23 @@ class Handler(BaseHTTPRequestHandler):
         if data.get("from_hub") == self.hub.hub_id:
             raise ApiError(409, "self", "a hub cannot replicate to itself")
         applied = 0
-        for t in data.get("tokens") or []:
-            applied += 1 if self.hub.store.apply_token(t) else 0
-        for inv in data.get("invites") or []:
-            applied += 1 if self.hub.store.apply_invite(inv) else 0
-        for it in data.get("items") or []:
-            applied += 1 if self.hub.store.apply_item(it) else 0
+        skipped: List[Dict[str, Any]] = []
+        for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
+            recs = data.get(key) or []
+            if not isinstance(recs, list):
+                raise ApiError(400, "invalid", "%s must be an array" % key, key)
+            for rec in recs:
+                changed, skip = self.hub.store.apply_record(kind, rec)
+                applied += 1 if changed else 0
+                if skip is not None:
+                    skipped.append(skip)
         if applied:
             self.hub.notify()
-        self._send(200, {"ok": True, "applied": applied, "hub_id": self.hub.hub_id})
+        if skipped and not self.hub.cfg.get("quiet"):
+            sys.stderr.write("replicate from %s: skipped %d record(s) this hub can't read, e.g. %s %s: %s\n"
+                             % (safe_text(data.get("from_hub"), 100), len(skipped), skipped[0]["kind"],
+                                skipped[0]["id"], skipped[0]["reason"]))
+        self._send(200, {"ok": True, "applied": applied, "hub_id": self.hub.hub_id, "skipped": skipped})
 
     def _changes(self, query: Dict[str, List[str]]) -> None:
         self._peer_auth()
@@ -2779,7 +2878,8 @@ class Hub:
         st = self.store.peer_state(peer)
         return {"url": peer, "outbox_pending": self.store.outbox_pending(peer),
                 "last_push_ok": fmt_ts(st["last_push_ok"]), "last_pull_ok": fmt_ts(st["last_pull_ok"]),
-                "last_error": st["last_error"]}
+                "last_error": st["last_error"], "skipped_push": st["skipped_push"],
+                "skipped_pull": st["skipped_pull"], "last_skipped": st["last_skipped"]}
 
     def maintain(self, full: Optional[bool] = None) -> Dict[str, Any]:
         """Purge, checkpoint and vacuum. `full` None = a full VACUUM only if one is due."""
