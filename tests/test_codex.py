@@ -126,7 +126,7 @@ class CodexHook(unittest.TestCase):
         self.assertNotIn(SECRET, json.dumps(argv))
 
     def test_turn_cards_can_be_turned_off(self):
-        self.run_hook("notify", {"hook_event_name": "Stop"}, NEEDS_YOU_CODEX_TURN_CARDS="0")
+        self.run_hook("notify", {"hook_event_name": "Stop"}, NEEDS_YOU_AGENT_TURN_CARDS="0")
         self.assertEqual(self.calls(), [])
         self.permission("Bash", {"command": "ls"})  # approvals still post
         self.assertEqual(len(self.calls()), 1)
@@ -135,7 +135,7 @@ class CodexHook(unittest.TestCase):
         conf = os.path.join(self.home, ".config", "needs-you")
         os.makedirs(conf)
         with open(os.path.join(conf, "env"), "w") as fh:
-            fh.write("NEEDS_YOU_CODEX_TURN_CARDS=0\n")
+            fh.write("NEEDS_YOU_AGENT_TURN_CARDS=0\n")
         self.run_hook("notify", {"hook_event_name": "Stop"})
         self.assertEqual(self.calls(), [])
 

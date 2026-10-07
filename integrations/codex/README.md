@@ -40,7 +40,7 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 | Codex event | Hook mode | Action |
 |---|---|---|
 | `PermissionRequest` | `notify codex` | `needs-you add`: **Codex wants to run make**, **Codex wants to edit config.py** (`apply_patch`; "2 files" for more), **Codex needs permission for linear create_issue** (MCP) |
-| `Stop` | `notify codex` | `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_CODEX_TURN_CARDS=0` keeps only approval cards |
+| `Stop` | `notify codex` | `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval cards |
 | `UserPromptSubmit`, `PostToolUse`, `Interrupt` | `resolve codex` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before |
 | `SessionEnd` | `end codex` | resolves the session's card |
@@ -64,7 +64,7 @@ All the [Claude Code hook settings](../claude-code/README.md#settings) apply (`N
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NEEDS_YOU_CODEX_TURN_CARDS` | on | `0`: no card when a turn ends, only approval prompts |
+| `NEEDS_YOU_AGENT_TURN_CARDS` | on | `0`: no card when a turn ends, only approval prompts |
 | `CODEX_HOME` | `~/.codex` | Where the installer, `needs-you doctor` and `needs-you update` look |
 
 ## Check and test

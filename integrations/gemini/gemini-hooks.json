@@ -1,0 +1,48 @@
+{
+  "_needs_you_version": "0.1.2",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "ToolPermission",
+        "hooks": [
+          { "name": "needs-you", "type": "command", "command": "\"$HOME/.gemini/hooks/needs-you-hook.sh\" notify gemini", "timeout": 10000 }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          { "name": "needs-you", "type": "command", "command": "\"$HOME/.gemini/hooks/needs-you-hook.sh\" notify gemini", "timeout": 10000 }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          { "name": "needs-you", "type": "command", "command": "\"$HOME/.gemini/hooks/needs-you-hook.sh\" resolve gemini", "timeout": 10000 }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "hooks": [
+          { "name": "needs-you", "type": "command", "command": "\"$HOME/.gemini/hooks/needs-you-hook.sh\" resolve gemini", "timeout": 10000 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "name": "needs-you", "type": "command", "command": "\"$HOME/.gemini/hooks/needs-you-hook.sh\" start gemini", "timeout": 10000 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "name": "needs-you", "type": "command", "command": "\"$HOME/.gemini/hooks/needs-you-hook.sh\" end gemini", "timeout": 10000 }
+        ]
+      }
+    ]
+  }
+}

@@ -120,7 +120,7 @@ The log lines mean the same as for the Claude Code hooks above. Codex-specific c
 - **Not trusted.** Codex skips hooks nobody has reviewed and says so at startup. Open `/hooks` in Codex and trust the needs-you entries. Editing those entries by hand makes them untrusted again.
 - **Hooks turned off.** `hooks = false` under `[features]` in `~/.codex/config.toml` (or a managed `requirements.toml`) disables every hook; doctor reports the first.
 - **Another `CODEX_HOME`.** The installer and doctor follow `$CODEX_HOME`; run them with the same value Codex uses.
-- **Every turn makes a card.** That's the `Stop` hook: Codex finished and is waiting for you. Opt in only where Codex runs unattended, set `NEEDS_YOU_CODEX_TURN_CARDS=0` to keep only approval cards, or turn it off for a session with `NEEDS_YOU_AGENT_ALERTS=0`.
+- **Every turn makes a card.** That's the `Stop` hook: Codex finished and is waiting for you. Opt in only where Codex runs unattended, set `NEEDS_YOU_AGENT_TURN_CARDS=0` to keep only approval cards, or turn it off for a session with `NEEDS_YOU_AGENT_ALERTS=0`.
 
 ## GitHub poller
 

@@ -127,9 +127,11 @@ install -m 0755 "$SRC/cli/needs-you" "$PREFIX/cli/needs-you"
 install -m 0644 "$SRC/integrations/claude-code/needs-you-hook.sh" "$SRC/integrations/claude-code/install-hooks.sh" \
   "$SRC/integrations/claude-code/hooks.json" "$PREFIX/integrations/claude-code/"
 install -m 0644 "$SRC/integrations/claude-code/skill/needs-you/SKILL.md" "$PREFIX/integrations/claude-code/skill/needs-you/"
-install -d -m 0755 "$PREFIX/integrations/codex"
-install -m 0644 "$SRC/integrations/codex/install-codex-hooks.sh" "$SRC/integrations/codex/codex-hooks.json" \
-  "$PREFIX/integrations/codex/"
+for agent in codex gemini; do
+  install -d -m 0755 "$PREFIX/integrations/$agent"
+  install -m 0644 "$SRC/integrations/$agent/install-$agent-hooks.sh" "$SRC/integrations/$agent/$agent-hooks.json" \
+    "$PREFIX/integrations/$agent/"
+done
 echo "installed code in $PREFIX"
 
 # 2. config: create, or apply only the flags that were passed

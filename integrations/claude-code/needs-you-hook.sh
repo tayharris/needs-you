@@ -11,10 +11,13 @@
 #                               resolve this process's earlier cards
 #   needs-you-hook.sh end       SessionEnd: resolve the session's cards
 #
-# A second argument names the agent: `codex` for OpenAI Codex CLI (installed by
-# integrations/codex/install-codex-hooks.sh into ~/.codex/hooks.json), where
-# PermissionRequest and Stop (the turn ended, Codex waits for you) call `notify`
-# and the cards say "Codex". Default: claude.
+# A second argument names the agent. Default: claude.
+#   codex    OpenAI Codex CLI (integrations/codex/, ~/.codex/hooks.json):
+#            PermissionRequest and Stop (the turn ended) call `notify`.
+#   gemini   Gemini CLI (integrations/gemini/, ~/.gemini/settings.json):
+#            Notification (ToolPermission) and AfterAgent call `notify`. Gemini
+#            waits for every hook, so the hook reads its input and finishes the
+#            work in the background.
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -63,8 +66,8 @@
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
-#   NEEDS_YOU_CODEX_TURN_CARDS  Codex only: 0 = no card when a turn ends, just
-#                             approval prompts (default: on)
+#   NEEDS_YOU_AGENT_TURN_CARDS  Codex and Gemini: 0 = no card when a turn ends,
+#                             just approval prompts (default: on)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -75,6 +78,7 @@ trap 'exit 0' INT TERM HUP
 mode=${1:-}
 case "${2:-}" in
   codex) agent=codex ;;
+  gemini) agent=gemini ;;
   *) agent=claude ;;
 esac
 
@@ -98,9 +102,17 @@ esac
 
 input=$(cat 2>/dev/null)
 
+# Gemini CLI waits for each hook (and reads its stdout and stderr as JSON): hand
+# the work to a background copy with no stdio and return at once. The copy
+# starts the lease search from this hook's parent.
+if [ "$agent" = gemini ] && [ -z "${NY_HOOK_BG:-}" ]; then
+  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=$PPID bash "$0" "$mode" gemini >/dev/null 2>&1 &
+  exit 0
+fi
+
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
-           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_CODEX_TURN_CARDS; do
+           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -139,7 +151,7 @@ ctx_marker="$state_dir/$id.context"
 # shell (Claude Code may start hooks through `sh -c`). `needs-you flush`
 # resolves the card once that pid is gone or reused (different start time).
 agent_pid() {
-  local p=$PPID n=0 comm
+  local p=${NY_HOOK_PPID:-$PPID} n=0 comm
   while [ "$n" -lt 8 ] && [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null; do
     comm=$(ps -o comm= -p "$p" 2>/dev/null) || return 0
     case "${comm##*/}" in
@@ -215,7 +227,8 @@ import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENT = "codex" if os.environ.get("NY_AGENT") == "codex" else "claude"
+AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini") else "claude"
+AGENT_ID = {"codex": "codex", "gemini": "gemini-cli"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -438,7 +451,7 @@ def base_args(key, title, body, priority):
         args += ["--context", context]
     # --opt=value: a title, body or project starting with "-" isn't taken for an option
     args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
-             "--agent", "codex" if AGENT == "codex" else "claude-code", "--project=" + project]
+             "--agent", AGENT_ID, "--project=" + project]
     try:
         expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
     except ValueError:
@@ -537,17 +550,52 @@ def codex_card():
             what = "Codex needs permission for %s" % tool_label(tool)
         return "permission", what, "Codex is asking to use %s." % tool_label(tool)
     if event == "Stop":
-        if (os.environ.get("NEEDS_YOU_CODEX_TURN_CARDS") or "").lower() in ("0", "false", "no", "off"):
+        if not turn_cards():
             return None
         return "notify", "Codex is waiting for you", "Codex finished its turn and is waiting for your next message."
+    return None
+
+
+def turn_cards():
+    return (os.environ.get("NEEDS_YOU_AGENT_TURN_CARDS") or "").lower() not in ("0", "false", "no", "off")
+
+
+def gemini_card():
+    """(kind, what, msg) for a Gemini CLI hook event, or None for no card. A ToolPermission
+    notification's details are Gemini's confirmation: type exec (rootCommand), edit
+    (fileName), mcp (serverName, toolName) or info."""
+    if event == "Notification":
+        if ntype != "ToolPermission":
+            return None
+        d = data.get("details") if isinstance(data.get("details"), dict) else {}
+        t = d.get("type")
+        if t == "exec":
+            word = command_word(d.get("rootCommand") if isinstance(d.get("rootCommand"), str) else "")
+            what = "Gemini wants to run %s" % word if word else "Gemini wants to run a command"
+        elif t == "edit":
+            name = file_name(d.get("fileName") or d.get("filePath"))
+            what = "Gemini wants to edit %s" % name if name else "Gemini wants to edit a file"
+        elif t == "mcp":
+            server = d.get("serverName") if isinstance(d.get("serverName"), str) else ""
+            tool = d.get("toolName") if isinstance(d.get("toolName"), str) else ""
+            what = "Gemini needs permission for %s" % tool_label("mcp__%s__%s" % (server, tool))
+        elif t == "info":
+            what = "Gemini wants to fetch a page"
+        else:
+            what = "Gemini needs your approval"
+        return "permission", what, "Gemini is waiting for you to approve a tool call."
+    if event == "AfterAgent":
+        if not turn_cards():
+            return None
+        return "notify", "Gemini is waiting for you", "Gemini finished its turn and is waiting for your next message."
     return None
 
 
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT == "codex":
-        card = codex_card()
+    if AGENT in ("codex", "gemini"):
+        card = codex_card() if AGENT == "codex" else gemini_card()
         if card is None:
             return 3
         kind, what, msg = card

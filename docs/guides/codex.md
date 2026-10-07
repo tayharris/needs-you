@@ -49,7 +49,7 @@ Cards name at most the program or a file's basename. No command lines, patches, 
 Only want approval prompts, not a card at the end of every turn?
 
 ```bash
-echo 'NEEDS_YOU_CODEX_TURN_CARDS=0' >> ~/.config/needs-you/env
+echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' >> ~/.config/needs-you/env
 ```
 
 ## Check it works
