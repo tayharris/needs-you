@@ -38,7 +38,11 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
                                                      tailnet only), sha256-checked against its
                                                      /dl/manifest.json and, with gh, the GitHub
                                                      release. --check only reports. With
-                                                     NEEDS_YOU_AUTO_UPDATE=1, `flush` runs it daily
+                                                     NEEDS_YOU_AUTO_UPDATE=1, `flush` runs it daily,
+                                                     and a hub's "update requested" (the Mac app's
+                                                     Request update) starts it in the background;
+                                                     without it, that request prints a reminder
+                                                     to stderr once a day
   needs-you self-update                              same as `update` (the old name)
 
 If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ and the
@@ -257,6 +261,10 @@ def _sha256_file(path: str) -> Optional[str]:
         return None
 
 
+# The hub URL (from this machine's config) whose response said `update_requested`, if any.
+_UPDATE_REQUESTED_BY: Optional[str] = None
+
+
 def send(cfg: Config, method: str, path: str, body: Optional[Dict[str, Any]]) -> Tuple[str, int, Dict[str, Any]]:
     """Try each hub in order. 2xx -> result. 4xx -> Rejected (no failover: every hub
     would say the same), except 421. Network errors, timeouts, 421 and 5xx -> next hub;
@@ -269,6 +277,9 @@ def send(cfg: Config, method: str, path: str, body: Optional[Dict[str, Any]]) ->
             errors.append("%s: %s" % (url, getattr(e, "reason", e)))
             continue
         if 200 <= status < 300:
+            if parsed.get("update_requested") is True:
+                global _UPDATE_REQUESTED_BY
+                _UPDATE_REQUESTED_BY = url
             return url, status, parsed
         # 421: that hub doesn't answer to this URL's host name (its DNS-rebinding check);
         # a URL problem, not a request problem, so the next hub may well take it.
@@ -601,6 +612,19 @@ def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, An
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    global _QUIET
+    _QUIET = False
+    code = _main(argv)
+    if _UPDATE_REQUESTED_BY:
+        on_update_requested(Config(), _UPDATE_REQUESTED_BY, _QUIET)
+    return code
+
+
+_QUIET = False
+
+
+def _main(argv: Optional[List[str]] = None) -> int:
+    global _QUIET
     p = argparse.ArgumentParser(prog="needs-you", description=__doc__.split("\n")[0],
                                 epilog="See docs/AGENT-GUIDE.md for when and how to post.")
     p.add_argument("--version", action="version", version="needs-you " + VERSION)
@@ -655,6 +679,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
 
     args = p.parse_args(argv)
+    _QUIET = bool(args.quiet or args.json)
     if not args.cmd:
         p.print_help()
         return 2
@@ -1530,6 +1555,54 @@ def auto_update(cfg: Config) -> None:
         if update(cfg, quiet=True, from_flush=True) == 0:
             _write_state(auto_ok_at=int(now))
     except Exception:  # noqa: BLE001 - flush must never fail because of this
+        pass
+
+
+REQUESTED_UPDATE_RUN_EVERY = 6 * 3600     # a requested auto-update starts at most this often
+REQUESTED_UPDATE_NOTE_EVERY = 24 * 3600   # the stderr line otherwise
+
+
+def spawn_update() -> None:
+    """Start this CLI's own `update --auto` detached: its own session, no terminal, output
+    discarded, and never waited for. The command is fixed here; nothing in it comes from a hub."""
+    import subprocess
+    exe = [sys.executable] if sys.executable else []
+    with open(os.devnull, "r+b") as devnull:
+        subprocess.Popen(exe + [cli_path(), "update", "--auto"], stdin=devnull, stdout=devnull,
+                         stderr=devnull, close_fds=True, start_new_session=True, cwd="/")
+
+
+def _stderr_discarded() -> bool:
+    try:
+        a, b = os.fstat(2), os.stat(os.devnull)
+    except OSError:
+        return True
+    return (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)
+
+
+def on_update_requested(cfg: Config, hub_url: str, quiet: bool) -> None:
+    """A hub's response said the owner asked this machine to update. The flag is the only
+    thing taken from the hub: with NEEDS_YOU_AUTO_UPDATE=1 this starts the same verified
+    `needs-you update --auto` in the background (at most every 6 h); otherwise it prints one
+    line to stderr at most once a day. Never raises, never changes the exit code."""
+    try:
+        st = _read_state()
+        now = time.time()
+        if _setting(cfg, "NEEDS_YOU_AUTO_UPDATE").strip().lower() in _ON:
+            if now - float(st.get("requested_update_run_at") or 0) < REQUESTED_UPDATE_RUN_EVERY:
+                return
+            _write_state(requested_update_run_at=int(now))
+            spawn_update()
+            return
+        # Hooks and scripts that send stderr to /dev/null don't use up the day's reminder.
+        if quiet or _stderr_discarded() or \
+                now - float(st.get("requested_update_noted_at") or 0) < REQUESTED_UPDATE_NOTE_EVERY:
+            return
+        _write_state(requested_update_noted_at=int(now))
+        import urllib.parse
+        host = urllib.parse.urlsplit(hub_url).hostname or hub_url
+        warn("%s asked this machine to update: run `needs-you update`" % clean(host))
+    except Exception:  # noqa: BLE001 - never fail the caller's command over this
         pass
 
 
