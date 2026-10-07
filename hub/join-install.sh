@@ -336,12 +336,14 @@ updates the same card):
 
     orca_env=$(sed -n 's/^NEEDS_YOU_ORCA_ENVIRONMENT=//p' ~/.config/needs-you/env 2>/dev/null | tail -n 1 | tr -d "'\"")
     jump="orca terminal switch${orca_env:+ --environment \"$orca_env\"} --terminal $ORCA_TERMINAL_HANDLE"
+    term_link="needsyou://orca/terminal?handle=$ORCA_TERMINAL_HANDLE${orca_env:+&environment=${orca_env// /%20}}"
     body=$(printf '%s\n\nOrca worktree: `%s`\nJump to its terminal: `%s`' \
       "<1-3 sentences: the options, and where the question lives (Jira comment, PR thread)>" \
       "${ORCA_WORKTREE_ID##*::}" "$jump")
     needs-you add --key "work:<TICKET>:<reason>" --context work --priority normal \
       --title "<TICKET>: <what the user has to do or decide, max 100 chars>" \
       --body "$body" \
+      --link "Terminal=$term_link" \
       --link "Jira=https://<site>.atlassian.net/browse/<TICKET>" \
       --link "PR=https://github.com/<owner>/<repo>/pull/<number>" \
       --link "Branch=https://github.com/<owner>/<repo>/tree/<branch>" \
@@ -367,7 +369,8 @@ Rules:
   still sees the blocker re-posts and renews it, so a blocker the run stops
   reporting drops off even if a resolve is missed or the run crashes.
 - Leave out any link you don't have (no PR yet: no PR link). Outside an Orca
-  terminal (`$ORCA_TERMINAL_HANDLE` empty), pass only the sentences as --body.
+  terminal (`$ORCA_TERMINAL_HANDLE` empty), pass only the sentences as --body
+  and leave out the Terminal link.
 - If this run fails in a way you can't recover from, post
   `--key "work:<automation-name>:failed"`; resolve it on the next good run.
 - Never include secrets, credentials, customer data or code.

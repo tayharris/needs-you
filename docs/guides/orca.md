@@ -34,7 +34,7 @@ Check from an Orca terminal on each server: `command -v needs-you` (if it's miss
 
 With the hooks installed, nothing else is needed. Cards are keyed `agent:<host>:<terminal handle>`, so agents on different servers never collide.
 
-Orca has no deep link to a terminal or a worktree (1.4.220 opens only `orca://skills/share/<id>`), so the card names the worktree and gives the command that jumps to the terminal. Run it in a terminal on the Mac where the Orca app is open:
+Click the card's **Terminal** button: the Mac app runs `orca terminal switch` for that terminal and brings Orca forward (if the switch fails, it still brings Orca forward and puts the command on the clipboard). Orca has no deep link of its own (1.4.220 opens only `orca://skills/share/<id>`), so the card body also names the worktree and the command, for running by hand on the Mac where Orca is open:
 
 ```text
 Orca worktree: `/home/me/orca/workspaces/my-repo/ACME-123`

@@ -135,7 +135,8 @@ case "$mode" in
     # (no shell quoting of untrusted text).
     NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
     python3 - <<'PY' >/dev/null 2>&1
-import json, os, shlex, subprocess
+import json, os, re, shlex, subprocess
+from urllib.parse import quote
 
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
@@ -168,10 +169,17 @@ lines = []
 if message:
     lines.append(message[:400])
 lines.append("`%s` on `%s`" % (short_cwd, host))
+links = []
+orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
 if handle:
     if worktree and worktree != cwd:
         lines.append("Orca worktree `%s`" % worktree)
-    orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
+    # The Mac app's Terminal button runs the same switch (it validates both values again).
+    if re.match(r"^term_[0-9a-f-]{8,64}$", handle):
+        url = "needsyou://orca/terminal?handle=" + handle
+        if re.match(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$", orca_env):
+            url += "&environment=" + quote(orca_env, safe="")
+        links.append("Terminal=" + url)
     jump = "orca terminal switch%s --terminal %s" % (
         " --environment " + shlex.quote(orca_env) if orca_env else "", shlex.quote(handle))
     lines.append("Jump to its terminal: `%s`" % jump)
@@ -205,18 +213,23 @@ tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "")
 if "=" in tmpl:
     label, url = tmpl.split("=", 1)
     needs_handle = "{handle}" in url
-    from urllib.parse import quote
     url = (url.replace("{handle}", quote(handle, safe=""))
               .replace("{session}", quote(session, safe=""))
               .replace("{cwd}", quote(cwd)).replace("{host}", quote(host, safe="")))
     if label and url and not (needs_handle and not handle):
-        args += ["--link", "%s=%s" % (label, url)]
+        links.append("%s=%s" % (label, url))
 
-try:
-    rc = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL, timeout=15).returncode
-except Exception:
-    rc = 1
+def post(links):
+    try:
+        return subprocess.run(args + [a for l in links for a in ("--link", l)],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=15).returncode
+    except Exception:
+        return 1
+
+rc = post(links)
+if rc == 2 and links and links[0].startswith("Terminal="):
+    rc = post(links[1:])  # a hub older than the Terminal link rejects it; post without
 raise SystemExit(rc)
 PY
     rc=$?
