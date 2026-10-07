@@ -18,6 +18,9 @@
 #            Notification (ToolPermission) and AfterAgent call `notify`. Gemini
 #            waits for every hook, so the hook reads its input and finishes the
 #            work in the background.
+#   opencode opencode, through integrations/opencode/needs-you.js (a plugin that
+#            starts this hook with a small JSON object): PermissionRequest,
+#            Question and Stop (the session went idle) call `notify`.
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -66,7 +69,7 @@
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
-#   NEEDS_YOU_AGENT_TURN_CARDS  Codex and Gemini: 0 = no card when a turn ends,
+#   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode: 0 = no card when a turn ends,
 #                             just approval prompts (default: on)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
@@ -79,6 +82,7 @@ mode=${1:-}
 case "${2:-}" in
   codex) agent=codex ;;
   gemini) agent=gemini ;;
+  opencode) agent=opencode ;;
   *) agent=claude ;;
 esac
 
@@ -227,8 +231,8 @@ import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini") else "claude"
-AGENT_ID = {"codex": "codex", "gemini": "gemini-cli"}.get(AGENT, "claude-code")
+AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini", "opencode") else "claude"
+AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -591,11 +595,41 @@ def gemini_card():
     return None
 
 
+def opencode_card():
+    """(kind, what, msg) for an event the opencode plugin forwards, or None. A permission
+    request carries opencode's permission name and its patterns (for bash, the command; for
+    edits, the paths): the card takes at most the program or a basename from them."""
+    if event == "PermissionRequest":
+        perm = field("tool_name")
+        pats = data.get("patterns") if isinstance(data.get("patterns"), list) else []
+        first = pats[0] if pats and isinstance(pats[0], str) else ""
+        if perm == "bash":
+            word = command_word(first)
+            what = "opencode wants to run %s" % word if word else "opencode wants to run a command"
+        elif perm in ("edit", "write", "patch"):
+            name = file_name(first)
+            what = "opencode wants to edit %s" % name if name else "opencode wants to edit a file"
+        elif perm == "webfetch":
+            what = "opencode wants to fetch a page"
+        elif perm == "external_directory":
+            what = "opencode wants to use a folder outside the project"
+        else:
+            what = "opencode needs permission for %s" % tool_label(perm)
+        return "permission", what, "opencode is waiting for you to allow or deny it."
+    if event == "Question":
+        return "notify", "opencode asked you a question", "opencode is waiting for your answer."
+    if event == "Stop":
+        if not turn_cards():
+            return None
+        return "notify", "opencode is waiting for you", "opencode finished its turn and is waiting for your next message."
+    return None
+
+
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT in ("codex", "gemini"):
-        card = codex_card() if AGENT == "codex" else gemini_card()
+    if AGENT in ("codex", "gemini", "opencode"):
+        card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card}[AGENT]()
         if card is None:
             return 3
         kind, what, msg = card

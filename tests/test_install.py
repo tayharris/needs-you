@@ -276,6 +276,23 @@ class InstallScript(HubTestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("--codex-hooks must be user or none", r.stderr)
 
+    def test_opencode_plugin(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--opencode-plugin", "--host", "box5", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        oc = os.path.join(self.home, ".config", "opencode")
+        self.assertTrue(os.path.isfile(os.path.join(oc, "plugins", "needs-you.js")))
+        self.assertTrue(os.access(os.path.join(oc, "hooks", "needs-you-hook.sh"), os.X_OK))
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        self.assertEqual(checks["opencode plugin"]["status"], "OK", checks["opencode plugin"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(oc, "plugins", "needs-you.js")))
+        self.assertFalse(os.path.exists(os.path.join(oc, "hooks", "needs-you-hook.sh")))
+
     def test_gemini_hooks(self):
         inv = self.invite(uses=1)
         r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box4", STUB_UNAME="Linux")

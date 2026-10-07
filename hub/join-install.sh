@@ -21,6 +21,7 @@ YES=0
 HOOKS=none
 CODEX_HOOKS=none
 GEMINI_HOOKS=none
+OPENCODE=0
 SKILL=0
 ORCA=0
 CONTEXT=""
@@ -74,6 +75,8 @@ Options:
   --gemini-hooks user|none      Gemini CLI hooks in ~/.gemini/settings.json: post when a
                                 session asks to approve a tool call or finishes its turn
                                 (default none)
+  --opencode-plugin             opencode plugin in ~/.config/opencode/plugins: post when a
+                                session asks for permission or a question, or goes idle
   --alerts                      turn the hooks on for every Claude Code, Codex and Gemini
                                 session here (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
                                 without it they stay quiet except in Orca
@@ -116,6 +119,7 @@ while [ $# -gt 0 ]; do
     --codex-hooks=*) CODEX_HOOKS=${1#*=}; shift ;;
     --gemini-hooks) GEMINI_HOOKS=${2:-}; shift 2 || die "--gemini-hooks needs user or none" ;;
     --gemini-hooks=*) GEMINI_HOOKS=${1#*=}; shift ;;
+    --opencode-plugin) OPENCODE=1; shift ;;
     --skill) SKILL=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
@@ -306,6 +310,9 @@ if [ "$UNINSTALL" -eq 1 ]; then
       rm -rf "$tmp"
     fi
   done
+  OC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+  rm -f "$OC_DIR/plugins/needs-you.js" "$OC_DIR/hooks/needs-you-hook.sh"
+  rmdir "$OC_DIR/plugins" "$OC_DIR/hooks" 2>/dev/null || true
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
@@ -343,6 +350,7 @@ say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && pr
 [ "$SCHEDULE" -eq 1 ] && say "  flush   -> every 5 minutes ($([ "$OS" = Darwin ] && echo LaunchAgent || echo crontab))"
 [ "$HOOKS" != none ] && say "  hooks   -> Claude Code ($HOOKS level)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$CODEX_HOOKS" != none ] && say "  hooks   -> Codex CLI (${CODEX_HOME:-~/.codex}/hooks.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$OPENCODE" -eq 1 ] && say "  plugin  -> opencode (${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/needs-you.js)"
 [ "$GEMINI_HOOKS" != none ] && say "  hooks   -> Gemini CLI (~/.gemini/settings.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
@@ -546,6 +554,12 @@ PY
 }
 [ "$CODEX_HOOKS" = user ] && install_agent_hooks codex "${CODEX_HOME:-$HOME/.codex}" --codex-home
 [ "$GEMINI_HOOKS" = user ] && install_agent_hooks gemini "$HOME/.gemini" --gemini-dir
+if [ "$OPENCODE" -eq 1 ]; then
+  for f in install-opencode-plugin.sh needs-you-hook.sh needs-you-opencode.js; do
+    fetch "$f" "$TMP/$f" || die "could not download the opencode plugin ($f)"
+  done
+  bash "$TMP/install-opencode-plugin.sh"
+fi
 
 if [ "$SKILL" -eq 1 ]; then
   mkdir -p "$SKILL_DIR"

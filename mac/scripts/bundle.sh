@@ -75,6 +75,11 @@ for agent in codex gemini; do
       "$RES/integrations/$agent/"
   fi
 done
+if [[ -d "$REPO/integrations/opencode" ]]; then
+  mkdir -p "$RES/integrations/opencode"
+  cp "$REPO/integrations/opencode/needs-you.js" "$REPO/integrations/opencode/install-opencode-plugin.sh" \
+    "$RES/integrations/opencode/"
+fi
 
 if [[ -f "$REPO/integrations/orca/snippet.md" ]]; then
   mkdir -p "$RES/integrations/orca"
