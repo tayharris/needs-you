@@ -13,14 +13,15 @@ Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and the
 |---|---|---|
 | Hub | `VERSION` in `hub/needs_you_hub.py` (also served by `/v1/health`) | 0.1.3 |
 | CLI | `VERSION` in `cli/needs-you` (`needs-you --version`) | 0.1.3 |
+| MCP server | `VERSION` in `integrations/mcp/needs_you_mcp.py` (its `serverInfo.version`) | 0.1.3 |
 | Mac app | `VERSION` at the repo root (`mac/scripts/bundle.sh` reads it; `NEEDS_YOU_VERSION` overrides); build number = `git rev-list --count HEAD` | 0.1.3 |
 
-`VERSION`, the hub and the CLI must agree (`tests/test_release.py` checks); bump all three in one commit, with the `CHANGELOG.md` section. So must the version stamps the hub reports on `/dl/manifest.json` (`needs-you-version: X.Y.Z` in `integrations/claude-code/needs-you-hook.sh`, `skill/needs-you/SKILL.md`, `integrations/orca/snippet.md`, and `"_needs_you_version"` in `hooks.json`; for Codex and Gemini CLI, the stamp in `integrations/<agent>/install-<agent>-hooks.sh` and `"_needs_you_version"` in `integrations/<agent>/<agent>-hooks.json`; the stamps in `integrations/opencode/needs-you.js` and `install-opencode-plugin.sh`); `scripts/build-release.sh` and `tests/test_updates.py` check them.
+`VERSION`, the hub, the CLI and the MCP server must agree (`tests/test_release.py` checks); bump them all in one commit, with the `CHANGELOG.md` section. So must the version stamps the hub reports on `/dl/manifest.json` (`needs-you-version: X.Y.Z` in `integrations/claude-code/needs-you-hook.sh`, `skill/needs-you/SKILL.md`, `integrations/orca/snippet.md`, and `"_needs_you_version"` in `hooks.json`; for Codex and Gemini CLI, the stamp in `integrations/<agent>/install-<agent>-hooks.sh` and `"_needs_you_version"` in `integrations/<agent>/<agent>-hooks.json`; the stamps in `integrations/opencode/needs-you.js` and `install-opencode-plugin.sh`); `scripts/build-release.sh` and `tests/test_updates.py` check them.
 
 ## Steps
 
 1. **Clean tree on `main`**, up to date: `git status` clean, `git pull --ff-only` (in the main clone, not a worktree on another branch).
-2. **Bump** `VERSION` in `hub/needs_you_hub.py` and `cli/needs-you`, and every version stamp above; commit `release: vX.Y.Z`.
+2. **Bump** `VERSION` in `hub/needs_you_hub.py`, `cli/needs-you` and `integrations/mcp/needs_you_mcp.py`, and every version stamp above; commit `release: vX.Y.Z`.
 3. **Test:** run the `test-all` and `smoke-e2e` skills. Stop on any failure.
 4. **Build into a temp dir** (not the repo):
 
