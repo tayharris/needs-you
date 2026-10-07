@@ -1904,6 +1904,18 @@ def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
     return step
 
 
+def utf8_ok(obj: Any) -> bool:
+    """False if any text in obj has an unpaired UTF-16 surrogate ("\\ud800" in JSON), which
+    can't be stored (SQLite takes UTF-8) and which clients' JSON decoders refuse."""
+    try:
+        json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
 def _opt_str(rec: Dict[str, Any], name: str) -> Optional[str]:
     v = rec.get(name)
     if v is not None and not isinstance(v, str):
@@ -1915,6 +1927,8 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
     """Accept a replicated item record (wire form: ISO timestamps, JSON links/source)."""
     if not isinstance(rec, dict):
         raise ApiError(400, "invalid", "item record must be an object")
+    if not utf8_ok(rec):
+        raise ApiError(400, "invalid", "bad item record: text with an unpaired surrogate")
     out: Dict[str, Any] = {}
     try:
         for c in ("id", "key", "context", "kind", "priority", "title", "status"):
@@ -1954,8 +1968,8 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
 
 
 def normalise_token_record(rec: Any) -> Dict[str, Any]:
-    if not isinstance(rec, dict):
-        raise ApiError(400, "invalid", "token record must be an object")
+    if not isinstance(rec, dict) or not utf8_ok(rec):
+        raise ApiError(400, "invalid", "token record must be an object of valid text")
     try:
         out = {c: rec[c] for c in ("id", "name", "role", "hash")}
         out["created_at"] = parse_ts(rec["created_at"])
@@ -1970,8 +1984,8 @@ def normalise_token_record(rec: Any) -> Dict[str, Any]:
 
 
 def normalise_invite_record(rec: Any) -> Dict[str, Any]:
-    if not isinstance(rec, dict):
-        raise ApiError(400, "invalid", "invite record must be an object")
+    if not isinstance(rec, dict) or not utf8_ok(rec):
+        raise ApiError(400, "invalid", "invite record must be an object of valid text")
     try:
         out = {c: rec[c] for c in ("id", "name", "role", "hash")}
         out["uses"] = int(rec["uses"])
@@ -2333,7 +2347,7 @@ class Handler(BaseHTTPRequestHandler):
             body["field"] = err.field
         self._send(err.status, body)
 
-    def _body(self, limit: int = MAX_REQUEST_BYTES) -> Any:
+    def _body(self, limit: int = MAX_REQUEST_BYTES, per_record: bool = False) -> Any:
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -2346,9 +2360,14 @@ class Handler(BaseHTTPRequestHandler):
         if not raw:
             raise ApiError(400, "invalid", "a JSON body is required")
         try:
-            return json.loads(raw.decode("utf-8"))
+            data = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError, RecursionError):
             raise ApiError(400, "invalid", "body is not valid JSON")
+        # "\ud800" alone is valid JSON but not text. (/v1/replicate checks each record, so
+        # one such item is skipped, not the batch.)
+        if not per_record and not utf8_ok(data):
+            raise ApiError(400, "invalid", "body has text with an unpaired surrogate (\\ud800-\\udfff)")
+        return data
 
     def _bearer(self) -> Optional[str]:
         auth = self.headers.get("Authorization") or ""
@@ -2790,7 +2809,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _replicate(self) -> None:
         self._peer_auth()
-        data = self._body(MAX_REPLICATE_BYTES)
+        data = self._body(MAX_REPLICATE_BYTES, per_record=True)
         if not isinstance(data, dict):
             raise ApiError(400, "invalid", "body must be a JSON object")
         if data.get("from_hub") == self.hub.hub_id:

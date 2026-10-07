@@ -6,7 +6,7 @@ import socket
 import threading
 import urllib.parse
 
-from support import FakeClock, HubTestCase, hubmod, request
+from support import PEER_SECRET, FakeClock, HubTestCase, hubmod, request
 
 
 class ApiTestCase(HubTestCase):
@@ -443,6 +443,31 @@ class Stream(ApiTestCase):
         sock.close()
         self.assertIsNotNone(data)
         self.assertEqual(data["title"], "live")
+
+
+class BadInput(ApiTestCase):
+    """Input the hub can't store is a 400 naming the problem, never a 500."""
+
+    def test_lone_surrogates(self):
+        # e.g. a title built from a file name with a byte that isn't UTF-8 (Python's
+        # surrogateescape): SQLite can't encode it, and a 5xx made the CLI queue it forever.
+        for body in ({"key": "k", "title": "report-\udcff.txt"}, {"key": "k", "title": "t", "body": "\ud800"},
+                     {"key": "k", "title": "t", "source": {"host": "h\ud83d"}},
+                     {"key": "k", "title": "t", "steps": [{"text": "a\udfff"}]}):
+            s, r = self.post(body)
+            self.assertEqual((s, r.get("error")), (400, "invalid"), body)
+        s, r = self.resolve({"key": "k\ud800"})
+        self.assertEqual(s, 400, r)
+        s, r = self.post({"key": "k", "title": "emoji \U0001F600 is fine"})
+        self.assertEqual(s, 201, r)
+        # a replicated item with one is skipped, the rest of the batch applied
+        good = dict(self.list(status="all")[1]["items"][0])
+        bad = dict(good, id="01BADBADBADBADBADBADBADBAD", key="k2", title="x\ud800")
+        good = dict(good, id="01GOODGOODGOODGOODGOODGOOD", key="k3")
+        s, r = request("POST", self.base + "/v1/replicate", PEER_SECRET, {"from_hub": "hub-z", "items": [bad, good]})
+        self.assertEqual(s, 200, r)
+        self.assertEqual([x["id"] for x in r["skipped"]], [bad["id"]])
+        self.assertIsNotNone(self.hub.store.get_item(good["id"]))
 
 
 if __name__ == "__main__":
