@@ -109,18 +109,14 @@ struct LinkRow: View {
                                 // Where it really goes, so a label can't pass for another site.
                                 Text(destination)
                                     .fontWeight(.regular)
-                                    .foregroundStyle(.white.opacity(0.5))
+                                    .foregroundStyle(Theme.linkDestination)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
                             Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
                         }
                         .font(.system(size: model.metrics.linkFont, weight: .medium))
-                        .padding(.horizontal, compact ? 6 : 8).padding(.vertical, compact ? 2 : 3)
-                        .background(Capsule().fill(Color.white.opacity(0.10)))
-                        .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .contentShape(Capsule())
+                        .linkChip(horizontal: compact ? 6 : 8, vertical: compact ? 2 : 3)
                     }
                     .buttonStyle(.plain)
                     .help(link.url)
@@ -217,18 +213,14 @@ private struct StepLinkButton: View {
                         // Where it really goes, as on the links row.
                         Text(destination)
                             .fontWeight(.regular)
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(Theme.linkDestination)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
                     Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
                 }
                 .font(.system(size: model.metrics.linkFont, weight: .medium))
-                .padding(.horizontal, 7).padding(.vertical, 2)
-                .background(Capsule().fill(Color.white.opacity(0.10)))
-                .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
-                .foregroundStyle(.white.opacity(0.9))
-                .contentShape(Capsule())
+                .linkChip(horizontal: 7, vertical: 2)
             }
             .buttonStyle(.plain)
             .help(link.url)

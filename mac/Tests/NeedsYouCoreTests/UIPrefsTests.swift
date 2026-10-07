@@ -15,6 +15,8 @@ final class UIPrefsTests: XCTestCase {
         ("testUnknownValuesFallBack", testUnknownValuesFallBack),
         ("testSaveOnlyWritesChanges", testSaveOnlyWritesChanges),
         ("testPillOptions", testPillOptions),
+        ("testPanelBehaviourDefaults", testPanelBehaviourDefaults),
+        ("testPanelBehaviourRoundTripAndFallback", testPanelBehaviourRoundTripAndFallback),
     ]
 
     private var suite = ""
@@ -93,5 +95,32 @@ final class UIPrefsTests: XCTestCase {
         store.set("everything", forKey: UIPrefs.Key.pillDetail)
         XCTAssertEqual(UIPrefs.load(from: store).pillSize, .medium)
         XCTAssertEqual(UIPrefs.load(from: store).pillDetail, .count)
+    }
+
+    /// Arrival peeks stay out 14 s, the open panel stays open on clicks elsewhere, and the
+    /// list height is automatic. None of it is written until changed.
+    func testPanelBehaviourDefaults() {
+        let p = UIPrefs.load(from: store)
+        XCTAssertEqual(p.previewSeconds, 14)
+        XCTAssertFalse(p.collapseOnClickOutside)
+        XCTAssertEqual(p.expandedListHeight, 0)
+        XCTAssertEqual(storedKeys, [])
+    }
+
+    func testPanelBehaviourRoundTripAndFallback() {
+        var p = UIPrefs()
+        p.previewSeconds = PeekDuration.untilDismissed
+        p.collapseOnClickOutside = true
+        p.expandedListHeight = 380
+        p.save(to: store, previous: UIPrefs())
+        XCTAssertEqual(storedKeys, [UIPrefs.Key.previewSeconds, UIPrefs.Key.collapseOnClickOutside, UIPrefs.Key.expandedListHeight])
+        XCTAssertEqual(UIPrefs.load(from: store), p)
+
+        store.set(4, forKey: UIPrefs.Key.previewSeconds)          // not offered: the default
+        store.set(-20.0, forKey: UIPrefs.Key.expandedListHeight)  // bad: automatic
+        let loaded = UIPrefs.load(from: store)
+        XCTAssertEqual(loaded.previewSeconds, PeekDuration.standard)
+        XCTAssertEqual(loaded.expandedListHeight, 0)
+        XCTAssertTrue(loaded.collapseOnClickOutside)
     }
 }

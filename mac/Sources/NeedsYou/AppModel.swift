@@ -69,6 +69,9 @@ final class AppModel: ObservableObject {
     @Published var expandedContentHeight: CGFloat = 0
     /// Each card's bottom edge in the list (for Settings → Panel → Cards before scrolling).
     @Published var cardBottoms: [CGFloat] = []
+    /// The resize grip is on the open panel's bottom edge; false puts it on the top edge
+    /// (the panel sits on a bottom corner and grows up). Set by the panel controller.
+    @Published var listGripAtBottom = true
     /// Cards whose full body and links are shown (Show more / Show details / +N). Cleared
     /// when the panel collapses.
     @Published private(set) var expandedCards: Set<String> = []
@@ -84,6 +87,8 @@ final class AppModel: ObservableObject {
 
     /// Set by the panel controller; the SwiftUI drag gesture forwards to it.
     var dragHandler: ((DragPhase) -> Void)?
+    /// Set by the panel controller; the expanded panel's resize grip forwards to it.
+    var resizeHandler: ((DragPhase) -> Void)?
     /// Set by the app delegate.
     var openSettingsHandler: (() -> Void)?
     /// Set by the app delegate: opens Settings at the invite section (activates the app).
@@ -449,10 +454,28 @@ final class AppModel: ObservableObject {
         digest = shown
         pulse = PulseRequest(times: 1, priority: top, ambient: true)
         digestTask?.cancel()
-        digestTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled, let self, self.digest == shown else { return }
-            self.digest = nil
+        digestTask = holdPeek(while: { [weak self] in self?.digest == shown }) { [weak self] in
+            self?.digest = nil
+        }
+    }
+
+    /// Keeps an arrival peek (the new-item preview or the Later digest) out for Settings →
+    /// Alerts → Show new items for. The clock stops while the pointer is over the panel and
+    /// resumes when it leaves (PeekCountdown). Ends early, without calling `end`, once
+    /// `showing` is false (clicked, replaced or collapsed).
+    func holdPeek(while showing: @escaping () -> Bool, end: @escaping () -> Void) -> Task<Void, Never> {
+        let seconds = settings.ui.previewSeconds
+        return Task { [weak self] in
+            var countdown = PeekCountdown(seconds: seconds)
+            let step: TimeInterval = 0.25
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled, let self, showing() else { return }
+                if countdown.advance(by: step, hovering: self.hovering) {
+                    end()
+                    return
+                }
+            }
         }
     }
 
@@ -510,6 +533,11 @@ final class AppModel: ObservableObject {
         summarySince = nil
         peeking = false
         if !expandedCards.isEmpty { expandedCards = [] }
+    }
+
+    /// The resize grip's double-click: the list goes back to its automatic height.
+    func resetListHeight() {
+        settings.ui.expandedListHeight = Double(ListResize.automatic)
     }
 
     func toggleCardExpanded(_ item: Item) {
@@ -668,18 +696,24 @@ final class AppModel: ObservableObject {
     /// Orca and terminal jumps) run their fixed action instead of going to NSWorkspace, and
     /// going to the terminal counts as handling the card: it's marked done. A click in the
     /// panel is trusted; links from outside the app go through AppDelegate, which asks.
+    /// The panel stays open afterwards (so the card can be read next to what it opened)
+    /// unless Settings → Panel → Collapse when clicking elsewhere is on.
     @discardableResult
     func open(_ string: String, from item: Item? = nil) -> Bool {
         if let action = AppAction.parse(string) {
             run(action)
             if let item { resolve(item) }
-            collapse()
+            collapseAfterOpening()
             return true
         }
         guard let url = LinkPolicy.externalURL(string) else { return false }
         NSWorkspace.shared.open(url)
-        collapse()
+        collapseAfterOpening()
         return true
+    }
+
+    private func collapseAfterOpening() {
+        if settings.ui.collapseOnClickOutside { collapse() }
     }
 
     @discardableResult

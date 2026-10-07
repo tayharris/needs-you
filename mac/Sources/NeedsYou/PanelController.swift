@@ -41,7 +41,7 @@ final class PanelContainerView: NSView {
 }
 
 /// Owns the panel: sizing per state, corner snapping, per-layout placement, menus,
-/// click-outside and Escape handling.
+/// click-outside and Escape handling, and the expanded list's resize grip.
 @MainActor
 final class PanelController {
     /// Transparent room around the visible shape for the glow.
@@ -58,11 +58,19 @@ final class PanelController {
     private var clickOutsideMonitor: Any?
     private var escapeMonitors: [Any] = []
     private var escapeHotKey: HotKey?
+    /// The user clicked in another app while the panel stayed open: Escape belongs to that
+    /// app again until the pointer comes back over the panel.
+    private var escapeReleased = false
 
     private var placement: PanelPlacement?
     private var dragStartMouse: NSPoint?
     private var dragStartOrigin: NSPoint?
     private var isDragging = false
+    /// The resize grip's drag: where it began, and the list height while it runs (saved
+    /// to settings.ui.expandedListHeight when it ends).
+    private var resizeStartMouseY: CGFloat?
+    private var resizeStartHeight: CGFloat = 0
+    private var liveListHeight: CGFloat?
     private var lastDisplay: PanelDisplay?
     private var syncScheduled = false
     /// The work display the current arrival peek is on (nil: the pill's home).
@@ -96,11 +104,14 @@ final class PanelController {
         container.addSubview(hosting)
 
         hosting.menuProvider = { [weak self] in self?.makeContextMenu() }
-        container.onHover = { [weak model] inside in
+        container.onHover = { [weak self, weak model] inside in
+            // Back over the panel after clicking elsewhere: Escape collapses it again.
+            if inside { self?.escapeReleased = false }
             guard let model, model.hovering != inside else { return }
             model.hovering = inside
         }
         model.dragHandler = { [weak self] phase in self?.handleDrag(phase) }
+        model.resizeHandler = { [weak self] phase in self?.handleResize(phase) }
         model.resetPositionHandler = { [weak self] in self?.resetPosition() }
 
         model.objectWillChange
@@ -138,6 +149,9 @@ final class PanelController {
         }
 
         let display = model.display
+        // The resize grip goes on the edge away from the anchored corner.
+        let gripAtBottom = ListResize.gripAtBottom(anchor: placement?.corner ?? .topRight)
+        if model.listGripAtBottom != gripAtBottom { model.listGripAtBottom = gripAtBottom }
         // Arrival peeks spring out on the display you're working on (Settings → Alerts),
         // then the pill goes back home. Chosen once per peek.
         if display.isPeek {
@@ -206,16 +220,31 @@ final class PanelController {
             if clickOutsideMonitor == nil {
                 // Global monitors see clicks in *other* apps; mouse events need no permission.
                 clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.model.collapse() }
+                    MainActor.assumeIsolated { self?.clickedElsewhere() }
                 }
             }
-            installEscape(swallow: model.expandedByUser)
+            installEscape(swallow: model.expandedByUser && !escapeReleased)
         } else {
             if let monitor = clickOutsideMonitor {
                 NSEvent.removeMonitor(monitor)
                 clickOutsideMonitor = nil
             }
             removeEscape()
+            escapeReleased = false
+            endResize()
+        }
+    }
+
+    /// A click in another app. With Settings → Panel → Collapse when clicking elsewhere on,
+    /// the panel collapses. Off (the default) it stays open, so a card can still be read
+    /// next to the link it opened, and stops swallowing Escape, which belongs to the app
+    /// that was clicked. Escape, the chevron and the shortcut still close it.
+    private func clickedElsewhere() {
+        if model.settings.ui.collapseOnClickOutside {
+            model.collapse()
+        } else {
+            escapeReleased = true
+            escapeHotKey = nil
         }
     }
 
@@ -243,6 +272,8 @@ final class PanelController {
             escapeHotKey = HotKey(id: 2, keyCode: 53, modifiers: 0) { [weak self] in
                 MainActor.assumeIsolated { self?.model.collapse() }
             }
+        } else if !swallow {
+            escapeHotKey = nil
         }
     }
 
@@ -270,9 +301,13 @@ final class PanelController {
         case .preview, .digest:
             return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:
-            let list = ListHeightPolicy.height(content: model.expandedContentHeight, cardBottoms: model.cardBottoms,
-                                               maxCards: model.settings.ui.maxVisibleCards,
-                                               cap: maxListHeight(m), minimum: m.minListHeight)
+            let automatic = ListHeightPolicy.height(content: model.expandedContentHeight, cardBottoms: model.cardBottoms,
+                                                    maxCards: model.settings.ui.maxVisibleCards,
+                                                    cap: maxListHeight(m), minimum: m.minListHeight)
+            // A height dragged with the grip wins over the automatic one (double-click resets it).
+            let chosen = liveListHeight ?? CGFloat(model.settings.ui.expandedListHeight)
+            let list = ListResize.listHeight(chosen: chosen, automaticHeight: { automatic },
+                                             minimum: m.minListHeight, cap: maxResizedListHeight(m))
             return CGSize(width: m.expandedWidth, height: m.headerHeight + list + m.footerHeight)
         }
     }
@@ -280,6 +315,13 @@ final class PanelController {
     private func maxListHeight(_ m: PanelMetrics) -> CGFloat {
         let screenHeight = currentScreen()?.visibleFrame.height ?? 800
         return min(m.maxListHeight, screenHeight - 140)
+    }
+
+    /// The tallest list the grip can drag to: the visible screen height less the header,
+    /// footer and margins (not held to the size's automatic maximum).
+    private func maxResizedListHeight(_ m: PanelMetrics) -> CGFloat {
+        let screenHeight = currentScreen()?.visibleFrame.height ?? 800
+        return screenHeight - m.headerHeight - m.footerHeight - Self.edgeMargin * 2
     }
 
     private func panelSize(for display: PanelDisplay) -> CGSize {
@@ -378,6 +420,45 @@ final class PanelController {
             model.settings.setPlacement(newPlacement, forLayout: layoutKey())
             sync(animated: true)
         }
+    }
+
+    /// The resize grip (ExpandedView's ResizeGrip). Like moving, it reads the pointer from
+    /// NSEvent, so it works without the panel ever becoming key. The edge away from the
+    /// anchored corner follows the pointer; the anchored one stays put.
+    private func handleResize(_ phase: DragPhase) {
+        guard model.display == .expanded else {
+            // Collapsed mid-drag (Escape, the shortcut): drop the half-finished resize.
+            endResize()
+            return
+        }
+        let m = model.metrics
+        let mouseY = NSEvent.mouseLocation.y
+        switch phase {
+        case .changed:
+            if resizeStartMouseY == nil {
+                resizeStartMouseY = mouseY
+                resizeStartHeight = contentSize(for: .expanded).height - m.headerHeight - m.footerHeight
+            }
+            guard let startY = resizeStartMouseY else { return }
+            let height = ListResize.dragged(start: resizeStartHeight, deltaY: mouseY - startY,
+                                            gripAtBottom: model.listGripAtBottom,
+                                            minimum: m.minListHeight, cap: maxResizedListHeight(m)).rounded()
+            guard height != liveListHeight else { return }
+            liveListHeight = height
+            sync(animated: false)
+        case .ended:
+            guard resizeStartMouseY != nil else { return }
+            resizeStartMouseY = nil
+            if let height = liveListHeight {
+                model.settings.ui.expandedListHeight = Double(height)
+            }
+            liveListHeight = nil
+        }
+    }
+
+    private func endResize() {
+        resizeStartMouseY = nil
+        liveListHeight = nil
     }
 
     // MARK: Debug snapshot

@@ -31,9 +31,10 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 | `3 · 1` | 3 in the current context, 1 waiting in the other (work vs personal). Settings → Panel → **Collapsed pill** can show them as `W 3 \| P 1` instead, or split by priority. |
 | `3 +2`, a moon | 2 more are waiting under Later; a focus is on (see [Focus](#focus-heads-down-except-what-you-choose)). |
 | `3` `2 new` | 2 of the 3 arrived (or changed, or turned into `needs`) since you last opened the panel. Opening it clears the badge. |
-| The pill springs out with a title | A new item just arrived. |
+| The pill springs out with a title | A new item just arrived. It stays out 14 s; point at it to keep it there, click it to open the panel. |
 
-- **Click** the pill to expand the cards; **Escape** or click outside to collapse.
+- **Click** the pill to expand the cards. It stays open when you click in another app or open a card's link, so you can keep reading the card next to what it opened. **Escape**, the chevron in the header or the shortcut closes it. (Escape goes to the app you clicked into until you point at the panel again.) To have a click elsewhere close it, turn on **Settings → Panel → Open panel → Collapse when clicking elsewhere**.
+- Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or **Settings → Panel → Open panel → Automatic**, to go back to fitting the cards.
 - On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, `linear:`, ...). A **Terminal** button on an agent's card brings forward the terminal it runs in and marks the card done ([Terminal button](#terminal-button)).
 - A card with **steps** shows them as a numbered checklist at your card text size, each step's link as a button. Tick steps off as you go (the ticks stay on this Mac; steps the agent already marked done are ticked for you); once every step is ticked the card offers **All steps done: mark Done**. With **Card text** set to First lines or Title only, the card shows "3 steps" until you click it.
 - A card waiting 4 hours or more shows its age next to the title (`5 h`, `2 d`; amber after 2 days). Its **…** menu has **Dismiss All from <host>**, which clears every card and Recent row from that machine in this context, for when a machine went away without resolving its cards.
@@ -92,7 +93,7 @@ To follow a macOS Focus, first turn on **Allow focus links from other apps** (ot
 
 ## Make it yours
 
-Everything is in **Settings** (right-click the pill → **Settings…**). The defaults are the original look.
+Everything is in **Settings** (right-click the pill → **Settings…**). The defaults are the original look, except that new items stay out 14 s (was 4 s) and the open panel no longer collapses when you click elsewhere.
 
 | Setting | Where | Choices (default first) |
 |---|---|---|
@@ -101,6 +102,8 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | How much of each card's text shows | Panel → Look → **Card text** | Full, First lines (3), Title only (click **Show details**) |
 | Links on one short row | Panel → Look → **Compact links** | Off, On (3 links, `+N` shows the rest) |
 | Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
+| Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | Off, On |
+| The open panel's list height | Panel → Open panel → **List height** (drag the panel's edge) | Automatic, or the height you dragged |
 | See-through when the pointer isn't over it | Panel → Look → **Opacity** | 100%, 90%, 80%, 70%, 60% |
 | Size of the collapsed pill only | Panel → Collapsed pill → **Pill size** | Medium, Small, Large |
 | What the collapsed pill says | Panel → Collapsed pill → **Shows** | Count only; Count and top item (the top card's title, truncated); Minimal dot (a dot in the top priority's colour, the count on hover) |
@@ -109,6 +112,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | The global shortcut | Panel → Keyboard | ⌃⌥Space, or record your own (it must use ⌃, ⌥ or ⌘) |
 | How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
 | How loud normal and low items are | Alerts → **Normal and low items** | Normal, Off, Subtle, Bright |
+| How long a new item's preview stays out (also the "3 waited" Later peek) | Alerts → Arrivals → **Show new items for** | 14 s, 5 s, 10 s, 20 s, 30 s, Until I click or point at it (pointing at it always holds it) |
 | How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
 | Urgent items break through Focus | Alerts → Delivery | On, Off |
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |

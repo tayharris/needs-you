@@ -5,7 +5,8 @@ import Foundation
 /// UserDefaults as plain values so `defaults read app.needsyou.mac` stays readable.
 ///
 /// - The defaults are the original look, so an upgrade changes nothing until the user
-///   picks something.
+///   picks something. The exceptions are deliberate: arrival peeks stay out 14 s (was 4 s)
+///   and the open panel no longer collapses when you click elsewhere.
 /// - Unknown or out-of-range stored values fall back to the default for that key (a newer
 ///   build may store a choice this one doesn't know).
 /// - `load` never writes, and `save` only writes these keys, so a rollback loses nothing.
@@ -23,6 +24,9 @@ public struct UIPrefs: Equatable, Sendable {
         public static let pillDetail = "pillDetail"
         public static let pillSplit = "pillSplit"
         public static let pillShowNew = "pillShowNew"
+        public static let previewSeconds = "previewSeconds"
+        public static let collapseOnClickOutside = "collapseOnClickOutside"
+        public static let expandedListHeight = "expandedListHeight"
     }
 
     public var panelSize: PanelSize = .regular
@@ -44,6 +48,15 @@ public struct UIPrefs: Equatable, Sendable {
     public var pillDetail: PillDetail = .count
     public var pillSplit: PillSplit = .none
     public var pillShowNew = true
+    /// Seconds an arrival peek stays out (one of PeekDuration.choices; 0 = until clicked or
+    /// pointed at). Default 14.
+    public var previewSeconds: Int = PeekDuration.standard
+    /// The open panel collapses when you click in another app. Default off: it stays open,
+    /// so you can read a card while its link is open. Esc, the chevron and the shortcut
+    /// still close it.
+    public var collapseOnClickOutside = false
+    /// The open panel's list height in points, set by dragging its grip; 0 = automatic.
+    public var expandedListHeight: Double = 0
 
     public init() {}
 
@@ -65,6 +78,9 @@ public struct UIPrefs: Equatable, Sendable {
         if let raw = store.string(forKey: Key.pillDetail), let v = PillDetail(rawValue: raw) { p.pillDetail = v }
         if let raw = store.string(forKey: Key.pillSplit), let v = PillSplit(rawValue: raw) { p.pillSplit = v }
         if let v = store.object(forKey: Key.pillShowNew) as? NSNumber { p.pillShowNew = v.boolValue }
+        if let v = store.object(forKey: Key.previewSeconds) as? NSNumber { p.previewSeconds = PeekDuration.sanitized(v.intValue) }
+        if let v = store.object(forKey: Key.collapseOnClickOutside) as? NSNumber { p.collapseOnClickOutside = v.boolValue }
+        if let v = store.object(forKey: Key.expandedListHeight) as? NSNumber { p.expandedListHeight = ListResize.sanitized(v.doubleValue) }
         return p
     }
 
@@ -82,6 +98,9 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.pillDetail != pillDetail { store.set(pillDetail.rawValue, forKey: Key.pillDetail) }
         if previous?.pillSplit != pillSplit { store.set(pillSplit.rawValue, forKey: Key.pillSplit) }
         if previous?.pillShowNew != pillShowNew { store.set(pillShowNew, forKey: Key.pillShowNew) }
+        if previous?.previewSeconds != previewSeconds { store.set(previewSeconds, forKey: Key.previewSeconds) }
+        if previous?.collapseOnClickOutside != collapseOnClickOutside { store.set(collapseOnClickOutside, forKey: Key.collapseOnClickOutside) }
+        if previous?.expandedListHeight != expandedListHeight { store.set(expandedListHeight, forKey: Key.expandedListHeight) }
     }
 
     public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }

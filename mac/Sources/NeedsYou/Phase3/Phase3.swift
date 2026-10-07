@@ -62,7 +62,8 @@ final class Phase3Controller: ObservableObject {
     // MARK: New-item preview
 
     /// The pill springs out to a 320 pt preview of the top new item with a glow pulse,
-    /// holds ~4 s, then springs back. Urgent pulses twice. (The panel controller animates
+    /// stays out for Settings → Alerts → Show new items for (14 s by default; pointing at it
+    /// holds it), then springs back. Urgent pulses twice. (The panel controller animates
     /// the size change with an overshoot curve, or a fade under Reduce Motion.)
     private func announce(_ items: [Item]) {
         // The most urgent; on a tie, one from the context being shown.
@@ -74,10 +75,9 @@ final class Phase3Controller: ObservableObject {
         model.previewItem = top
         model.requestPulse(times: urgent ? 2 : 1, priority: top.priority)
         previewTask?.cancel()
-        previewTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled, let self, self.model.previewItem?.id == top.id else { return }
-            self.model.previewItem = nil
+        let id = top.id
+        previewTask = model.holdPeek(while: { [weak self] in self?.model.previewItem?.id == id }) { [weak self] in
+            self?.model.previewItem = nil
         }
     }
 

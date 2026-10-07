@@ -47,6 +47,7 @@ let entries =
     + testEntries(PillContentTests.self, PillContentTests.allTests)
     + testEntries(PillMetricsTests.self, PillMetricsTests.allTests)
     + testEntries(PillNewCountTests.self, PillNewCountTests.allTests)
+    + testEntries(PanelBehaviorTests.self, PanelBehaviorTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
