@@ -219,7 +219,7 @@ public enum SetupChecklist {
     }
 
     /// Did any item come from a machine other than this one? Hosts compare by their first
-    /// label, case-insensitively ("Tays-Mac.local" is "tays-mac"); items without a host
+    /// label, case-insensitively ("Studio-Mac.local" is "studio-mac"); items without a host
     /// and setup cards don't count.
     public static func hasOtherHosts(_ items: [Item], localHost: String) -> Bool {
         let me = shortHost(localHost)

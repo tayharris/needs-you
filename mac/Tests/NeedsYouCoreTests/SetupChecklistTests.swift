@@ -176,12 +176,12 @@ final class SetupChecklistTests: XCTestCase {
         func item(_ host: String?) -> Item {
             Item(id: UUID().uuidString, key: "k", title: "t", source: ItemSource(host: host), createdAt: date)
         }
-        XCTAssertFalse(SetupChecklist.hasOtherHosts([], localHost: "Tays-Mac"))
-        XCTAssertFalse(SetupChecklist.hasOtherHosts([item("tays-mac"), item("Tays-Mac.local"), item(nil), item("  ")], localHost: "Tays-Mac"))
-        XCTAssertTrue(SetupChecklist.hasOtherHosts([item("tays-mac"), item("devbox")], localHost: "Tays-Mac"))
+        XCTAssertFalse(SetupChecklist.hasOtherHosts([], localHost: "Studio-Mac"))
+        XCTAssertFalse(SetupChecklist.hasOtherHosts([item("studio-mac"), item("Studio-Mac.local"), item(nil), item("  ")], localHost: "Studio-Mac"))
+        XCTAssertTrue(SetupChecklist.hasOtherHosts([item("studio-mac"), item("devbox")], localHost: "Studio-Mac"))
         // A setup card's "host" is its source label, not a machine.
         let setup = SetupChecklist.card(.turnOnHub, state: state()).item
-        XCTAssertFalse(SetupChecklist.hasOtherHosts([setup], localHost: "Tays-Mac"))
+        XCTAssertFalse(SetupChecklist.hasOtherHosts([setup], localHost: "Studio-Mac"))
     }
 
     func testClaudeHookDetection() throws {
