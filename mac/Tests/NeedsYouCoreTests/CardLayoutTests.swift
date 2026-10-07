@@ -84,7 +84,14 @@ final class CardLayoutTests: XCTestCase {
         let short = LinkRowPolicy.label(link, maxLength: 10)
         XCTAssertEqual(short, "Open the…")
         XCTAssertTrue(short.count <= 10)
-        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: " ", url: "https://e.com"), maxLength: nil), "https://e.com")
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: " ", url: "https://e.com"), maxLength: nil), "e.com")
+        // An unlabeled look-alike host keeps its real ending when shortened.
+        let spoof = ItemLink(label: "", url: "https://github.com.evil.example/acme/app/pull/1")
+        XCTAssertEqual(LinkRowPolicy.label(spoof, maxLength: nil), "github.com.evil.example")
+        XCTAssertEqual(LinkRowPolicy.label(spoof, maxLength: 18), "…" + String("github.com.evil.example".suffix(17)))
+        XCTAssertTrue(LinkRowPolicy.label(spoof, maxLength: 18).hasSuffix("evil.example"))
+        // No host: the URL itself.
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "", url: "slack:open"), maxLength: nil), "slack:open")
     }
 
     func testLinkDestinationShowsTheRealHost() {
