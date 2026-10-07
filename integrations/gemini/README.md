@@ -23,7 +23,7 @@ integrations/gemini/install-gemini-hooks.sh --dry-run
 integrations/gemini/install-gemini-hooks.sh --uninstall
 ```
 
-The installer backs up `settings.json`, replaces only entries whose command contains `needs-you-hook.sh`, appends them after your own hooks, and leaves every other setting alone. It never writes through a symlinked `settings.json` (merge by hand into the file it points to). Gemini allows comments in `settings.json`; this installer doesn't parse those and stops without changing anything: merge `gemini-hooks.json` by hand (replace `$HOME/.gemini` if you use another directory). User-level hooks need no trust step. `hooksConfig.enabled: false` turns all hooks off; the installer and `needs-you doctor` say so. `/hooks` in Gemini CLI lists them.
+The installer backs up `settings.json`, replaces only entries whose command contains `needs-you-hook.sh`, appends them after your own hooks, and leaves every other setting alone. It never writes through a symlinked `settings.json` (merge by hand into the file it points to). Gemini allows comments in `settings.json`; this installer doesn't parse those and stops without changing anything: merge `gemini-hooks.json` by hand (replace `$HOME/.gemini` if you use another directory). Gemini runs hooks, user-level ones included, only in folders you have trusted (folder trust is on by default; `security.folderTrust.enabled: false` turns it off), and `needs-you doctor` reminds you. `hooksConfig.enabled: false` turns all hooks off; the installer and `needs-you doctor` say so. `/hooks` in Gemini CLI lists them.
 
 ## What gets posted
 
@@ -35,6 +35,7 @@ The installer backs up `settings.json`, replaces only entries whose command cont
 | `SessionStart` (`clear`, `resume`) | `start gemini` | resolves the cards this Gemini process posted before |
 | `SessionEnd` | `end gemini` | resolves the session's card |
 
+- Denying an approval (Esc, "No, suggest changes") fires no hook in Gemini CLI 0.63, so that card stays until the next prompt or the session ends.
 - **Key:** `agent:<short-hostname>:<id>`, `<id>` being `$ORCA_TERMINAL_HANDLE` or Gemini's `session_id`.
 - **Never sent:** the command line, diffs, file contents, URLs, the notification `message`, the prompt or Gemini's reply. A card names at most the program or a file's basename.
 - **Source:** `--agent gemini-cli --project <basename of the project dir>`.

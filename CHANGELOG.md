@@ -8,6 +8,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - Codex CLI hooks: **`/clear` in one Codex session no longer clears the cards of your other Codex sessions.** Codex 0.159+ runs the hooks of all its sessions from one shared background app-server, so the hook now resolves only the clearing session's own card; the old conversation's card clears when Codex ends it, about a minute later. Found by driving a real Codex TUI.
 - opencode plugin: **`opencode run` no longer leaves a "waiting for you" card behind.** A one-shot run goes idle and exits at once, so its card had no live process for `needs-you flush` to watch and stayed for 48 hours. The hook now reads the lease before it posts, and posts nothing once opencode has exited. Found by driving a real opencode 1.18.35.
+- Gemini CLI hooks: the docs said user-level hooks need no trust step, but Gemini CLI runs no hooks at all in a folder you haven't trusted (folder trust is on by default). The guide says so now, and `needs-you doctor`'s gemini line reminds you unless folder trust is off. Found by driving a real Gemini CLI 0.63.0.
 
 ## [0.1.3] - 2026-10-07
 

@@ -65,12 +65,14 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 </tbody>
 </table></div>
 <p>One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval cards.</p>
+<p><strong>Trusted folders only.</strong> Gemini CLI runs no hooks at all, the needs-you ones included, in a folder you haven't trusted (folder trust is on by default). Trust a project when Gemini asks, or turn folder trust off with <code>"security": {"folderTrust": {"enabled": false}}</code> in <code>~/.gemini/settings.json</code>.</p>
+<p>If you <strong>deny</strong> an approval (Esc, or "No, suggest changes"), Gemini runs no hook, so that card stays until your next prompt or the end of the session.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code"><pre><code class="language-bash">needs-you doctor    # the "gemini hooks" line should be OK
 echo '{"hook_event_name":"AfterAgent","session_id":"test-1","cwd":"'"$PWD"'"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.gemini/hooks/needs-you-hook.sh notify gemini
 echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.gemini/hooks/needs-you-hook.sh resolve gemini</code></pre></div>
-<p>Nothing shows up? <code>/hooks</code> in Gemini CLI should list the needs-you entries; <code>hooksConfig.enabled</code> must not be <code>false</code>; and <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> logs each call (<a href="troubleshooting.html#claude-code-hooks">troubleshooting</a> explains the log lines).</p>
+<p>Nothing shows up? Check you trusted the folder (above); <code>/hooks</code> in Gemini CLI should list the needs-you entries; <code>hooksConfig.enabled</code> must not be <code>false</code>; and <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> logs each call (<a href="troubleshooting.html#claude-code-hooks">troubleshooting</a> explains the log lines).</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/gemini.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/gemini.md">docs/guides/gemini.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

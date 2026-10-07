@@ -2735,10 +2735,17 @@ class Doctor:
         if problems:
             self.add("gemini hooks", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
             return
-        hint = ""
+        hints = []
         if "alerts off until opted in" in parts:
-            hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
-        self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), hint)
+            hints.append("for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s"
+                         % _tilde(self.env_path))
+        # Gemini CLI loads no hooks, user-level ones included, in a folder you haven't trusted
+        # (folder trust is on by default).
+        sec = doc.get("security") if isinstance(doc, dict) else None
+        ft = sec.get("folderTrust") if isinstance(sec, dict) else None
+        if not (isinstance(ft, dict) and ft.get("enabled") is False):
+            hints.append("Gemini CLI runs hooks only in trusted folders: trust a project when it asks")
+        self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), "; ".join(hints))
 
     # -- opencode plugin ---------------------------------------------------
     def opencode_plugin(self) -> None:
