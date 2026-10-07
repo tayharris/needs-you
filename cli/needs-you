@@ -901,12 +901,23 @@ class Doctor:
             parts.append("alerts on (Orca session)")
         else:
             parts.append("alerts off until opted in")
+        pct, where = self.setting("NEEDS_YOU_CONTEXT_ALERT_PCT")
+        if pct in ("0", "off", "no", "false"):
+            parts.append("context alert off")
+        else:
+            parts.append("context alert at %s%%%s" % (pct or "80", " (%s)" % where if pct else ""))
+        alias, where = self.setting("NEEDS_YOU_SSH_ALIAS")
+        if alias:
+            parts.append("ssh alias %s (%s)" % (alias, where))
+        link, where = self.setting("NEEDS_YOU_AGENT_LINK")
+        if link:
+            parts.append("agent link %s (%s)" % ("off" if link.strip().lower() == "none" else "template", where))
         if problems:
             hint = "re-run the installer: " + installer
             self.add("claude hooks", "WARN", "; ".join(problems + parts), hint)
         else:
             hint = ""
-            if parts[-1] == "alerts off until opted in":
+            if "alerts off until opted in" in parts:
                 hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
             self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
 

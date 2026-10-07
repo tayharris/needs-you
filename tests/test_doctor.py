@@ -263,6 +263,18 @@ class ClaudeAndOrca(DoctorTestCase):
         r, data, checks = self.doctor_json(extra_env={"ORCA_TERMINAL_HANDLE": "term_1"})
         self.assertIn("alerts on (Orca session)", checks["claude hooks"]["detail"])
 
+    def test_hook_settings_in_the_detail(self):
+        self.install_claude()
+        r, data, checks = self.doctor_json()
+        self.assertIn("context alert at 80%", checks["claude hooks"]["detail"])
+        self.assertNotIn("ssh alias", checks["claude hooks"]["detail"])
+        r, data, checks = self.doctor_json(extra_env={"NEEDS_YOU_CONTEXT_ALERT_PCT": "0",
+                                                      "NEEDS_YOU_SSH_ALIAS": "devbox",
+                                                      "NEEDS_YOU_AGENT_LINK": "none"})
+        detail = checks["claude hooks"]["detail"]
+        for want in ("context alert off", "ssh alias devbox (env)", "agent link off (env)"):
+            self.assertIn(want, detail)
+
     def test_orca_reported_inside_orca(self):
         r, data, checks = self.doctor_json(extra_env={"ORCA_TERMINAL_HANDLE": "term_1"})
         detail = checks["orca"]["detail"]
