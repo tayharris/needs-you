@@ -11,24 +11,29 @@ struct ExpandedView: View {
             ExpandedHeader(model: model)
                 .frame(height: model.metrics.headerHeight - 0.5) // + hairline = headerHeight, matches PanelController
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
-            ScrollView(.vertical) {
-                CardList(model: model)
-                    .padding(model.metrics.listPadding)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
-                        }
-                    )
-                    .coordinateSpace(name: CardBottomsKey.space)
-            }
-            .scrollIndicators(.automatic)
-            .frame(maxHeight: .infinity)
-            .onPreferenceChange(ContentHeightKey.self) { height in
-                if abs(model.expandedContentHeight - height) > 0.5 { model.expandedContentHeight = height }
-            }
-            .onPreferenceChange(CardBottomsKey.self) { bottoms in
-                let rounded = bottoms.map { $0.rounded() }.sorted()
-                if rounded != model.cardBottoms { model.cardBottoms = rounded }
+            ScrollViewReader { reader in
+                ScrollView(.vertical) {
+                    CardList(model: model)
+                        .padding(model.metrics.listPadding)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                            }
+                        )
+                        .coordinateSpace(name: CardBottomsKey.space)
+                }
+                .scrollIndicators(.automatic)
+                .frame(maxHeight: .infinity)
+                .onPreferenceChange(ContentHeightKey.self) { height in
+                    if abs(model.expandedContentHeight - height) > 0.5 { model.expandedContentHeight = height }
+                }
+                .onPreferenceChange(CardBottomsKey.self) { bottoms in
+                    let rounded = bottoms.map { $0.rounded() }.sorted()
+                    if rounded != model.cardBottoms { model.cardBottoms = rounded }
+                }
+                // Opened from a preview or with new arrivals: bring that card into view.
+                .onAppear { scrollToTarget(reader) }
+                .onChange(of: model.scrollTarget) { _, _ in scrollToTarget(reader) }
             }
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
             footer.frame(height: model.metrics.footerHeight - 0.5)
@@ -36,6 +41,15 @@ struct ExpandedView: View {
         // Drag to set the list height; on the edge away from the anchored corner.
         .overlay(alignment: model.listGripAtBottom ? .bottom : .top) {
             ResizeGrip(model: model)
+        }
+    }
+
+    private func scrollToTarget(_ proxy: ScrollViewProxy) {
+        guard let id = model.scrollTarget else { return }
+        // After this layout pass, so the card exists and the panel has its height.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            model.scrollTarget = nil
         }
     }
 

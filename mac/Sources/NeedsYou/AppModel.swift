@@ -77,6 +77,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var expandedCards: Set<String> = []
     /// Steps ticked on this Mac (local only, never sent to the hub; kept while the item is).
     @Published private(set) var stepTicks = StepTicks()
+    /// The card the open panel scrolls to (ExpandFocus); the list clears it once scrolled.
+    @Published var scrollTarget: String?
+    /// The card drawn highlighted for a moment after the panel opened at it.
+    @Published private(set) var highlightedItem: String?
+    private var highlightTask: Task<Void, Never>?
     /// Phase 3: the new-item preview currently shown, if any.
     @Published var previewItem: Item?
     /// Phase 3: set while the start-of-day summary is open; items created after this
@@ -633,9 +638,15 @@ final class AppModel: ObservableObject {
         isExpanded ? collapse() : expand(byUser: true)
     }
 
-    func expand(byUser: Bool = false) {
+    /// `focusing` is the card the click was about (a preview); a plain click on the pill
+    /// goes to the newest arrival instead (ExpandFocus).
+    func expand(byUser: Bool = false, focusing clicked: String? = nil) {
         // Automatic expansions (NEEDS_YOU_EXPAND, the morning summary) never undo a hide.
         if visibility == .hidden && !byUser && !peeking { return }
+        if byUser, let target = ExpandFocus.target(clicked: clicked, items: needsItems,
+                                                   lastOpenedAt: settings.pillLastOpenedAt) {
+            focus(on: target)
+        }
         expandedByUser = byUser
         previewItem = nil
         digest = nil
@@ -646,11 +657,34 @@ final class AppModel: ObservableObject {
         settings.pillLastOpenedAt = Date()   // the pill's "N new" starts over
     }
 
+    /// Scroll the open list to a card and highlight it for a moment.
+    private func focus(on id: String) {
+        scrollTarget = id
+        highlightedItem = id
+        highlightTask?.cancel()
+        highlightTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.highlightedItem = nil
+        }
+    }
+
+    /// The preview's link button: open the link and count the alert as handled. The panel
+    /// stays collapsed; nothing activates this app.
+    func openAndResolve(_ item: Item, link: ItemLink) {
+        previewItem = nil
+        guard open(link.url, from: item) else { return }
+        // App actions (the terminal and Orca jumps) already resolve in open(_:from:).
+        if AppAction.parse(link.url) == nil { resolve(item) }
+    }
+
     func collapse() {
         if isExpanded { settings.pillLastOpenedAt = Date() }   // what arrived while open was seen
         isExpanded = false
         summarySince = nil
         peeking = false
+        scrollTarget = nil
+        highlightedItem = nil
         if !expandedCards.isEmpty { expandedCards = [] }
     }
 
@@ -787,15 +821,15 @@ final class AppModel: ObservableObject {
             }
         case .showPanel:
             if item.context != context { setContext(item.context) }
-            showExpanded()
+            showExpanded(focusing: item.id)
         }
     }
 
     /// Expand the panel from the menu bar. While hidden or snoozed it only peeks:
     /// collapsing puts it back out of sight.
-    func showExpanded() {
+    func showExpanded(focusing id: String? = nil) {
         if visibility.isHidden(at: Date()) { peeking = true }
-        expand(byUser: true)
+        expand(byUser: true, focusing: id)
     }
 
     func resetPosition() { resetPositionHandler?() }
