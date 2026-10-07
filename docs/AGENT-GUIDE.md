@@ -27,7 +27,8 @@ or `needs-you-admin invite create` on a server hub). It looks like
 1. Read the link. It's Markdown written for you: the install line, the options and these rules.
 2. Pick the options that fit this machine: `--claude-hooks user --skill --alerts` if it runs
    Claude Code (add `--ssh-alias <name>` if the person reaches it from the Mac over SSH, with
-   the name their `~/.ssh/config` uses), `--orca` if it runs Orca automations, `--context
+   the name their `~/.ssh/config` uses), `--codex-hooks user` (plus `--alerts`) if it runs
+   OpenAI Codex CLI, `--orca` if it runs Orca automations, `--context
    personal` if its items are personal rather than work.
 3. Run it:
 
@@ -241,6 +242,15 @@ full (`NEEDS_YOU_CONTEXT_ALERT_PCT`). Install them with the invite installer's
 are quiet unless the session is opted in (`--alerts`, which writes `NEEDS_YOU_AGENT_ALERTS=1`,
 or `$ORCA_TERMINAL_HANDLE` set by Orca). An agent that posts its own blockers doesn't need to
 duplicate these. Details: [integrations/claude-code](../integrations/claude-code/README.md).
+
+## Codex CLI hooks
+
+The same hook, registered in `~/.codex/hooks.json`, posts a `needs` item when a Codex session
+asks for approval or finishes its turn and waits for you, and resolves it on your next prompt,
+the next tool run, an interrupt or the end of the session. Install with the invite installer's
+`--codex-hooks user` or `integrations/codex/install-codex-hooks.sh`; Codex runs it only after
+the user trusts it once in `/hooks`. Same opt-in as the Claude hooks. Details:
+[integrations/codex](../integrations/codex/README.md).
 
 ## Networking
 

@@ -21,6 +21,8 @@ integrations/claude-code/
 └── skill/needs-you/SKILL.md
 ```
 
+The same hook serves OpenAI Codex CLI when started with a `codex` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md).
+
 ## Hooks
 
 ### Install
