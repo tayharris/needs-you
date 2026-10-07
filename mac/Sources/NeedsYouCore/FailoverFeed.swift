@@ -6,8 +6,8 @@ import Foundation
 /// - Poll the first reachable hub in the configured order. A hub that fails (error or
 ///   timeout) is skipped for `cooldown`, so a dead primary doesn't cost a timeout on
 ///   every poll; once the cooldown passes it's tried first again.
-/// - When the answering hub differs from the last one, `since` is dropped and a full
-///   snapshot is fetched: another hub's `updated_at` history may not line up.
+/// - When the answering hub differs from the last one, `since` and the `next` cursor are
+///   dropped and a full snapshot is fetched: another hub's history doesn't line up.
 /// - PATCH goes to the hub currently in use, falling back to the others in order if it
 ///   fails (ids are stable, and the hubs converge).
 /// - Merging is by `id` with last-writer-wins on `updated_at` (ItemStore.merge).
@@ -46,13 +46,19 @@ public actor FailoverFeed: ItemFeed {
     }
 
     public func fetchPage(since: Date?) async throws -> FeedPage {
+        try await fetchPage(since: since, cursor: nil)
+    }
+
+    /// `since` and `cursor` belong to the hub that answered last; another hub gets a full poll.
+    public func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage {
         guard !hubs.isEmpty else { throw HubError.notConfigured }
         var lastError: Error = HubError.notConfigured
         for index in order() {
-            let effectiveSince = index == current ? since : nil
+            let sameHub = index == current
             do {
-                // The hub's own page: closed items from a `since` poll, its cursor, `more`.
-                var page = try await hubs[index].feed.fetchPage(since: effectiveSince)
+                // The hub's own page: closed items from a `since` poll, its cursors, `more`.
+                var page = try await hubs[index].feed.fetchPage(since: sameHub ? since : nil,
+                                                                cursor: sameHub ? cursor : nil)
                 current = index
                 failedUntil[index] = nil
                 page.source = hubs[index].name

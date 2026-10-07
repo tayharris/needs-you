@@ -62,7 +62,13 @@ needs-you-admin token list                                   # on hub B: tokens 
 
 With a token, `/v1/health` also lists each peer's `outbox_pending`, `last_push_ok`,
 `last_pull_ok` and `last_error`. A healthy pair has `outbox_pending` 0 and a recent
-`last_pull_ok`.
+`last_pull_ok`. `skipped_push` and `skipped_pull` count replicated items one side couldn't
+read (usually a hub running an older version than its peer: upgrade it), with the last one in
+`last_skipped`; replication carries on past them, and the hub that skipped them applies them
+at its next start once it can read them. The hub's log names each one. A non-null `blocked`
+means a **token or invite** record (a revocation, say) one side can't read: those are never
+skipped, so replication in that direction waits for it (the log says `BLOCKED`). Upgrade the
+older hub; replication then resumes by itself.
 
 ### With the Mac's own hub
 

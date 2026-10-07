@@ -262,17 +262,19 @@ public enum HubJSON {
         return try decoder.decode(Wrapped.self, from: data).items
     }
 
-    /// `GET /v1/items`: the items plus `server_time` (the next `since`) and `more`. A bare
-    /// array, or a hub without those fields, gives no cursor and `more` false.
-    public static func decodeListResponse(_ data: Data) throws -> (items: [Item], serverTime: Date?, more: Bool) {
+    /// `GET /v1/items`: the items plus `server_time` (the next `since`), `more` and `next`
+    /// (the opaque cursor). A bare array, or a hub without those fields, gives no cursor and
+    /// `more` false.
+    public static func decodeListResponse(_ data: Data) throws -> (items: [Item], serverTime: Date?, more: Bool, next: String?) {
         let decoder = makeDecoder()
-        if let items = try? decoder.decode([Item].self, from: data) { return (items, nil, false) }
+        if let items = try? decoder.decode([Item].self, from: data) { return (items, nil, false, nil) }
         struct Wrapped: Decodable {
             let items: [Item]
             let serverTime: String?
             let more: Bool?
+            let next: String?
             enum CodingKeys: String, CodingKey {
-                case items, more
+                case items, more, next
                 case serverTime = "server_time"
             }
             init(from decoder: Decoder) throws {
@@ -280,9 +282,11 @@ public enum HubJSON {
                 items = try c.decode([Item].self, forKey: .items)
                 serverTime = try? c.decodeIfPresent(String.self, forKey: .serverTime)
                 more = try? c.decodeIfPresent(Bool.self, forKey: .more)
+                next = try? c.decodeIfPresent(String.self, forKey: .next)
             }
         }
         let wrapped = try decoder.decode(Wrapped.self, from: data)
-        return (wrapped.items, wrapped.serverTime.flatMap(parseDate), wrapped.more ?? false)
+        let next = wrapped.next.flatMap { $0.isEmpty || $0.count > 512 ? nil : $0 }
+        return (wrapped.items, wrapped.serverTime.flatMap(parseDate), wrapped.more ?? false, next)
     }
 }

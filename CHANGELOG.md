@@ -4,12 +4,25 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed (API)
+
+- `GET /v1/items` responses carry **`next`**, an opaque cursor, and the hub accepts it back as **`cursor=`**. It follows the hub's per-write sequence, so paging always moves on and a page never holds more than `limit` items. Send `cursor=<next>&since=<server_time>`: an older hub ignores `cursor` and uses `since`, and a newer hub falls back to `since` when the cursor comes from a replaced database. `since` alone keeps working for older clients. See [API.md](docs/API.md#get-v1items-reader).
+- `POST /v1/replicate` applies the item records it can read and lists the others in a new **`skipped`** array (`kind`, `id`, `reason`) with a `200`, instead of refusing the whole batch with `400`. Token and invite records still fail the whole batch closed (`400`, nothing applied): a revocation is never skipped. `/v1/health` `peers[]` gains `skipped_push`, `skipped_pull`, `last_skipped` and `blocked`. Mixed versions keep replicating: against an older peer that still answers `400`, the pusher halves the batch to find the one record, skips it if it's an item and holds it if it's a token or invite.
+
 ### Changed
 
 - Mac app: **a new-item preview with a link has a button for it** ("VS Code ↗", "Approve ↗"). Clicking it opens the link and marks the item done, without opening the panel. Like the card links, the button also shows where the link really goes ("Approve ci.example.com ↗"). Clicking anywhere else on the preview opens the panel **scrolled to that card**, outlined for a moment, instead of at the top of the list. Clicking the pill also scrolls to the newest card that arrived since you last opened it, and so does clicking an item without a link in the menu bar menu.
 
 ### Fixed
 
+- Mac app: polls send the hub's new `next` cursor back (with `since`, so older hubs keep working) and page by it, so a burst of more than 500 changes in one millisecond can no longer stall live updates.
+- CLI: **two runs at once could send out of order.** While one run held the outbox lock to send queued requests, another sent its own request straight away, so a `resolve K` could reach the hub before a queued `add K` and the item stayed open. Now a request always goes out behind what is queued: it waits up to 2 s for the other run, then stays queued behind it and exits 0.
+- CLI: a queued item the hub refused with `429 too_many_open` (the open-items guard) was moved to `outbox/failed/` and never sent. It now stays queued and is retried on the next run; the requests behind it still go out, and a later resolve of the same key cancels it.
+- CLI: `needs-you health` reported a reachable hub as `OK` with no token configured (`token=-`), so a machine that couldn't post looked healthy. It now says the token is missing and exits 1.
+- CLI: removed handling for a `404` on `resolve`, which the hub never sends (resolving nothing is `200` with `"resolved": 0`).
+- Hub: a timestamp with an impossible UTC offset (`+99:99`, `+24:00`) is a `400 invalid` instead of being accepted and shifted by days.
+- Hub: **one item a peer couldn't read stopped replication to it for good.** An item with, say, a status from a newer hub made the peer refuse the whole push batch, which was retried forever with everything queued behind it, and a pull page with such a record never moved its cursor. Now the readable records go through; the unreadable item is skipped, logged, counted in `/v1/health` (`skipped_push` / `skipped_pull`) and kept by the hub that couldn't read it, which applies it after an upgrade. Token and invite records are never skipped (a revocation must not be lost): replication holds at such a record, retries, and shows it as `blocked` in `/v1/health` until both hubs can read it. Timeouts and `5xx` are still retried.
+- Hub: **`since` paging could repeat the same page forever** when more than `limit` items were stored in one millisecond (a replicated batch) or expired since the last poll; `more` stayed true and `server_time` never moved. A `since` page that stops early now ends on a whole millisecond and holds every item up to it.
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
 - Mac app: an item a sender resolves or dismisses (`needs-you resolve`, a hook) now leaves the panel on the next poll, or at once with live updates. It used to stay up to 5 minutes, until the next full poll, because incremental polls threw away closed items. Polls also use the hub's `server_time` cursor and follow `more`, as `docs/API.md` describes, so an item stored in the same millisecond as a poll isn't missed.
 - Mac app: a card held under **Later** (by a focus or snooze) that its sender re-posts as done or info leaves Later. It used to show both under Later and in Recent, and count in the "N waited" peek.

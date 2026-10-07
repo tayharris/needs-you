@@ -62,7 +62,8 @@ is accepted. <code>allowed_hosts</code> comes from the config, <code>--allowed-h
 environment); <code>*</code> turns the check off.</p></li>
 <li><p><strong>Timestamps:</strong> the hub always emits RFC 3339 UTC with exactly three fractional digits:
 <code>2026-10-06T17:04:05.123Z</code>. These sort correctly as strings. On input the hub accepts
-ISO 8601 with or without fractional seconds, with <code>Z</code> or a <code>±HH:MM</code> / <code>±HHMM</code> offset, or no
+ISO 8601 with or without fractional seconds, with <code>Z</code> or a <code>±HH:MM</code> / <code>±HHMM</code> offset (hours
+00–23, minutes 00–59; anything else is a 400), or no
 zone (taken as UTC), or a number of epoch seconds. Precision below 1 ms is dropped.
 Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a 400.</p></li>
 <li><p><strong>Auth:</strong> <code>Authorization: Bearer &lt;token&gt;</code>. Every token has one role:</p>
@@ -159,27 +160,32 @@ pollers still learn about it).</p>
 <p><code>stats.db_bytes</code> is the database plus its WAL file. With a valid token, <code>stats.outbox</code> also
 gives the pending outbox rows per peer URL.</p>
 <p>If a bearer token is sent it is checked but never causes an error: a valid token adds
-<code>"token": {"name": "...", "role": "sender"}</code> and a <code>"peers"</code> array (per-peer outbox depth,
-last successful push/pull, last error); an unknown or revoked token adds <code>"token": null</code> and
+<code>"token": {"name": "...", "role": "sender"}</code> and a <code>"peers"</code> array (per-peer <code>url</code>,
+<code>outbox_pending</code>, <code>last_push_ok</code>, <code>last_pull_ok</code>, <code>last_error</code>, and <code>skipped_push</code> /
+<code>skipped_pull</code> / <code>last_skipped</code>: how many replicated item records that peer couldn't read
+from us, and we from it, and the last one; <code>blocked</code>: a token or invite record one side can't
+read, which holds replication in that direction (<code>"push ..."</code> / <code>"pull ..."</code>), else <code>null</code>;
+all absent from hubs up to 0.1.2); an unknown or revoked token adds <code>"token": null</code> and
 <code>"token_error": "unknown or revoked token"</code>.</p>
 <h3 id="post-v1items-sender"><code>POST /v1/items</code> (sender) <a class="anchor" href="#post-v1items-sender" aria-label="Link to this section">#</a></h3>
 <p>Create an item, or update the open item with the same <code>key</code>.</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Field</th><th>Type</th><th>Rule</th><th>Default</th></tr></thead>
 <tbody>
-<tr><td><code>key</code></td><td>string</td><td>≤ 200 chars, only <code>A-Z a-z 0-9 . _ : - / @ # + =</code></td><td>the new item's id (so no dedupe)</td></tr>
+<tr><td><code>key</code></td><td>string</td><td>≤ 200 chars, only <code>A-Z a-z 0-9 . _ : - / @ # + =</code>; <code>""</code> is a 400 (leave it out, or send <code>null</code>, for no key)</td><td>the new item's id (so no dedupe)</td></tr>
 <tr><td><code>title</code></td><td>string</td><td>required, 1–100 chars after trimming, no control characters (see below)</td><td></td></tr>
-<tr><td><code>body</code></td><td>string</td><td>≤ 2,000 chars, markdown; newlines and tabs allowed</td><td>empty</td></tr>
+<tr><td><code>body</code></td><td>string</td><td>≤ 2,000 chars, markdown; newlines (<code>\n</code>, <code>\r</code>) and tabs allowed</td><td>empty</td></tr>
 <tr><td><code>context</code></td><td>string</td><td><code>work</code> or <code>personal</code> (case-insensitive)</td><td><code>work</code></td></tr>
-<tr><td><code>kind</code></td><td>string</td><td><code>needs</code>, <code>done</code> or <code>info</code></td><td><code>needs</code></td></tr>
-<tr><td><code>priority</code></td><td>string</td><td><code>urgent</code>, <code>normal</code> or <code>low</code></td><td><code>normal</code></td></tr>
+<tr><td><code>kind</code></td><td>string</td><td><code>needs</code>, <code>done</code> or <code>info</code> (case-insensitive)</td><td><code>needs</code></td></tr>
+<tr><td><code>priority</code></td><td>string</td><td><code>urgent</code>, <code>normal</code> or <code>low</code> (case-insensitive)</td><td><code>normal</code></td></tr>
 <tr><td><code>links</code></td><td>array</td><td>≤ 6 of <code>{"label": ≤ 80 chars, "url": ≤ 2,000 chars}</code></td><td><code>[]</code></td></tr>
 <tr><td><code>steps</code></td><td>array</td><td>≤ 10 of <code>{"text", "link", "done"}</code>, see below</td><td><code>[]</code></td></tr>
 <tr><td><code>source</code></td><td>object</td><td>optional <code>host</code>, <code>agent</code>, <code>project</code>, each ≤ 100 chars</td><td><code>{}</code></td></tr>
-<tr><td><code>expires_at</code></td><td>timestamp</td><td>any accepted timestamp</td><td><code>done</code>/<code>info</code>: now + 24 h; <code>needs</code>: none</td></tr>
-<tr><td><code>status</code></td><td></td><td><strong>rejected</strong> (use resolve or PATCH)</td><td></td></tr>
+<tr><td><code>expires_at</code></td><td>timestamp</td><td>any accepted timestamp</td><td><code>done</code>/<code>info</code>: now + 24 h (the hub's <code>default_expiry_hours</code>, see <a href="hub.html">Server hubs</a>); <code>needs</code>: none</td></tr>
+<tr><td><code>status</code></td><td></td><td><strong>rejected</strong> whenever the key is present, even <code>"status": null</code> (use resolve or PATCH)</td><td></td></tr>
 </tbody>
 </table></div>
+<p>An optional field sent as <code>null</code> counts as left out (it gets its default).</p>
 <p>Link URLs must use one of these schemes (case-insensitive): <code>https</code>, <code>slack</code>,
 <code>vscode</code>, <code>cursor</code>, <code>figma</code>, <code>msteams</code>, <code>discord</code>, <code>linear</code>. Anything else, including <code>http</code>, <code>jira</code>,
 <code>file</code>, <code>javascript</code> and <code>orca</code>, is a 400. Text strings are trimmed.</p>
@@ -279,7 +285,17 @@ title/body/priority/steps changed).</p>
 <p>Closes the open item with that key (or that id) as <code>resolved</code>. Always <code>200</code> and idempotent:</p>
 <div class="code"><pre><code class="language-json">{"resolved": 1, "items": [ { ...the resolved item... } ]}</code></pre></div>
 <p>If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),
-the response is <code>{"resolved": 0, "items": []}</code>. A body with neither or both of <code>key</code>/<code>id</code> is a 400.</p>
+the response is <code>{"resolved": 0, "items": []}</code>. A body with neither or both of <code>key</code>/<code>id</code> is a
+400, and so is a <code>key</code> or <code>id</code> that isn't a string (<code>"id/key must be a string"</code>).</p>
+<p>Resolve doesn't check who posted the item. This is intended:</p>
+<ul>
+<li>Any valid <code>sender</code> token for this inbox (this hub and its peers) can resolve any item in
+it, by key or id, including items another of your machines posted.</li>
+<li>Tokens are minted per inbox by its owner and checked on every request, so a machine
+outside the inbox can't resolve anything.</li>
+<li>Hubs listen only on loopback or the tailnet.</li>
+<li>If a token leaks, revoke it (<code>DELETE /v1/tokens/&lt;id or name&gt;</code>, or <code>needs-you-admin token revoke</code>).</li>
+</ul>
 <h3 id="patch-v1itemsid-reader"><code>PATCH /v1/items/{id}</code> (reader) <a class="anchor" href="#patch-v1itemsid-reader" aria-label="Link to this section">#</a></h3>
 <p>Body: any of</p>
 <ul>
@@ -293,36 +309,50 @@ the item, or <code>404</code> for an unknown id. Patching an already-closed item
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Param</th><th>Meaning</th></tr></thead>
 <tbody>
-<tr><td><code>status</code></td><td><code>open</code> (default), <code>resolved</code>, <code>dismissed</code> or <code>all</code>. <strong>Ignored when <code>since</code> is given.</strong></td></tr>
-<tr><td><code>since</code></td><td>A cursor: the <code>server_time</code> from this hub's previous response.</td></tr>
+<tr><td><code>status</code></td><td><code>open</code> (default), <code>resolved</code>, <code>dismissed</code> or <code>all</code>. <strong>Ignored when <code>cursor</code> or <code>since</code> is given.</strong></td></tr>
+<tr><td><code>cursor</code></td><td>A cursor: the <code>next</code> from this hub's previous response. Opaque; send it back unchanged.</td></tr>
+<tr><td><code>since</code></td><td>A cursor for clients that don't know <code>next</code>: the <code>server_time</code> from this hub's previous response.</td></tr>
 <tr><td><code>limit</code></td><td>Max items, default 500, max 2,000.</td></tr>
 </tbody>
 </table></div>
 <p>Response:</p>
-<div class="code"><pre><code class="language-json">{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "hub_id": "hub-a", "more": false}</code></pre></div>
-<p><strong>Without <code>since</code>:</strong> the full current set for <code>status</code>. <code>status=open</code> returns every item that
-is open and not expired. <code>resolved</code> includes expired items (shown as resolved).</p>
-<p><strong>With <code>since</code>:</strong> every item that changed on this hub after <code>since</code> (exclusive), **in any
-status**, plus every item whose <code>expires_at</code> fell in <code>(since, now]</code> (reported as resolved).
-This is how a poller learns about resolves, dismissals and expiry, not only new items.
-"Changed on this hub" means this hub stored a new version of it after <code>since</code>: a local write,
-or a replicated version arriving from a peer. It is matched against the hub's own receive
-time, not the item's <code>updated_at</code>, so an item that reaches this hub late by replication is
-still delivered even if its <code>updated_at</code> is older than the cursor.</p>
+<div class="code"><pre><code class="language-json">{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "next": "01M492BJ7A...J.812.1791306245123",
+ "hub_id": "hub-a", "more": false}</code></pre></div>
+<p><strong>Without <code>cursor</code> or <code>since</code>:</strong> the full current set for <code>status</code>. <code>status=open</code> returns every
+item that is open and not expired. <code>resolved</code> includes expired items (shown as resolved).</p>
+<p><strong>With <code>cursor</code> or <code>since</code>:</strong> every item that changed on this hub after the cursor, **in any
+status**, plus every item whose <code>expires_at</code> passed since then (reported as resolved). This is
+how a poller learns about resolves, dismissals and expiry, not only new items. "Changed on
+this hub" means this hub stored a new version of it after the cursor: a local write, or a
+replicated version arriving from a peer. That is this hub's own order, not the item's
+<code>updated_at</code>, so an item that reaches this hub late by replication is still delivered even if
+its <code>updated_at</code> is older than the cursor.</p>
 <p><strong>The polling loop:</strong></p>
 <ol>
 <li>First poll (or after any doubt): <code>GET /v1/items?status=open</code>. Replace the local set.</li>
-<li>Keep <code>server_time</code> from the response. Next poll: <code>GET /v1/items?since=&lt;server_time&gt;</code>
-(adding <code>status=open</code> is harmless; it is ignored). Upsert every returned item by <code>id</code>; drop
-it from the open view if its status isn't <code>open</code>. Store the new <code>server_time</code>.</li>
-<li>If <code>more</code> is true, poll again immediately with the new <code>server_time</code>.</li>
-<li><strong><code>server_time</code> is a cursor for that hub only.</strong> If <code>hub_id</code> in a response differs from the
-hub that issued the cursor (failover), discard the cursor and go back to step 1.</li>
+<li>Keep <code>next</code> and <code>server_time</code> from the response. Next poll:
+<code>GET /v1/items?cursor=&lt;next&gt;&amp;since=&lt;server_time&gt;</code> (adding <code>status=open</code> is harmless; it is
+ignored). Upsert every returned item by <code>id</code>; drop it from the open view if its status isn't
+<code>open</code>. Store the new <code>next</code> and <code>server_time</code>.</li>
+<li>If <code>more</code> is true, poll again immediately the same way.</li>
+<li><strong>Both are cursors for that hub only.</strong> If <code>hub_id</code> in a response differs from the hub that
+issued the cursor (failover), discard them and go back to step 1.</li>
 </ol>
-<p><code>server_time</code> is the hub's clock 1 ms before it ran the query (or, when <code>more</code> is true, just
-before the last returned item), so a write landing in the same millisecond is never missed.
-The price is that an item can occasionally be delivered twice; clients must treat responses
-as idempotent upserts by <code>id</code>. Items come back ordered by the hub's receive time.</p>
+<p><code>next</code> (hubs after 0.1.2) is <code>&lt;database epoch&gt;.&lt;seq&gt;.&lt;expiry position&gt;</code>: the hub's per-write
+sequence number, so a page always moves past what it returned and never holds more than
+<code>limit</code> items, however many writes share a millisecond. Clients must not parse it. A hub
+answers a <code>cursor</code> from another database (it was replaced) or one it can't read by serving
+<code>since</code> instead when that was sent, and with <code>400 invalid</code> (<code>"field": "cursor"</code>) when it
+wasn't; drop the cursor and do a full poll then. Sending both is also what keeps an older hub,
+which ignores <code>cursor</code>, working. <code>next</code> is in every response except a <code>since</code>-only page with
+<code>more: true</code>; keep paging with <code>since</code> then, and the last page carries a <code>next</code>.</p>
+<p><code>server_time</code> is the hub's clock 1 ms before it ran the query, so a write landing in the same
+millisecond is never missed; when a <code>since</code> page has <code>more</code>, it is instead the time of the
+page's last event, and the page holds <strong>every</strong> event up to that millisecond (so it can
+exceed <code>limit</code> when more than <code>limit</code> writes or expiries share it; hubs up to 0.1.2 served such a page
+repeated forever). The price is that an item can occasionally be delivered twice; clients
+must treat responses as idempotent upserts by <code>id</code>. With <code>cursor</code>, changes come back in the
+hub's write order, then expiries; with <code>since</code>, in time order.</p>
 <h3 id="get-v1itemsid-reader"><code>GET /v1/items/{id}</code> (reader) <a class="anchor" href="#get-v1itemsid-reader" aria-label="Link to this section">#</a></h3>
 <p>The item, or <code>404</code>.</p>
 <h3 id="get-v1stream-reader-optional"><code>GET /v1/stream</code> (reader, optional) <a class="anchor" href="#get-v1stream-reader-optional" aria-label="Link to this section">#</a></h3>
@@ -517,8 +547,28 @@ their own copies have no steps. Token records carry <code>id</code>, <code>name<
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}</code></pre></div>
-<p>Response <code>{"ok": true, "applied": &lt;n&gt;, "hub_id": "hub-b"}</code>; <code>409 self</code> if <code>from_hub</code> is the
-receiving hub's own id (the sender then stops using that peer).</p>
+<p>Response <code>{"ok": true, "applied": &lt;n&gt;, "hub_id": "hub-b", "skipped": [...]}</code>; <code>409 self</code> if
+<code>from_hub</code> is the receiving hub's own id (the sender then stops using that peer).</p>
+<p><strong>Unreadable items are skipped, not the batch.</strong> An item record the receiver can't read (a
+status from a newer hub, a missing or malformed field) is left out and listed in <code>skipped</code> as
+<code>{"kind": "item", "id": "&lt;id or null&gt;", "reason": "&lt;short text&gt;"}</code>; the rest of the batch is
+applied and the response is still <code>200</code>. The pusher treats the listed records as delivered
+(it logs them and counts them in its peer status, below) instead of retrying them. The
+receiver keeps each skipped item record in a local quarantine (until <code>retention_days</code>) and
+applies it at its next start once it can read it, so upgrading the hub brings it in.</p>
+<p><strong>Unreadable tokens and invites fail closed.</strong> Token and invite records are security state (a
+revocation, a role, a redemption), so one the receiver can't read is never skipped: the whole
+batch is a <code>400 invalid</code> (<code>"field": "tokens"</code> or <code>"invites"</code>, the message names the record id,
+never its hash) and nothing in it is applied. The pusher keeps that record, and what is queued
+behind it, retries with backoff, and reports it in its peer status as <code>blocked</code>. The same
+holds for a pull: the puller's cursor stays before such a record. Replication resumes by itself
+once both hubs run a version that reads it. A body that isn't a JSON object, or a
+<code>tokens</code>/<code>items</code>/<code>invites</code> that isn't an array, is a <code>400</code> too.</p>
+<p>Hubs up to 0.1.2 have no <code>skipped</code> and answer <code>400</code> for the whole batch when any record
+doesn't parse; against them the pusher halves the batch (without backing off) until the
+refused record is alone, then skips it if it is an item and holds it (as above) if it is a
+token or invite, and goes back to full batches. Any other failure (a timeout, <code>5xx</code>, <code>413</code>) is
+retried with backoff as before.</p>
 <p>Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable <code>outbox</code> table in the same SQLite transaction as the write. A worker
 thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's <em>current</em> version, and
@@ -531,7 +581,10 @@ deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entr
 <div class="code"><pre><code class="language-json">{"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
  "items": [ ... ], "tokens": [ ... ]}</code></pre></div>
 <p>Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
-paging while <code>more</code> is true. Because applying a replicated version also gives it a local
+paging while <code>more</code> is true. An item record in a page that the puller can't read is skipped
+(logged, counted and quarantined, like a skipped push) and the cursor still moves past it; a
+token or invite it can't read, or a transient failure (the local database busy, the peer
+unreachable), leaves the cursor where it was. Because applying a replicated version also gives it a local
 sequence number, pull is transitive: a hub that was down catches up from any surviving peer.
 <code>epoch</code> is a random id minted when a database is created; if a peer's epoch changes (its
 database was replaced) or its <code>max_seq</code> is below the cursor, the puller restarts from 0.</p>

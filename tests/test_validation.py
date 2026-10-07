@@ -159,6 +159,7 @@ class Timestamps(unittest.TestCase):
         ("2026-10-06 17:04:05+00:00", 1791306245000),
         ("2026-10-06T11:04:05-06:00", 1791306245000),
         ("2026-10-06T19:04:05+0200", 1791306245000),
+        ("2026-10-07T17:03:05+23:59", 1791306245000),  # the largest offset RFC 3339 allows
         ("1791306245", 1791306245000),
         (1791306245.5, 1791306245500),
     ]
@@ -169,7 +170,9 @@ class Timestamps(unittest.TestCase):
                 self.assertEqual(hubmod.parse_ts(raw), want)
 
     def test_bad(self):
-        for raw in ("", "yesterday", "2026-13-01", True, None, "2026-10-06T17:04"):
+        for raw in ("", "yesterday", "2026-13-01", True, None, "2026-10-06T17:04",
+                    "2026-10-06T17:04:05+99:99", "2026-10-06T17:04:05+24:00", "2026-10-06T17:04:05-00:60",
+                    "2026-10-06T17:04:05+0975"):
             with self.subTest(raw):
                 with self.assertRaises((ValueError, TypeError)):
                     hubmod.parse_ts(raw)

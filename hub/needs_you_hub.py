@@ -10,6 +10,7 @@ The wire contract is in docs/API.md; operating notes are in docs/HUB.md.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import hmac
@@ -30,7 +31,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
 VERSION = "0.1.2"
 API_VERSION = "v1"
@@ -110,6 +111,8 @@ MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
 PUSH_MAX_BYTES = MAX_REPLICATE_BYTES // 2  # a push batch stays well under the peer's limit
+PUSH_BATCH = 200  # outbox rows per push
+QUARANTINE_MAX_BYTES = 256 * 1024  # an unreadable item record bigger than this isn't kept
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
@@ -223,7 +226,10 @@ def _parse_ts(value: Any) -> int:
     if zone and zone not in ("Z", "z"):
         sign = 1 if zone[0] == "+" else -1
         digits = zone[1:].replace(":", "")
-        offset_min = int(digits[:2]) * 60 + int(digits[2:])
+        hours, minutes = int(digits[:2]), int(digits[2:])
+        if hours > 23 or minutes > 59:  # RFC 3339 time-numoffset
+            raise ValueError("bad timestamp offset: %r" % value)
+        offset_min = hours * 60 + minutes
         epoch_ms -= sign * offset_min * 60 * 1000
     return epoch_ms
 
@@ -726,6 +732,23 @@ CREATE TABLE IF NOT EXISTS token_update_requests (
   cli TEXT NOT NULL DEFAULT ''
 );
 """,
+    # 6: replicated item records a peer couldn't read (pushed) or this hub couldn't (pulled),
+    #    and the last one, so they show in peer status instead of blocking replication;
+    #    `blocked`: a token or invite record one side can't read, which holds replication
+    #    (security state is never skipped). `quarantine` keeps the item records this hub
+    #    skipped, to apply them once it can read them (after an upgrade, at start-up).
+    """
+ALTER TABLE peer_state ADD COLUMN skipped_push INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peer_state ADD COLUMN skipped_pull INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peer_state ADD COLUMN last_skipped TEXT;
+ALTER TABLE peer_state ADD COLUMN blocked TEXT;
+CREATE TABLE IF NOT EXISTS quarantine (
+  id TEXT PRIMARY KEY,
+  record TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  received_at INTEGER NOT NULL
+);
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
@@ -737,6 +760,40 @@ TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked
               "updated_by", "seq")
 INVITE_COLS = ("id", "name", "role", "hash", "uses", "used", "created_at", "expires_at",
                "revoked_at", "created_by", "updated_at", "updated_by", "seq")
+
+
+class ListCursor(NamedTuple):
+    """The `next` cursor of GET /v1/items: opaque to clients, `<epoch>.<seq>.<exp_at>[.<exp_id>]`.
+    Every item version this hub stored with seq <= `seq` has been delivered, and every expiry
+    up to `exp_at` (up to (`exp_at`, `exp_id`) when a page stopped among same-ms expiries).
+    `epoch` ties it to this database: a cursor from a replaced one is refused."""
+    epoch: str
+    seq: int
+    exp_at: int
+    exp_id: Optional[str] = None
+
+    def encode(self) -> str:
+        parts = [self.epoch, str(self.seq), str(self.exp_at)]
+        if self.exp_id is not None:  # an item id, base64url so any id fits the grammar
+            parts.append(base64.urlsafe_b64encode(self.exp_id.encode("utf-8")).decode("ascii").rstrip("="))
+        return ".".join(parts)
+
+    @classmethod
+    def decode(cls, raw: str) -> "ListCursor":
+        parts = raw.split(".")
+        if len(parts) not in (3, 4) or not all(parts) or len(raw) > 200:
+            raise ValueError("bad cursor")
+        if not (parts[1].isdigit() and parts[2].isdigit()) or not re.match(r"^[0-9A-Za-z]{1,40}$", parts[0]):
+            raise ValueError("bad cursor")
+        exp_id = None
+        if len(parts) == 4:
+            if not re.match(r"^[0-9A-Za-z_-]{1,140}$", parts[3]):
+                raise ValueError("bad cursor")
+            try:
+                exp_id = base64.urlsafe_b64decode(parts[3] + "=" * (-len(parts[3]) % 4)).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                raise ValueError("bad cursor")
+        return cls(parts[0], int(parts[1]), int(parts[2]), exp_id)
 
 
 class Store:
@@ -1005,41 +1062,108 @@ class Store:
             self.enqueue("item", rec["id"])
             return rec
 
-    def list_items(self, status: str, since: Optional[int], limit: int
-                   ) -> Tuple[List[Dict[str, Any]], int, bool]:
-        """Returns (records, cursor, more).
+    def list_items(self, status: str, since: Optional[int], limit: int,
+                   cursor: Optional["ListCursor"] = None
+                   ) -> Tuple[List[Dict[str, Any]], int, bool, Optional["ListCursor"]]:
+        """Returns (records, server_time, more, next cursor).
 
-        With `since`: every item this hub stored a new version of after `since` (exclusive),
-        in any status, plus open items whose expiry passed after `since`; `status` is ignored.
-        Without `since`: the current set for `status` (default open).
-        `cursor` is what the client sends back as the next `since`."""
+        With `cursor` (an earlier response's `next`, see ListCursor): every item this hub
+        stored a new version of after it, then every open item whose expiry passed after it;
+        at most `limit`. With `since` (older clients): the same by this hub's receive time.
+        Either way `status` is ignored. Without both: the current set for `status`.
+        `server_time` is the next `since` for clients that don't know `next`. `next` is None
+        only for a `since` page with more to come (that client pages on with `since`)."""
         with self.lock:
             now = self.now_ms()
-            args: List[Any] = []
+            # Read before the query: a write racing it has a higher seq and comes next time.
+            max_seq = int(self.conn.execute("SELECT v FROM meta WHERE k = 'seq'").fetchone()[0])
+            epoch = self.conn.execute("SELECT v FROM meta WHERE k = 'epoch'").fetchone()[0]
+            if cursor is not None:
+                return self._list_by_cursor(cursor, limit, now)
             if since is not None:
-                sql = ("SELECT * FROM items WHERE local_at > ? OR "
-                       "(status = 'open' AND expires_at > ? AND expires_at <= ?)")
-                args += [since, since, now]
-            else:
-                sql = "SELECT * FROM items WHERE 1=1"
-                if status == "open":
-                    sql += " AND status = 'open' AND (expires_at IS NULL OR expires_at > ?)"
-                    args.append(now)
-                elif status == "resolved":
-                    sql += " AND (status = 'resolved' OR (status = 'open' AND expires_at <= ?))"
-                    args.append(now)
-                elif status == "dismissed":
-                    sql += " AND status = 'dismissed'"
+                rows, server_time, more = self._list_since(since, limit, now)
+                return rows, server_time, more, None if more else ListCursor(epoch, max_seq, now)
+            args: List[Any] = []
+            sql = "SELECT * FROM items WHERE 1=1"
+            if status == "open":
+                sql += " AND status = 'open' AND (expires_at IS NULL OR expires_at > ?)"
+                args.append(now)
+            elif status == "resolved":
+                sql += " AND (status = 'resolved' OR (status = 'open' AND expires_at <= ?))"
+                args.append(now)
+            elif status == "dismissed":
+                sql += " AND status = 'dismissed'"
             sql += " ORDER BY local_at, id LIMIT ?"
             args.append(limit + 1)
             rows = [dict(r) for r in self.conn.execute(sql, args).fetchall()]
-        more = len(rows) > limit
-        rows = rows[:limit]
         # 1 ms behind "now": a write landing in this same millisecond is still after the cursor.
-        cursor = now - 1
-        if more and since is not None:
-            cursor = max(since, rows[-1]["local_at"] - 1)
-        return rows, cursor, more
+        return rows[:limit], now - 1, len(rows) > limit, ListCursor(epoch, max_seq, now)
+
+    def _list_by_cursor(self, cur: "ListCursor", limit: int, now: int
+                        ) -> Tuple[List[Dict[str, Any]], int, bool, "ListCursor"]:
+        """Changes by seq first (unique, so a page always moves past what it returned), then
+        expiries by (expires_at, id). Caller holds the lock."""
+        changed = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM items WHERE seq > ? ORDER BY seq LIMIT ?", (cur.seq, limit + 1))]
+        if len(changed) > limit:
+            changed = changed[:limit]
+            return changed, now - 1, True, cur._replace(seq=changed[-1]["seq"])
+        seq = changed[-1]["seq"] if changed else cur.seq
+        room = limit - len(changed)
+        if cur.exp_id is None:
+            where, args = "expires_at > ?", [cur.exp_at]  # type: Tuple[str, List[Any]]
+        else:
+            where = "(expires_at > ? OR (expires_at = ? AND id > ?))"
+            args = [cur.exp_at, cur.exp_at, cur.exp_id]
+        expired = [dict(r) for r in self.conn.execute(
+            "SELECT * FROM items WHERE status = 'open' AND %s AND expires_at <= ? "
+            "ORDER BY expires_at, id LIMIT ?" % where, args + [now, room + 1])]
+        more = len(expired) > room
+        if more:
+            expired = expired[:room]
+            nxt = ListCursor(cur.epoch, seq, cur.exp_at, cur.exp_id)
+            if expired:
+                nxt = ListCursor(cur.epoch, seq, expired[-1]["expires_at"], expired[-1]["id"])
+        else:
+            nxt = ListCursor(cur.epoch, seq, max(now, cur.exp_at), None)
+        ids = {r["id"] for r in changed}
+        return changed + [r for r in expired if r["id"] not in ids], now - 1, more, nxt
+
+    def _list_since(self, since: int, limit: int, now: int) -> Tuple[List[Dict[str, Any]], int, bool]:
+        """The `since` poll. Events are stored versions (at local_at) and expiries (at
+        expires_at), in time order. A page that stops early ends on a whole millisecond: every
+        event at or before the returned cursor is in it, so the next poll always moves on,
+        even past more than `limit` events in one millisecond (the page is then longer).
+        Caller holds the lock."""
+        def events(upper: int, cap: Optional[int]) -> List[Tuple[int, str, Dict[str, Any]]]:
+            tail = " LIMIT %d" % (cap + 1) if cap is not None else ""
+            ch = self.conn.execute("SELECT * FROM items WHERE local_at > ? AND local_at <= ? "
+                                   "ORDER BY local_at, id" + tail, (since, upper))
+            ex = self.conn.execute("SELECT * FROM items WHERE status = 'open' AND expires_at > ? "
+                                   "AND expires_at <= ? ORDER BY expires_at, id" + tail,
+                                   (since, min(upper, now)))
+            out = [(r["local_at"], r["id"], dict(r)) for r in ch]
+            out += [(r["expires_at"], r["id"], dict(r)) for r in ex]
+            return sorted(out, key=lambda e: (e[0], e[1]))
+
+        def unique(evs: List[Tuple[int, str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
+            seen, out = set(), []
+            for _t, i, r in evs:
+                if i not in seen:
+                    seen.add(i)
+                    out.append(r)
+            return out
+
+        upper = MAX_TS_MS
+        evs = events(upper, limit)
+        if len(evs) <= limit:
+            return unique(evs), now - 1, False
+        boundary = evs[limit - 1][0]
+        if boundary >= now - 1:
+            # The page reaches the present: send everything (only these last milliseconds
+            # are over the limit), and the usual cursor 1 ms behind now.
+            return unique(events(upper, None)), now - 1, False
+        return unique(events(boundary, None)), boundary, True
 
     # -- replication -----------------------------------------------------
 
@@ -1355,6 +1479,8 @@ class Store:
             out["invites"] = len(dead)
             c.execute("DELETE FROM token_update_requests WHERE token_id NOT IN "
                       "(SELECT id FROM tokens WHERE revoked_at IS NULL)")
+            if self.retention_ms > 0:
+                c.execute("DELETE FROM quarantine WHERE received_at < ?", (now - self.retention_ms,))
         return out
 
     def compact(self, full: bool = False) -> Dict[str, Any]:
@@ -1644,17 +1770,122 @@ class Store:
         if row:
             return dict(row)
         return {"peer": peer, "cursor": 0, "epoch": "", "last_push_ok": None,
-                "last_pull_ok": None, "last_error": None}
+                "last_pull_ok": None, "last_error": None, "skipped_push": 0, "skipped_pull": 0,
+                "last_skipped": None, "blocked": None}
 
     def save_peer_state(self, peer: str, **fields: Any) -> None:
-        st = self.peer_state(peer)
-        st.update(fields)
+        with self.lock:
+            st = self.peer_state(peer)
+            st.update(fields)
+            with self.tx():
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO peer_state(peer, cursor, epoch, last_push_ok, last_pull_ok, "
+                    "last_error, skipped_push, skipped_pull, last_skipped, blocked) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (peer, st["cursor"], st["epoch"], st["last_push_ok"], st["last_pull_ok"],
+                     st["last_error"], st["skipped_push"], st["skipped_pull"], st["last_skipped"],
+                     st["blocked"]))
+
+    def set_blocked(self, peer: str, direction: str, text: Optional[str]) -> None:
+        """Record (text) or clear (None) what holds replication with `peer` in `direction`."""
+        with self.lock:
+            cur = self.peer_state(peer).get("blocked")
+            if text is None:
+                if cur and cur.startswith(direction + " "):
+                    self.save_peer_state(peer, blocked=None)
+                return
+            self.save_peer_state(peer, blocked="%s %s" % (direction, text), last_error=text)
+
+    def note_skipped(self, peer: str, direction: str, skipped: List[Dict[str, Any]]) -> None:
+        """Count records that couldn't be read in one direction ("push": the peer couldn't
+        read ours; "pull": we couldn't read the peer's) and keep the last one."""
+        if not skipped:
+            return
+        with self.lock:
+            st = self.peer_state(peer)
+            last = skipped[-1]
+            self.save_peer_state(peer, **{
+                "skipped_" + direction: int(st.get("skipped_" + direction) or 0) + len(skipped),
+                "last_skipped": "%s %s %s: %s" % (direction, last.get("kind"), last.get("id") or "?",
+                                                  last.get("reason"))})
+
+    def outbox_ack_ids(self, peer: str, ids: List[int]) -> None:
         with self.tx():
-            self.conn.execute(
-                "INSERT OR REPLACE INTO peer_state(peer, cursor, epoch, last_push_ok, last_pull_ok, "
-                "last_error) VALUES(?,?,?,?,?,?)",
-                (peer, st["cursor"], st["epoch"], st["last_push_ok"], st["last_pull_ok"],
-                 st["last_error"]))
+            self.conn.executemany("DELETE FROM outbox WHERE peer = ? AND id = ?", [(peer, i) for i in ids])
+
+    def apply_record(self, kind: str, rec: Any) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """Apply one replicated record. Returns (changed, skipped).
+
+        An item this hub can't read (a newer hub's status, a malformed field) must not hold
+        up the rest of a batch: it is quarantined and described in `skipped`. A token or
+        invite is security state (a revocation, a role, a redemption): one this hub can't
+        read raises Unreadable, so replication fails closed and retries rather than letting
+        the hubs disagree about who may do what. Anything else (a locked database) raises
+        too, so the batch is retried."""
+        if kind != "item":
+            check_security_record(kind, rec)
+            return (self.apply_token if kind == "token" else self.apply_invite)(rec), None
+        try:
+            return self.apply_item(rec), None
+        except ApiError as e:
+            reason = e.message
+        except (ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError) as e:
+            reason = "%s: %s" % (type(e).__name__, e)
+        rid = rec.get("id") if isinstance(rec, dict) else None
+        skip = {"kind": kind, "id": safe_text(rid, 100) if isinstance(rid, str) else None,
+                "reason": safe_text(reason, 200)}
+        if isinstance(rid, str) and rid:
+            try:
+                raw = json.dumps(rec)
+            except (TypeError, ValueError):
+                raw = None
+            if raw is not None and len(raw) <= QUARANTINE_MAX_BYTES:
+                with self.tx():
+                    self.conn.execute("INSERT OR REPLACE INTO quarantine(id, record, reason, received_at) "
+                                      "VALUES(?,?,?,?)", (rid, raw, skip["reason"], self.now_ms()))
+        return False, skip
+
+    def retry_quarantine(self) -> int:
+        """Apply the quarantined item records this hub can read now (it was upgraded).
+        Returns how many left quarantine."""
+        with self.lock:
+            rows = [dict(r) for r in self.conn.execute("SELECT id, record FROM quarantine")]
+        done = 0
+        for r in rows:
+            try:
+                self.apply_item(json.loads(r["record"]))
+            except (ApiError, ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError):
+                continue
+            with self.tx():
+                self.conn.execute("DELETE FROM quarantine WHERE id = ?", (r["id"],))
+            done += 1
+        return done
+
+
+class Unreadable(ApiError):
+    """A replicated token or invite record this hub can't read. Never skipped."""
+
+    def __init__(self, kind: str, rid: Optional[str], reason: str) -> None:
+        self.kind, self.rid, self.reason = kind, rid, reason
+        super().__init__(400, "invalid", "can't read %s record %s (%s); nothing applied: token and "
+                         "invite records are never skipped, upgrade this hub"
+                         % (kind, rid or "?", reason), kind + "s")
+
+
+def check_security_record(kind: str, rec: Any) -> None:
+    """Raise Unreadable unless this token/invite record parses."""
+    try:
+        (normalise_token_record if kind == "token" else normalise_invite_record)(rec)
+    except (ApiError, ValueError, TypeError, KeyError, AttributeError) as e:
+        rid = rec.get("id") if isinstance(rec, dict) else None
+        reason = e.message if isinstance(e, ApiError) else type(e).__name__
+        raise Unreadable(kind, safe_text(rid, 100) if isinstance(rid, str) else None, safe_text(reason, 200))
+
+
+def safe_text(value: Any, limit: int) -> str:
+    """Peer-supplied text for a log line or peer status: control characters escaped, secrets
+    redacted (redact_log), cut to `limit` characters."""
+    return redact_log(str(value))[:limit]
 
 
 def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
@@ -1829,6 +2060,7 @@ class PeerWorker(threading.Thread):
         self.next_push = 0.0
         self.next_pull = 0.0
         self.disabled = False
+        self.batch_limit = PUSH_BATCH  # lowered while isolating a record an older peer refuses
 
     def _request(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         data = json.dumps(body).encode("utf-8") if body is not None else None
@@ -1885,9 +2117,19 @@ class PeerWorker(threading.Thread):
         except sqlite3.Error:
             pass
 
+    def _skipped(self, direction: str, skipped: List[Dict[str, Any]]) -> None:
+        if not skipped:
+            return
+        if not self.hub.cfg.get("quiet"):
+            for s in skipped:
+                sys.stderr.write("peer %s: %s %s %s skipped, %s can't read it: %s\n"
+                                 % (self.peer, direction, s.get("kind"), s.get("id") or "?",
+                                    "the peer" if direction == "push" else "this hub", s.get("reason")))
+        self.hub.store.note_skipped(self.peer, direction, skipped)
+
     def push_once(self) -> bool:
         """Send one batch. Returns True if something was sent (so the caller loops again)."""
-        rows = self.hub.store.outbox_batch(self.peer, 200)
+        rows = self.hub.store.outbox_batch(self.peer, self.batch_limit)
         if not rows:
             self.failures = 0
             return False
@@ -1901,20 +2143,63 @@ class PeerWorker(threading.Thread):
                 break
             rows = rows[:len(rows) // 2]
         try:
-            self._request("POST", "/v1/replicate", payload)
+            resp = self._request("POST", "/v1/replicate", payload)
         except urllib.error.HTTPError as e:
             if e.code == 409:  # the "peer" is this hub
                 self.disabled = True
                 self.hub.store.outbox_ack(self.peer, max(r["id"] for r in rows))
                 return False
+            if e.code == 400:
+                return self._refused(rows, e)
             self._fail(e)
             return False
         except (OSError, ValueError) as e:
             self._fail(e)
             return False
         self.hub.store.outbox_ack(self.peer, max(r["id"] for r in rows))
+        # A peer that skipped records it can't read lists them; they are done here too.
+        skipped = resp.get("skipped")
+        if isinstance(skipped, list):
+            self._skipped("push", [{"kind": safe_text(s.get("kind"), 20), "id": safe_text(s.get("id"), 100),
+                                    "reason": safe_text(s.get("reason"), 200)}
+                                   for s in skipped if isinstance(s, dict)])
+        self.batch_limit = min(PUSH_BATCH, self.batch_limit * 2)
         self.failures = 0
         self.hub.store.save_peer_state(self.peer, last_push_ok=self.hub.store.now_ms(), last_error=None)
+        self.hub.store.set_blocked(self.peer, "push", None)
+        return True
+
+    def _refused(self, rows: List[Dict[str, Any]], err: urllib.error.HTTPError) -> bool:
+        """400 for a whole batch: an older peer that can't read one of its records (a newer
+        status or role) refuses them all. Halve the batch until the one record is alone, then
+        skip it, so the rest still gets through. Returns True: try again at once."""
+        if len(rows) > 1:
+            self.batch_limit = max(1, len(rows) // 2)
+            return True
+        try:
+            reason = json.loads(err.read().decode("utf-8") or "{}").get("message") or "HTTP 400"
+        except (ValueError, AttributeError, OSError):
+            reason = "HTTP 400"
+        row = rows[0]
+        if row["kind"] != "item":
+            # Security state: never skipped. Keep it (and what's queued behind it) and retry
+            # with backoff until the peer can read it; say so loudly meanwhile.
+            text = ("%s %s can't be read by the peer (%s); replication to it is held until "
+                    "both hubs run the same version" % (row["kind"], safe_text(row["record_id"], 100),
+                                                         safe_text(reason, 200)))
+            if not self.hub.cfg.get("quiet"):
+                sys.stderr.write("peer %s: BLOCKED: push %s\n" % (self.peer, text))
+            self.batch_limit = 1
+            self.failures += 1
+            base = float(self.hub.cfg["retry_base_seconds"])
+            delay = min(base * (2 ** (self.failures - 1)), float(self.hub.cfg["retry_max_seconds"]))
+            self.next_push = time.monotonic() + delay * random.uniform(0.8, 1.2)
+            self.hub.store.set_blocked(self.peer, "push", text)
+            return False
+        self._skipped("push", [{"kind": row["kind"], "id": safe_text(row["record_id"], 100),
+                                "reason": safe_text(reason, 200)}])
+        self.hub.store.outbox_ack_ids(self.peer, [row["id"]])
+        self.batch_limit = PUSH_BATCH
         return True
 
     def pull(self) -> None:
@@ -1934,20 +2219,36 @@ class PeerWorker(threading.Thread):
                     if cursor != 0:
                         cursor = 0
                         continue
-                for t in resp.get("tokens", []):
-                    self.hub.store.apply_token(t)
-                for inv in resp.get("invites", []):
-                    self.hub.store.apply_invite(inv)
                 changed = False
-                for it in resp.get("items", []):
-                    changed = self.hub.store.apply_item(it, from_peer=self.peer) or changed
+                skipped: List[Dict[str, Any]] = []
+                for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
+                    for rec in resp.get(key) or []:
+                        did, skip = self.hub.store.apply_record(kind, rec)
+                        changed = changed or (did and kind == "item")
+                        if skip is not None:
+                            skipped.append(skip)
                 if changed:
                     self.hub.notify()
+                # Records this hub can't read are passed over (an upgrade reads them on a
+                # later write), not retried forever with the rest of the page behind them.
+                self._skipped("pull", skipped)
                 cursor = int(resp.get("next_after", cursor))
                 self.hub.store.save_peer_state(self.peer, cursor=cursor, epoch=epoch,
                                                last_pull_ok=self.hub.store.now_ms())
+                self.hub.store.set_blocked(self.peer, "pull", None)
                 if not resp.get("more"):
                     break
+        except Unreadable as e:
+            # A token or invite this hub can't read: the cursor stays before it, so the next
+            # pull retries it (an upgrade then applies it). Never skipped.
+            text = ("%s %s from the peer can't be read here (%s); replication from it is held "
+                    "until both hubs run the same version" % (e.kind, e.rid or "?", e.reason))
+            if not self.hub.cfg.get("quiet"):
+                sys.stderr.write("peer %s: BLOCKED: pull %s\n" % (self.peer, text))
+            try:
+                self.hub.store.set_blocked(self.peer, "pull", text)
+            except sqlite3.Error:
+                pass
         except (OSError, ValueError, TypeError, ApiError) as e:
             try:
                 self.hub.store.save_peer_state(self.peer, last_error="pull %s: %s" % (type(e).__name__, e))
@@ -2417,10 +2718,25 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             raise ApiError(400, "invalid", "limit must be an integer")
         limit = max(1, min(limit, LIST_LIMIT_MAX))
-        recs, cursor, more = self.hub.store.list_items(status, since, limit)
+        cursor = None
+        raw_cursor = (query.get("cursor") or [""])[0]
+        if raw_cursor:
+            try:
+                cursor = ListCursor.decode(raw_cursor)
+            except ValueError:
+                cursor = None
+            if cursor is not None and cursor.epoch != self.hub.store.epoch():
+                cursor = None  # from a replaced database: its seqs mean nothing here
+            if cursor is None and since is None:
+                raise ApiError(400, "invalid", "cursor is not one this hub issued; poll without it",
+                               "cursor")
+        recs, server_time, more, nxt = self.hub.store.list_items(status, since, limit, cursor)
         now = self.hub.store.now_ms()
-        self._send(200, {"items": [item_public(r, now) for r in recs], "server_time": fmt_ts(cursor),
-                         "hub_id": self.hub.hub_id, "more": more})
+        body = {"items": [item_public(r, now) for r in recs], "server_time": fmt_ts(server_time),
+                "hub_id": self.hub.hub_id, "more": more}
+        if nxt is not None:
+            body["next"] = nxt.encode()
+        self._send(200, body)
 
     def _stream(self, query: Dict[str, List[str]]) -> None:
         self._auth("reader")
@@ -2461,15 +2777,27 @@ class Handler(BaseHTTPRequestHandler):
         if data.get("from_hub") == self.hub.hub_id:
             raise ApiError(409, "self", "a hub cannot replicate to itself")
         applied = 0
-        for t in data.get("tokens") or []:
-            applied += 1 if self.hub.store.apply_token(t) else 0
-        for inv in data.get("invites") or []:
-            applied += 1 if self.hub.store.apply_invite(inv) else 0
-        for it in data.get("items") or []:
-            applied += 1 if self.hub.store.apply_item(it) else 0
+        skipped: List[Dict[str, Any]] = []
+        for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
+            recs = data.get(key) or []
+            if not isinstance(recs, list):
+                raise ApiError(400, "invalid", "%s must be an array" % key, key)
+            if kind != "item":
+                for rec in recs:  # before applying anything: fail closed, the pusher retries
+                    check_security_record(kind, rec)
+        for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
+            for rec in data.get(key) or []:
+                changed, skip = self.hub.store.apply_record(kind, rec)
+                applied += 1 if changed else 0
+                if skip is not None:
+                    skipped.append(skip)
         if applied:
             self.hub.notify()
-        self._send(200, {"ok": True, "applied": applied, "hub_id": self.hub.hub_id})
+        if skipped and not self.hub.cfg.get("quiet"):
+            sys.stderr.write("replicate from %s: skipped %d record(s) this hub can't read, e.g. %s %s: %s\n"
+                             % (safe_text(data.get("from_hub"), 100), len(skipped), skipped[0]["kind"],
+                                skipped[0]["id"], skipped[0]["reason"]))
+        self._send(200, {"ok": True, "applied": applied, "hub_id": self.hub.hub_id, "skipped": skipped})
 
     def _changes(self, query: Dict[str, List[str]]) -> None:
         self._peer_auth()
@@ -2662,7 +2990,9 @@ class Hub:
         st = self.store.peer_state(peer)
         return {"url": peer, "outbox_pending": self.store.outbox_pending(peer),
                 "last_push_ok": fmt_ts(st["last_push_ok"]), "last_pull_ok": fmt_ts(st["last_pull_ok"]),
-                "last_error": st["last_error"]}
+                "last_error": st["last_error"], "skipped_push": st["skipped_push"],
+                "skipped_pull": st["skipped_pull"], "last_skipped": st["last_skipped"],
+                "blocked": st["blocked"]}
 
     def maintain(self, full: Optional[bool] = None) -> Dict[str, Any]:
         """Purge, checkpoint and vacuum. `full` None = a full VACUUM only if one is due."""
@@ -2698,6 +3028,11 @@ class Hub:
                 pass  # exists, owned by someone else
 
     def start(self) -> "Hub":
+        try:
+            if self.store.retry_quarantine() and not self.cfg.get("quiet"):
+                sys.stderr.write("needs-you: applied replicated items this hub couldn't read before\n")
+        except sqlite3.Error:
+            pass
         for srv in self.servers:
             t = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.1},
                                  name="http", daemon=True)

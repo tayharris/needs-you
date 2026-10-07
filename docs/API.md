@@ -19,7 +19,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   environment); `*` turns the check off.
 - **Timestamps:** the hub always emits RFC 3339 UTC with exactly three fractional digits:
   `2026-10-06T17:04:05.123Z`. These sort correctly as strings. On input the hub accepts
-  ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset, or no
+  ISO 8601 with or without fractional seconds, with `Z` or a `±HH:MM` / `±HHMM` offset (hours
+  00–23, minutes 00–59; anything else is a 400), or no
   zone (taken as UTC), or a number of epoch seconds. Precision below 1 ms is dropped.
   Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a 400.
 - **Auth:** `Authorization: Bearer <token>`. Every token has one role:
@@ -130,8 +131,12 @@ No auth needed. Always `200` while the hub is up:
 gives the pending outbox rows per peer URL.
 
 If a bearer token is sent it is checked but never causes an error: a valid token adds
-`"token": {"name": "...", "role": "sender"}` and a `"peers"` array (per-peer outbox depth,
-last successful push/pull, last error); an unknown or revoked token adds `"token": null` and
+`"token": {"name": "...", "role": "sender"}` and a `"peers"` array (per-peer `url`,
+`outbox_pending`, `last_push_ok`, `last_pull_ok`, `last_error`, and `skipped_push` /
+`skipped_pull` / `last_skipped`: how many replicated item records that peer couldn't read
+from us, and we from it, and the last one; `blocked`: a token or invite record one side can't
+read, which holds replication in that direction (`"push ..."` / `"pull ..."`), else `null`;
+all absent from hubs up to 0.1.2); an unknown or revoked token adds `"token": null` and
 `"token_error": "unknown or revoked token"`.
 
 ### `POST /v1/items` (sender)
@@ -140,17 +145,19 @@ Create an item, or update the open item with the same `key`.
 
 | Field | Type | Rule | Default |
 |---|---|---|---|
-| `key` | string | ≤ 200 chars, only `A-Z a-z 0-9 . _ : - / @ # + =` | the new item's id (so no dedupe) |
+| `key` | string | ≤ 200 chars, only `A-Z a-z 0-9 . _ : - / @ # + =`; `""` is a 400 (leave it out, or send `null`, for no key) | the new item's id (so no dedupe) |
 | `title` | string | required, 1–100 chars after trimming, no control characters (see below) | |
-| `body` | string | ≤ 2,000 chars, markdown; newlines and tabs allowed | empty |
+| `body` | string | ≤ 2,000 chars, markdown; newlines (`\n`, `\r`) and tabs allowed | empty |
 | `context` | string | `work` or `personal` (case-insensitive) | `work` |
-| `kind` | string | `needs`, `done` or `info` | `needs` |
-| `priority` | string | `urgent`, `normal` or `low` | `normal` |
+| `kind` | string | `needs`, `done` or `info` (case-insensitive) | `needs` |
+| `priority` | string | `urgent`, `normal` or `low` (case-insensitive) | `normal` |
 | `links` | array | ≤ 6 of `{"label": ≤ 80 chars, "url": ≤ 2,000 chars}` | `[]` |
 | `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
 | `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |
-| `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h; `needs`: none |
-| `status` | | **rejected** (use resolve or PATCH) | |
+| `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h (the hub's `default_expiry_hours`, see [HUB.md](HUB.md)); `needs`: none |
+| `status` | | **rejected** whenever the key is present, even `"status": null` (use resolve or PATCH) | |
+
+An optional field sent as `null` counts as left out (it gets its default).
 
 Link URLs must use one of these schemes (case-insensitive): `https`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
@@ -260,7 +267,17 @@ Closes the open item with that key (or that id) as `resolved`. Always `200` and 
 ```
 
 If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),
-the response is `{"resolved": 0, "items": []}`. A body with neither or both of `key`/`id` is a 400.
+the response is `{"resolved": 0, "items": []}`. A body with neither or both of `key`/`id` is a
+400, and so is a `key` or `id` that isn't a string (`"id/key must be a string"`).
+
+Resolve doesn't check who posted the item. This is intended:
+
+- Any valid `sender` token for this inbox (this hub and its peers) can resolve any item in
+  it, by key or id, including items another of your machines posted.
+- Tokens are minted per inbox by its owner and checked on every request, so a machine
+  outside the inbox can't resolve anything.
+- Hubs listen only on loopback or the tailnet.
+- If a token leaks, revoke it (`DELETE /v1/tokens/<id or name>`, or `needs-you-admin token revoke`).
 
 ### `PATCH /v1/items/{id}` (reader)
 
@@ -278,41 +295,56 @@ Query parameters:
 
 | Param | Meaning |
 |---|---|
-| `status` | `open` (default), `resolved`, `dismissed` or `all`. **Ignored when `since` is given.** |
-| `since` | A cursor: the `server_time` from this hub's previous response. |
+| `status` | `open` (default), `resolved`, `dismissed` or `all`. **Ignored when `cursor` or `since` is given.** |
+| `cursor` | A cursor: the `next` from this hub's previous response. Opaque; send it back unchanged. |
+| `since` | A cursor for clients that don't know `next`: the `server_time` from this hub's previous response. |
 | `limit` | Max items, default 500, max 2,000. |
 
 Response:
 
 ```json
-{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "hub_id": "hub-a", "more": false}
+{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "next": "01M492BJ7A...J.812.1791306245123",
+ "hub_id": "hub-a", "more": false}
 ```
 
-**Without `since`:** the full current set for `status`. `status=open` returns every item that
-is open and not expired. `resolved` includes expired items (shown as resolved).
+**Without `cursor` or `since`:** the full current set for `status`. `status=open` returns every
+item that is open and not expired. `resolved` includes expired items (shown as resolved).
 
-**With `since`:** every item that changed on this hub after `since` (exclusive), **in any
-status**, plus every item whose `expires_at` fell in `(since, now]` (reported as resolved).
-This is how a poller learns about resolves, dismissals and expiry, not only new items.
-"Changed on this hub" means this hub stored a new version of it after `since`: a local write,
-or a replicated version arriving from a peer. It is matched against the hub's own receive
-time, not the item's `updated_at`, so an item that reaches this hub late by replication is
-still delivered even if its `updated_at` is older than the cursor.
+**With `cursor` or `since`:** every item that changed on this hub after the cursor, **in any
+status**, plus every item whose `expires_at` passed since then (reported as resolved). This is
+how a poller learns about resolves, dismissals and expiry, not only new items. "Changed on
+this hub" means this hub stored a new version of it after the cursor: a local write, or a
+replicated version arriving from a peer. That is this hub's own order, not the item's
+`updated_at`, so an item that reaches this hub late by replication is still delivered even if
+its `updated_at` is older than the cursor.
 
 **The polling loop:**
 
 1. First poll (or after any doubt): `GET /v1/items?status=open`. Replace the local set.
-2. Keep `server_time` from the response. Next poll: `GET /v1/items?since=<server_time>`
-   (adding `status=open` is harmless; it is ignored). Upsert every returned item by `id`; drop
-   it from the open view if its status isn't `open`. Store the new `server_time`.
-3. If `more` is true, poll again immediately with the new `server_time`.
-4. **`server_time` is a cursor for that hub only.** If `hub_id` in a response differs from the
-   hub that issued the cursor (failover), discard the cursor and go back to step 1.
+2. Keep `next` and `server_time` from the response. Next poll:
+   `GET /v1/items?cursor=<next>&since=<server_time>` (adding `status=open` is harmless; it is
+   ignored). Upsert every returned item by `id`; drop it from the open view if its status isn't
+   `open`. Store the new `next` and `server_time`.
+3. If `more` is true, poll again immediately the same way.
+4. **Both are cursors for that hub only.** If `hub_id` in a response differs from the hub that
+   issued the cursor (failover), discard them and go back to step 1.
 
-`server_time` is the hub's clock 1 ms before it ran the query (or, when `more` is true, just
-before the last returned item), so a write landing in the same millisecond is never missed.
-The price is that an item can occasionally be delivered twice; clients must treat responses
-as idempotent upserts by `id`. Items come back ordered by the hub's receive time.
+`next` (hubs after 0.1.2) is `<database epoch>.<seq>.<expiry position>`: the hub's per-write
+sequence number, so a page always moves past what it returned and never holds more than
+`limit` items, however many writes share a millisecond. Clients must not parse it. A hub
+answers a `cursor` from another database (it was replaced) or one it can't read by serving
+`since` instead when that was sent, and with `400 invalid` (`"field": "cursor"`) when it
+wasn't; drop the cursor and do a full poll then. Sending both is also what keeps an older hub,
+which ignores `cursor`, working. `next` is in every response except a `since`-only page with
+`more: true`; keep paging with `since` then, and the last page carries a `next`.
+
+`server_time` is the hub's clock 1 ms before it ran the query, so a write landing in the same
+millisecond is never missed; when a `since` page has `more`, it is instead the time of the
+page's last event, and the page holds **every** event up to that millisecond (so it can
+exceed `limit` when more than `limit` writes or expiries share it; hubs up to 0.1.2 served such a page
+repeated forever). The price is that an item can occasionally be delivered twice; clients
+must treat responses as idempotent upserts by `id`. With `cursor`, changes come back in the
+hub's write order, then expiries; with `since`, in time order.
 
 ### `GET /v1/items/{id}` (reader)
 
@@ -579,8 +611,31 @@ token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 {"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}
 ```
 
-Response `{"ok": true, "applied": <n>, "hub_id": "hub-b"}`; `409 self` if `from_hub` is the
-receiving hub's own id (the sender then stops using that peer).
+Response `{"ok": true, "applied": <n>, "hub_id": "hub-b", "skipped": [...]}`; `409 self` if
+`from_hub` is the receiving hub's own id (the sender then stops using that peer).
+
+**Unreadable items are skipped, not the batch.** An item record the receiver can't read (a
+status from a newer hub, a missing or malformed field) is left out and listed in `skipped` as
+`{"kind": "item", "id": "<id or null>", "reason": "<short text>"}`; the rest of the batch is
+applied and the response is still `200`. The pusher treats the listed records as delivered
+(it logs them and counts them in its peer status, below) instead of retrying them. The
+receiver keeps each skipped item record in a local quarantine (until `retention_days`) and
+applies it at its next start once it can read it, so upgrading the hub brings it in.
+
+**Unreadable tokens and invites fail closed.** Token and invite records are security state (a
+revocation, a role, a redemption), so one the receiver can't read is never skipped: the whole
+batch is a `400 invalid` (`"field": "tokens"` or `"invites"`, the message names the record id,
+never its hash) and nothing in it is applied. The pusher keeps that record, and what is queued
+behind it, retries with backoff, and reports it in its peer status as `blocked`. The same
+holds for a pull: the puller's cursor stays before such a record. Replication resumes by itself
+once both hubs run a version that reads it. A body that isn't a JSON object, or a
+`tokens`/`items`/`invites` that isn't an array, is a `400` too.
+
+Hubs up to 0.1.2 have no `skipped` and answer `400` for the whole batch when any record
+doesn't parse; against them the pusher halves the batch (without backing off) until the
+refused record is alone, then skips it if it is an item and holds it (as above) if it is a
+token or invite, and goes back to full batches. Any other failure (a timeout, `5xx`, `413`) is
+retried with backoff as before.
 
 Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
@@ -601,7 +656,10 @@ Every stored version gets a per-hub sequence number. The response is
 ```
 
 Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
-paging while `more` is true. Because applying a replicated version also gives it a local
+paging while `more` is true. An item record in a page that the puller can't read is skipped
+(logged, counted and quarantined, like a skipped push) and the cursor still moves past it; a
+token or invite it can't read, or a transient failure (the local database busy, the peer
+unreachable), leaves the cursor where it was. Because applying a replicated version also gives it a local
 sequence number, pull is transitive: a hub that was down catches up from any surviving peer.
 `epoch` is a random id minted when a database is created; if a peer's epoch changes (its
 database was replaced) or its `max_seq` is below the cursor, the puller restarts from 0.
