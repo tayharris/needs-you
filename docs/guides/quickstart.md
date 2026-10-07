@@ -12,7 +12,9 @@ Four steps; only the first is required. Every step can be re-run safely until th
 
 ## 1. Install the Mac app (it runs its own hub)
 
-Build or download `NeedsYou.app` ([mac-app.md](mac-app.md), [mac/README.md](../../mac/README.md)), move it to `/Applications` and open it. The app starts its own hub as a child process: SQLite in your Library folder, listening on `127.0.0.1:8765` (and on your Mac's tailnet address if Tailscale is running). There are no tokens to mint and no config files to edit.
+Download `NeedsYou-X.Y.Z.dmg` (or `NeedsYou-X.Y.Z-macos.zip`) from the repository's **Releases** page, drag `NeedsYou.app` to `/Applications` and open it. The app is ad-hoc signed, so macOS blocks the first launch: right-click → **Open** on macOS 14 and earlier, or **System Settings → Privacy & Security → Open Anyway** on macOS 15 and later ([mac-app.md](mac-app.md)). To build it yourself: [mac/README.md](../../mac/README.md).
+
+The app starts its own hub as a child process (**Settings… → This Mac → Run hub on this Mac**, on by default): SQLite in `~/Library/Application Support/NeedsYou/hub.db`, listening on `127.0.0.1:8765` (and on your Mac's tailnet address if Tailscale is running). There are no tokens to mint and no config files to edit. The hub runs on `/usr/bin/python3`; if Settings says *Python 3 isn't available on this Mac*, run `xcode-select --install`, then quit and reopen the app.
 
 A faint pill appears in a corner of the screen. That's the idle state.
 
@@ -37,8 +39,11 @@ curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -
 The installer prints a `Note:` if `~/.local/bin` isn't on your `PATH` (it isn't by default on macOS). Add it before going on, or `needs-you` below is "command not found":
 
 ```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh     # macOS (zsh)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && exec bash   # Linux (bash)
 ```
+
+Then `needs-you doctor` checks the setup (config, hubs, token, hooks, skill, flush schedule) and prints a fix for anything wrong.
 
 Try a real item. It appears in the panel, then goes away when you resolve it:
 
@@ -47,13 +52,19 @@ needs-you add --key "personal:test:hello" --context personal --title "Say hi bac
 needs-you resolve --key "personal:test:hello"
 ```
 
-The hooks stay quiet until opted in (`NEEDS_YOU_AGENT_ALERTS=1`, or any session Orca starts); see [claude-code.md](claude-code.md).
+The hooks stay quiet until opted in (`NEEDS_YOU_AGENT_ALERTS=1`, or any session Orca starts). To get a card from every Claude Code session on this machine:
+
+```bash
+echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
+```
+
+Restart open Claude Code sessions to pick up the hooks. More, including SSH, tmux and VS Code Remote-SSH: [claude-code-everywhere.md](claude-code-everywhere.md).
 
 **On the Mac itself,** the installer lists `http://127.0.0.1:8765` first in `~/.config/needs-you/env` (the hub sees the redeem come from its own machine), then the MagicDNS name, so local agents keep posting while Tailscale is down. Check with `grep NEEDS_YOU_URLS ~/.config/needs-you/env`.
 
 ## 3. Servers over Tailscale (2 minutes each)
 
-Install [Tailscale](https://tailscale.com) on the Mac and the servers, with MagicDNS on. There's no switch in the app: while Tailscale is up, its hub also listens on the Mac's tailnet address, and **Settings… → This Mac** shows the URL servers use. Create an invite with **Uses** set to the number of servers. The link uses the Mac's MagicDNS name, for example `http://my-mac.example.ts.net:8765/join/nyi_...`.
+Install [Tailscale](https://tailscale.com) on the Mac and the servers, with MagicDNS on ([tailscale.md](tailscale.md) walks through it). There's no switch in the app: while Tailscale is up, its hub also listens on the Mac's tailnet address, and **Settings… → This Mac** shows the URL servers use. Create an invite with **Uses** set to the number of servers. The link uses the Mac's MagicDNS name, for example `http://my-mac.example.ts.net:8765/join/nyi_...`.
 
 On each server, paste the agent prompt into its agent, or run:
 
@@ -76,3 +87,4 @@ If you want alerts to land somewhere even while the Mac sleeps, or you run many 
 - Something didn't show up? [troubleshooting.md](troubleshooting.md).
 - Writing alerts from your own scripts or agents: [AGENT-GUIDE.md](../AGENT-GUIDE.md).
 - Orca on several servers: [orca.md](orca.md).
+- Claude Code over SSH, tmux or VS Code Remote-SSH: [claude-code-everywhere.md](claude-code-everywhere.md).
