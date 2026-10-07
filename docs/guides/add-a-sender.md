@@ -17,7 +17,7 @@ The join URL is safe to open in a browser first: it's Markdown that explains wha
 
 | Step | Detail |
 |---|---|
-| Installs the CLI | Downloads `needs-you` from the hub (`/dl/needs-you`), checks it compiles, puts it in `~/.local/bin`. Prints the `PATH` line to add if needed; never edits your dotfiles. |
+| Installs the CLI | Downloads `needs-you` from the hub (`/dl/needs-you`), checks it compiles, puts it in `~/.local/bin`, and adds `~/.local/bin` to `PATH` with one line tagged `# added by needs-you` in your shell profile (`~/.zshrc`, `~/.bash_profile` on macOS bash, `~/.bashrc` on Linux bash, else `~/.profile`). `--no-path` prints the line instead. |
 | Redeems the invite | Mints a token for this machine, named `<invite name>-<host>`. One link with `uses: 5` sets up five machines, each with its own token. |
 | Writes the config | `~/.config/needs-you/env`, mode 600: `NEEDS_YOU_URLS` (the hub plus its peers, in failover order), `NEEDS_YOU_URL`, `NEEDS_YOU_TOKEN`, and `NEEDS_YOU_DEFAULT_CONTEXT` with `--context`. Other lines in the file are kept. |
 | Schedules a flush | Every 5 minutes, `needs-you flush` sends anything queued while no hub answered (e.g. the Mac was asleep): a crontab line on Linux, the LaunchAgent `io.needs-you.flush` on macOS. |
@@ -33,6 +33,7 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--claude-hooks user\|project\|none` | Install the Claude Code hooks for every repo (`user`), or the current directory's repo (`project`). Default `none`. See [claude-code.md](claude-code.md). |
 | `--alerts` | Turn the Claude Code hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
 | `--skill` | Install the needs-you skill to `~/.claude/skills/needs-you/`. |
+| `--auto-update` | Let the 5-minute flush run `needs-you update` once a day (`NEEDS_YOU_AUTO_UPDATE=1`). Updates come only from this hub. See [Keeping up to date](updates.md). |
 | `--context-alert PCT` | Card suggesting `/compact` or `/clear` once a Claude session's context is PCT% full. Default 80; `0` off. |
 | `--ssh-alias NAME` | This machine's name in the Mac's `~/.ssh/config`: agent cards get a VS Code Remote-SSH button. |
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links; `none` turns them off. See [claude-code-everywhere.md](claude-code-everywhere.md#buttons). |

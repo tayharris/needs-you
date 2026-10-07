@@ -1,0 +1,99 @@
+name: Tester report
+description: You're testing a preview build. Something broke, confused you, or surprised you.
+labels: ["tester"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. The install steps are in [docs/guides/testers.md](https://github.com/tayharris/needs-you/blob/main/docs/guides/testers.md); "the docs made me guess here" is a welcome report too.
+
+        **Never paste a token (`ny_…`), an invite link or code (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env` or `~/Library/Application Support/NeedsYou/`.** If one slips in, tell the owner so it can be revoked. Replace host and tailnet names you'd rather not share with `devbox` and `<tailnet>`.
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: Apple menu → About This Mac. Add Apple silicon or Intel, and "managed" if it's a work Mac with MDM or endpoint security.
+      placeholder: "macOS 15.1, Apple silicon, not managed"
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+      description: Right-click the pill → About Needs You. Or `defaults read /Applications/NeedsYou.app/Contents/Info.plist CFBundleShortVersionString`.
+      placeholder: "0.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Download, Gatekeeper or first launch
+        - The pill or cards
+        - Settings
+        - The hub on this Mac
+        - Invite a machine / the one-line setup
+        - Claude Code cards (hooks or skill)
+        - Tailscale or reaching the Mac from another machine
+        - Updates
+        - The docs
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: did
+    attributes:
+      label: What you did
+      description: The steps, in order. Commands you ran (without tokens or invite links), buttons you clicked.
+      placeholder: |
+        1. Settings → Invite a machine → Create invite → Shell one-liner
+        2. Ran it on a Linux VM over SSH
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Error text, what the pill or Settings showed. Screenshots help (crop out item text you'd rather not share).
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Hub setup
+      description: Hub on this Mac on or off (Settings → This Mac)? Tailscale on the Mac and the other machines? Which machines you connected, their OS, and how (shell one-liner or agent prompt, which options)?
+      placeholder: "Hub on this Mac: on. Tailscale: yes on both. Connected: this Mac (one-liner with --claude-hooks user --skill --alerts), Ubuntu 24.04 VM (agent prompt)."
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: needs-you doctor (on the sender, if one is involved)
+      description: The output of `needs-you doctor`. It never prints the token.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: App log
+      description: |
+        Run this on the Mac soon after the problem. It saves the last hour of the app's log to your Desktop with invite codes, tokens, tailnet names and tailnet addresses masked. Skim it, then attach the file or paste the relevant lines.
+
+        ```
+        log show --info --last 1h --style compact --predicate 'subsystem == "app.needsyou.mac"' | sed -E 's/nyi?_[A-Za-z0-9_-]+/<redacted>/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/<host>.<tailnet>.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g' > ~/Desktop/needs-you-log.txt
+        ```
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This report contains no tokens, invite links or codes, and nothing from `~/.config/needs-you/env`.
+          required: true
