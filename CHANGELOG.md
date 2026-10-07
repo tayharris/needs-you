@@ -52,6 +52,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - The invite's **Shell one-liner** and **Agent prompt** now set up Claude Code alerts too (`--claude-hooks user --skill --alerts`).
 - Orca: the block pasted into automation prompts is now a short pointer to `~/.config/needs-you/orca-snippet.md`, which the hub serves (`/dl/orca-snippet.md`) and `needs-you update` keeps current. Replace old pasted copies with the pointer once.
 
+- Mac app: a new item's preview stays out **14 s** instead of 4 s, and pointing at it holds it (it goes 2 s after the pointer leaves). Choose 5, 10, 14, 20 or 30 s, or until you click or point at it, in **Settings → Alerts → Arrivals**. The "3 waited while you were focused" peek uses the same time.
+- Mac app: the open panel **stays open** when you click in another app or open a card's link, so you can read the card next to what it opened. Escape, the chevron and the shortcut still close it. **Settings → Panel → Open panel → Collapse when clicking elsewhere** (off by default) brings back the old behaviour.
+- Mac app: drag the open panel's free edge (the bottom, or the top when it sits in a bottom corner) to make the card list taller or shorter. The height is remembered; double-click the edge or use **Settings → Panel → Open panel → Automatic** to go back to fitting the cards.
+- Mac app: card link buttons have more contrast, and pointing at one brightens it and shows the pointing-hand cursor.
 - Mac app: Settings is in tabs (Hubs and access, Panel, Alerts, Integrations, Advanced), with a one-line explanation for each setting.
 - Releases include `NeedsYou-X.Y.Z.dmg` (open it, drag the app onto Applications) next to the zip, and in `SHA256SUMS`. The release workflow has a manual dry run that builds everything without creating a release.
 - needs-you is licensed under Apache-2.0 (`LICENSE`).
