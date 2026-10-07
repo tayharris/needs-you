@@ -1,6 +1,6 @@
-# Message to testers (draft)
+# Message to testers
 
-Status: draft for the owner to send. Fill in the placeholders: `<RELEASE_URL>` (for example `https://github.com/tayharris/needs-you/releases/tag/v0.1.1`), `<VERSION>`, `<NAME>`, and pick option A or B. Before sending: run [fresh-user-test-plan.md](fresh-user-test-plan.md) on the build, add each tester as a collaborator (option A), and protect `main` ([sharing-checklist.md](sharing-checklist.md) #2).
+A message the owner can send. Fill in `<NAME>`.
 
 ---
 
@@ -10,15 +10,10 @@ I've been building **needs-you**, a small Mac app that tells me when an AI agent
 
 Would you try it and tell me where it breaks or confuses you? It takes about 15 minutes on a Mac with macOS 14 or later; a second machine and Claude Code make it more interesting but are optional.
 
-**Option A (GitHub):** I've added you as a collaborator on the private repo; accept the invite from GitHub's email. Then:
-
-- Download: <RELEASE_URL> (`NeedsYou-<VERSION>.dmg`)
+- Site: https://needsyou.app
+- Download: https://github.com/tayharris/needs-you/releases/latest (`NeedsYou-<version>.dmg`)
 - Install guide: https://github.com/tayharris/needs-you/blob/main/docs/guides/testers.md
-- Report problems: https://github.com/tayharris/needs-you/issues/new/choose → **Tester report**
-
-(GitHub gives collaborators on a personal repo write access; please don't push to `main`.)
-
-**Option B (no GitHub):** the DMG and the install guide are attached. Reply to this message with anything that goes wrong: your macOS version, the app version (right-click the pill → About Needs You), what you did and what happened.
+- Report problems: https://github.com/tayharris/needs-you/issues/new/choose → **Tester report** (or just reply to me)
 
 Two heads-ups:
 

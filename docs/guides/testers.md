@@ -1,4 +1,4 @@
-# Testing needs-you: install guide for invited testers
+# Trying needs-you: the install guide
 
 Thanks for trying needs-you before it's public. This page is everything you need: getting access, installing the Mac app, connecting a machine, what to try, and how to tell us what went wrong. It takes about 15 minutes, plus a few more per extra machine.
 
@@ -23,19 +23,15 @@ The rest (reader, owner, server hub): [Words](concepts.md).
 - Optional: **Claude Code** on the Mac, for "agent is waiting" cards.
 - Optional: **a second machine** (a Linux server or VM, or another Mac) and **Tailscale** on both, to test a remote sender.
 
-## 1. Get access
+## 1. Get the app
 
-The repository is private for now. Two ways to get the app:
-
-**A. As a GitHub collaborator (recommended).** Send the owner your GitHub username. You'll get an email invitation to `tayharris/needs-you`; accept it (or open [github.com/tayharris/needs-you/invitations](https://github.com/tayharris/needs-you/invitations)). Then the [Releases page](https://github.com/tayharris/needs-you/releases) shows the builds; a build not published yet is labeled **Draft** and is still downloadable. Because the repo belongs to a personal account, GitHub gives every collaborator write access: please don't push to `main` or edit releases; open issues and branches freely.
-
-For a published release, from Terminal instead of the browser (needs the [GitHub CLI](https://cli.github.com), logged in with `gh auth login`; use the browser for a draft):
+The project is public: download the latest build from the [Releases page](https://github.com/tayharris/needs-you/releases/latest), or from Terminal with the [GitHub CLI](https://cli.github.com):
 
 ```bash
-gh release download vX.Y.Z --repo tayharris/needs-you --pattern 'NeedsYou-*.dmg' --pattern SHA256SUMS
+gh release download --repo tayharris/needs-you --pattern 'NeedsYou-*.dmg' --pattern SHA256SUMS
 ```
 
-**B. Directly from the owner.** The owner sends you `NeedsYou-X.Y.Z.dmg` and `SHA256SUMS` (by AirDrop, a shared folder, or a link). Everything below works the same. Without repository access you can't open issues; send reports to the owner instead (section 8), and the app can't update itself (section 7).
+To report problems you'll need a GitHub account (section 8); otherwise send them to whoever invited you.
 
 ## 2. Download and check
 
@@ -146,7 +142,7 @@ Tick off what you get to; anything that surprises you is worth a report. With a 
 - [ ] **Make it yours:** **Settings → Panel** (size, card text, opacity, shortcut) and **Alerts** (how loud). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
 - [ ] **Mac asleep or app quit:** quit Needs You, post from another machine (the CLI says it queued and exits 0), reopen the app. The item arrives within about 5 minutes.
 - [ ] **Machines:** **Settings → Machines → Refresh** lists your machines (names, what they are and CLI versions, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
-- [ ] **Updates:** **Settings → Updates** shows the version and the last check. While the repo is private, the app needs a GitHub login to check: install the [GitHub CLI](https://cli.github.com) and run `gh auth login` once (collaborators only). It only installs releases the owner has published, never drafts. A failed check here is expected without `gh`.
+- [ ] **Updates:** **Settings → Updates** shows the version and the last check. It checks GitHub Releases on its own (no login needed) and only installs published releases, never drafts.
 
 More on everything: [mac-app.md](mac-app.md), [claude-code-everywhere.md](claude-code-everywhere.md), [troubleshooting.md](troubleshooting.md).
 

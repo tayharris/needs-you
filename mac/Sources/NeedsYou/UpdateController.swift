@@ -362,7 +362,7 @@ final class UpdateController: ObservableObject {
         case 200..<300:
             return
         case 404 where auth == .anonymous:
-            throw UpdateError.message("GitHub found no release. While the repo is private the app needs a token: install the GitHub CLI and run `gh auth login`, or put a fine-grained token (Contents: read, Actions: read) in ~/Library/Application Support/NeedsYou/\(UpdateAuth.tokenFileName) with mode 600.")
+            throw UpdateError.message("GitHub found no published release yet.")
         case 404:
             throw UpdateError.message("GitHub has no published release yet (or the token can't see this repo).")
         case 401:

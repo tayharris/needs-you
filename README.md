@@ -2,11 +2,11 @@
 
 One inbox for "you have to do something". AI agents, servers and CI post an item when they're blocked on you; your Mac shows it in a small floating pill, with a link to where you act, and it disappears once it's handled.
 
-Open source, [Apache-2.0](LICENSE). **Status: private preview (0.1.x).**
+Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
 ## Get started
 
-Testing a preview build as an invited collaborator? Start with **[the tester guide](docs/guides/testers.md)**: getting access while the repo is private, install, first run and how to report problems, on one page.
+Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page.
 
 Words used below: the **hub** is the small service that stores items (the Mac app runs one for you, so your Mac is the hub); a **sender** is any machine or agent that posts items, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
 
