@@ -41,7 +41,7 @@ final class PanelContainerView: NSView {
 }
 
 /// Owns the panel: sizing per state, corner snapping, per-layout placement, menus,
-/// click-outside and Escape handling.
+/// click-outside and Escape handling, and the expanded list's resize grip.
 @MainActor
 final class PanelController {
     /// Transparent room around the visible shape for the glow.
@@ -58,6 +58,9 @@ final class PanelController {
     private var clickOutsideMonitor: Any?
     private var escapeMonitors: [Any] = []
     private var escapeHotKey: HotKey?
+    /// The user clicked in another app while the panel stayed open: Escape belongs to that
+    /// app again until the pointer comes back over the panel.
+    private var escapeReleased = false
 
     private var placement: PanelPlacement?
     private var dragStartMouse: NSPoint?
@@ -96,7 +99,9 @@ final class PanelController {
         container.addSubview(hosting)
 
         hosting.menuProvider = { [weak self] in self?.makeContextMenu() }
-        container.onHover = { [weak model] inside in
+        container.onHover = { [weak self, weak model] inside in
+            // Back over the panel after clicking elsewhere: Escape collapses it again.
+            if inside { self?.escapeReleased = false }
             guard let model, model.hovering != inside else { return }
             model.hovering = inside
         }
@@ -206,16 +211,30 @@ final class PanelController {
             if clickOutsideMonitor == nil {
                 // Global monitors see clicks in *other* apps; mouse events need no permission.
                 clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.model.collapse() }
+                    MainActor.assumeIsolated { self?.clickedElsewhere() }
                 }
             }
-            installEscape(swallow: model.expandedByUser)
+            installEscape(swallow: model.expandedByUser && !escapeReleased)
         } else {
             if let monitor = clickOutsideMonitor {
                 NSEvent.removeMonitor(monitor)
                 clickOutsideMonitor = nil
             }
             removeEscape()
+            escapeReleased = false
+        }
+    }
+
+    /// A click in another app. With Settings → Panel → Collapse when clicking elsewhere on,
+    /// the panel collapses. Off (the default) it stays open, so a card can still be read
+    /// next to the link it opened, and stops swallowing Escape, which belongs to the app
+    /// that was clicked. Escape, the chevron and the shortcut still close it.
+    private func clickedElsewhere() {
+        if model.settings.ui.collapseOnClickOutside {
+            model.collapse()
+        } else {
+            escapeReleased = true
+            escapeHotKey = nil
         }
     }
 
@@ -243,6 +262,8 @@ final class PanelController {
             escapeHotKey = HotKey(id: 2, keyCode: 53, modifiers: 0) { [weak self] in
                 MainActor.assumeIsolated { self?.model.collapse() }
             }
+        } else if !swallow {
+            escapeHotKey = nil
         }
     }
 

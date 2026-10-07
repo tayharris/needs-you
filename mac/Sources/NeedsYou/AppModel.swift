@@ -684,18 +684,24 @@ final class AppModel: ObservableObject {
     /// Orca and terminal jumps) run their fixed action instead of going to NSWorkspace, and
     /// going to the terminal counts as handling the card: it's marked done. A click in the
     /// panel is trusted; links from outside the app go through AppDelegate, which asks.
+    /// The panel stays open afterwards (so the card can be read next to what it opened)
+    /// unless Settings → Panel → Collapse when clicking elsewhere is on.
     @discardableResult
     func open(_ string: String, from item: Item? = nil) -> Bool {
         if let action = AppAction.parse(string) {
             run(action)
             if let item { resolve(item) }
-            collapse()
+            collapseAfterOpening()
             return true
         }
         guard let url = LinkPolicy.externalURL(string) else { return false }
         NSWorkspace.shared.open(url)
-        collapse()
+        collapseAfterOpening()
         return true
+    }
+
+    private func collapseAfterOpening() {
+        if settings.ui.collapseOnClickOutside { collapse() }
     }
 
     @discardableResult
