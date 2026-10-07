@@ -36,6 +36,22 @@ public struct HotKeyCombo: Equatable, Hashable, Sendable {
         return s + (KeyNames.display(keyCode) ?? "Key \(keyCode)")
     }
 
+    /// "Control-Option-Shift-Command-K": the shortcut in words, for people who don't read
+    /// the modifier symbols. Same order as `display`.
+    public var spokenDisplay: String {
+        var parts: [String] = []
+        if modifiers & Self.control != 0 { parts.append("Control") }
+        if modifiers & Self.option != 0 { parts.append("Option") }
+        if modifiers & Self.shift != 0 { parts.append("Shift") }
+        if modifiers & Self.command != 0 { parts.append("Command") }
+        parts.append(KeyNames.spoken(keyCode) ?? "Key \(keyCode)")
+        return parts.joined(separator: "-")
+    }
+
+    /// "Control-Option-Space (⌃⌥Space)": words first, then the symbols, wherever people
+    /// read the shortcut in a sentence (Settings, tooltips).
+    public var spokenAndSymbols: String { "\(spokenDisplay) (\(display))" }
+
     /// The character a menu item shows as this shortcut's hint ("k", " "), or nil.
     public var menuKeyEquivalent: String? { KeyNames.menuCharacter(keyCode) }
 
@@ -99,7 +115,7 @@ public enum HotKeyProblem: Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .needsModifier: return "Add ⌃, ⌥ or ⌘ so the shortcut doesn't get in the way of typing."
+        case .needsModifier: return "Add Control (⌃), Option (⌥) or Command (⌘) so the shortcut doesn't get in the way of typing."
         case .unsupportedKey: return "That key can't be used for the shortcut."
         case .reserved(let what): return "That's \(what). Pick another shortcut."
         }
@@ -213,6 +229,22 @@ public enum KeyNames {
     }()
 
     public static func display(_ code: UInt32) -> String? { table[code]?.display }
+
+    /// Words for keys whose `display` is a symbol or an abbreviation; the rest read as shown.
+    private static let spokenNames: [String: String] = [
+        "escape": "Escape", "forwarddelete": "Forward Delete", "grave": "Backtick",
+        "minus": "Minus", "equal": "Equals", "leftbracket": "Left Bracket", "rightbracket": "Right Bracket",
+        "backslash": "Backslash", "semicolon": "Semicolon", "quote": "Quote", "comma": "Comma",
+        "period": "Period", "slash": "Slash",
+        "left": "Left Arrow", "right": "Right Arrow", "down": "Down Arrow", "up": "Up Arrow",
+        "home": "Home", "end": "End", "pageup": "Page Up", "pagedown": "Page Down",
+    ]
+
+    /// The key in words: "Space", "K", "Left Arrow", "Escape". nil for an unknown key.
+    public static func spoken(_ code: UInt32) -> String? {
+        guard let names = table[code] else { return nil }
+        return spokenNames[names.token] ?? names.display
+    }
 
     /// Letters, digits, space and punctuation as a menu key equivalent; nil for the rest.
     public static func menuCharacter(_ code: UInt32) -> String? {

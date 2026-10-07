@@ -734,7 +734,7 @@ struct SettingsView: View {
         } header: {
             Text("Keyboard")
         } footer: {
-            Text("Opens the panel's cards, or collapses them, from any app (a hidden panel comes back open), without taking focus from what you're typing. A shortcut needs ⌃, ⌥ or ⌘.")
+            Text("Opens the panel's cards, or collapses them, from any app (a hidden panel comes back open), without taking focus from what you're typing. A shortcut needs Control (⌃), Option (⌥) or Command (⌘).")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -1075,8 +1075,8 @@ private struct ShortcutRecorder: View {
         VStack(alignment: .leading, spacing: 4) {
             LabeledContent("Open / collapse shortcut") {
                 HStack(spacing: 8) {
-                    Text(hotKeys.isRecording ? "Type a shortcut… (Esc cancels)" : hotKeys.combo.display)
-                        .font(hotKeys.isRecording ? .body : .body.monospaced())
+                    Text(hotKeys.isRecording ? "Type a shortcut… (Escape cancels)" : hotKeys.combo.spokenAndSymbols)
+                        .font(.body)
                         .foregroundStyle(hotKeys.isRecording ? .secondary : .primary)
                     if hotKeys.isRecording {
                         Button("Cancel") { hotKeys.stopRecording() }
@@ -1087,7 +1087,7 @@ private struct ShortcutRecorder: View {
                         }
                         if hotKeys.combo != .standard {
                             Button("Reset") { message = hotKeys.change(to: .standard) }
-                                .help("Back to \(HotKeyCombo.standard.display)")
+                                .help("Back to \(HotKeyCombo.standard.spokenAndSymbols)")
                         }
                     }
                 }
@@ -1097,7 +1097,7 @@ private struct ShortcutRecorder: View {
             } else if hotKeys.isRegistered {
                 Label("Registered", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
             } else {
-                Label("Not registered: another app or macOS (input-source switching?) has \(hotKeys.combo.display). Pick another.",
+                Label("Not registered: another app or macOS (input-source switching?) has \(hotKeys.combo.spokenAndSymbols). Pick another.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }

@@ -17,6 +17,7 @@ final class HotKeyComboTests: XCTestCase {
         ("testReservedShortcuts", testReservedShortcuts),
         ("testStoredFallsBack", testStoredFallsBack),
         ("testMenuKeyEquivalent", testMenuKeyEquivalent),
+        ("testSpokenDisplay", testSpokenDisplay),
     ]
 
     private let c = HotKeyCombo.command, s = HotKeyCombo.shift, o = HotKeyCombo.option, k = HotKeyCombo.control
@@ -122,5 +123,25 @@ final class HotKeyComboTests: XCTestCase {
         XCTAssertNil(HotKeyCombo(keyCode: 0x60, modifiers: c).menuKeyEquivalent)     // F5
         XCTAssertNil(HotKeyCombo(keyCode: 0x7B, modifiers: c).menuKeyEquivalent)     // ←
         XCTAssertNil(HotKeyCombo(keyCode: KeyNames.returnKey, modifiers: c).menuKeyEquivalent)
+    }
+
+    func testSpokenDisplay() {
+        XCTAssertEqual(HotKeyCombo.standard.spokenDisplay, "Control-Option-Space")
+        XCTAssertEqual(HotKeyCombo.standard.spokenAndSymbols, "Control-Option-Space (⌃⌥Space)")
+        XCTAssertEqual(HotKeyCombo(keyCode: KeyNames.letter("k")!, modifiers: c | s | o | k).spokenDisplay,
+                       "Control-Option-Shift-Command-K")
+        XCTAssertEqual(HotKeyCombo(keyCode: 0x60, modifiers: o).spokenDisplay, "Option-F5")
+        XCTAssertEqual(HotKeyCombo(keyCode: 0x7B, modifiers: c).spokenDisplay, "Command-Left Arrow")
+        XCTAssertEqual(HotKeyCombo(keyCode: KeyNames.escape, modifiers: k).spokenDisplay, "Control-Escape")
+        XCTAssertEqual(HotKeyCombo(keyCode: 0x2C, modifiers: c).spokenDisplay, "Command-Slash")
+        XCTAssertEqual(HotKeyCombo(keyCode: 0x7F, modifiers: k).spokenDisplay, "Control-Key 127")
+        // Every named key has words, and no symbol is left in them.
+        let symbols = CharacterSet(charactersIn: "⌃⌥⇧⌘←→↑↓↖↘⇞⇟⌦")
+        for code in UInt32(0)...UInt32(0x7F) where KeyNames.display(code) != nil {
+            let words = KeyNames.spoken(code) ?? ""
+            XCTAssertFalse(words.isEmpty, "key code \(code)")
+            XCTAssertNil(words.rangeOfCharacter(from: symbols), "key code \(code): \(words)")
+        }
+        XCTAssertTrue(HotKeyProblem.needsModifier.message.contains("Control (⌃)"))
     }
 }

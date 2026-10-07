@@ -46,7 +46,7 @@ final class HotKeyController: ObservableObject {
             return nil
         }
         register(old)
-        return "\(new.display) is already used by another app or by macOS. Pick another shortcut."
+        return "\(new.spokenAndSymbols) is already used by another app or by macOS. Pick another shortcut."
     }
 
     // MARK: Recording (Settings window only)
