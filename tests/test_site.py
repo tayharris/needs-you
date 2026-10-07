@@ -217,12 +217,39 @@ class SiteTests(unittest.TestCase):
 
     def test_sections(self):
         p = self.pages["index.html"]
-        for sid in ("how", "install", "source", "donate"):
+        for sid in ("how", "see", "install", "source", "donate"):
             self.assertIn(sid, p.ids)
-        self.assertIn("mock", read_site("index.html"))  # the CSS pill mock, not a screenshot
-        self.assertNotIn("img", p.tags)
+        self.assertIn("mock", read_site("index.html"))  # the hero stays the CSS pill mock
         how = re.search(r'<ol class="how">(.*?)</ol>', read_site("index.html"), re.S).group(1)
         self.assertEqual(how.count("<li>"), 3)
+
+    def test_screenshots(self):
+        # Real screenshots (mac/scripts/screenshots.sh), served from site/img/: each one
+        # described, sized (no layout shift), lazy, small, and actually a PNG.
+        imgs = re.findall(r"<img\b([^>]*)>", read_site("index.html"), re.S)
+        self.assertGreaterEqual(len(imgs), 5)
+        used = set()
+        for raw in imgs:
+            attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', raw))
+            src = attrs.get("src", "")
+            with self.subTest(src=src):
+                self.assertRegex(src, r"^img/[a-z0-9-]+\.png$")
+                self.assertGreater(len(attrs.get("alt", "").strip()), 20, "describe the screenshot")
+                self.assertRegex(attrs.get("width", ""), r"^\d+$")
+                self.assertRegex(attrs.get("height", ""), r"^\d+$")
+                self.assertEqual(attrs.get("loading"), "lazy")
+                path = os.path.join(SITE, src)
+                with open(path, "rb") as fh:
+                    head = fh.read(24)
+                self.assertEqual(head[:8], b"\x89PNG\r\n\x1a\n")
+                # The files are 2x: the width/height attributes are half the pixels.
+                w, h = int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+                self.assertEqual((w, h), (2 * int(attrs["width"]), 2 * int(attrs["height"])))
+                used.add(os.path.basename(src))
+        for name in os.listdir(os.path.join(SITE, "img")):
+            with self.subTest(file=name):
+                self.assertLess(os.path.getsize(os.path.join(SITE, "img", name)), 200 * 1024)
+        self.assertTrue(used <= set(os.listdir(os.path.join(SITE, "img"))))
 
     def test_install(self):
         p = self.pages["index.html"]
