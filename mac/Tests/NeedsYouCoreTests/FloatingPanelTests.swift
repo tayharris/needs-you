@@ -12,7 +12,25 @@ final class FloatingPanelTests: XCTestCase {
     static var allTests = [
         ("testPanelNeverTakesFocus", testPanelNeverTakesFocus),
         ("testPanelJoinsAllSpacesAndFullScreen", testPanelJoinsAllSpacesAndFullScreen),
+        ("testEdgeGlowNeverTakesFocusAndIsClickThrough", testEdgeGlowNeverTakesFocusAndIsClickThrough),
     ]
+
+    func testEdgeGlowNeverTakesFocusAndIsClickThrough() {
+        _ = NSApplication.shared
+        let glow = EdgeGlowWindow()
+        XCTAssertFalse(glow.canBecomeKey)
+        XCTAssertFalse(glow.canBecomeMain)
+        XCTAssertTrue(glow.ignoresMouseEvents)
+        XCTAssertTrue(glow.styleMask.contains(.nonactivatingPanel))
+        XCTAssertFalse(glow.hidesOnDeactivate)
+        XCTAssertFalse(glow.isOpaque)
+        XCTAssertEqual(glow.level, .statusBar)
+        for behaviour: NSWindow.CollectionBehavior in [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle] {
+            XCTAssertTrue(glow.collectionBehavior.contains(behaviour))
+        }
+        glow.makeKey()
+        XCTAssertFalse(glow.isKeyWindow)
+    }
 
     func testPanelNeverTakesFocus() {
         _ = NSApplication.shared

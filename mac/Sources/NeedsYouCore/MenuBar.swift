@@ -36,16 +36,19 @@ public enum HiddenArrivalPolicy {
     /// - Hidden: an urgent arrival pulses the menu bar icon, or shows the panel when
     ///   `urgentShowsHiddenPanel` is on (default off).
     /// - Non-urgent arrivals only update the count.
+    /// This is the tier table with no focus and no rules (DeliveryPolicy); kept for its tests.
     public static func decide(visibility: PanelVisibility, announced: [Item], urgentBreaksSnooze: Bool,
                               urgentShowsHiddenPanel: Bool, now: Date) -> HiddenArrival {
         guard visibility.isHidden(at: now) else { return .none }
-        let urgent = announced.contains { $0.kind == .needs && $0.priority == .urgent && $0.status == .open }
-        guard urgent else { return .none }
-        switch visibility {
-        case .shown: return .none
-        case .snoozed: return urgentBreaksSnooze ? .showPanel : .pulseMenuBar
-        case .hidden: return urgentShowsHiddenPanel ? .showPanel : .pulseMenuBar
+        let state = DeliveryState(visibility: visibility, urgentBreaksSnooze: urgentBreaksSnooze,
+                                  urgentShowsHiddenPanel: urgentShowsHiddenPanel, now: now)
+        // Out of sight the context doesn't matter: urgent breaks through in either one.
+        let decided = announced.map { item -> (item: Item, decision: DeliveryDecision) in
+            var s = state
+            s.context = item.context
+            return (item: item, decision: DeliveryPolicy.decide(item, state: s))
         }
+        return DeliveryPolicy.hiddenArrival(decided)
     }
 }
 

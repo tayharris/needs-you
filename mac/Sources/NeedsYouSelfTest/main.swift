@@ -8,6 +8,7 @@ import MiniXCTest
 let entries =
     testEntries(ItemStoreMergeTests.self, ItemStoreMergeTests.allTests)
     + testEntries(ItemStoreCountTests.self, ItemStoreCountTests.allTests)
+    + testEntries(ItemStoreLaterTests.self, ItemStoreLaterTests.allTests)
     + testEntries(LinkPolicyTests.self, LinkPolicyTests.allTests)
     + testEntries(HubClientTests.self, HubClientTests.allTests)
     + testEntries(SupportTests.self, SupportTests.allTests)
@@ -33,6 +34,12 @@ let entries =
     + testEntries(CardAgeTests.self, CardAgeTests.allTests)
     + testEntries(SecurityAuditTests.self, SecurityAuditTests.allTests)
     + testEntries(StepsTests.self, StepsTests.allTests)
+    + testEntries(DeliveryPolicyTests.self, DeliveryPolicyTests.allTests)
+    + testEntries(FocusStateTests.self, FocusStateTests.allTests)
+    + testEntries(BypassRuleTests.self, BypassRuleTests.allTests)
+    + testEntries(NoisySenderGuardTests.self, NoisySenderGuardTests.allTests)
+    + testEntries(FocusLinkTests.self, FocusLinkTests.allTests)
+    + testEntries(WorkDisplayTests.self, WorkDisplayTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

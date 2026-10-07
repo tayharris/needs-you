@@ -45,4 +45,37 @@ public final class FloatingPanel: NSPanel {
     public override var canBecomeKey: Bool { false }
     public override var canBecomeMain: Bool { false }
 }
+
+/// The optional urgent edge glow (docs/roadmap/human-gates.md): a borderless, transparent
+/// window over one display that draws a thin glow along its edge for a few seconds.
+///
+/// Same focus rule as the panel, and stricter: it ignores every mouse event (clicks go
+/// straight through to whatever is under it), never becomes key or main, and is only ever
+/// shown with `orderFrontRegardless()`. `FloatingPanelTests` guards this too.
+public final class EdgeGlowWindow: NSPanel {
+    public init() {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        collectionBehavior = FloatingPanel.requiredCollectionBehavior
+        ignoresMouseEvents = true
+        isFloatingPanel = true
+        level = .statusBar   // after isFloatingPanel, which resets the level to .floating
+        hidesOnDeactivate = false
+        becomesKeyOnlyIfNeeded = true
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        isMovable = false
+        isReleasedWhenClosed = false
+        animationBehavior = .none
+        isExcludedFromWindowsMenu = true
+    }
+
+    public override var canBecomeKey: Bool { false }
+    public override var canBecomeMain: Bool { false }
+}
 #endif

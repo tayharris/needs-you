@@ -79,6 +79,14 @@ public enum AlertStyle {
         priority == .urgent ? max(chosen, urgentFloor) : chosen
     }
 
+    /// An ambient arrival (delivery tiers): one soft brighten, never louder than Subtle.
+    /// Off stays off, except that urgent keeps its floor.
+    public static func ambientLook(_ chosen: AlertIntensity, priority: ItemPriority) -> AlertLook {
+        var l = look(min(effective(chosen, for: priority), .subtle), priority: priority, basePulses: 1)
+        l.pulses = min(l.pulses, 1)
+        return l
+    }
+
     /// The look for `priority` at the chosen intensity. `basePulses` is what the caller
     /// would pulse at normal (the original: 2 for urgent arrivals, 1 otherwise).
     public static func look(_ chosen: AlertIntensity, priority: ItemPriority, basePulses: Int = 1) -> AlertLook {

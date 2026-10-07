@@ -29,15 +29,65 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 | A barely visible pill | Nothing needs you. Hover for "all clear" and the last check time. |
 | A pill with a number and a colored ring | Open `needs` items in the current context. Red = urgent, amber = normal, slate = low. |
 | `3 · 1` | 3 in the current context, 1 waiting in the other (work vs personal). |
+| `3 +2`, a moon | 2 more are waiting under Later; a focus is on (see [Focus](#focus-heads-down-except-what-you-choose)). |
 | The pill springs out with a title | A new item just arrived. |
 
 - **Click** the pill to expand the cards; **Escape** or click outside to collapse.
 - On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, ...).
 - A card with **steps** shows them as a numbered checklist at your card text size, each step's link as a button. Tick steps off as you go (the ticks stay on this Mac; steps the agent already marked done are ticked for you); once every step is ticked the card offers **All steps done: mark Done**. With **Card text** set to First lines or Title only, the card shows "3 steps" until you click it.
 - A card waiting 4 hours or more shows its age next to the title (`5 h`, `2 d`; amber after 2 days). Its **…** menu has **Dismiss All from <host>**, which clears every card and Recent row from that machine in this context, for when a machine went away without resolving its cards.
-- **Right-click** the pill (or the button in the expanded header) to snooze everything: 15 min, 30 min, 1 hr, 3 hr, until tomorrow. Urgent items still pulse once through a snooze.
+- **Right-click** the pill (or the button in the expanded header) to snooze everything: 15 min, 30 min, 1 hr, 3 hr, until tomorrow. Urgent items still pulse once through a snooze. What else arrives while snoozed waits under **Later** (below).
 - **⌃⌥Space** shows or hides the panel. Change it in **Settings → Panel → Keyboard**.
 - Drag the pill anywhere; it stays where you drop it (or snaps to a corner with **Snap to corners**) and remembers the spot per display setup. **Reset Position** in the right-click menu puts it back top right.
+
+## Focus: heads-down, except what you choose
+
+Every new item arrives one of three ways:
+
+| Tier | What you see | In the count |
+|---|---|---|
+| **Interrupt** | The pill springs out with the title and a glow (urgent pulses twice) | Yes |
+| **Ambient** | The count and ring change, with one soft glow | Yes |
+| **Later** | Nothing. It waits in a **Later** section at the bottom of the open panel (a faint `+3` on the pill) | No |
+
+With no focus: urgent and normal interrupt, low and done/info are ambient, the other context's items are the faint second number. **Right-click the pill** or open the **menu bar menu** → **Focus**:
+
+| Focus | Interrupts | Waits under Later |
+|---|---|---|
+| **Agents and urgent only** | Urgent items, and agent cards (keys starting `agent:`, which every Claude Code session uses) | Everything else |
+| **Urgent only** | Urgent items | Everything else |
+| **Everything later** | Nothing (only an "Always interrupt" rule) | Everything, urgent too |
+
+Each for **30 min**, **1 hr**, **2 hr** or **until tomorrow** (7:00). A moon on the pill shows a focus is on; **Focus → Off** ends it. When a focus or a snooze ends (and when the work day starts), whatever waited comes back in one quiet peek, "3 waited while you were focused", and joins the count. **Show now** in the Later section brings them back early.
+
+Two guards: an urgent item breaks through a focus unless you turn off **Settings → Alerts → Urgent items break through Focus** (for a presentation), and a sender that would interrupt more than 6 times in an hour is held to ambient for the rest of it (the open panel says so).
+
+**Settings → Alerts → Delivery** sets the tier for normal, low, done/info and other-context items, and shows a table of what each focus does. **Bypass rules** (same tab) override everything, top to bottom, first match wins: match a **key prefix** (`agent:`, `work:gh:deploy:`), a sender **agent** prefix (`orca:`, `claude-code`) or a **host** (`devbox`), and choose **Always interrupt**, **Never interrupt** (ambient at most) or **Always later**. A hidden panel stays hidden; bypass never means taking focus.
+
+### Drive it from Shortcuts or a script
+
+The app handles `needsyou://focus?level=<level>[&minutes=<n> | &until=tomorrow]`, with `level` one of `off`, `agents` (agents and urgent only), `urgent`, `later` (everything later). Anything else in the link is refused and does nothing.
+
+Any app or web page can open a `needsyou://` link, so a focus link is fenced in:
+
+- **It asks first.** Until you turn on **Settings → Alerts → Allow focus links from other apps (Shortcuts, scripts)** (off by default), the app asks "Turn on Focus … ?" before applying one. `level=off` never asks: it only makes alerts louder.
+- **It always ends.** `minutes` is capped at 720 (12 h; larger numbers are cut to 12 h), `until=tomorrow` ends at 7:00, and a link with neither lasts 12 h.
+- **Urgent always gets through.** A focus a link set never holds back urgent items, whatever the level or the "Urgent items break through Focus" setting.
+- **You can see it.** The pill shows a small link badge next to the moon, and **Focus** in the menus has **Set by a link · Turn off**.
+
+From a script or Terminal, use `open -g` so nothing comes forward:
+
+```bash
+open -g 'needsyou://focus?level=urgent&minutes=60'
+open -g 'needsyou://focus?level=off'
+```
+
+To follow a macOS Focus, first turn on **Allow focus links from other apps** (otherwise each automation run asks), then make two personal automations in the **Shortcuts** app → **Automation** → **+**:
+
+1. **When "Work" Focus turns on** (any Focus you like) → **Run Immediately** → action **Run Shell Script**: `open -g 'needsyou://focus?level=agents'`.
+2. **When "Work" Focus turns off** → **Run Shell Script**: `open -g 'needsyou://focus?level=off'`.
+
+(The **Open URLs** action works too, but it may bring Needs You forward for a moment; the app hands focus straight back. `Run Shell Script` with `open -g` doesn't.)
 
 ## Make it yours
 
@@ -54,6 +104,12 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | The global shortcut | Panel → Keyboard | ⌃⌥Space, or record your own (it must use ⌃, ⌥ or ⌘) |
 | How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
 | How loud normal and low items are | Alerts → **Normal and low items** | Normal, Off, Subtle, Bright |
+| How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
+| Urgent items break through Focus | Alerts → Delivery | On, Off |
+| Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
+| Bypass rules | Alerts → **Bypass rules** | None; up to 50 |
+| Where new items spring out | Alerts → On the work screen | The display you're working on, The pill's display |
+| Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 | The shortcut opens the top card's Terminal / VS Code link | Integrations | Off, On |
 
 The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.

@@ -65,6 +65,8 @@ final class PanelController {
     private var isDragging = false
     private var lastDisplay: PanelDisplay?
     private var syncScheduled = false
+    /// The work display the current arrival peek is on (nil: the pill's home).
+    private var peekScreenID: String?
 
     init(model: AppModel) {
         self.model = model
@@ -136,10 +138,23 @@ final class PanelController {
         }
 
         let display = model.display
+        // Arrival peeks spring out on the display you're working on (Settings → Alerts),
+        // then the pill goes back home. Chosen once per peek.
+        if display.isPeek {
+            if !(lastDisplay?.isPeek ?? false) {
+                peekScreenID = model.settings.previewDisplay == .work
+                    ? WorkDisplayProbe.screen().map { PanelGeometry.screenID($0.frame) } : nil
+            }
+        } else {
+            peekScreenID = nil
+        }
         let size = panelSize(for: display)
         let target = frame(forPanelSize: size)
         let changedShape = display != lastDisplay
         lastDisplay = display
+        let screenFrames = NSScreen.screens.map(\.frame)
+        let changesScreen = PanelGeometry.bestScreen(for: panel.frame, screens: screenFrames)
+            != PanelGeometry.bestScreen(for: target, screens: screenFrames)
 
         if !panel.isVisible {
             panel.setFrame(target, display: false)
@@ -147,8 +162,8 @@ final class PanelController {
             panel.orderFrontRegardless()
             animated ? fade(to: alpha(for: display)) : (panel.alphaValue = alpha(for: display))
         } else if !isDragging, panel.frame != target {
-            if animated, changedShape, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-                // Reduce Motion: fade between shapes instead of springing.
+            if animated, changedShape, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || changesScreen {
+                // Reduce Motion, or a jump to another display: fade between shapes instead of springing.
                 panel.alphaValue = 0
                 panel.setFrame(target, display: true)
                 fade(to: alpha(for: display))
@@ -246,11 +261,15 @@ final class PanelController {
             // PLAN.md: a faint "Nothing needs <you>" pill; on hover "all clear" and the last check.
             let text = (model.hovering ? model.idleHoverLine : model.idleRestLine) as NSString
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
+                + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot
+                + (model.focusSetByLink ? m.idleFont + 4 : 0)
             return CGSize(width: m.idleWidth(textWidth: width), height: model.hovering ? m.idleHoverHeight : m.idleHeight)
         case .waiting:
+            let later = model.laterCount
             let digits = String(model.count).count + (model.otherCount > 0 ? String(model.otherCount).count + 2 : 0)
+                + (later > 0 ? String(later).count + 1 : 0) + (model.isFocused ? 2 : 0) + (model.focusSetByLink ? 2 : 0)
             return CGSize(width: m.countWidth(digits: digits), height: m.countHeight)
-        case .preview:
+        case .preview, .digest:
             return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:
             let list = ListHeightPolicy.height(content: model.expandedContentHeight, cardBottoms: model.cardBottoms,
@@ -274,7 +293,7 @@ final class PanelController {
         switch display {
         case .idle: return model.hovering ? 11 : 9
         case .waiting: return 11
-        case .preview: return 14
+        case .preview, .digest: return 14
         case .expanded: return 14
         }
     }
@@ -284,7 +303,7 @@ final class PanelController {
         case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
         case .waiting:
             return CGFloat(PanelOpacity.alpha(base: model.hovering ? 1.0 : 0.85, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
-        case .preview, .expanded:
+        case .preview, .digest, .expanded:
             // Settings → Panel → Opacity; hovering always shows it at full strength.
             return CGFloat(PanelOpacity.alpha(base: 1.0, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
         }
@@ -322,7 +341,8 @@ final class PanelController {
     /// The panel frame for `size`: anchored at the placement's corner (so it grows away
     /// from the nearest screen edges) and clamped to the screen. Default: top right.
     private func frame(forPanelSize size: CGSize) -> CGRect {
-        guard let screen = currentScreen() else { return CGRect(origin: .zero, size: size) }
+        let peek = peekScreenID.flatMap { id in NSScreen.screens.first { PanelGeometry.screenID($0.frame) == id } }
+        guard let screen = peek ?? currentScreen() else { return CGRect(origin: .zero, size: size) }
         let placement = placement ?? PanelPlacement(corner: .topRight, screenID: PanelGeometry.screenID(screen.frame))
         return PanelGeometry.frame(size: size, placement: placement, in: bounds(of: screen), margin: Self.edgeMargin)
     }
@@ -398,6 +418,7 @@ final class PanelController {
         }
         snooze.submenu = sub
         menu.addItem(snooze)
+        menu.addItem(FocusMenu.item(model: model))
         let hide = ClosureMenuItem(title: "Hide Floating Panel") { [weak model] in model?.hidePanel() }
         if !model.canHidePanel {
             // The menu bar icon is off; hiding both would leave no way back.

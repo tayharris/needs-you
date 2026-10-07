@@ -35,6 +35,7 @@ final class AppSettings: ObservableObject {
         static let snapToCorners = "snapToCorners"
         static let hotKey = "hotKey"
         static let hotKeyOpensTopLink = "hotKeyOpensTopLink"
+        static let allowFocusLinks = "allowFocusLinks"
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -52,6 +53,36 @@ final class AppSettings: ObservableObject {
     /// original look). Each change writes only the keys that changed.
     @Published var ui: UIPrefs {
         didSet { if ui != oldValue { ui.save(to: defaults, previous: oldValue) } }
+    }
+
+    /// Settings → Alerts → Delivery: the tier per priority and kind with no focus, and
+    /// whether urgent breaks through a focus (DeliveryDefaults keys).
+    @Published var delivery: DeliveryDefaults {
+        didSet { if delivery != oldValue { delivery.save(to: defaults, previous: oldValue) } }
+    }
+    /// Settings → Alerts → Bypass rules, JSON under `bypassRules` (at most 50).
+    @Published var bypassRules: RuleBook {
+        didSet {
+            guard bypassRules != oldValue, let data = bypassRules.encoded() else { return }
+            defaults.set(data, forKey: RuleBook.defaultsKey)
+        }
+    }
+    /// Where the arrival preview springs out: the display you're working on (default) or the pill's.
+    @Published var previewDisplay: PreviewDisplay {
+        didSet { defaults.set(previewDisplay.rawValue, forKey: PreviewDisplay.defaultsKey) }
+    }
+    /// A click-through glow around the work display's edge for urgent arrivals. Default off.
+    @Published var edgeGlow: EdgeGlowMode {
+        didSet { defaults.set(edgeGlow.rawValue, forKey: EdgeGlowMode.defaultsKey) }
+    }
+    /// needsyou://focus links from other apps (Shortcuts, scripts) apply without asking.
+    /// Default off: any web page can open a needsyou:// link, so the app asks first.
+    @Published var allowFocusLinks: Bool {
+        didSet { defaults.set(allowFocusLinks, forKey: Key.allowFocusLinks) }
+    }
+    /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
+    @Published var focus: FocusState {
+        didSet { if focus != oldValue { focus.save(to: defaults) } }
     }
 
     /// The app's defaults, or the NEEDS_YOU_DEFAULTS_SUITE suite (test instances).
@@ -132,6 +163,7 @@ final class AppSettings: ObservableObject {
             Key.urgentShowsHiddenPanel: false,
             Key.panelHidden: false,
             Key.snapToCorners: false,
+            Key.allowFocusLinks: false,
         ])
         runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
@@ -148,6 +180,12 @@ final class AppSettings: ObservableObject {
         tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
         snapToCorners = defaults.bool(forKey: Key.snapToCorners)
         ui = UIPrefs.load(from: defaults)
+        delivery = DeliveryDefaults.load(from: defaults)
+        bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))
+        focus = FocusState.load(from: defaults)
+        allowFocusLinks = defaults.bool(forKey: Key.allowFocusLinks)
+        previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard
+        edgeGlow = defaults.string(forKey: EdgeGlowMode.defaultsKey).flatMap(EdgeGlowMode.init(rawValue:)) ?? .standard
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))
         hotKeyOpensTopLink = defaults.bool(forKey: Key.hotKeyOpensTopLink)
         // Stored prefs that hide both the icon and the panel: keep the icon.

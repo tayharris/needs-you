@@ -149,6 +149,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         snooze.submenu = sub
         menu.addItem(snooze)
+        menu.addItem(FocusMenu.item(model: model))
         menu.addItem(ClosureMenuItem(title: "Reset Position") { [weak model] in model?.resetPosition() })
 
         menu.addItem(.separator())
