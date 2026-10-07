@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- Codex CLI hooks: **`/clear` in one Codex session no longer clears the cards of your other Codex sessions.** Codex 0.159+ runs the hooks of all its sessions from one shared background app-server, so the hook now resolves only the clearing session's own card; the old conversation's card clears when Codex ends it, about a minute later. Found by driving a real Codex TUI.
+
 ## [0.1.3] - 2026-10-07
 
 ### Upgrade note

@@ -888,7 +888,13 @@ case "$mode" in
         # (the old session id after /clear, a full context before compaction)
         # no longer apply. Find them by the lease's process.
         lease
-        if [ -n "$lease_pid" ] && [ -d "$state_dir" ]; then
+        # Codex (0.159+) runs hooks from one app-server daemon shared by every Codex
+        # session of the user, so its pid names no single session: resolve only this
+        # session's own card (compaction keeps the id). After /clear the old session's
+        # SessionEnd, which the daemon sends when it unloads the thread, clears its card.
+        if [ -n "$lease_pid" ] && ps -o args= -p "$lease_pid" 2>/dev/null | grep -q ' app-server\( \|$\)'; then
+          resolve_marker "$marker"
+        elif [ -n "$lease_pid" ] && [ -d "$state_dir" ]; then
           for f in "$state_dir"/*; do
             [ -f "$f" ] || continue
             if [ "$(sed -n 's/^pid=//p' "$f" 2>/dev/null)" = "$lease_pid" ] &&

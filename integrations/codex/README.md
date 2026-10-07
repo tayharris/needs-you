@@ -42,7 +42,7 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 | `PermissionRequest` | `notify codex` | `needs-you add`: **Codex wants to run make**, **Codex wants to edit config.py** (`apply_patch`; "2 files" for more), **Codex needs permission for linear create_issue** (MCP) |
 | `Stop` | `notify codex` | `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval cards |
 | `UserPromptSubmit`, `PostToolUse`, `Interrupt` | `resolve codex` | `needs-you resolve`, only if this session posted something |
-| `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before |
+| `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before. Codex 0.159+ runs every session's hooks from one shared app-server daemon, so there it resolves only this session's card; after `/clear` the old session's card clears with its `SessionEnd`, which the daemon sends when it unloads the thread (about a minute later) |
 | `SessionEnd` | `end codex` | resolves the session's card |
 
 - **Key:** `agent:<short-hostname>:<id>`, `<id>` being `$ORCA_TERMINAL_HANDLE` or the Codex `session_id`. One card per session, updated in place.
