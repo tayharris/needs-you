@@ -92,6 +92,14 @@ struct CardView: View {
             }
         )
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+        // Opened at this card (the clicked preview, or the newest arrival): a brief outline.
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Theme.color(item.priority), lineWidth: 1.5)
+                .opacity(model.highlightedItem == item.id ? 0.9 : 0)
+                .animation(.easeOut(duration: 0.6), value: model.highlightedItem)
+        )
+        .id(item.id)
     }
 }
 

@@ -117,3 +117,24 @@ public enum MenuItemAction: Equatable, Sendable {
         return .showPanel
     }
 }
+
+/// The arrival preview's one-click button: the item's first link that passes the allow-list
+/// (the same one the menu bar opens). Clicking it opens the link and marks the item done,
+/// so a "VS Code needs you" alert is handled without opening the panel. Nil: no button,
+/// and clicking the preview opens the panel at that card.
+public enum PreviewLink {
+    public static func primary(_ item: Item) -> ItemLink? {
+        item.links.first { LinkPolicy.openableURL($0.url) != nil }
+    }
+}
+
+/// Which card the panel scrolls to and highlights when it opens: the clicked preview's
+/// item, else (a click on the pill) the newest card that arrived since the panel was last
+/// open, so a new alert is never left below the fold. Nil leaves the list at the top.
+public enum ExpandFocus {
+    public static func target(clicked: String?, items: [Item], lastOpenedAt: Date?) -> String? {
+        if let clicked { return items.contains { $0.id == clicked } ? clicked : nil }
+        guard let lastOpenedAt else { return nil }
+        return items.filter { $0.createdAt > lastOpenedAt }.max { $0.createdAt < $1.createdAt }?.id
+    }
+}

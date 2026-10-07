@@ -120,7 +120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             source: ItemSource(host: "ci", agent: "deploy-check"), createdAt: Date())
                 if let announcer = model.announcer { announcer(model, [item]) } else { model.requestPulse(times: 2, priority: .urgent) }
             }),
+            ("6b-opened-at-card", { model in
+                // Clicking a preview opens the panel scrolled to that card, outlined.
+                model.previewItem = nil
+                model.expand(byUser: true, focusing: model.needsItems.last?.id)
+            }),
             ("7-summary", { [weak self] model in
+                model.collapse()
                 model.previewItem = nil
                 self?.phase3?.showSummaryNow()
             }),

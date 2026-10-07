@@ -434,9 +434,14 @@ struct SettingsView: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Machines that only send alerts (servers, CI, agents) don't need this app, just the `needs-you` command. A link from Connect a machine installs it.")
-                Link("What the words mean", destination: SettingsLinks.wordsGuide())
+                    .foregroundStyle(.secondary)
+                // Its own colour (not the footer's grey) and an arrow, so it reads as a link.
+                Link(destination: SettingsLinks.wordsGuide()) {
+                    Label("What the words mean", systemImage: "arrow.up.right.square")
+                }
+                .foregroundStyle(Color.accentColor)
             }
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption)
         }
     }
 

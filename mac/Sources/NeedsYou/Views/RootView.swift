@@ -41,7 +41,8 @@ struct RootView: View {
         case .waiting:
             CountPill(model: model)
         case .preview(let item):
-            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel, metrics: model.metrics)
+            PreviewPill(item: item, now: model.now, needsLabel: model.needsLabel, metrics: model.metrics,
+                        link: PreviewLink.primary(item)) { link in model.openAndResolve(item, link: link) }
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 3, coordinateSpace: .global)
@@ -51,7 +52,7 @@ struct RootView: View {
                 .onTapGesture {
                     // An urgent item from the other context opens that side.
                     if item.context != model.context { model.setContext(item.context) }
-                    model.expand(byUser: true)
+                    model.expand(byUser: true, focusing: item.id)
                 }
         case .digest(let digest):
             DigestPill(digest: digest, metrics: model.metrics)
@@ -196,12 +197,15 @@ struct IdlePill: View {
     }
 }
 
-/// Phase 3: the springy new-item preview (title and source).
+/// Phase 3: the springy new-item preview (title and source). With an allowed link, a
+/// button opens it and marks the item done; clicking elsewhere opens the panel at the card.
 struct PreviewPill: View {
     let item: Item
     let now: Date
     let needsLabel: String
     let metrics: PanelMetrics
+    var link: ItemLink?
+    var onOpen: (ItemLink) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -217,6 +221,19 @@ struct PreviewPill: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if let link {
+                Button { onOpen(link) } label: {
+                    HStack(spacing: 3) {
+                        Text(LinkRowPolicy.label(link, maxLength: 14)).lineLimit(1)
+                        Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
+                    }
+                    .font(.system(size: metrics.linkFont, weight: .medium))
+                    .linkChip(horizontal: 8, vertical: 3)
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help("Open \(link.url) and mark this done")
+            }
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

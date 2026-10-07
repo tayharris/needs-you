@@ -17,6 +17,8 @@ final class MenuBarTests: XCTestCase {
         ("testStatusLine", testStatusLine),
         ("testItemTitlesAndTopItems", testItemTitlesAndTopItems),
         ("testMenuItemAction", testMenuItemAction),
+        ("testPreviewLink", testPreviewLink),
+        ("testExpandFocus", testExpandFocus),
         ("testPanelMenuCheckmark", testPanelMenuCheckmark),
     ]
 
@@ -106,6 +108,31 @@ final class MenuBarTests: XCTestCase {
         XCTAssertEqual(MenuItemAction.forItem(item("b", .urgent, links: [slack, web])), .open(URL(string: "slack://channel?id=1")!))
         XCTAssertEqual(MenuItemAction.forItem(item("c", .urgent, links: [blocked])), .showPanel)
         XCTAssertEqual(MenuItemAction.forItem(item("d", .urgent)), .showPanel)
+    }
+
+    func testPreviewLink() {
+        let blocked = ItemLink(label: "x", url: "javascript:alert(1)")
+        let editor = ItemLink(label: "VS Code", url: "vscode://file/home/me/app/main.py:12")
+        let web = ItemLink(label: "pr", url: "https://github.com/o/r/pull/1")
+        XCTAssertEqual(PreviewLink.primary(item("a", .normal, links: [blocked, editor, web])), editor)
+        XCTAssertEqual(PreviewLink.primary(item("b", .normal, links: [web, editor])), web)
+        XCTAssertNil(PreviewLink.primary(item("c", .normal, links: [blocked])))
+        XCTAssertNil(PreviewLink.primary(item("d", .normal)))
+    }
+
+    func testExpandFocus() {
+        let old = Item(id: "old", key: "old", priority: .urgent, title: "t", createdAt: now.addingTimeInterval(-600))
+        let new1 = Item(id: "new1", key: "new1", priority: .low, title: "t", createdAt: now.addingTimeInterval(-60))
+        let new2 = Item(id: "new2", key: "new2", priority: .normal, title: "t", createdAt: now.addingTimeInterval(-30))
+        let items = [old, new2, new1]
+        let opened = now.addingTimeInterval(-300)
+        // The clicked preview wins, if it's still in the list.
+        XCTAssertEqual(ExpandFocus.target(clicked: "old", items: items, lastOpenedAt: opened), "old")
+        XCTAssertNil(ExpandFocus.target(clicked: "gone", items: items, lastOpenedAt: opened))
+        // A pill click goes to the newest arrival since the panel was last open.
+        XCTAssertEqual(ExpandFocus.target(clicked: nil, items: items, lastOpenedAt: opened), "new2")
+        XCTAssertNil(ExpandFocus.target(clicked: nil, items: items, lastOpenedAt: now))
+        XCTAssertNil(ExpandFocus.target(clicked: nil, items: items, lastOpenedAt: nil))
     }
 
     func testPanelMenuCheckmark() {
