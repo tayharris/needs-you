@@ -49,6 +49,34 @@ Needs a paid Apple Developer account (decision in [distribution.md](distribution
 
 Steps: `bundle.sh` gains an optional `NEEDS_YOU_SIGN_IDENTITY` (default stays ad-hoc `-`) and signs with `--options runtime --timestamp` plus an entitlements file; then `xcrun notarytool submit --wait`, `xcrun stapler staple`, `spctl -a -vv` as a check. Use an `environment: release` with required reviewers so secrets are only available to tag builds.
 
+## Self-hosted runners
+
+GitHub-hosted jobs stop when the account's Actions billing or spending limit is a problem; self-hosted runners aren't billed by GitHub. Each job reads its runner from a repo variable (Settings → Secrets and variables → Actions → Variables), so switching is a settings change, not a code change. Unset variables mean GitHub's images, as before.
+
+| Variable | Jobs | Self-hosted value |
+|---|---|---|
+| `CI_LINUX_RUNNERS` | `python-ubuntu` (a JSON list: one job per entry) | `[["self-hosted","linux"]]` |
+| `CI_LINUX_RUNNER` | `shellcheck` | `["self-hosted","linux"]` |
+| `CI_MAC_RUNNER` | `python-macos-39`, `mac` | `["self-hosted","macOS"]` |
+| `RELEASE_MAC_RUNNER` | the release build | `["self-hosted","macOS"]` (a separate decision from CI) |
+
+```bash
+gh variable set CI_LINUX_RUNNERS --body '[["self-hosted","linux"]]'
+gh variable set CI_LINUX_RUNNER --body '["self-hosted","linux"]'
+gh variable set CI_MAC_RUNNER --body '["self-hosted","macOS"]'
+gh variable delete CI_MAC_RUNNER     # back to GitHub's macOS image
+```
+
+Runner hosts need what GitHub's images have: `/usr/bin/python3` (3.9 on the Mac, for `python-macos-39`), `shellcheck` on the runner's `PATH` (set it in the runner's `.env`), `git`, and on the Mac the Command Line Tools (`swift`). A self-hosted runner runs every job as the user it runs as, so a job can read that user's files (`~/.config/gh`, `~/.ssh`, `~/.config/needs-you`). Run it as a **dedicated user account** with nothing else in its home, never as root and never as your own user. Pull requests from forks always use GitHub's images (the `runs-on` expressions check `head.repo.fork`). Setting one up on a Linux box (needs sudo once):
+
+```bash
+sudo useradd -m -s /bin/bash ghrunner && sudo loginctl enable-linger ghrunner
+sudo -iu ghrunner bash -c 'mkdir actions-runner && cd actions-runner && curl -fsSLO https://github.com/actions/runner/releases/download/v<V>/actions-runner-linux-x64-<V>.tar.gz && tar xzf actions-runner-linux-x64-<V>.tar.gz'
+# then ./config.sh with a registration token, and run.sh as a systemd user service of ghrunner
+```
+
+**Before the repo goes public**, delete these variables or move the runners to a runner group limited to this repo with fork-PR workflows requiring approval: on a public repo, anyone's pull request could run code on a self-hosted runner.
+
 ## Versioning
 
 - One `VERSION` file at the repo root, semver. The hub and CLI keep their own `VERSION = "..."` line (they must stay single files that work without the repo); `tests/test_release.py` and `scripts/build-release.sh` fail unless all three agree, so a release bump edits three lines in one commit. `bundle.sh` reads `VERSION`.

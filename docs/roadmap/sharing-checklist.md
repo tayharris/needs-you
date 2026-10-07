@@ -37,6 +37,7 @@ Suggestion: **Apache-2.0**. needs-you is a tool people run on their own machines
 
 ## Before the first public release
 
+- [ ] Self-hosted runners: delete the `CI_*_RUNNER(S)`/`RELEASE_MAC_RUNNER` variables or lock the runners down first ([ci-cd.md](ci-cd.md#self-hosted-runners)).
 - [ ] Decisions 2–4 above.
 - [ ] Run [fresh-user-test-plan.md](fresh-user-test-plan.md) on a second Mac and fix what it finds.
 - [ ] Site deployed ([site-deploy.md](site-deploy.md)), or the site's links point at the repo.

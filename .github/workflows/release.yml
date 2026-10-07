@@ -28,7 +28,9 @@ jobs:
 
   release:
     needs: test
-    runs-on: macos-latest
+    # Repo variable RELEASE_MAC_RUNNER (JSON runs-on value) builds releases on a self-hosted Mac.
+    # Separate from CI_MAC_RUNNER on purpose: moving release builds is its own decision.
+    runs-on: ${{ fromJSON(vars.RELEASE_MAC_RUNNER || '"macos-latest"') }}
     permissions:
       contents: write
       # Build provenance (security audit #17): the OIDC token for Sigstore and the
