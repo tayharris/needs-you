@@ -33,6 +33,7 @@
         <a class="nav-wide" href="#inside">Under the hood</a>
         <a class="nav-wide" href="#works">Works with</a>
         <a href="#install">Install</a>
+        <a href="guides/index.html">Guides</a>
         <a href="#source">Source</a>
       </nav>
     </div>
@@ -189,7 +190,7 @@
           </tbody>
         </table>
       </div>
-      <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a data-repo="/blob/main/docs/guides/concepts.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/concepts.md">Words</a> and <a data-repo="/blob/main/docs/HUB.md#resource-use" href="https://github.com/tayharris/needs-you/blob/main/docs/HUB.md#resource-use">Server hubs</a>.</p>
+      <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a href="guides/concepts.html">Words</a> and <a href="guides/hub.html#resource-use">Server hubs</a>.</p>
     </section>
 
     <section id="works" aria-labelledby="works-title">
@@ -201,27 +202,26 @@
         <div class="works-group">
           <h3 class="works-h3">Supported</h3>
           <ul class="works-list">
-            <li><a data-repo="/blob/main/docs/guides/claude-code.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/claude-code.md">Claude Code</a> <span>hooks + skill</span></li>
-            <li><a data-repo="/blob/main/docs/guides/orca.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">Orca</a> <span>automation prompt blocks</span></li>
+            <li><a href="guides/claude-code.html">Claude Code</a> <span>hooks + skill</span></li>
+            <li><a href="guides/codex.html">Codex CLI</a> <span>hooks</span></li>
+            <li><a href="guides/gemini.html">Gemini CLI</a> <span>hooks</span></li>
+            <li><a href="guides/opencode.html">opencode</a> <span>plugin</span></li>
+            <li><a href="guides/orca.html">Orca</a> <span>automation prompt blocks</span></li>
           </ul>
         </div>
         <div class="works-group">
           <h3 class="works-h3">Coming soon</h3>
           <ul class="works-list works-soon">
-            <li>Codex</li>
             <li>Kimi</li>
+            <li>GitHub Copilot CLI</li>
             <li>Grok</li>
-            <li>Gemini CLI</li>
             <li>Cursor</li>
-            <li>GitHub Copilot</li>
             <li>Aider</li>
             <li>Cline</li>
-            <li>Continue</li>
-            <li>opencode</li>
           </ul>
         </div>
       </div>
-      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a data-repo="/blob/main/docs/guides/add-a-sender.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/add-a-sender.md">Add a sender</a>.</p>
+      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>.</p>
     </section>
 
     <section id="install" aria-labelledby="install-title">
@@ -231,6 +231,7 @@
       <p class="note">The app is ad-hoc signed, not notarized, so macOS blocks the first launch. On macOS 15 and later: double-click it, then System Settings &rarr; Privacy &amp; Security &rarr; <strong>Open Anyway</strong>. On macOS 14: Right-click the app &rarr; <strong>Open</strong> &rarr; <strong>Open</strong>.</p>
       <p>A faint pill appears at the top right, and your Mac is now the hub. To connect a sender (a server, a CI runner, or Claude Code on this Mac): right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>. Paste the <strong>Agent prompt</strong> into the machine's agent, or copy the <strong>Shell one-liner</strong> and run it there. Either way the machine gets the <code>needs-you</code> command and posts a test card. The one-liner looks like this (the Claude Code options are optional):</p>
       <div class="code"><pre><code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts</code></pre></div>
+      <p class="install-guides">Step by step: the <a href="guides/quickstart.html">Quickstart</a>, the <a href="guides/testers.html">install guide for testers</a> (first run, what to try, reporting problems), and <a href="guides/tailscale.html">Tailscale</a> for servers and other machines. <a href="guides/index.html">All guides</a>.</p>
     </section>
 
     <section id="source" aria-labelledby="source-title">
