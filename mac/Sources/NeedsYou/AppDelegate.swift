@@ -41,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
         model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .hubs) }
+        // Setup cards: a click on a card's button (Settings may activate the app then).
+        model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
+        model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
         if let phase3 {
             settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
         }
@@ -136,6 +139,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .toggleVisibility:
             // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
             if !model.toggleVisibility() { NSSound.beep() }
+        }
+    }
+
+    /// A setup card's button, from a click in the panel. Open Settings is a user click, so
+    /// it may activate the app. Copy agent prompt makes a sender invite through the normal
+    /// invite flow and puts its prompt on the pasteboard; the card only says it was copied,
+    /// never the link or the code.
+    private func runSetup(_ action: SetupAction, tip: SetupTip) {
+        switch action {
+        case .openSettings(let page):
+            settingsWindow.show(tab: SettingsTab(setupPage: page))
+        case .copyAgentPrompt:
+            model.setupNotice = SetupNotice(tip: tip, text: "Creating an invite…", failed: false)
+            connect.createInvite(name: SetupChecklist.inviteName, role: .sender, uses: SetupChecklist.inviteUses,
+                                 ttlHours: SetupChecklist.inviteHours) { [weak self] invite in
+                guard let self else { return }
+                if let invite {
+                    self.connect.copy(invite.agentPrompt)
+                    self.model.setupNotice = SetupNotice(
+                        tip: tip,
+                        text: "Agent prompt copied. Paste it into Claude Code; it works once, for \(SetupChecklist.inviteHours) hours.",
+                        failed: false)
+                } else {
+                    var reason = "Couldn't create an invite."
+                    if case .failure(let message)? = self.connect.inviteStatus { reason = message }
+                    self.model.setupNotice = SetupNotice(tip: tip, text: reason, failed: true)
+                }
+            }
         }
     }
 

@@ -26,7 +26,12 @@ final class LocalHubController: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var state: State = .off
+    @Published private(set) var state: State = .off {
+        didSet {
+            // Setup tips need to know whether other machines can reach this hub.
+            if case .running(let url) = state { model.localHubPublicURL = url } else { model.localHubPublicURL = nil }
+        }
+    }
 
     private let settings: AppSettings
     private let model: AppModel

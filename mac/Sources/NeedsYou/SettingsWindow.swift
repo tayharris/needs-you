@@ -168,6 +168,7 @@ struct SettingsView: View {
                 lookSection
                 visibilitySection
                 OpenPanelSettingsSection(settings: settings)
+                SetupTipsSettingsSection(settings: settings)
                 keyboardSection
                 extra[.panel]
             }

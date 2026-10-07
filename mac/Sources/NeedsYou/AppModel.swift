@@ -121,9 +121,31 @@ final class AppModel: ObservableObject {
 
     /// Set by LocalHubController when the bundled hub can't run (no Python, port taken).
     @Published var localHubIssue: String?
+    /// Set by LocalHubController: the URL other machines use while the hub on this Mac runs.
+    @Published var localHubPublicURL: String? {
+        didSet { if localHubPublicURL != oldValue { recordSetupProgress() } }
+    }
+
+    // MARK: Setup tips (SetupChecklist): local cards, never sent to a hub, never counted.
+
+    /// Set by the app delegate: runs a setup card's button (Settings, the agent prompt).
+    var setupActionHandler: ((SetupAction, SetupTip) -> Void)?
+    /// Set by the app delegate: asks the owner hub for its token list once, so a hub that
+    /// already has senders (but no open items) doesn't get the "connect" tip.
+    var setupProbeHandler: (() -> Void)?
+    private var setupProbed = false
+    /// Something arrived from a hub (or the hub lists another token) since launch.
+    @Published private(set) var senderObserved = false
+    @Published private(set) var claudeCodeInstalled = false
+    @Published private(set) var claudeHooksInstalled = false
+    /// A line under a setup card after its button ran ("Agent prompt copied…"). Never holds
+    /// the invite link or code.
+    @Published var setupNotice: SetupNotice?
+    private let localHost: String
 
     init(settings: AppSettings) {
         self.settings = settings
+        localHost = LocalHubController.localHostName()
         visibility = settings.panelHidden ? .hidden : .shown
     }
 
@@ -150,6 +172,87 @@ final class AppModel: ObservableObject {
         if let previewItem { return .preview(previewItem) }
         if let digest { return .digest(digest) }
         return count > 0 || otherCount > 0 || laterCount > 0 ? .waiting : .idle
+    }
+
+    // MARK: Setup tips
+
+    /// What the app knows about its own setup, for SetupChecklist.
+    var setupState: SetupState {
+        var s = SetupState()
+        s.enabled = settings.showSetupTips
+        s.isDemo = isDemo
+        s.hasHub = feedHubCount > 0
+        s.hubReachable = lastCheck != nil
+        if !settings.runLocalHub || isDemo {
+            s.localHub = .off
+        } else if let url = localHubPublicURL {
+            s.localHub = .running(loopbackOnly: SetupChecklist.isLoopbackOnly(publicURL: url))
+        } else {
+            s.localHub = .notReady
+        }
+        s.loopbackForced = LocalHub.loopbackOnly
+        s.canInvite = settings.hasOwnerHub
+        s.senderSeen = senderObserved || settings.setupTipsDone.contains(SetupTip.connectSender.rawValue)
+        s.hasOtherMachines = !settings.hubURLs.isEmpty
+            || SetupChecklist.hasOtherHosts(Array(store.items.values), localHost: localHost)
+        s.claudeCodeInstalled = claudeCodeInstalled
+        s.claudeHooksInstalled = claudeHooksInstalled
+        s.closed = settings.setupTipsDone.union(settings.setupTipsDismissed)
+        s.context = context
+        s.now = now
+        return s
+    }
+
+    /// The setup cards to show, in order. Not in the store, the count or the menu bar.
+    var setupCards: [SetupCard] { SetupChecklist.cards(state: setupState) }
+
+    func setupCard(for item: Item) -> SetupCard? {
+        guard let tip = SetupChecklist.tip(forItemID: item.id) else { return nil }
+        return setupCards.first { $0.tip == tip }
+    }
+
+    /// Tips whose condition is met are done for good. Also asks the owner hub once for its
+    /// tokens while the "connect" tip is up.
+    func recordSetupProgress() {
+        let state = setupState
+        let done = Set(SetupChecklist.satisfied(state).map { $0.rawValue })
+        if !done.isSubset(of: settings.setupTipsDone) {
+            settings.setupTipsDone.formUnion(done)
+        }
+        if !setupProbed, SetupChecklist.pending(state).contains(.connectSender) {
+            setupProbed = true
+            setupProbeHandler?()
+        }
+    }
+
+    /// The owner hub's token list (Settings → Access, or the one-off probe): any token
+    /// besides this Mac's own means something has connected.
+    func noteAccessTokens(_ tokens: [TokenSummary]) {
+        guard !isDemo, !senderObserved, tokens.contains(where: { !$0.current }) else { return }
+        senderObserved = true
+        recordSetupProgress()
+    }
+
+    /// Re-reads ~/.claude (on launch, expand and wake). Small and read-only.
+    func refreshSetupFacts() {
+        guard settings.showSetupTips, !isDemo else { return }
+        let facts = SetupChecklist.claudeCode(home: FileManager.default.homeDirectoryForCurrentUser)
+        if facts.installed != claudeCodeInstalled { claudeCodeInstalled = facts.installed }
+        if facts.hooks != claudeHooksInstalled { claudeHooksInstalled = facts.hooks }
+        recordSetupProgress()
+    }
+
+    /// A setup card's button. Opening Settings activates the app, so this only ever runs
+    /// from a click on the card.
+    func runSetup(_ action: SetupAction, for tip: SetupTip) {
+        setupNotice = nil
+        setupActionHandler?(action, tip)
+    }
+
+    /// Dismiss: the tip doesn't come back (Settings → Panel → Show dismissed tips again).
+    func dismissSetupTip(_ tip: SetupTip) {
+        settings.setupTipsDismissed.insert(tip.rawValue)
+        if setupNotice?.tip == tip { setupNotice = nil }
     }
 
     // MARK: Delivery tiers (docs/roadmap/focus-tiers.md)
@@ -200,6 +303,8 @@ final class AppModel: ObservableObject {
     var idleRestLine: String {
         if !isConfigured { return localHubIssue != nil ? "Hub can't start" : "Set up Needs You" }
         if lastError != nil { return "Can't reach hub" }
+        let tips = setupCards.count
+        if tips > 0 { return "Nothing \(needsLabel) · \(tips) setup tip\(tips == 1 ? "" : "s")" }
         return "Nothing \(needsLabel)"
     }
 
@@ -225,6 +330,7 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated { self?.tick() }
         }
         restartFeed()
+        refreshSetupFacts()
         if settings.startExpanded { expand() }
     }
 
@@ -295,6 +401,7 @@ final class AppModel: ObservableObject {
     }
 
     func handleWake() {
+        refreshSetupFacts()
         planner.forceFull()
         tick()
         pollNow()
@@ -329,6 +436,8 @@ final class AppModel: ObservableObject {
                 handleAnnouncements(result.announce)
             }
             hasSynced = true
+            if !isDemo, !senderObserved, !updated.items.isEmpty { senderObserved = true }
+            recordSetupProgress()
             if isExpanded { markVisibleSeen() }
         } catch {
             guard generation == feedGeneration else { return }
@@ -523,6 +632,7 @@ final class AppModel: ObservableObject {
         digest = nil
         if visibility.isHidden(at: Date()) && !peeking { visibility = .shown }
         isExpanded = true
+        if byUser { refreshSetupFacts() }
         markVisibleSeen()
     }
 
@@ -726,6 +836,13 @@ final class AppModel: ObservableObject {
     }
 
     func openSettings() { openSettingsHandler?() }
+}
+
+/// The line under a setup card after its button ran.
+struct SetupNotice: Equatable {
+    let tip: SetupTip
+    let text: String
+    let failed: Bool
 }
 
 enum DragPhase {
