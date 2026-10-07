@@ -221,7 +221,13 @@ def installed_paths() -> Dict[str, str]:
         "needs-you-hook.sh": _home(".claude", "hooks", "needs-you-hook.sh"),
         "SKILL.md": _home(".claude", "skills", "needs-you", "SKILL.md"),
         "orca-snippet.md": os.path.join(conf, "orca-snippet.md"),
+        "needs-you-opencode.js": os.path.join(opencode_dir(), "plugins", "needs-you.js"),
     }
+
+
+def opencode_dir() -> str:
+    base = os.environ.get("XDG_CONFIG_HOME") or _home(".config")
+    return os.path.join(base, "opencode")
 
 
 def cli_path() -> str:
@@ -945,7 +951,42 @@ RELEASE_PATHS = {
     "hooks.json": "integrations/claude-code/hooks.json",
     "SKILL.md": "integrations/claude-code/skill/needs-you/SKILL.md",
     "orca-snippet.md": "integrations/orca/snippet.md",
+    "install-codex-hooks.sh": "integrations/codex/install-codex-hooks.sh",
+    "codex-hooks.json": "integrations/codex/codex-hooks.json",
+    "install-gemini-hooks.sh": "integrations/gemini/install-gemini-hooks.sh",
+    "gemini-hooks.json": "integrations/gemini/gemini-hooks.json",
+    "install-opencode-plugin.sh": "integrations/opencode/install-opencode-plugin.sh",
+    "needs-you-opencode.js": "integrations/opencode/needs-you.js",
 }
+
+
+def codex_home() -> str:
+    return os.environ.get("CODEX_HOME") or _home(".codex")
+
+
+def gemini_home() -> str:
+    return _home(".gemini")
+
+
+# Agents other than Claude Code that run the same needs-you-hook.sh from their own directory:
+# (name, label, home, config file in it, its /dl snippet, its /dl installer, installer's dir flag).
+OTHER_AGENTS = (
+    ("codex", "Codex", codex_home, "hooks.json", "codex-hooks.json", "install-codex-hooks.sh", "--codex-home"),
+    ("gemini", "Gemini", gemini_home, "settings.json", "gemini-hooks.json", "install-gemini-hooks.sh",
+     "--gemini-dir"),
+)
+
+
+# Every agent directory that keeps its own copy of needs-you-hook.sh in <dir>/hooks/.
+HOOK_COPIES = (("codex", "Codex", codex_home), ("gemini", "Gemini", gemini_home),
+               ("opencode", "opencode", opencode_dir))
+
+
+def _other_agent(snippet: str) -> Optional[Tuple[Any, ...]]:
+    for a in OTHER_AGENTS:
+        if a[4] == snippet:
+            return a
+    return None
 
 
 class UpdateRefused(Exception):
@@ -1167,6 +1208,9 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         entry = files.get(name)
         if not isinstance(entry, dict):
             continue
+        if name == "needs-you-opencode.js" and os.path.islink(path):
+            notes.append("%s is a symlink; not updating it (another tool manages it)" % _tilde(path))
+            continue
         if name != "needs-you" and not os.path.isfile(path):
             continue  # never install a piece that isn't here
         want = str(entry.get("sha256") or "").lower()
@@ -1193,6 +1237,37 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         if applied != hj.get("sha256") or any(c["file"] == "needs-you-hook.sh" for c in changes):
             changes.append({"file": "hooks.json", "path": settings, "sha256": str(hj.get("sha256") or ""),
                             "size": hj.get("size"), "from": "?", "to": hj.get("version") or "?"})
+    # Codex and Gemini CLI: each has its own copy of the hook, and entries in its config file.
+    he = files.get("needs-you-hook.sh")
+    for agent, label, home_fn in HOOK_COPIES:
+        hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
+        if os.path.islink(hook):
+            # Another agent's directory: never write through a link that could point anywhere.
+            notes.append("%s is a symlink; not updating it" % _tilde(hook))
+            continue
+        if os.path.isfile(hook) and isinstance(he, dict):
+            want = str(he.get("sha256") or "").lower()
+            if len(want) != 64 or any(c not in "0123456789abcdef" for c in want):
+                raise UpdateRefused("the hub's manifest has no valid checksum for needs-you-hook.sh")
+            if _sha256_file(hook) != want:
+                changes.append({"file": "needs-you-hook.sh", "label": "needs-you-hook.sh (%s)" % label,
+                                "backup": "%s-needs-you-hook.sh" % agent, "path": hook,
+                                "sha256": want, "size": he.get("size"), "from": _stamp(hook),
+                                "to": he.get("version") or "?"})
+    for agent, label, home_fn, conf_name, snippet, installer, _flag in OTHER_AGENTS:
+        conf = os.path.join(home_fn(), conf_name)
+        try:
+            with open(conf, "r", encoding="utf-8", errors="replace") as fh:
+                referenced = "needs-you-hook.sh" in fh.read()
+        except OSError:
+            referenced = False
+        sj = files.get(snippet)
+        if referenced and isinstance(sj, dict):
+            if not isinstance(files.get(installer), dict):
+                raise UpdateRefused("the hub's manifest lists %s without %s" % (snippet, installer))
+            if _read_state().get("%s_hooks_json_sha256" % agent) != sj.get("sha256"):
+                changes.append({"file": snippet, "path": conf, "sha256": str(sj.get("sha256") or ""),
+                                "size": sj.get("size"), "from": "?", "to": sj.get("version") or "?"})
     return changes, notes
 
 
@@ -1383,7 +1458,9 @@ def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, A
     Raises UpdateRefused on a mismatch; returns a note when the check couldn't run (and
     raises instead with NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1)."""
     names = sorted({c["file"] for c in changes} | ({"install-hooks.sh", "needs-you-hook.sh"}
-                                                  if any(c["file"] == "hooks.json" for c in changes) else set()))
+                                                  if any(c["file"] == "hooks.json" for c in changes) else set())
+                   | {n for c in changes if _other_agent(c["file"])
+                      for n in (_other_agent(c["file"])[5], "needs-you-hook.sh")})
     try:
         digests, why = release_digests(str(manifest.get("version") or ""), names)
     except UpdateRefused:
@@ -1458,6 +1535,26 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                 raise ValueError("install-hooks.sh failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
         _write_state(hooks_json_sha256=change["sha256"])
         return "re-merged the hook entries in ~/.claude/settings.json (it keeps a .bak)"
+    other = _other_agent(name)
+    if other:
+        import subprocess
+        import tempfile
+        agent, _label, home_fn, _conf, snippet, installer, flag = other
+        with tempfile.TemporaryDirectory(prefix="needs-you-update-") as tmp:
+            for f in (installer, "needs-you-hook.sh", snippet):
+                with open(os.path.join(tmp, f), "wb") as fh:
+                    fh.write(_download_verified(hub, f, manifest, timeout))
+            hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
+            backup = "%s-needs-you-hook.sh" % agent
+            if os.path.isfile(hook) and backup not in (_read_state().get("backups") or {}):
+                _backup(backup, hook)
+            r = subprocess.run(["bash", os.path.join(tmp, installer), flag, home_fn()],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, NEEDS_YOU_INSTALLER="1"))
+            if r.returncode != 0:
+                raise ValueError("%s failed: %s" % (installer, clean((r.stderr or r.stdout).strip()[-200:])))
+        _write_state(**{"%s_hooks_json_sha256" % agent: change["sha256"]})
+        return "re-merged the hook entries in %s (it keeps a .bak)" % _tilde(change["path"])
     data = _download_verified(hub, name, manifest, timeout)
     path = change["path"]
     if name == "needs-you":
@@ -1469,7 +1566,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
             mode = os.stat(path).st_mode & 0o777
         except OSError:
             mode = 0o644
-    _backup(name, path)
+    _backup(change.get("backup") or name, path)
     _write_atomic(path, data, mode)
     return "updated %s: %s -> %s" % (_tilde(path), change["from"] or "?", change["to"])
 
@@ -1540,7 +1637,7 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         return finish(0)
     say("from %s (hub %s, %s):" % (hub.url, clean(manifest.get("version")), hub.why))
     for c in changes:
-        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c["file"], c["from"] or "?", c["to"]))
+        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c.get("label") or c["file"], c["from"] or "?", c["to"]))
     try:
         note = cross_check(cfg, manifest, changes, auto=auto or from_flush)
         result["notes"].append(note)
@@ -1747,7 +1844,8 @@ class Doctor:
         return "", ""
 
     def run(self) -> List[Dict[str, str]]:
-        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.skill,
+        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.codex_hooks,
+                     self.gemini_hooks, self.opencode_plugin, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -1973,6 +2071,208 @@ class Doctor:
                 hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
             self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
 
+    # -- Codex CLI hooks ---------------------------------------------------
+    def codex_hooks(self) -> None:
+        import re
+        import shutil
+        home = os.environ.get("CODEX_HOME") or os.path.join(self.home, ".codex")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        hooks_json = os.path.join(home, "hooks.json")
+        installer = ("integrations/codex/install-codex-hooks.sh (or the invite installer with "
+                     "--codex-hooks user)")
+        if not os.path.isdir(home):
+            if shutil.which("codex"):
+                self.add("codex hooks", "INFO", "%s not found; Codex hasn't run for this user yet" % _tilde(home),
+                         "after a first Codex run: " + installer)
+            return
+        doc: Any = None
+        try:
+            with open(hooks_json, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            referenced = "needs-you-hook.sh" in text
+            try:
+                doc = json.loads(text) if text.strip() else {}
+            except ValueError:
+                doc = None
+        except OSError:
+            text, referenced, doc = "", False, {}
+        exists = os.path.isfile(hook)
+        if not exists and not referenced:
+            self.add("codex hooks", "INFO", "not installed (optional: cards when a Codex session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts, hints = [], [_tilde(hooks_json)], []
+        if doc is None:
+            problems.append("%s isn't valid JSON, so Codex loads none of its hooks" % _tilde(hooks_json))
+        if not exists:
+            problems.append("%s references the hook but %s is missing" % (_tilde(hooks_json), _tilde(hook)))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            if not referenced:
+                problems.append("%s doesn't reference it" % _tilde(hooks_json))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "codex" not in fh.read():
+                        problems.append("old hook (no Codex support)")
+            except OSError:
+                pass
+        # [features] hooks = false turns every hook off.
+        config_text = ""
+        try:
+            with open(os.path.join(home, "config.toml"), "r", encoding="utf-8", errors="replace") as fh:
+                config_text = fh.read()
+        except OSError:
+            pass
+        section = ""
+        for line in config_text.splitlines():
+            s = line.strip()
+            if s.startswith("["):
+                section = s
+            elif section == "[features]" and re.match(r"^hooks\s*=\s*false\b", s):
+                problems.append("hooks = false under [features] in %s" % _tilde(os.path.join(home, "config.toml")))
+        # Codex runs a hook only once it's trusted (/hooks); it records that in config.toml as
+        # [hooks.state."<hooks.json>:<event>:<group>:<handler>"]. Only claim "untrusted" when that
+        # table exists for this file but not for our PermissionRequest entry.
+        if isinstance(doc, dict) and isinstance(doc.get("hooks"), dict):
+            groups = doc["hooks"].get("PermissionRequest")
+            pos = None
+            if isinstance(groups, list):
+                for gi, g in enumerate(groups):
+                    hs = g.get("hooks") if isinstance(g, dict) else None
+                    for hi, h in enumerate(hs if isinstance(hs, list) else []):
+                        if isinstance(h, dict) and "needs-you-hook.sh" in str(h.get("command", "")):
+                            pos = (gi, hi)
+            state_prefix = '[hooks.state."%s:' % hooks_json
+            if pos is not None and state_prefix in config_text:
+                if '%spermission_request:%d:%d"]' % (state_prefix, pos[0], pos[1]) not in config_text:
+                    problems.append("Codex hasn't trusted them yet")
+                    hints.append("start Codex, open /hooks and trust the needs-you entries")
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            if not hints:
+                hints.append("re-run the installer: " + installer)
+            self.add("codex hooks", "WARN", "; ".join(problems + parts), "; ".join(hints))
+            return
+        hint = "Codex runs a new hook only after you trust it: open /hooks in Codex once"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("codex hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- Gemini CLI hooks --------------------------------------------------
+    def gemini_hooks(self) -> None:
+        import shutil
+        home = os.path.join(self.home, ".gemini")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        settings = os.path.join(home, "settings.json")
+        installer = ("integrations/gemini/install-gemini-hooks.sh (or the invite installer with "
+                     "--gemini-hooks user)")
+        if not os.path.isdir(home):
+            if shutil.which("gemini"):
+                self.add("gemini hooks", "INFO", "%s not found; Gemini CLI hasn't run for this user yet"
+                         % _tilde(home), "after a first run: " + installer)
+            return
+        doc: Any = {}
+        try:
+            with open(settings, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            referenced = "needs-you-hook.sh" in text
+            try:
+                doc = json.loads(text) if text.strip() else {}
+            except ValueError:
+                doc = None  # Gemini allows comments; we can't read those settings
+        except OSError:
+            referenced = False
+        exists = os.path.isfile(hook)
+        if not exists and not referenced:
+            self.add("gemini hooks", "INFO", "not installed (optional: cards when a Gemini CLI session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts = [], [_tilde(settings)]
+        if not exists:
+            problems.append("%s references the hook but %s is missing" % (_tilde(settings), _tilde(hook)))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            if not referenced:
+                problems.append("%s doesn't reference it" % _tilde(settings))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "gemini_card" not in fh.read():
+                        problems.append("old hook (no Gemini support)")
+            except OSError:
+                pass
+        if isinstance(doc, dict):
+            hc = doc.get("hooksConfig")
+            if isinstance(hc, dict) and hc.get("enabled") is False:
+                problems.append("hooksConfig.enabled is false in %s" % _tilde(settings))
+            if isinstance(hc, dict) and isinstance(hc.get("disabled"), list) and "needs-you" in hc["disabled"]:
+                problems.append("hooksConfig.disabled lists needs-you")
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            self.add("gemini hooks", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            return
+        hint = ""
+        if "alerts off until opted in" in parts:
+            hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- opencode plugin ---------------------------------------------------
+    def opencode_plugin(self) -> None:
+        import shutil
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        d = os.path.join(base, "opencode")
+        plugin = os.path.join(d, "plugins", "needs-you.js")
+        hook = os.path.join(d, "hooks", "needs-you-hook.sh")
+        installer = ("integrations/opencode/install-opencode-plugin.sh (or the invite installer with "
+                     "--opencode-plugin)")
+        if not os.path.isdir(d) and not shutil.which("opencode"):
+            return
+        if not os.path.isfile(plugin) and not os.path.isfile(hook):
+            self.add("opencode plugin", "INFO", "not installed (optional: cards when an opencode session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts = [], [_tilde(plugin)]
+        if not os.path.isfile(plugin):
+            problems.append("%s is missing" % _tilde(plugin))
+        if not os.path.isfile(hook):
+            problems.append("%s is missing" % _tilde(hook))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "opencode_card" not in fh.read():
+                        problems.append("old hook (no opencode support)")
+            except OSError:
+                pass
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            self.add("opencode plugin", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            return
+        hint = "restart opencode after installing or updating it"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("opencode plugin", "OK", "installed: " + "; ".join(parts), hint)
+
     # -- skill -------------------------------------------------------------
     def skill(self) -> None:
         p = os.path.join(self.home, ".claude", "skills", "needs-you", "SKILL.md")
@@ -2070,7 +2370,7 @@ def _doctor_update(self: "Doctor") -> None:
         return
     detail = "%s; hub %s serves %s%s" % (local, hub.url, clean(manifest.get("version")), tail)
     if changes:
-        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c["file"] for c in changes),
+        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c.get("label") or c["file"] for c in changes),
                  "needs-you update")
     else:
         self.add("update", "OK", detail + ("; " + "; ".join(notes) if notes else ""))

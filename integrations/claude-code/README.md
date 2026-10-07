@@ -21,6 +21,8 @@ integrations/claude-code/
 └── skill/needs-you/SKILL.md
 ```
 
+The same hook serves OpenAI Codex CLI, Gemini CLI and opencode when started with a `codex`, `gemini` or `opencode` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md), [integrations/gemini](../gemini/README.md) and [integrations/opencode](../opencode/README.md).
+
 ## Hooks
 
 ### Install

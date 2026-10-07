@@ -239,6 +239,86 @@ class InstallScript(HubTestCase):
         with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
             self.assertEqual(fh.read().strip(), "")
 
+    def test_codex_hooks(self):
+        inv = self.invite(uses=1)
+        codex = os.path.join(self.home, ".codex")
+        os.makedirs(codex)
+        with open(os.path.join(codex, "hooks.json"), "w") as fh:
+            json.dump({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/bin/true"}]}]}}, fh)
+        r = self.install(inv, "--yes", "--codex-hooks", "user", "--alerts", "--host", "box3",
+                         STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Codex CLI", r.stdout)
+        self.assertIn("/hooks", r.stdout)
+        with open(os.path.join(codex, "hooks.json")) as fh:
+            doc = json.load(fh)
+        self.assertEqual(doc["hooks"]["Stop"][0]["hooks"][0]["command"], "/bin/true")
+        self.assertIn("needs-you-hook.sh", doc["hooks"]["PermissionRequest"][0]["hooks"][0]["command"])
+        self.assertTrue(os.access(os.path.join(codex, "hooks", "needs-you-hook.sh"), os.X_OK))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")))  # Claude untouched
+        with open(os.path.join(self.home, ".local", "state", "needs-you", "update.json")) as fh:
+            sha = json.load(fh)["codex_hooks_json_sha256"]
+        _, manifest = request("GET", self.hub.url + "/dl/manifest.json")
+        self.assertEqual(sha, manifest["files"]["codex-hooks.json"]["sha256"])
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        self.assertEqual(checks["codex hooks"]["status"], "OK", checks["codex hooks"])
+        self.assertIn("alerts on", checks["codex hooks"]["detail"])
+        self.assertNotIn("codex", checks["update"]["detail"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(codex, "hooks.json")) as fh:
+            self.assertEqual(json.load(fh), {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/bin/true"}]}]}})
+        self.assertFalse(os.path.exists(os.path.join(codex, "hooks", "needs-you-hook.sh")))
+        r = self.install(inv, "--yes", "--codex-hooks", "project")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--codex-hooks must be user or none", r.stderr)
+
+    def test_opencode_plugin(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--opencode-plugin", "--host", "box5", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        oc = os.path.join(self.home, ".config", "opencode")
+        self.assertTrue(os.path.isfile(os.path.join(oc, "plugins", "needs-you.js")))
+        self.assertTrue(os.access(os.path.join(oc, "hooks", "needs-you-hook.sh"), os.X_OK))
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        self.assertEqual(checks["opencode plugin"]["status"], "OK", checks["opencode plugin"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(oc, "plugins", "needs-you.js")))
+        self.assertFalse(os.path.exists(os.path.join(oc, "hooks", "needs-you-hook.sh")))
+
+    def test_gemini_hooks(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box4", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Gemini CLI", r.stdout)
+        gemini = os.path.join(self.home, ".gemini")
+        with open(os.path.join(gemini, "settings.json")) as fh:
+            doc = json.load(fh)
+        self.assertEqual(doc["hooks"]["Notification"][0]["matcher"], "ToolPermission")
+        self.assertTrue(os.access(os.path.join(gemini, "hooks", "needs-you-hook.sh"), os.X_OK))
+        with open(os.path.join(self.home, ".local", "state", "needs-you", "update.json")) as fh:
+            sha = json.load(fh)["gemini_hooks_json_sha256"]
+        _, manifest = request("GET", self.hub.url + "/dl/manifest.json")
+        self.assertEqual(sha, manifest["files"]["gemini-hooks.json"]["sha256"])
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        self.assertEqual(checks["gemini hooks"]["status"], "OK", checks["gemini hooks"])
+        self.assertNotIn("gemini", checks["update"]["detail"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(gemini, "settings.json")) as fh:
+            self.assertNotIn("hooks", json.load(fh))
+        self.assertFalse(os.path.exists(os.path.join(gemini, "hooks", "needs-you-hook.sh")))
+
     def test_no_path_prints_the_line_and_bad_values_fail(self):
         inv = self.invite(uses=1)
         r = self.install(inv, "--yes", "--host", "box3", "--no-path", "--no-schedule")

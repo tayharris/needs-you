@@ -19,6 +19,9 @@ SHA256S=__NY_CHECKSUMS__
 
 YES=0
 HOOKS=none
+CODEX_HOOKS=none
+GEMINI_HOOKS=none
+OPENCODE=0
 SKILL=0
 ORCA=0
 CONTEXT=""
@@ -66,9 +69,17 @@ Options:
   --claude-hooks user|project|none
                                 Claude Code hooks: post when a session waits on you
                                 (project = the current directory's repo; default none)
-  --alerts                      turn the hooks on for every Claude Code session here
-                                (NEEDS_YOU_AGENT_ALERTS=1 in the env file); without it
-                                they stay quiet except in Orca
+  --codex-hooks user|none       OpenAI Codex CLI hooks in ~/.codex/hooks.json: post when
+                                a Codex session asks for approval or finishes its turn
+                                (trust them once with /hooks in Codex; default none)
+  --gemini-hooks user|none      Gemini CLI hooks in ~/.gemini/settings.json: post when a
+                                session asks to approve a tool call or finishes its turn
+                                (default none)
+  --opencode-plugin             opencode plugin in ~/.config/opencode/plugins: post when a
+                                session asks for permission or a question, or goes idle
+  --alerts                      turn the hooks on for every Claude Code, Codex and Gemini
+                                session here (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
+                                without it they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
   --auto-update                 let `needs-you flush` run `needs-you update` once a day
                                 (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
@@ -104,6 +115,11 @@ while [ $# -gt 0 ]; do
     --yes|-y) YES=1; shift ;;
     --claude-hooks) HOOKS=${2:-}; shift 2 || die "--claude-hooks needs user, project or none" ;;
     --claude-hooks=*) HOOKS=${1#*=}; shift ;;
+    --codex-hooks) CODEX_HOOKS=${2:-}; shift 2 || die "--codex-hooks needs user or none" ;;
+    --codex-hooks=*) CODEX_HOOKS=${1#*=}; shift ;;
+    --gemini-hooks) GEMINI_HOOKS=${2:-}; shift 2 || die "--gemini-hooks needs user or none" ;;
+    --gemini-hooks=*) GEMINI_HOOKS=${1#*=}; shift ;;
+    --opencode-plugin) OPENCODE=1; shift ;;
     --skill) SKILL=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
@@ -131,6 +147,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, project or none" ;; esac
+case "$CODEX_HOOKS" in user|none) ;; *) die "--codex-hooks must be user or none" ;; esac
+case "$GEMINI_HOOKS" in user|none) ;; *) die "--gemini-hooks must be user or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
@@ -278,6 +296,23 @@ if [ "$UNINSTALL" -eq 1 ]; then
     fi
     rm -rf "$tmp"
   fi
+  # Codex and Gemini CLI: <name> <its directory> <installer's flag for it>
+  for spec in "codex ${CODEX_HOME:-$HOME/.codex} --codex-home" "gemini $HOME/.gemini --gemini-dir"; do
+    set -- $spec
+    if [ -f "$2/hooks/needs-you-hook.sh" ] && command -v curl >/dev/null 2>&1; then
+      tmp=$(mktemp -d)
+      if curl -fsSL --noproxy '*' --max-time 20 "$HUB_URL/dl/install-$1-hooks.sh" -o "$tmp/install-$1-hooks.sh" &&
+         verify "install-$1-hooks.sh" "$tmp/install-$1-hooks.sh"; then
+        bash "$tmp/install-$1-hooks.sh" "$3" "$2" --uninstall || warn "removing the $1 hooks failed"
+      else
+        warn "hub unreachable; remove the $1 hooks with integrations/$1/install-$1-hooks.sh --uninstall"
+      fi
+      rm -rf "$tmp"
+    fi
+  done
+  OC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+  rm -f "$OC_DIR/plugins/needs-you.js" "$OC_DIR/hooks/needs-you-hook.sh"
+  rmdir "$OC_DIR/plugins" "$OC_DIR/hooks" 2>/dev/null || true
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
@@ -314,6 +349,9 @@ say "  CLI     -> $CLI"
 say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && printf ' (already set up: keeping the token)')"
 [ "$SCHEDULE" -eq 1 ] && say "  flush   -> every 5 minutes ($([ "$OS" = Darwin ] && echo LaunchAgent || echo crontab))"
 [ "$HOOKS" != none ] && say "  hooks   -> Claude Code ($HOOKS level)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$CODEX_HOOKS" != none ] && say "  hooks   -> Codex CLI (${CODEX_HOME:-~/.codex}/hooks.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$OPENCODE" -eq 1 ] && say "  plugin  -> opencode (${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/needs-you.js)"
+[ "$GEMINI_HOOKS" != none ] && say "  hooks   -> Gemini CLI (~/.gemini/settings.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
@@ -483,6 +521,44 @@ PY
   else
     NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --project "$PWD"
   fi
+fi
+
+# install_agent_hooks NAME DIR FLAG: Codex or Gemini CLI, the same hook as Claude Code's.
+install_agent_hooks() {
+  local f sha="" kv
+  for f in "install-$1-hooks.sh" needs-you-hook.sh "$1-hooks.json"; do
+    fetch "$f" "$TMP/$f" || die "could not download the $1 hooks ($f)"
+  done
+  NEEDS_YOU_INSTALLER=1 bash "$TMP/install-$1-hooks.sh" "$3" "$2"
+  # As for Claude: record the snippet merged, so `needs-you doctor` and `update` don't call
+  # these fresh entries out of date.
+  for kv in $SHA256S; do [ "${kv%%=*}" = "$1-hooks.json" ] && sha=${kv#*=}; done
+  [ -n "$sha" ] || return 0
+  python3 - "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you" "$1_hooks_json_sha256" "$sha" <<'PY' || true
+import json, os, sys
+d, key, sha = sys.argv[1], sys.argv[2], sys.argv[3]
+p = os.path.join(d, "update.json")
+try:
+    with open(p, encoding="utf-8") as fh:
+        st = json.load(fh)
+    st = st if isinstance(st, dict) else {}
+except (OSError, ValueError):
+    st = {}
+st[key] = sha
+os.makedirs(d, mode=0o700, exist_ok=True)
+fd = os.open(p + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as fh:
+    json.dump(st, fh, sort_keys=True)
+os.replace(p + ".tmp", p)
+PY
+}
+[ "$CODEX_HOOKS" = user ] && install_agent_hooks codex "${CODEX_HOME:-$HOME/.codex}" --codex-home
+[ "$GEMINI_HOOKS" = user ] && install_agent_hooks gemini "$HOME/.gemini" --gemini-dir
+if [ "$OPENCODE" -eq 1 ]; then
+  for f in install-opencode-plugin.sh needs-you-hook.sh needs-you-opencode.js; do
+    fetch "$f" "$TMP/$f" || die "could not download the opencode plugin ($f)"
+  done
+  bash "$TMP/install-opencode-plugin.sh"
 fi
 
 if [ "$SKILL" -eq 1 ]; then
