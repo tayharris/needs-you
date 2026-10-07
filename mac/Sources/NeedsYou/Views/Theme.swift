@@ -12,6 +12,17 @@ enum Theme {
     static let muted = Color.white.opacity(0.55)
     static let faint = Color.white.opacity(0.35)
 
+    // Card link buttons (LinkChip): a clearly lighter capsule than the card, white text,
+    // and on hover a stronger fill and outline. White on these fills over the dark
+    // material stays well above 7:1.
+    static let linkFill = Color.white.opacity(0.14)
+    static let linkFillHover = Color.white.opacity(0.24)
+    static let linkStroke = Color.white.opacity(0.18)
+    static let linkStrokeHover = Color.white.opacity(0.5)
+    static let linkText = Color.white
+    /// The faint "where it really goes" after a link's label.
+    static let linkDestination = Color.white.opacity(0.62)
+
     static func color(_ priority: ItemPriority?) -> Color {
         switch priority {
         case .urgent: return urgent
