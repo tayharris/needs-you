@@ -35,6 +35,10 @@ public struct ItemStore: Sendable {
     /// Open `needs` items that arrived as Later (focus-tiers.md), with when they were held.
     /// Not counted and not in the card list until `releaseLater`; listed under Later.
     public private(set) var heldForLater: [String: Date] = [:]
+    /// Known items that turned into `needs` (a re-post changed their kind), with the
+    /// `updated_at` of that version. A kind change doesn't move `content_updated_at`, so
+    /// this is how they still count as new on the pill (`freshAt`).
+    public private(set) var promotedToNeeds: [String: Date] = [:]
     /// Items closed locally while the PATCH is in flight, with the `updated_at` they had
     /// and when they were closed, so a poll that races the PATCH doesn't resurrect them.
     private var locallyClosed: [String: Tombstone] = [:]
@@ -100,6 +104,9 @@ public struct ItemStore: Sendable {
             }
 
             items[incoming.id] = incoming
+            if let existing, existing.kind != .needs, incoming.kind == .needs {
+                promotedToNeeds[incoming.id] = incoming.updatedAt
+            }
             if let existing {
                 if incoming.hasVisibleChange(from: existing) {
                     result.changed.append(incoming)
@@ -139,6 +146,7 @@ public struct ItemStore: Sendable {
         // Snoozes end, and never outlive their item; nor does a Later hold.
         cardSnoozes = cardSnoozes.filter { $0.value > now && items[$0.key] != nil }
         heldForLater = heldForLater.filter { items[$0.key] != nil }
+        promotedToNeeds = promotedToNeeds.filter { items[$0.key] != nil }
         // Local-close tombstones: 24 h at most, and never more than the cap.
         locallyClosed = locallyClosed.filter { now.timeIntervalSince($0.value.closedAt) < Self.closedRetention }
         if locallyClosed.count > Self.maxClosedTombstones {
@@ -257,6 +265,23 @@ public struct ItemStore: Sendable {
     /// The colour driver for the ring and glow: the highest open `needs` priority.
     public func highestPriority(in context: ItemContext, now: Date = Date()) -> ItemPriority? {
         needs(in: context, now: now).map(\.priority).min()
+    }
+
+    /// When an item last became something to look at: created, its content changed
+    /// (`content_updated_at`), or it turned into `needs`. Hub times, so a remote hub's clock
+    /// skew shifts it a little.
+    public func freshAt(_ item: Item) -> Date {
+        var date = item.createdAt
+        if let changed = item.contentUpdatedAt, changed > date { date = changed }
+        if let promoted = promotedToNeeds[item.id], promoted > date { date = promoted }
+        return date
+    }
+
+    /// Counted `needs` items in a context that arrived, changed or became `needs` after
+    /// `since` (when the panel was last open). Nil `since` (never opened) counts nothing.
+    public func newNeedsCount(in context: ItemContext, since: Date?, now: Date = Date()) -> Int {
+        guard let since else { return 0 }
+        return needs(in: context, now: now).filter { freshAt($0) > since }.count
     }
 
     public var snoozedCardCount: Int { cardSnoozes.count }

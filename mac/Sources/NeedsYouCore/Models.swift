@@ -123,6 +123,9 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var updatedAt: Date
     public var seenAt: Date?
     public var expiresAt: Date?
+    /// When the title, body, priority or steps last changed (docs/API.md); nil from hubs
+    /// that don't send it. Read for the pill's "new since last opened" count.
+    public var contentUpdatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id, key, context, kind, priority, title, body, links, steps, source, status
@@ -130,13 +133,15 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         case updatedAt = "updated_at"
         case seenAt = "seen_at"
         case expiresAt = "expires_at"
+        case contentUpdatedAt = "content_updated_at"
     }
 
     public init(
         id: String, key: String, context: ItemContext = .work, kind: ItemKind = .needs,
         priority: ItemPriority = .normal, title: String, body: String? = nil,
         links: [ItemLink] = [], steps: [ItemStep] = [], source: ItemSource? = nil, status: ItemStatus = .open,
-        createdAt: Date, updatedAt: Date? = nil, seenAt: Date? = nil, expiresAt: Date? = nil
+        createdAt: Date, updatedAt: Date? = nil, seenAt: Date? = nil, expiresAt: Date? = nil,
+        contentUpdatedAt: Date? = nil
     ) {
         self.id = id
         self.key = key
@@ -153,6 +158,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         self.updatedAt = updatedAt ?? createdAt
         self.seenAt = seenAt
         self.expiresAt = expiresAt
+        self.contentUpdatedAt = contentUpdatedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -174,6 +180,8 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
         seenAt = try c.decodeIfPresent(Date.self, forKey: .seenAt)
         expiresAt = try c.decodeIfPresent(Date.self, forKey: .expiresAt)
+        // Lenient: a hub that predates it (or sends junk) just leaves it nil.
+        contentUpdatedAt = try? c.decodeIfPresent(Date.self, forKey: .contentUpdatedAt)
     }
 
     /// Re-animation rule (docs/API.md `content_updated_at`): title, body, priority or steps.
