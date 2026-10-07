@@ -80,6 +80,18 @@ class Convergence(Mesh):
         _, body = request("GET", b.url + "/v1/items?status=open&since=" + cursor, rb)
         self.assertEqual([i["id"] for i in body["items"]], [rec["id"]])
 
+    def test_steps_replicate_and_merge(self):
+        a, b = self.mesh(["hub-a", "hub-b"])
+        sa, _ = self.tokens(a)
+        steps = [{"text": "Rotate the key", "link": {"label": "Console", "url": "https://c/x"}},
+                 {"text": "Restart the job", "done": True}]
+        _, x = request("POST", a.url + "/v1/items", sa, {"key": "x", "title": "t", "steps": steps})
+        self.assertConverged([a, b])
+        want = [{"text": "Rotate the key", "done": False, "link": {"label": "Console", "url": "https://c/x"}},
+                {"text": "Restart the job", "done": True}]
+        for h in (a, b):
+            self.assertEqual(hubmod.item_wire(h.store.get_item(x["id"]))["steps"], want)
+
     def test_patch_from_the_mac_replicates(self):
         a, b = self.mesh(["hub-a", "hub-b"])
         sa, ra = self.tokens(a)
@@ -246,6 +258,69 @@ class LastWriterWins(HubTestCase):
         self.assertEqual((status, body["applied"]), (200, 2))
         status, body = request("GET", h.url + "/v1/replicate/changes?after=0", PEER_SECRET)
         self.assertEqual(body["invites"], [])
+
+    STEPS = [{"text": "Approve", "done": False, "link": {"label": "CI", "url": "https://ci/1"}},
+             {"text": "Tell the team", "done": True}]
+
+    def test_steps_round_trip(self):
+        h = self.make_hub("hub-x", start=False)
+        st = h.store
+        self.assertTrue(st.apply_item(self.rec(steps=self.STEPS)))
+        wire = hubmod.item_wire(st.get_item(self.rec()["id"]))
+        self.assertEqual(wire["steps"], self.STEPS)
+        # the wire record re-applies to another hub unchanged
+        h2 = self.make_hub("hub-y", start=False)
+        self.assertTrue(h2.store.apply_item(wire))
+        self.assertEqual(hubmod.item_wire(h2.store.get_item(wire["id"])), wire)
+
+    def test_old_peer_record_without_steps_keeps_them(self):
+        """A hub older than `steps` stores items without them. Its later writes that don't
+        touch content (resolve, seen_at, an unchanged re-post) must not wipe ours; a content
+        change it made (new content_updated_at) is authoritative and has no steps."""
+        h = self.make_hub("hub-x", start=False)
+        st = h.store
+        iid = self.rec()["id"]
+        st.apply_item(self.rec(steps=self.STEPS))
+        old = self.rec(status="resolved", updated_at="2026-10-06T10:00:01.000Z",
+                       content_updated_at="2026-10-06T10:00:00.000Z", updated_by="hub-old")
+        self.assertNotIn("steps", old)
+        self.assertTrue(st.apply_item(old))
+        row = st.get_item(iid)
+        self.assertEqual(row["status"], "resolved")
+        self.assertEqual(hubmod.item_wire(row)["steps"], self.STEPS)
+        # content changed on the old hub: its version (no steps) wins
+        changed = self.rec(title="new", updated_at="2026-10-06T10:00:02.000Z",
+                           content_updated_at="2026-10-06T10:00:02.000Z", updated_by="hub-old")
+        self.assertTrue(st.apply_item(changed))
+        self.assertEqual(hubmod.item_wire(st.get_item(iid))["steps"], [])
+        # an explicit empty list from a new hub clears them too
+        st.apply_item(self.rec(steps=self.STEPS, updated_at="2026-10-06T10:00:03.000Z",
+                               content_updated_at="2026-10-06T10:00:02.000Z"))
+        st.apply_item(self.rec(steps=[], updated_at="2026-10-06T10:00:04.000Z",
+                               content_updated_at="2026-10-06T10:00:02.000Z"))
+        self.assertEqual(hubmod.item_wire(st.get_item(iid))["steps"], [])
+
+    def test_peer_step_links_are_checked(self):
+        """Defence in depth, like item links: a peer's step link this hub would refuse is
+        dropped (the step stays)."""
+        h = self.make_hub("hub-x", start=False)
+        st = h.store
+        st.apply_item(self.rec(steps=[
+            {"text": "ok", "done": False, "link": {"label": "a", "url": "https://a"}},
+            {"text": "bad", "done": False, "link": {"label": "b", "url": "javascript:alert(1)"}},
+            {"text": "odd", "done": False, "link": "https://not-an-object"},
+            "not a step",
+        ]))
+        self.assertEqual(hubmod.item_wire(st.get_item(self.rec()["id"]))["steps"], [
+            {"text": "ok", "done": False, "link": {"label": "a", "url": "https://a"}},
+            {"text": "bad", "done": False},
+            {"text": "odd", "done": False},
+        ])
+
+    def test_bad_steps_record_rejected(self):
+        h = self.make_hub("hub-x", start=False)
+        with self.assertRaises(hubmod.ApiError):
+            h.store.apply_item(self.rec(steps="do it"))
 
     def test_replicate_to_self_is_refused(self):
         h = self.make_hub("hub-x")

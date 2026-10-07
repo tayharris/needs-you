@@ -32,23 +32,40 @@ struct CardView: View {
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
 
-                if let body = item.body, !body.isEmpty {
-                    let mode = model.settings.ui.cardBodies
-                    let expanded = model.expandedCards.contains(item.id)
-                    if CardBodyPolicy.showsBody(mode, expanded: expanded) {
-                        Text(LimitedMarkdown.render(body))
-                            .font(Theme.body(model.bodyFont))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .tint(Theme.normal)
-                            .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
-                            .fixedSize(horizontal: false, vertical: true)
+                let mode = model.settings.ui.cardBodies
+                let expanded = model.expandedCards.contains(item.id)
+                if let body = item.body, !body.isEmpty, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                    Text(LimitedMarkdown.render(body))
+                        .font(Theme.body(model.bodyFont))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .tint(Theme.normal)
+                        .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if !item.steps.isEmpty {
+                    if StepsPolicy.showsList(mode, expanded: expanded) {
+                        StepList(item: item, model: model)
+                            .padding(.top, 1)
+                    } else {
+                        Button { model.toggleCardExpanded(item) } label: {
+                            Label(StepsPolicy.summary(total: item.steps.count, ticked: model.stepTicks.tickedCount(item)),
+                                  systemImage: "checklist")
+                                .font(Theme.meta(m))
+                                .foregroundStyle(Theme.muted)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show the steps")
                     }
-                    if CardBodyPolicy.canExpand(body: body, mode: mode) {
-                        Button(CardBodyPolicy.toggleTitle(mode, expanded: expanded)) { model.toggleCardExpanded(item) }
-                            .buttonStyle(.plain)
-                            .font(Theme.meta(m))
-                            .foregroundStyle(Theme.muted)
-                    }
+                }
+
+                if StepsPolicy.canExpand(item, mode: mode),
+                   expanded || CardBodyPolicy.canExpand(body: item.body, mode: mode) {
+                    Button(CardBodyPolicy.toggleTitle(mode, expanded: expanded)) { model.toggleCardExpanded(item) }
+                        .buttonStyle(.plain)
+                        .font(Theme.meta(m))
+                        .foregroundStyle(Theme.muted)
                 }
 
                 if !item.links.isEmpty {
@@ -124,6 +141,104 @@ struct LinkRow: View {
                     .padding(.vertical, 2)
                     .help("Show all links")
             }
+        }
+    }
+}
+
+/// The item's steps as a numbered checklist at the card text size. The tick box and the
+/// step's link are plain buttons, like every other card control: the panel never becomes
+/// key (FloatingPanel), so clicking them never takes focus. Ticks are local to this Mac.
+struct StepList: View {
+    let item: Item
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let font = model.bodyFont
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(StepsPolicy.visible(item).enumerated()), id: \.offset) { index, step in
+                let ticked = model.stepTicks.isTicked(item, index)
+                let toggles = model.stepTicks.canToggle(item, index)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Button { model.toggleStep(item, index) } label: {
+                        Image(systemName: ticked ? "checkmark.square.fill" : "square")
+                            .font(.system(size: font))
+                            .foregroundStyle(ticked ? Theme.normal.opacity(toggles ? 0.9 : 0.6) : Theme.muted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!toggles)
+                    .help(toggles ? (ticked ? "Untick (only on this Mac)" : "Tick off (only on this Mac)") : "Marked done by the sender")
+
+                    Text(StepsPolicy.number(index))
+                        .font(Theme.body(font).monospacedDigit())
+                        .foregroundStyle(Theme.muted)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(LimitedMarkdown.render(step.text))
+                            .strikethrough(ticked, color: .white.opacity(0.35))
+                            .font(Theme.body(font))
+                            .foregroundStyle(.white.opacity(ticked ? 0.45 : 0.85))
+                            .tint(Theme.normal)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let link = step.link {
+                            StepLinkButton(item: item, link: link, model: model)
+                        }
+                    }
+                }
+            }
+            if model.stepTicks.allTicked(item) {
+                Button { model.resolve(item) } label: {
+                    Label("All steps done: mark Done", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: model.metrics.actionFont, weight: .semibold))
+                        .foregroundStyle(Theme.normal)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+        }
+    }
+}
+
+/// A step's link: a small button when its scheme is allowed, plain text otherwise.
+private struct StepLinkButton: View {
+    let item: Item
+    let link: ItemLink
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if LinkPolicy.isAllowed(link.url) {
+            Button {
+                model.open(link.url, from: item)
+            } label: {
+                HStack(spacing: 3) {
+                    Text(StepsPolicy.linkTitle(link)).lineLimit(1)
+                    if let destination = LinkRowPolicy.destination(link) {
+                        // Where it really goes, as on the links row.
+                        Text(destination)
+                            .fontWeight(.regular)
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
+                }
+                .font(.system(size: model.metrics.linkFont, weight: .medium))
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(Capsule().fill(Color.white.opacity(0.10)))
+                .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
+                .foregroundStyle(.white.opacity(0.9))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(link.url)
+        } else {
+            Text("\(link.label): \(link.url)")
+                .font(.system(size: model.metrics.linkFont))
+                .foregroundStyle(Theme.faint)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help("Not opened: link scheme isn't on the allow-list")
         }
     }
 }

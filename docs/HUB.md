@@ -220,6 +220,10 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   without invites. Older hubs ignore invite records and refuse a replication batch that
   contains an `owner` token, so they fall behind until upgraded. Nothing is lost: the outbox
   retries for up to 7 days, and anti-entropy catches up after that.
+- **Item steps (schema 3):** a hub without them accepts replicated items and drops their
+  `steps`. When it later resolves, dismisses or marks such an item seen, the upgraded hubs keep
+  their steps; only a re-post that changes the title, body or priority on the old hub clears
+  them. Upgrade peers together to avoid the gap.
 
 ## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`

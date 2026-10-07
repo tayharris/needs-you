@@ -156,10 +156,16 @@ If memory or swap is above the danger line after reaping, run:
     needs-you add --key "work:$(hostname -s):memory" --context work --priority urgent \
       --title "$(hostname -s): memory at <n>% after reaping, check sessions" \
       --body "Swap <n>%. Largest: <top 3 processes, names and RSS only>." \
+      --step "Close the idle sessions you don't need (<names>)" \
+      --step "Restart <the largest process> if it's still over <n> GB" \
       --agent "orca:reaper"
 
 If it's back under the line, run `needs-you resolve --key "work:$(hostname -s):memory"`.
 ```
+
+When the person has to do several things in order, give them as `--step "Text"` (or
+`--step "Text=https://..."` for a link button) instead of a list in the body: the Mac shows a
+numbered checklist. At most 10; see [AGENT-GUIDE.md](../../docs/AGENT-GUIDE.md#steps-when-the-person-has-to-do-several-things).
 
 ## Automation failure (any automation)
 

@@ -154,6 +154,12 @@ public actor DemoFeed: ItemFeed {
                 title: "photos nightly backup failed",
                 body: "`restic` exit 1 at 03:00. Disk 97% full.",
                 links: [ItemLink(label: "Logs", url: "https://photos.example.ts.net/logs")],
+                steps: [
+                    ItemStep(text: "Check the failed run's log", link: ItemLink(label: "Logs", url: "https://photos.example.ts.net/logs"), done: true),
+                    ItemStep(text: "Free at least **20 GB** on `/srv/photos` (old exports are in `tmp/`)"),
+                    ItemStep(text: "Re-run the backup", link: ItemLink(label: "Run now", url: "https://photos.example.ts.net/backup/run")),
+                    ItemStep(text: "Not allowed: shown as text", link: ItemLink(label: "Insecure", url: "http://photos.example.ts.net")),
+                ],
                 source: ItemSource(host: "photos", agent: "cron:backup"),
                 createdAt: ago(300)
             ),

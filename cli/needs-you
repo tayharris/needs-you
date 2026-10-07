@@ -3,6 +3,7 @@
 
   needs-you add --key KEY --title TITLE [--context work|personal] [--priority urgent|normal|low]
                 [--body TEXT | --body-file PATH|-] [--link "Label=https://..."]...
+                [--step "Text" | --step "Text=https://..."]... [--steps-json JSON|@PATH]
                 [--agent NAME] [--project NAME] [--host NAME] [--kind needs|done|info]
                 [--expires-in HOURS]
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
@@ -29,6 +30,13 @@ If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ an
 command still exits 0. Every invocation sends the outbox first. The outbox is capped
 (oldest dropped, with a warning), so a hub that is gone for weeks can't fill the disk.
 
+Steps are a checklist of what the person has to do, in order (at most 10; text <= 200
+chars, limited markdown). `--step "Text=URL"` gives the step a link button labelled
+"Open"; the split is at the first "=" followed by a URL (scheme://, or orca:, slack: ...),
+so "Set FOO=bar" stays plain text. `--steps-json` takes the full form,
+'[{"text": "...", "link": {"label": "...", "url": "..."}, "done": false}]', inline or
+from a file (@PATH); --step entries are appended after it.
+
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
 
@@ -39,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -451,6 +460,32 @@ def parse_link(raw: str) -> Dict[str, str]:
     return {"label": label.strip(), "url": url.strip()}
 
 
+MAX_STEPS = 10
+# Where a step's URL starts: "=" then scheme:// or one of the hub's schemes (the hub
+# enforces the allow-list; this only finds the split).
+_STEP_URL_RE = re.compile(r"=\s*(?=(?:[A-Za-z][A-Za-z0-9+.-]*://|(?:https|orca|slack|vscode|cursor|figma"
+                          r"|msteams|discord|needsyou):\S))", re.I)
+
+
+def parse_step(raw: str) -> Dict[str, Any]:
+    """'Text' or 'Text=URL'. Splits at the first '=' that starts a URL, so '=' in the text
+    (and in the URL's query) is kept."""
+    m = _STEP_URL_RE.search(raw)
+    if not m:
+        return {"text": raw.strip()}
+    return {"text": raw[:m.start()].strip(), "link": {"label": "Open", "url": raw[m.end():].strip()}}
+
+
+def parse_steps_json(raw: str) -> List[Any]:
+    if raw.startswith("@"):
+        with open(raw[1:], "r", encoding="utf-8") as fh:
+            raw = fh.read()
+    steps = json.loads(raw)
+    if not isinstance(steps, list):
+        raise ValueError("must be a JSON array")
+    return steps
+
+
 def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, Any]:
     body = args.body
     if args.body_file:
@@ -465,6 +500,9 @@ def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, An
         item["body"] = body
     if args.link:
         item["links"] = args.link
+    steps = list(args.steps_json or []) + list(args.step or [])
+    if steps:
+        item["steps"] = steps
     source = {"host": args.host or cfg.host}
     if args.agent:
         source["agent"] = args.agent
@@ -496,6 +534,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         sp.add_argument("--priority", choices=("urgent", "normal", "low"), default="normal")
         sp.add_argument("--link", action="append", type=parse_link, metavar="LABEL=URL",
                         help="repeatable, at most 6")
+        sp.add_argument("--step", action="append", type=parse_step, metavar="TEXT[=URL]",
+                        help="a step the person has to do, in order; repeatable, at most %d" % MAX_STEPS)
+        sp.add_argument("--steps-json", metavar="JSON|@PATH",
+                        help='steps as a JSON array of {"text", "link": {"label", "url"}, "done"}')
         sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")
         sp.add_argument("--project", help="source project")
         sp.add_argument("--host", help="source host (default: this machine's hostname)")
@@ -546,6 +588,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     kind = args.kind if args.cmd == "add" else args.cmd
     if args.link and len(args.link) > 6:
         warn("at most 6 links")
+        return 2
+    if args.steps_json:
+        try:
+            args.steps_json = parse_steps_json(args.steps_json)
+        except (OSError, ValueError) as e:
+            warn("--steps-json: %s" % e)
+            return 2
+    if len(args.steps_json or []) + len(args.step or []) > MAX_STEPS:
+        warn("at most %d steps" % MAX_STEPS)
         return 2
     return deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
 

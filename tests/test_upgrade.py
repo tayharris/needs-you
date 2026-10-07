@@ -129,6 +129,8 @@ class UpgradeFromMain(HubTestCase):
         # every row survived unchanged
         with st.lock:
             after = {t: sorted(tuple(r) for r in st.conn.execute("SELECT * FROM %s" % t)) for t in TABLES}
+        # (plus the columns later migrations added, at their defaults: items.steps = '[]')
+        before["items"] = sorted(tuple(r) + ("[]",) for r in before["items"])
         self.assertEqual(after, before)
         # and it works: old tokens authenticate, the old item is listed, the outbox is pending
         hub.start()
