@@ -613,6 +613,7 @@ struct SettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    MachineUpdateButton(token: token, connect: connect)
                     if !token.current {
                         Button("Revoke", role: .destructive) { pendingRevoke = .token(token) }
                     }
