@@ -19,6 +19,10 @@ public struct UIPrefs: Equatable, Sendable {
         public static let maxVisibleCards = "maxVisibleCards"
         public static let cardBodies = "cardBodies"
         public static let compactLinks = "compactLinks"
+        public static let pillSize = "pillSize"
+        public static let pillDetail = "pillDetail"
+        public static let pillSplit = "pillSplit"
+        public static let pillShowNew = "pillShowNew"
     }
 
     public var panelSize: PanelSize = .regular
@@ -34,6 +38,12 @@ public struct UIPrefs: Equatable, Sendable {
     public var cardBodies: CardBodyMode = .full
     /// At most three short link labels per card.
     public var compactLinks = false
+    /// The collapsed pill (PillContent): its size on top of `panelSize`, how much it says,
+    /// how it splits the count, and the "N new" badge.
+    public var pillSize: PillSize = .medium
+    public var pillDetail: PillDetail = .count
+    public var pillSplit: PillSplit = .none
+    public var pillShowNew = true
 
     public init() {}
 
@@ -51,6 +61,10 @@ public struct UIPrefs: Equatable, Sendable {
         }
         if let raw = store.string(forKey: Key.cardBodies), let v = CardBodyMode(rawValue: raw) { p.cardBodies = v }
         if let v = store.object(forKey: Key.compactLinks) as? NSNumber { p.compactLinks = v.boolValue }
+        if let raw = store.string(forKey: Key.pillSize), let v = PillSize(rawValue: raw) { p.pillSize = v }
+        if let raw = store.string(forKey: Key.pillDetail), let v = PillDetail(rawValue: raw) { p.pillDetail = v }
+        if let raw = store.string(forKey: Key.pillSplit), let v = PillSplit(rawValue: raw) { p.pillSplit = v }
+        if let v = store.object(forKey: Key.pillShowNew) as? NSNumber { p.pillShowNew = v.boolValue }
         return p
     }
 
@@ -64,10 +78,19 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.maxVisibleCards != maxVisibleCards { store.set(maxVisibleCards, forKey: Key.maxVisibleCards) }
         if previous?.cardBodies != cardBodies { store.set(cardBodies.rawValue, forKey: Key.cardBodies) }
         if previous?.compactLinks != compactLinks { store.set(compactLinks, forKey: Key.compactLinks) }
+        if previous?.pillSize != pillSize { store.set(pillSize.rawValue, forKey: Key.pillSize) }
+        if previous?.pillDetail != pillDetail { store.set(pillDetail.rawValue, forKey: Key.pillDetail) }
+        if previous?.pillSplit != pillSplit { store.set(pillSplit.rawValue, forKey: Key.pillSplit) }
+        if previous?.pillShowNew != pillShowNew { store.set(pillShowNew, forKey: Key.pillShowNew) }
     }
 
     public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }
     public var bodyFont: CGFloat { PanelStyle.bodyFont(textSize, panel: panelSize) }
+    public var pillOptions: PillOptions {
+        PillOptions(size: pillSize, detail: pillDetail, split: pillSplit, showNew: pillShowNew)
+    }
+    /// The collapsed pill's sizes: the panel size's, scaled by the pill size.
+    public var pillMetrics: PillMetrics { PillMetrics.make(metrics, size: pillSize) }
 
     /// The chosen alert intensity for a priority (before the urgent floor).
     public func alertIntensity(for priority: ItemPriority) -> AlertIntensity {
