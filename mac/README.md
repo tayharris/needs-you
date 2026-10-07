@@ -5,8 +5,9 @@ A small floating pill that shows what your machines, projects and agents need fr
 - Idle: a small, faint pill reading `Nothing needs <you>` (about 35% opacity), so you can always drag it or right-click to hide it. Hover shows `all clear · needs <you> · this Mac · <time>`.
 - Waiting: a count pill with a priority-coloured ring. The other context's count shows faintly (`3 · 1`).
 - Click: a 360 pt card list (urgent → normal → low, then Recent). Links open only for allowed schemes (`https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`).
-- Right-click the pill, or use the moon button in the header, to snooze for 15 min / 30 min / 1 hr / 3 hr / until tomorrow. **⌃⌥Space** shows or hides it.
-- Drag it anywhere, on any display, in any state (idle, count, preview, or by the expanded header). It stays exactly where you drop it (pulled back onto the screen if it would be lost off an edge), remembered per display layout. When it expands or shows a new item, it grows away from the nearest screen edges. **Settings → Snap to corners** (off by default) snaps it to the nearest corner instead. **Reset Position** (menu bar menu or right-click) puts it back in the top-right corner.
+- Right-click the pill, or use the moon button in the header, to snooze for 15 min / 30 min / 1 hr / 3 hr / until tomorrow. **⌃⌥Space** (or the shortcut you record in Settings → Panel → Keyboard) shows or hides it.
+- Cards waiting 4 h or more show their age by the title (`5 h`, `2 d`, amber after 2 days). A card's **…** menu has **Dismiss All from <host>**.
+- Drag it anywhere, on any display, in any state (idle, count, preview, or by the expanded header). It stays exactly where you drop it (pulled back onto the screen if it would be lost off an edge), remembered per display layout. When it expands or shows a new item, it grows away from the nearest screen edges. **Settings → Panel → Snap to corners** (off by default) snaps it to the nearest corner instead. **Reset Position** (menu bar menu or right-click) puts it back in the top-right corner.
 - A menu bar icon shows the same count (see below).
 
 Requires macOS 14 and Swift 5.10 or later. The Command Line Tools are enough; Xcode is not needed. The built-in hub uses Apple's `/usr/bin/python3`, which comes with the Command Line Tools.
@@ -30,7 +31,7 @@ To update an installed copy, use `scripts/install.sh` (see [Updating](#updating)
 
 ## Menu bar icon
 
-On by default (Settings → Menu bar and panel → **Show menu bar icon**). It's a monochrome template icon, so it follows the menu bar's light or dark look.
+On by default (Settings → Panel → **Show menu bar icon**). It's a monochrome template icon, so it follows the menu bar's light or dark look.
 
 - With open `needs` items it shows the count, tinted with the highest priority's colour (**Show count in menu bar**, on by default). A small dot on the icon means the hub can't be reached.
 - The menu: a status line (`All clear · This Mac`, `3 need you · hub2`); the top 5 open items (clicking one opens its first allowed link, or shows the panel expanded); **Show Floating Panel** (checked while it's shown); **Snooze ▸** 15 min / 30 min / 1 hr / 3 hr / until tomorrow; **Reset Position**; **Work** / **Personal**; **Invite a Machine…** (only with an owner token); **Settings…**; **About Needs You**; **Quit Needs You**, which stops the local hub cleanly.
@@ -38,15 +39,29 @@ On by default (Settings → Menu bar and panel → **Show menu bar icon**). It's
 
 ### Hiding the floating panel
 
-Hide it from the menu bar (**Show Floating Panel**), the pill's right-click menu (**Hide Floating Panel**), the **×** in the expanded header, or **⌃⌥Space**. It stays hidden across launches until you show it again the same ways.
+Hide it from the menu bar (**Show Floating Panel**), the pill's right-click menu (**Hide Floating Panel**), the **×** in the expanded header, or the shortcut (**⌃⌥Space** by default). It stays hidden across launches until you show it again the same ways.
 
 - While it's hidden, new items only update the menu bar count. An urgent item gives the icon one brief pulse. Turn on **Urgent items show the panel even when hidden** (off by default) to have urgent items bring the panel back instead.
 - A snooze is different: it ends by itself, and **Urgent items break through a snooze** (on by default) still applies to it.
-- The menu bar icon and the panel can't both be hidden. With the icon off, hiding the panel is refused (⌃⌥Space beeps); with the panel hidden, the icon can't be turned off.
+- The menu bar icon and the panel can't both be hidden. With the icon off, hiding the panel is refused (the shortcut beeps); with the panel hidden, the icon can't be turned off.
+
+## Settings
+
+Settings has five tabs. Each setting has a one-line explanation under it.
+
+- **Hubs and access**: the hub on this Mac, Connect with link, Invite a machine, Access, and the manual hub list.
+- **Panel**: your name; **Look** (with a live sample card) — Size (compact / regular / large: the pill, the cards' type and the open panel's width), Card text size (small / default / large / extra large, body text only), Card text (full / first 3 lines / title only), Compact links, Cards before scrolling (as many as fit / 2 / 3 / 5 / 8), Opacity (100–60 % when not hovered); Show floating panel, menu bar icon and count, Snap to corners; **Keyboard**: the global shortcut with **Change…** (records the next key press in the Settings window; Esc cancels) and whether it registered.
+- **Alerts**: Urgent items and Normal and low items, each Off / Subtle / Normal / Bright (the glow, how many times it pulses, the ring, and a tint at Bright). Urgent never goes below Subtle. The preview pills play the style when it changes. Also: urgent breaks through a snooze, urgent shows a hidden panel, the work/personal schedule and the morning summary.
+- **Integrations**: **Hotkey also opens the top card's first link** (off by default): the shortcut runs the top card's Terminal jump or opens its VS Code window (or first allowed link) instead of showing or hiding the panel, and shows or hides as usual when there's nothing to open. Live updates (SSE).
+- **Advanced**: demo mode, open at login, **Reset to defaults** for the look and alerts.
+
+Every default is the original look. The values are plain keys in `defaults read app.needsyou.mac` (`panelSize`, `cardTextSize`, `cardBodies`, `compactLinks`, `maxVisibleCards`, `panelOpacity`, `alertStyleUrgent`, `alertStyleOther`, `hotKey` as `control+option+space`, `hotKeyOpensTopLink`); an unknown or invalid value falls back to the default. The size and alert tables are in `NeedsYouCore` (`PanelStyle.swift`, `AlertStyle.swift`, `CardLayout.swift`, `HotKeyCombo.swift`) with tests.
+
+A shortcut needs ⌃, ⌥ or ⌘, and ones macOS or every app owns (⌘Space, ⌃Space, ⌘Tab, ⌘Q, the screenshot keys, ...) are refused. If the new one is taken by another app, the old one stays.
 
 ## The hub on this Mac (default)
 
-**Run hub on this Mac** is on by default (Settings → This Mac). At launch the app starts the bundled hub (`Contents/Resources/hub/needs_you_hub.py`) as a child process:
+**Run hub on this Mac** is on by default (Settings → Hubs and access → This Mac). At launch the app starts the bundled hub (`Contents/Resources/hub/needs_you_hub.py`) as a child process:
 
 - It listens on `127.0.0.1:8765` and, if the Mac is on a tailnet, on its Tailscale address (100.64.0.0/10). Never on `0.0.0.0`.
 - Other machines are told to use the Mac's MagicDNS name (from `tailscale status --json`), else its Tailscale IP, else `http://127.0.0.1:8765`.

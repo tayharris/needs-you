@@ -14,6 +14,7 @@ final class PrefsMigrationTests: XCTestCase {
         ("testKeychainMoveFlagsRemoteHubs", testKeychainMoveFlagsRemoteHubs),
         ("testMigrationsRunOnceAndInOrder", testMigrationsRunOnceAndInOrder),
         ("testNewerPrefsAreLeftAlone", testNewerPrefsAreLeftAlone),
+        ("testLookSettingsNeedNoMigration", testLookSettingsNeedNoMigration),
     ]
 
     private var suite = ""
@@ -84,5 +85,23 @@ final class PrefsMigrationTests: XCTestCase {
         XCTAssertEqual(PrefsMigrator.migrate(defaults), [])
         XCTAssertEqual(defaults.integer(forKey: PrefsMigrator.versionKey), 99)
         XCTAssertEqual(defaults.string(forKey: "panelPlacements"), "x")
+    }
+
+    /// The look, alert and shortcut settings are new keys with defaults equal to the
+    /// original look, so prefs from a version 3 build need no migration: nothing runs,
+    /// nothing is written, and the app looks and behaves as before.
+    func testLookSettingsNeedNoMigration() {
+        defaults.set(3, forKey: PrefsMigrator.versionKey)
+        defaults.set(["http://hub.ts.net:8765"], forKey: "hubURLs")
+        defaults.set(true, forKey: "snapToCorners")
+        let before = Set((defaults.persistentDomain(forName: suite) ?? [:]).keys)
+
+        XCTAssertEqual(PrefsMigrator.currentVersion, 3)
+        XCTAssertEqual(PrefsMigrator.migrate(defaults), [])
+        XCTAssertEqual(UIPrefs.load(from: defaults), UIPrefs.defaults)
+        XCTAssertEqual(UIPrefs.load(from: defaults).metrics, PanelStyle.regular)
+        XCTAssertEqual(HotKeyValidator.stored(defaults.string(forKey: "hotKey")), .standard)
+        XCTAssertFalse(defaults.bool(forKey: "hotKeyOpensTopLink"))
+        XCTAssertEqual(Set((defaults.persistentDomain(forName: suite) ?? [:]).keys), before)
     }
 }

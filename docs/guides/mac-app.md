@@ -32,11 +32,33 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 
 - **Click** the pill to expand the cards; **Escape** or click outside to collapse.
 - On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, ...).
+- A card waiting 4 hours or more shows its age next to the title (`5 h`, `2 d`; amber after 2 days). Its **…** menu has **Dismiss All from <host>**, which clears every card and Recent row from that machine in this context, for when a machine went away without resolving its cards.
 - **Right-click** the pill (or the button in the expanded header) to snooze everything: 15 min, 30 min, 1 hr, 3 hr, until tomorrow. Urgent items still pulse once through a snooze.
-- **⌃⌥Space** shows or hides the panel (the default shortcut; check Settings).
-- Drag the pill anywhere; it snaps to the nearest corner and remembers the spot per display setup.
+- **⌃⌥Space** shows or hides the panel. Change it in **Settings → Panel → Keyboard**.
+- Drag the pill anywhere; it stays where you drop it (or snaps to a corner with **Snap to corners**) and remembers the spot per display setup.
+
+## Make it yours
+
+Everything is in **Settings** (right-click the pill → **Settings…**). The defaults are the original look.
+
+| Setting | Where | Choices (default first) |
+|---|---|---|
+| Size of the pill, the cards' type and the open panel | Panel → Look → **Size** | Regular, Compact, Large |
+| Card body text (agents' step-by-step instructions) | Panel → Look → **Card text size** | Default, Small, Large, Extra large |
+| How much of each card's text shows | Panel → Look → **Card text** | Full, First lines (3), Title only (click **Show details**) |
+| Links on one short row | Panel → Look → **Compact links** | Off, On (3 links, `+N` shows the rest) |
+| Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
+| See-through when the pointer isn't over it | Panel → Look → **Opacity** | 100%, 90%, 80%, 70%, 60% |
+| The global shortcut | Panel → Keyboard | ⌃⌥Space, or record your own (it must use ⌃, ⌥ or ⌘) |
+| How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
+| How loud normal and low items are | Alerts → **Normal and low items** | Normal, Off, Subtle, Bright |
+| The shortcut opens the top card's Terminal / VS Code link | Integrations | Off, On |
+
+The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
 
 ## Other settings
+
+These are the Alerts and Integrations tabs:
 
 - **Display:** main display, the display with the cursor, or a specific one.
 - **Work hours:** defaults to weekdays 7:00–18:00 = work, everything else = personal. Items with the other context don't vanish; they show as the faint second number.
