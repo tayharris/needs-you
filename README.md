@@ -4,7 +4,7 @@ One inbox for "you have to do something". AI agents, servers and CI post an item
 
 **Your Mac is the hub.** A hub is a small SQLite database behind a tiny web server: one Python file that needs only the standard library. The Mac app runs one, so there's nothing else to install: no server, no account, no cloud. **Senders** (servers, CI, agents) post with the `needs-you` command, also one Python file: it tries each hub in turn, and if none answers (the Mac is asleep, say) it keeps the alert in a local outbox and sends it later. **Server hubs** are optional: the same hub, always on, on a Linux server, for redundancy, so alerts land while the Mac sleeps. Most people don't need one. It's light: the idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](docs/HUB.md#resource-use)). More in [Words](docs/guides/concepts.md).
 
-**Works with:** [Claude Code](docs/guides/claude-code.md) (hooks + skill) and [Orca](docs/guides/orca.md) (automation prompt blocks). Coming soon: Codex, Kimi, Grok, Gemini CLI, Cursor, GitHub Copilot, Aider, Cline, Continue, opencode. Anything that can run a shell command can post too ([Add a sender](docs/guides/add-a-sender.md)).
+**Works with:** [Claude Code](docs/guides/claude-code.md) (hooks + skill), [Codex CLI](docs/guides/codex.md) (hooks), [Gemini CLI](docs/guides/gemini.md) (hooks), [opencode](docs/guides/opencode.md) (plugin) and [Orca](docs/guides/orca.md) (automation prompt blocks). Coming soon: Kimi, GitHub Copilot CLI, Grok, Cursor, Aider, Cline. Anything that can run a shell command can post too ([Add a sender](docs/guides/add-a-sender.md)).
 
 Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
