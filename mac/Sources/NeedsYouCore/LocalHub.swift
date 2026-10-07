@@ -94,6 +94,12 @@ public enum TailscaleStatus {
         return paths
     }
 
+    /// Is the Tailscale CLI (or app) on this Mac? Only file checks; nothing is run.
+    public static func isInstalled(path: String? = ProcessInfo.processInfo.environment["PATH"],
+                                   isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }) -> Bool {
+        candidatePaths(path: path).contains(where: isExecutable)
+    }
+
     /// `Self.DNSName` from `tailscale status --json`, without the trailing dot.
     public static func magicDNSName(fromStatusJSON data: Data) -> String? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -169,6 +175,70 @@ public struct LocalHubPlan: Equatable, Sendable {
     public func needsRestart(comparedTo other: LocalHubPlan) -> Bool {
         bindAddresses != other.bindAddresses || publicURL != other.publicURL
     }
+}
+
+// MARK: - Who can reach it
+
+/// Settings → This Mac: the two addresses of the hub on this Mac, and whether other
+/// machines can reach it.
+public struct LocalHubReach: Equatable, Sendable {
+    public enum Tailscale: Equatable, Sendable {
+        /// On a tailnet: the hub also listens on the Tailscale address.
+        case connected
+        /// Tailscale is installed but this Mac has no tailnet address (signed out or off).
+        case notConnected
+        case notInstalled
+        /// NEEDS_YOU_HUB_LOOPBACK_ONLY=1 (test copies).
+        case loopbackOnly
+    }
+
+    /// For agents and scripts on this Mac.
+    public var localURL: String
+    /// For other machines, over Tailscale: the MagicDNS name, else the 100.x address.
+    /// nil when the hub listens on 127.0.0.1 only.
+    public var tailnetURL: String?
+    public var tailscale: Tailscale
+
+    public init(magicDNSName: String?, tailnetIP: String?, tailscaleInstalled: Bool,
+                loopbackOnly: Bool = LocalHub.loopbackOnly, port: Int = LocalHub.port) {
+        localURL = "http://127.0.0.1:\(port)"
+        if loopbackOnly {
+            tailnetURL = nil
+            tailscale = .loopbackOnly
+        } else if let ip = tailnetIP, TailnetAddress.isTailnetIPv4(ip) {
+            // Only with a tailnet address: that's what the hub binds (LocalHubPlan.bindAddresses).
+            tailnetURL = LocalHubPlan.publicURL(magicDNSName: magicDNSName, tailnetIP: ip, port: port)
+            tailscale = .connected
+        } else {
+            tailnetURL = nil
+            tailscale = tailscaleInstalled ? .notConnected : .notInstalled
+        }
+    }
+
+    public init(plan: LocalHubPlan, tailscaleInstalled: Bool, loopbackOnly: Bool = LocalHub.loopbackOnly) {
+        self.init(magicDNSName: plan.magicDNSName, tailnetIP: plan.tailnetIP, tailscaleInstalled: tailscaleInstalled,
+                  loopbackOnly: loopbackOnly, port: plan.port)
+    }
+
+    /// Can servers and other Macs reach this hub?
+    public var reachableFromOtherMachines: Bool { tailnetURL != nil }
+
+    /// One or two plain sentences for Settings.
+    public var note: String {
+        switch tailscale {
+        case .connected:
+            return "Servers, agents and other Macs on your tailnet send alerts to this address. Invite links use it too."
+        case .notConnected:
+            return "Tailscale is installed, but this Mac isn't connected, so other machines can't reach this hub yet. Open Tailscale and sign in. The address shows here by itself."
+        case .notInstalled:
+            return "Tailscale wasn't found, so only agents on this Mac can reach this hub. To get alerts from servers or other Macs, install Tailscale on this Mac and on them."
+        case .loopbackOnly:
+            return "NEEDS_YOU_HUB_LOOPBACK_ONLY=1 is set, so the hub only listens on this Mac."
+        }
+    }
+
+    /// The Tailscale setup guide in the repository (docs/guides/tailscale.md).
+    public static let tailscaleGuideURL = URL(string: "https://github.com/\(UpdateSource.defaultRepository)/blob/main/docs/guides/tailscale.md")!
 }
 
 // MARK: - Python availability
