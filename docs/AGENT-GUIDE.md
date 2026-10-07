@@ -130,6 +130,10 @@ curl -fsS -X POST "$NEEDS_YOU_URL/v1/items" \
 
 No outbox or failover with curl: loop over `NEEDS_YOU_URLS` yourself or accept the loss.
 
+Connecting a tool's hooks, a webhook or a notification command (rather than posting from
+your own logic)? [guides/custom-connector.md](guides/custom-connector.md) has every field
+with its limits, a recipe for mapping events to cards, and tested examples.
+
 ### Steps: when the person has to do several things
 
 When handling the item takes **more than one action, in order** (rotate a key, then restart
