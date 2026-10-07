@@ -1448,22 +1448,35 @@ def run_command(cfg: Config, args: argparse.Namespace) -> int:
     else:
         old_term = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, lambda s, f: proc.send_signal(s))  # stopping us stops the command
-        try:
-            if proc.stderr is not None:
-                fd = proc.stderr.fileno()
+        # stderr is passed through (and its tail kept) by a thread, while this one waits for
+        # the command itself: something the command left running in the background can hold
+        # the pipe open for hours, and the command must never block on a full pipe, also
+        # while we're being interrupted.
+        tail_buf: List[bytes] = [b""]
+        reader = None
+        if proc.stderr is not None:
+            import threading
+
+            def pump(fd: int) -> None:
                 while True:
                     try:
                         chunk = os.read(fd, 65536)
                     except InterruptedError:
                         continue
+                    except OSError:
+                        return
                     if not chunk:
-                        break
+                        return
                     try:
                         sys.stderr.buffer.write(chunk)
                         sys.stderr.buffer.flush()
                     except (OSError, ValueError):
                         pass
-                    tail = (tail + chunk)[-16384:]
+                    tail_buf[0] = (tail_buf[0] + chunk)[-16384:]
+
+            reader = threading.Thread(target=pump, args=(proc.stderr.fileno(),), daemon=True)
+            reader.start()
+        try:
             rc = proc.wait()
         except KeyboardInterrupt:  # Ctrl-C reached the command too; a person is watching
             interrupted = True
@@ -1474,6 +1487,9 @@ def run_command(cfg: Config, args: argparse.Namespace) -> int:
                 rc = proc.wait()
         finally:
             signal.signal(signal.SIGTERM, old_term)
+        if reader is not None:
+            reader.join(1.0)  # what the command wrote last; not what a background child holds
+            tail = tail_buf[0]
     if rc < 0:
         rc = 128 - rc
     elapsed = time.monotonic() - start
