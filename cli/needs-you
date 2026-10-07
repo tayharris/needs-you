@@ -910,7 +910,13 @@ RELEASE_PATHS = {
     "hooks.json": "integrations/claude-code/hooks.json",
     "SKILL.md": "integrations/claude-code/skill/needs-you/SKILL.md",
     "orca-snippet.md": "integrations/orca/snippet.md",
+    "install-codex-hooks.sh": "integrations/codex/install-codex-hooks.sh",
+    "codex-hooks.json": "integrations/codex/codex-hooks.json",
 }
+
+
+def codex_home() -> str:
+    return os.environ.get("CODEX_HOME") or _home(".codex")
 
 
 class UpdateRefused(Exception):
@@ -1158,6 +1164,31 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         if applied != hj.get("sha256") or any(c["file"] == "needs-you-hook.sh" for c in changes):
             changes.append({"file": "hooks.json", "path": settings, "sha256": str(hj.get("sha256") or ""),
                             "size": hj.get("size"), "from": "?", "to": hj.get("version") or "?"})
+    # Codex CLI: its own copy of the hook, and its entries in <codex home>/hooks.json.
+    codex_hook = os.path.join(codex_home(), "hooks", "needs-you-hook.sh")
+    he = files.get("needs-you-hook.sh")
+    if os.path.isfile(codex_hook) and isinstance(he, dict):
+        want = str(he.get("sha256") or "").lower()
+        if len(want) != 64 or any(c not in "0123456789abcdef" for c in want):
+            raise UpdateRefused("the hub's manifest has no valid checksum for needs-you-hook.sh")
+        if _sha256_file(codex_hook) != want:
+            changes.append({"file": "needs-you-hook.sh", "label": "needs-you-hook.sh (Codex)",
+                            "backup": "codex-needs-you-hook.sh", "path": codex_hook,
+                            "sha256": want, "size": he.get("size"), "from": _stamp(codex_hook),
+                            "to": he.get("version") or "?"})
+    codex_json = os.path.join(codex_home(), "hooks.json")
+    try:
+        with open(codex_json, "r", encoding="utf-8") as fh:
+            codex_referenced = "needs-you-hook.sh" in fh.read()
+    except OSError:
+        codex_referenced = False
+    cj = files.get("codex-hooks.json")
+    if codex_referenced and isinstance(cj, dict):
+        if not isinstance(files.get("install-codex-hooks.sh"), dict):
+            raise UpdateRefused("the hub's manifest lists codex-hooks.json without install-codex-hooks.sh")
+        if _read_state().get("codex_hooks_json_sha256") != cj.get("sha256"):
+            changes.append({"file": "codex-hooks.json", "path": codex_json, "sha256": str(cj.get("sha256") or ""),
+                            "size": cj.get("size"), "from": "?", "to": cj.get("version") or "?"})
     return changes, notes
 
 
@@ -1348,7 +1379,9 @@ def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, A
     Raises UpdateRefused on a mismatch; returns a note when the check couldn't run (and
     raises instead with NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1)."""
     names = sorted({c["file"] for c in changes} | ({"install-hooks.sh", "needs-you-hook.sh"}
-                                                  if any(c["file"] == "hooks.json" for c in changes) else set()))
+                                                  if any(c["file"] == "hooks.json" for c in changes) else set())
+                   | ({"install-codex-hooks.sh", "needs-you-hook.sh"}
+                      if any(c["file"] == "codex-hooks.json" for c in changes) else set()))
     try:
         digests, why = release_digests(str(manifest.get("version") or ""), names)
     except UpdateRefused:
@@ -1423,6 +1456,23 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                 raise ValueError("install-hooks.sh failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
         _write_state(hooks_json_sha256=change["sha256"])
         return "re-merged the hook entries in ~/.claude/settings.json (it keeps a .bak)"
+    if name == "codex-hooks.json":
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix="needs-you-update-") as tmp:
+            for f in ("install-codex-hooks.sh", "needs-you-hook.sh", "codex-hooks.json"):
+                with open(os.path.join(tmp, f), "wb") as fh:
+                    fh.write(_download_verified(hub, f, manifest, timeout))
+            hook = os.path.join(codex_home(), "hooks", "needs-you-hook.sh")
+            if os.path.isfile(hook) and "codex-needs-you-hook.sh" not in (_read_state().get("backups") or {}):
+                _backup("codex-needs-you-hook.sh", hook)
+            r = subprocess.run(["bash", os.path.join(tmp, "install-codex-hooks.sh"), "--codex-home", codex_home()],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, NEEDS_YOU_INSTALLER="1"))
+            if r.returncode != 0:
+                raise ValueError("install-codex-hooks.sh failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
+        _write_state(codex_hooks_json_sha256=change["sha256"])
+        return "re-merged the hook entries in %s (it keeps a .bak)" % _tilde(change["path"])
     data = _download_verified(hub, name, manifest, timeout)
     path = change["path"]
     if name == "needs-you":
@@ -1434,7 +1484,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
             mode = os.stat(path).st_mode & 0o777
         except OSError:
             mode = 0o644
-    _backup(name, path)
+    _backup(change.get("backup") or name, path)
     _write_atomic(path, data, mode)
     return "updated %s: %s -> %s" % (_tilde(path), change["from"] or "?", change["to"])
 
@@ -1505,7 +1555,7 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         return finish(0)
     say("from %s (hub %s, %s):" % (hub.url, clean(manifest.get("version")), hub.why))
     for c in changes:
-        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c["file"], c["from"] or "?", c["to"]))
+        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c.get("label") or c["file"], c["from"] or "?", c["to"]))
     try:
         note = cross_check(cfg, manifest, changes, auto=auto or from_flush)
         result["notes"].append(note)
@@ -1712,7 +1762,7 @@ class Doctor:
         return "", ""
 
     def run(self) -> List[Dict[str, str]]:
-        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.skill,
+        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.codex_hooks, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -1938,6 +1988,100 @@ class Doctor:
                 hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
             self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
 
+    # -- Codex CLI hooks ---------------------------------------------------
+    def codex_hooks(self) -> None:
+        import re
+        import shutil
+        home = os.environ.get("CODEX_HOME") or os.path.join(self.home, ".codex")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        hooks_json = os.path.join(home, "hooks.json")
+        installer = ("integrations/codex/install-codex-hooks.sh (or the invite installer with "
+                     "--codex-hooks user)")
+        if not os.path.isdir(home):
+            if shutil.which("codex"):
+                self.add("codex hooks", "INFO", "%s not found; Codex hasn't run for this user yet" % _tilde(home),
+                         "after a first Codex run: " + installer)
+            return
+        doc: Any = None
+        try:
+            with open(hooks_json, "r", encoding="utf-8") as fh:
+                text = fh.read()
+            referenced = "needs-you-hook.sh" in text
+            try:
+                doc = json.loads(text) if text.strip() else {}
+            except ValueError:
+                doc = None
+        except OSError:
+            text, referenced, doc = "", False, {}
+        exists = os.path.isfile(hook)
+        if not exists and not referenced:
+            self.add("codex hooks", "INFO", "not installed (optional: cards when a Codex session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts, hints = [], [_tilde(hooks_json)], []
+        if doc is None:
+            problems.append("%s isn't valid JSON, so Codex loads none of its hooks" % _tilde(hooks_json))
+        if not exists:
+            problems.append("%s references the hook but %s is missing" % (_tilde(hooks_json), _tilde(hook)))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            if not referenced:
+                problems.append("%s doesn't reference it" % _tilde(hooks_json))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "codex" not in fh.read():
+                        problems.append("old hook (no Codex support)")
+            except OSError:
+                pass
+        # [features] hooks = false turns every hook off.
+        config_text = ""
+        try:
+            with open(os.path.join(home, "config.toml"), "r", encoding="utf-8") as fh:
+                config_text = fh.read()
+        except OSError:
+            pass
+        section = ""
+        for line in config_text.splitlines():
+            s = line.strip()
+            if s.startswith("["):
+                section = s
+            elif section == "[features]" and re.match(r"^hooks\s*=\s*false\b", s):
+                problems.append("hooks = false under [features] in %s" % _tilde(os.path.join(home, "config.toml")))
+        # Codex runs a hook only once it's trusted (/hooks); it records that in config.toml as
+        # [hooks.state."<hooks.json>:<event>:<group>:<handler>"]. Only claim "untrusted" when that
+        # table exists for this file but not for our PermissionRequest entry.
+        if isinstance(doc, dict) and isinstance(doc.get("hooks"), dict):
+            groups = doc["hooks"].get("PermissionRequest")
+            pos = None
+            if isinstance(groups, list):
+                for gi, g in enumerate(groups):
+                    hs = g.get("hooks") if isinstance(g, dict) else None
+                    for hi, h in enumerate(hs if isinstance(hs, list) else []):
+                        if isinstance(h, dict) and "needs-you-hook.sh" in str(h.get("command", "")):
+                            pos = (gi, hi)
+            state_prefix = '[hooks.state."%s:' % hooks_json
+            if pos is not None and state_prefix in config_text:
+                if '%spermission_request:%d:%d"]' % (state_prefix, pos[0], pos[1]) not in config_text:
+                    problems.append("Codex hasn't trusted them yet")
+                    hints.append("start Codex, open /hooks and trust the needs-you entries")
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            if not hints:
+                hints.append("re-run the installer: " + installer)
+            self.add("codex hooks", "WARN", "; ".join(problems + parts), "; ".join(hints))
+            return
+        hint = "Codex runs a new hook only after you trust it: open /hooks in Codex once"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("codex hooks", "OK", "installed in " + "; ".join(parts), hint)
+
     # -- skill -------------------------------------------------------------
     def skill(self) -> None:
         p = os.path.join(self.home, ".claude", "skills", "needs-you", "SKILL.md")
@@ -2035,7 +2179,7 @@ def _doctor_update(self: "Doctor") -> None:
         return
     detail = "%s; hub %s serves %s%s" % (local, hub.url, clean(manifest.get("version")), tail)
     if changes:
-        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c["file"] for c in changes),
+        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c.get("label") or c["file"] for c in changes),
                  "needs-you update")
     else:
         self.add("update", "OK", detail + ("; " + "; ".join(notes) if notes else ""))
