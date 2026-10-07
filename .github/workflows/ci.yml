@@ -24,6 +24,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # The system python3 on purpose: it's what server hubs and senders run.
       - run: /usr/bin/python3 --version
       - run: /usr/bin/python3 -m unittest discover -s tests
@@ -32,6 +34,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # The compatibility floor: stdlib-only, 3.9 syntax.
       - run: /usr/bin/python3 -c 'import sys; print(sys.version); assert sys.version_info[:2] == (3, 9), sys.version'
       - run: /usr/bin/python3 -m unittest discover -s tests
@@ -42,6 +46,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # bundle.sh uses the commit count as the build number
+          persist-credentials: false
       - run: mac/scripts/test.sh
       - run: mac/scripts/bundle.sh
 
@@ -49,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Preinstalled on GitHub's Ubuntu images.
       - run: shellcheck --version
       - run: shellcheck -S warning -f gcc $(git ls-files '*.sh')
