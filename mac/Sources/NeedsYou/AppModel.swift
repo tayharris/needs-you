@@ -630,8 +630,8 @@ final class AppModel: ObservableObject {
     func activate(_ item: Item) {
         switch MenuItemAction.forItem(item) {
         case .open(let url):
-            if let jump = OrcaJump.parse(url) {
-                OrcaJumpRunner.run(jump)
+            if let action = AppAction.parse(url) {
+                run(action)
                 resolve(item)
             } else {
                 NSWorkspace.shared.open(url)
@@ -662,13 +662,14 @@ final class AppModel: ObservableObject {
 
     // MARK: Links
 
-    /// Opens a link only if it passes the scheme allow-list. The Orca terminal link runs
-    /// its one fixed action instead of going to NSWorkspace, and going to the terminal
-    /// counts as handling the card: it's marked done.
+    /// Opens a link only if it passes the scheme allow-list. The app's own actions (the
+    /// Orca and terminal jumps) run their fixed action instead of going to NSWorkspace, and
+    /// going to the terminal counts as handling the card: it's marked done. A click in the
+    /// panel is trusted; links from outside the app go through AppDelegate, which asks.
     @discardableResult
     func open(_ string: String, from item: Item? = nil) -> Bool {
-        if let jump = OrcaJump.parse(string) {
-            OrcaJumpRunner.run(jump)
+        if let action = AppAction.parse(string) {
+            run(action)
             if let item { resolve(item) }
             collapse()
             return true
@@ -681,6 +682,14 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func open(_ url: URL) -> Bool { open(url.absoluteString) }
+
+    /// Runs one of the app's own actions. Activates the target app, never this one.
+    func run(_ action: AppAction) {
+        switch action {
+        case .orca(let jump): OrcaJumpRunner.run(jump)
+        case .terminal(let jump): TerminalJumpRunner.run(jump, appleScript: settings.terminalAppleScript)
+        }
+    }
 
     func openSettings() { openSettingsHandler?() }
 }

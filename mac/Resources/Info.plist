@@ -31,6 +31,10 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
+	<!-- The Terminal button's iTerm2 / Terminal.app jump (opt-in, Settings → Integrations)
+	     uses AppleScript; macOS shows this when it asks for the Automation permission. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Needs You selects the iTerm2 or Terminal tab a card came from when you click its Terminal button.</string>
 	<!-- needsyou://connect?hub=<url>&code=<code>: invite links open the app and redeem. -->
 	<key>CFBundleURLTypes</key>
 	<array>

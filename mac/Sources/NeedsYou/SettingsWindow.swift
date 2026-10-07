@@ -143,6 +143,7 @@ struct SettingsView: View {
     @State private var copied: String?
     @State private var visibilityMessage: String?
     @State private var pendingRevoke: PendingRevoke?
+    @State private var automationStatus: String?
 
     /// Only when nothing works out of the box (the local hub is off and no hubs are set).
     private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo }
@@ -185,6 +186,7 @@ struct SettingsView: View {
 
             tabForm {
                 shortcutActionSection
+                terminalJumpSection
                 extra[.integrations]
                 sendersSection
             }
@@ -544,6 +546,42 @@ struct SettingsView: View {
             Text("The panel still never takes focus; only the app the link opens comes forward.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private var terminalJumpSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { settings.terminalAppleScript },
+                set: { on in
+                    settings.terminalAppleScript = on
+                    automationStatus = nil
+                    if on { checkAutomation() }
+                }
+            )) {
+                LabelWithDetail("Jump to iTerm2 and Terminal tabs",
+                                "A card's Terminal button selects the tab its Claude Code session runs in, with AppleScript. macOS asks once per app to let Needs You control it (Automation). Off: the button only brings iTerm2 or Terminal forward.")
+            }
+            if settings.terminalAppleScript {
+                HStack(alignment: .top) {
+                    Text(automationStatus ?? "Checking…")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Check again") { checkAutomation() }
+                }
+            }
+        } header: {
+            Text("Terminal button")
+        } footer: {
+            Text("WezTerm and tmux need no permission: the app runs `wezterm cli activate-pane` or `tmux select-pane` with the card's pane id. Nothing from a card ever runs as a command or script; a terminal link from outside the panel asks first.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Asks for (or re-checks) Automation for iTerm2 and Terminal. Only from this Settings
+    /// click: the panel never prompts.
+    private func checkAutomation() {
+        automationStatus = nil
+        TerminalJumpRunner.requestAutomation { automationStatus = $0 }
     }
 
     private var sendersSection: some View {

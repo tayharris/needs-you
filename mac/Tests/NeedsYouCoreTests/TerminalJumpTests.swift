@@ -18,6 +18,8 @@ final class TerminalJumpTests: XCTestCase {
         ("testRoundTrip", testRoundTrip),
         ("testLinkPolicyAndMenuBar", testLinkPolicyAndMenuBar),
         ("testActionTableMatchesParsers", testActionTableMatchesParsers),
+        ("testScriptIsFixedAndHasEachHandler", testScriptIsFixedAndHasEachHandler),
+        ("testAutomationPermissionStatus", testAutomationPermissionStatus),
     ]
 
     let uuid = "4F261AE3-041A-47C6-872A-CF02E1E40804"
@@ -197,5 +199,31 @@ final class TerminalJumpTests: XCTestCase {
         XCTAssertEqual(LinkPolicy.appActionPaths, ["orca/terminal", "terminal/focus"])
         XCTAssertEqual("\(OrcaJump.host)\(OrcaJump.path)", LinkPolicy.appActionPaths[0])
         XCTAssertEqual("\(TerminalJump.host)\(TerminalJump.path)", LinkPolicy.appActionPaths[1])
+    }
+
+    func testScriptIsFixedAndHasEachHandler() {
+        for q in ["app=iterm&session=\(uuid)", "app=iterm&tty=/dev/ttys004", "app=terminal&tty=/dev/ttys012"] {
+            let call = jump(q)!.appleScriptCall!
+            let found = TerminalJumpScript.source(forHandler: call.handler)
+            XCTAssertNotNil(found, q)
+            XCTAssertTrue(found!.source.contains("on \(call.handler)("), q)
+            XCTAssertEqual(found!.app, jump(q)!.app, q)
+        }
+        XCTAssertNil(TerminalJumpScript.source(forHandler: "run"))
+        for src in [TerminalJumpScript.iTermSource, TerminalJumpScript.terminalSource] {
+            XCTAssertFalse(src.contains("do shell script"))
+            XCTAssertFalse(src.contains("run script"))
+            XCTAssertFalse(src.contains("\\("))       // no Swift interpolation left in it
+            XCTAssertTrue(src.contains("with timeout of 5 seconds"))
+        }
+    }
+
+    func testAutomationPermissionStatus() {
+        XCTAssertEqual(AutomationPermission(status: 0), .allowed)
+        XCTAssertEqual(AutomationPermission(status: -1743), .denied)
+        XCTAssertEqual(AutomationPermission(status: -1744), .notAskedYet)
+        XCTAssertEqual(AutomationPermission(status: -600), .appNotRunning)
+        XCTAssertEqual(AutomationPermission(status: -50), .other(-50))
+        XCTAssertTrue(AutomationPermission.denied.describe(.iterm).hasPrefix("iTerm2: not allowed"))
     }
 }
