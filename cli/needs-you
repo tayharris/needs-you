@@ -114,6 +114,21 @@ def warn(msg: str) -> None:
     sys.stderr.write("needs-you: %s\n" % msg)
 
 
+def clean(value: Any) -> str:
+    """Text a hub sent us, made safe to print: control characters (terminal escape
+    sequences included) and bidi overrides shown as \\x.. / \\u.... instead of acting."""
+    out = []
+    for c in str(value):
+        o = ord(c)
+        if o < 0x20 or 0x7f <= o < 0xa0:
+            out.append("\\x%02x" % o)
+        elif 0x202a <= o <= 0x202e or 0x2066 <= o <= 0x2069:
+            out.append("\\u%04x" % o)
+        else:
+            out.append(c)
+    return "".join(out)
+
+
 # ---------------------------------------------------------------------------
 # HTTP with failover
 # ---------------------------------------------------------------------------
@@ -124,7 +139,7 @@ class Unreachable(Exception):
 
 class Rejected(Exception):
     def __init__(self, status: int, body: Dict[str, Any]) -> None:
-        super().__init__("%s %s" % (status, body.get("message") or body.get("error") or ""))
+        super().__init__("%s %s" % (status, clean(body.get("message") or body.get("error") or "")))
         self.status = status
         self.body = body
 
@@ -411,20 +426,20 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
             if not quiet:
                 warn("nothing open with that key/id (already resolved?)")
             return 0
-        warn("hub rejected the request: HTTP %d %s" % (e.status, e.body.get("message") or e.body.get("error") or ""))
+        warn("hub rejected the request: HTTP %d %s" % (e.status, clean(e.body.get("message") or e.body.get("error") or "")))
         return 2
     if as_json:
         print(json.dumps(resp, sort_keys=True))
     elif not quiet:
         if path.endswith("/resolve"):
-            ids = [i.get("id") for i in resp.get("items", [])]
+            ids = [clean(i.get("id")) for i in resp.get("items", [])]
             if ids:
                 print("resolved %s via %s" % (", ".join(ids), url))
             else:
                 print("nothing open to resolve (already resolved?) via %s" % url)
         else:
             state = "created" if resp.get("created") else ("updated" if resp.get("changed") else "unchanged")
-            print("%s %s via %s" % (state, resp.get("id"), url))
+            print("%s %s via %s" % (state, clean(resp.get("id")), url))
     return 0
 
 
@@ -607,15 +622,15 @@ def health(cfg: Config, queued: int) -> int:
             print("%s  DOWN  %s" % (url, getattr(e, "reason", e)))
             continue
         if status == 200 and body.get("token_error"):
-            print("%s  UP    hub=%s but the token was rejected: %s" % (url, body.get("hub_id"),
-                                                                    body["token_error"]))
+            print("%s  UP    hub=%s but the token was rejected: %s" % (url, clean(body.get("hub_id")),
+                                                                    clean(body["token_error"])))
         elif status == 200:
             tok = body.get("token") or {}
-            print("%s  OK    hub=%s token=%s role=%s" % (url, body.get("hub_id"), tok.get("name", "-"),
-                                                        tok.get("role", "-")))
+            print("%s  OK    hub=%s token=%s role=%s" % (url, clean(body.get("hub_id")), clean(tok.get("name", "-")),
+                                                        clean(tok.get("role", "-"))))
             healthy += 1
         else:
-            print("%s  HTTP %d  %s" % (url, status, body.get("message") or body.get("error") or ""))
+            print("%s  HTTP %d  %s" % (url, status, clean(body.get("message") or body.get("error") or "")))
     print("outbox: %d queued" % queued)
     return 0 if healthy else 1
 
@@ -800,19 +815,20 @@ class Doctor:
                 self.add(name, "WARN", "%s answered HTTP %d" % (url, status), "is that a needs-you hub URL?")
                 continue
             answered.append(i)
-            hub_v = body.get("version") or "?"
-            base = "%s hub=%s version %s" % (url, body.get("hub_id", "?"), hub_v)
+            hub_v = clean(body.get("version") or "?")
+            base = "%s hub=%s version %s" % (url, clean(body.get("hub_id", "?")), hub_v)
             vhint = ""
             if hub_v not in ("?", VERSION):
                 vhint = "CLI is %s; needs-you self-update fetches the hub's copy" % VERSION
             tok = body.get("token")
             if body.get("token_error") or not isinstance(tok, dict):
-                why = body.get("token_error") or ("no token sent" if not self.cfg.token else "token not recognised")
+                why = (clean(body["token_error"]) if body.get("token_error")
+                       else "no token sent" if not self.cfg.token else "token not recognised")
                 self.add(name, "FAIL", "%s; token rejected: %s" % (base, why),
                          "get a new invite link and re-run its installer with --force")
                 continue
-            role = tok.get("role", "?")
-            detail = "%s token=%s role=%s" % (base, tok.get("name", "?"), role)
+            role = clean(tok.get("role", "?"))
+            detail = "%s token=%s role=%s" % (base, clean(tok.get("name", "?")), role)
             if role not in ("sender", "owner"):
                 self.add(name, "WARN", detail + " (this role can't post)", "use a sender token on this machine")
                 continue
