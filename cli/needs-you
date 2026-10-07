@@ -2112,8 +2112,19 @@ def backup_dir() -> str:
     return os.path.join(state_dir(), "backup")
 
 
+# Set when an update starts applying: its first backup replaces the last update's list, so
+# --rollback undoes that update only, not files an earlier one replaced.
+_NEW_BACKUP_GENERATION = False
+
+
+def _backed_up(name: str) -> bool:
+    """This update already kept `name` (so a second step replacing it keeps the original)."""
+    return not _NEW_BACKUP_GENERATION and name in (_read_state().get("backups") or {})
+
+
 def _backup(name: str, path: str) -> None:
     """Keep the file being replaced, for `update --rollback` (one generation)."""
+    global _NEW_BACKUP_GENERATION
     try:
         with open(path, "rb") as fh:
             data = fh.read()
@@ -2122,7 +2133,8 @@ def _backup(name: str, path: str) -> None:
         return
     os.makedirs(backup_dir(), mode=0o700, exist_ok=True)
     _write_atomic(os.path.join(backup_dir(), name), data, 0o600)
-    backups = _read_state().get("backups") or {}
+    backups = {} if _NEW_BACKUP_GENERATION else (_read_state().get("backups") or {})
+    _NEW_BACKUP_GENERATION = False
     backups[name] = {"path": path, "mode": mode, "version": _stamp(path) if name != "needs-you" else VERSION}
     _write_state(backups=backups)
 
@@ -2167,7 +2179,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                 with open(os.path.join(tmp, f), "wb") as fh:
                     fh.write(_download_verified(hub, f, manifest, timeout))
             hook = _home(".claude", "hooks", "needs-you-hook.sh")
-            if os.path.isfile(hook) and "needs-you-hook.sh" not in (_read_state().get("backups") or {}):
+            if os.path.isfile(hook) and not _backed_up("needs-you-hook.sh"):
                 _backup("needs-you-hook.sh", hook)
             r = subprocess.run(["bash", os.path.join(tmp, "install-hooks.sh"), "--user"], stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=60,
@@ -2187,7 +2199,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                     fh.write(_download_verified(hub, f, manifest, timeout))
             hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
             backup = "%s-needs-you-hook.sh" % agent
-            if os.path.isfile(hook) and backup not in (_read_state().get("backups") or {}):
+            if os.path.isfile(hook) and not _backed_up(backup):
                 _backup(backup, hook)
             r = subprocess.run(["bash", os.path.join(tmp, installer), flag, home_fn()],
                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
@@ -2295,6 +2307,8 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         return finish(0)
     failed = False
     timeout = max(cfg.timeout, 10)
+    global _NEW_BACKUP_GENERATION
+    _NEW_BACKUP_GENERATION = True
     # The CLI last: if replacing it fails, the rest is already current.
     for c in sorted(changes, key=lambda c: c["file"] == "needs-you"):
         try:

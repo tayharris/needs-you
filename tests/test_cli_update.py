@@ -243,6 +243,20 @@ class Update(UpdateCase):
         r = self.run_cli("update", "--rollback", urls=[h.url])
         self.assertIn("nothing to roll back", r.stdout)
 
+    def test_rollback_undoes_only_the_last_update(self):
+        h = self.hub()
+        skill = self.install(".claude/skills/needs-you/SKILL.md")
+        self.assertEqual(self.run_cli("update", urls=[h.url]).returncode, 0)  # skill and CLI
+        with open(self.cli, "wb") as fh:  # later, only the CLI is behind
+            fh.write(self.old_cli)
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("SKILL.md", r.stdout)
+        r = self.run_cli("update", "--rollback", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+        self.assertEqual(read(skill), read(SKILL))  # not two updates back
+
     def test_old_hub_without_manifest(self):
         h = self.hub(manifest=False)
         r = self.run_cli("update", urls=[h.url])
