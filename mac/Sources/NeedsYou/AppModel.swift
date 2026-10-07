@@ -152,6 +152,8 @@ final class AppModel: ObservableObject {
     /// The focus level in force right now.
     var focusLevel: FocusLevel { settings.focus.effectiveLevel(at: Date()) }
     var isFocused: Bool { focusLevel != .off }
+    /// The focus in force came from a needsyou://focus link (the pill shows a link badge).
+    var focusSetByLink: Bool { isFocused && settings.focus.source == .link }
     /// "Urgent only until 14:30", or nil.
     var focusSummary: String? { settings.focus.summary(at: Date()) { Self.timeFormatter.string(from: $0) } }
     /// Items held under Later in this context (not counted; the faint "+N").
@@ -162,7 +164,7 @@ final class AppModel: ObservableObject {
 
     func deliveryState(at date: Date) -> DeliveryState {
         DeliveryState(context: context, visibility: visibility, focus: settings.focus.effectiveLevel(at: date),
-                      defaults: settings.delivery, rules: settings.bypassRules,
+                      focusSource: settings.focus.source, defaults: settings.delivery, rules: settings.bypassRules,
                       urgentBreaksSnooze: settings.urgentBreaksSnooze,
                       urgentShowsHiddenPanel: settings.urgentShowsHiddenPanel, now: date)
     }

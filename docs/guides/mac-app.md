@@ -66,7 +66,14 @@ Two guards: an urgent item breaks through a focus unless you turn off **Settings
 
 ### Drive it from Shortcuts or a script
 
-The app handles `needsyou://focus?level=<level>[&minutes=<1-720>]`, with `level` one of `off`, `agents` (agents and urgent only), `urgent`, `later` (everything later). Without `minutes` it holds until turned off. Anything else in the link is refused and does nothing; it never opens a window.
+The app handles `needsyou://focus?level=<level>[&minutes=<n> | &until=tomorrow]`, with `level` one of `off`, `agents` (agents and urgent only), `urgent`, `later` (everything later). Anything else in the link is refused and does nothing.
+
+Any app or web page can open a `needsyou://` link, so a focus link is fenced in:
+
+- **It asks first.** Until you turn on **Settings → Alerts → Allow focus links from other apps (Shortcuts, scripts)** (off by default), the app asks "Turn on Focus … ?" before applying one. `level=off` never asks: it only makes alerts louder.
+- **It always ends.** `minutes` is capped at 720 (12 h; larger numbers are cut to 12 h), `until=tomorrow` ends at 7:00, and a link with neither lasts 12 h.
+- **Urgent always gets through.** A focus a link set never holds back urgent items, whatever the level or the "Urgent items break through Focus" setting.
+- **You can see it.** The pill shows a small link badge next to the moon, and **Focus** in the menus has **Set by a link · Turn off**.
 
 From a script or Terminal, use `open -g` so nothing comes forward:
 
@@ -75,7 +82,7 @@ open -g 'needsyou://focus?level=urgent&minutes=60'
 open -g 'needsyou://focus?level=off'
 ```
 
-To follow a macOS Focus, make two personal automations in the **Shortcuts** app → **Automation** → **+**:
+To follow a macOS Focus, first turn on **Allow focus links from other apps** (otherwise each automation run asks), then make two personal automations in the **Shortcuts** app → **Automation** → **+**:
 
 1. **When "Work" Focus turns on** (any Focus you like) → **Run Immediately** → action **Run Shell Script**: `open -g 'needsyou://focus?level=agents'`.
 2. **When "Work" Focus turns off** → **Run Shell Script**: `open -g 'needsyou://focus?level=off'`.

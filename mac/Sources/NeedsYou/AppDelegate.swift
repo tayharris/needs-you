@@ -167,12 +167,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if url.host?.lowercased() == FocusLink.host {
             // needsyou://focus?level=…&minutes=… from Shortcuts or a script: set the focus,
             // never show a window. Anything that doesn't parse does nothing.
-            if let link = FocusLink.parse(url) {
-                model.setFocus(link.state(now: Date()))
-            } else {
+            // Any web page can open one, so unless Settings → Alerts allows focus links, ask
+            // first (an explicit question, so the alert may activate the app; the panel never
+            // does). A link focus always ends and never holds back urgent items (FocusLink).
+            guard let link = FocusLink.parse(url) else {
                 NSLog("NeedsYou: ignored a needsyou://focus link that doesn't parse")
+                return
             }
-            yieldActivation()
+            if link.needsConfirmation && !settings.allowFocusLinks {
+                let prompt = link.confirmation
+                let alert = NSAlert()
+                alert.messageText = prompt.title
+                alert.informativeText = prompt.message
+                alert.addButton(withTitle: "Turn On")
+                alert.addButton(withTitle: "Cancel")
+                NSApp.activate(ignoringOtherApps: true)
+                let ok = alert.runModal() == .alertFirstButtonReturn
+                yieldActivation()
+                if ok { model.setFocus(link.state(now: Date())) }
+            } else {
+                model.setFocus(link.state(now: Date()))
+                yieldActivation()
+            }
             return
         }
         settingsWindow.show(tab: .hubs)

@@ -226,6 +226,8 @@ public struct DeliveryState: Sendable {
     public var visibility: PanelVisibility
     /// The focus level in force (FocusState.effectiveLevel).
     public var focus: FocusLevel
+    /// Who set it. A focus from a `needsyou://focus` link can never hold back urgent items.
+    public var focusSource: FocusSource
     public var defaults: DeliveryDefaults
     public var rules: RuleBook
     /// Settings → Alerts: an urgent arrival ends a snooze (default on).
@@ -235,11 +237,12 @@ public struct DeliveryState: Sendable {
     public var now: Date
 
     public init(context: ItemContext = .work, visibility: PanelVisibility = .shown, focus: FocusLevel = .off,
-                defaults: DeliveryDefaults = .standard, rules: RuleBook = RuleBook(),
+                focusSource: FocusSource = .menu, defaults: DeliveryDefaults = .standard, rules: RuleBook = RuleBook(),
                 urgentBreaksSnooze: Bool = true, urgentShowsHiddenPanel: Bool = false, now: Date = Date()) {
         self.context = context
         self.visibility = visibility
         self.focus = focus
+        self.focusSource = focusSource
         self.defaults = defaults
         self.rules = rules
         self.urgentBreaksSnooze = urgentBreaksSnooze
@@ -309,22 +312,25 @@ public enum DeliveryPolicy {
             if reason != .otherContext { reason = why }
         }
 
-        // 2. Focus only ever makes an arrival quieter.
+        // 2. Focus only ever makes an arrival quieter. A focus set by a link (any app or web
+        // page can open one) never holds back urgent: that floor isn't a setting.
+        let urgentFloor = state.focusSource == .link
+        let urgentUnderFocus: DeliveryTier = d.urgentBreaksFocus || urgentFloor ? .interrupt : .ambient
         switch state.focus {
         case .off:
             break
         case .agentsAndUrgent:
             if urgent {
-                quiet(to: d.urgentBreaksFocus ? .interrupt : .ambient, because: .focus)
+                quiet(to: urgentUnderFocus, because: .focus)
             } else if item.kind == .needs && item.key.hasPrefix(FocusLevel.agentKeyPrefix) {
                 break
             } else {
                 quiet(to: .later, because: .focus)
             }
         case .urgentOnly:
-            quiet(to: urgent ? (d.urgentBreaksFocus ? .interrupt : .ambient) : .later, because: .focus)
+            quiet(to: urgent ? urgentUnderFocus : .later, because: .focus)
         case .everythingLater:
-            quiet(to: .later, because: .focus)
+            quiet(to: urgent && urgentFloor ? .interrupt : .later, because: .focus)
         }
 
         // 3. Snoozed or hidden panel.

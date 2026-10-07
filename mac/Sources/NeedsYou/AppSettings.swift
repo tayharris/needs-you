@@ -35,6 +35,7 @@ final class AppSettings: ObservableObject {
         static let snapToCorners = "snapToCorners"
         static let hotKey = "hotKey"
         static let hotKeyOpensTopLink = "hotKeyOpensTopLink"
+        static let allowFocusLinks = "allowFocusLinks"
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -73,6 +74,11 @@ final class AppSettings: ObservableObject {
     /// A click-through glow around the work display's edge for urgent arrivals. Default off.
     @Published var edgeGlow: EdgeGlowMode {
         didSet { defaults.set(edgeGlow.rawValue, forKey: EdgeGlowMode.defaultsKey) }
+    }
+    /// needsyou://focus links from other apps (Shortcuts, scripts) apply without asking.
+    /// Default off: any web page can open a needsyou:// link, so the app asks first.
+    @Published var allowFocusLinks: Bool {
+        didSet { defaults.set(allowFocusLinks, forKey: Key.allowFocusLinks) }
     }
     /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
     @Published var focus: FocusState {
@@ -157,6 +163,7 @@ final class AppSettings: ObservableObject {
             Key.urgentShowsHiddenPanel: false,
             Key.panelHidden: false,
             Key.snapToCorners: false,
+            Key.allowFocusLinks: false,
         ])
         runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
@@ -176,6 +183,7 @@ final class AppSettings: ObservableObject {
         delivery = DeliveryDefaults.load(from: defaults)
         bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))
         focus = FocusState.load(from: defaults)
+        allowFocusLinks = defaults.bool(forKey: Key.allowFocusLinks)
         previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard
         edgeGlow = defaults.string(forKey: EdgeGlowMode.defaultsKey).flatMap(EdgeGlowMode.init(rawValue:)) ?? .standard
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))

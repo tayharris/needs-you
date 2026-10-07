@@ -156,10 +156,15 @@ struct IdlePill: View {
         // hide); on hover the full status line.
         HStack(spacing: 6) {
             if model.isFocused {
-                // Focus is on (right-click → Focus).
+                // Focus is on (right-click → Focus); the link badge when a link set it.
                 Image(systemName: "moon.fill")
                     .font(.system(size: model.metrics.idleFont - 1))
                     .foregroundStyle(Theme.muted)
+                if model.focusSetByLink {
+                    Image(systemName: "link")
+                        .font(.system(size: model.metrics.idleFont - 2, weight: .semibold))
+                        .foregroundStyle(Theme.normal.opacity(0.9))
+                }
             } else {
                 Circle()
                     .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
@@ -187,6 +192,12 @@ struct CountPill: View {
                 Image(systemName: "moon.fill")
                     .font(.system(size: model.metrics.countFont - 3))
                     .foregroundStyle(Theme.muted)
+                if model.focusSetByLink {
+                    // Set by a needsyou://focus link, not by hand.
+                    Image(systemName: "link")
+                        .font(.system(size: model.metrics.countFont - 4, weight: .semibold))
+                        .foregroundStyle(Theme.normal.opacity(0.9))
+                }
             }
             Text("\(model.count)")
                 .foregroundStyle(.white.opacity(model.count > 0 ? 0.95 : 0.5))

@@ -262,11 +262,12 @@ final class PanelController {
             let text = (model.hovering ? model.idleHoverLine : model.idleRestLine) as NSString
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
                 + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot
+                + (model.focusSetByLink ? m.idleFont + 4 : 0)
             return CGSize(width: m.idleWidth(textWidth: width), height: model.hovering ? m.idleHoverHeight : m.idleHeight)
         case .waiting:
             let later = model.laterCount
             let digits = String(model.count).count + (model.otherCount > 0 ? String(model.otherCount).count + 2 : 0)
-                + (later > 0 ? String(later).count + 1 : 0) + (model.isFocused ? 2 : 0)
+                + (later > 0 ? String(later).count + 1 : 0) + (model.isFocused ? 2 : 0) + (model.focusSetByLink ? 2 : 0)
             return CGSize(width: m.countWidth(digits: digits), height: m.countHeight)
         case .preview, .digest:
             return CGSize(width: m.previewWidth, height: m.previewHeight)

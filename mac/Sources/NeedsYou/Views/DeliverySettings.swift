@@ -34,7 +34,11 @@ struct DeliverySection: View {
             }
             Toggle(isOn: $settings.delivery.urgentBreaksFocus) {
                 LabelWithDetail("Urgent items break through Focus",
-                                "Under Agents and urgent only, and Urgent only. Off (for a presentation): they arrive ambient. Everything later holds urgent too.")
+                                "Under Agents and urgent only, and Urgent only. Off (for a presentation): they arrive ambient. Everything later holds urgent too. A focus set by a link always lets urgent through.")
+            }
+            Toggle(isOn: $settings.allowFocusLinks) {
+                LabelWithDetail("Allow focus links from other apps (Shortcuts, scripts)",
+                                "needsyou://focus links turn Focus on without asking. Off: the app asks first, since any web page can open one. A link focus lasts at most 12 h (or until tomorrow), never holds back urgent items, and shows a link badge on the pill.")
             }
         } header: {
             Text("Delivery")

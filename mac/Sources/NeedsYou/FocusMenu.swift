@@ -16,6 +16,10 @@ enum FocusMenu {
             info.isEnabled = false
             sub.addItem(info)
         }
+        if model.focusSetByLink {
+            // A needsyou://focus link (Shortcuts, a script, or a web page you allowed) set it.
+            sub.addItem(ClosureMenuItem(title: "Set by a link · Turn off") { [weak model] in model?.endFocus() })
+        }
         let off = ClosureMenuItem(title: "Off") { [weak model] in model?.endFocus() }
         off.state = level == .off ? .on : .off
         sub.addItem(off)
