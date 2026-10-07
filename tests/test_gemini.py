@@ -221,6 +221,26 @@ class Installer(unittest.TestCase):
         with open(self.settings) as fh:
             self.assertEqual(fh.read(), text)
 
+    def test_symlinked_or_malformed_settings_are_left_alone(self):
+        os.makedirs(self.gemini)
+        target = os.path.join(self.home, "dotfiles-settings.json")
+        with open(target, "w") as fh:
+            fh.write('{"theme": "x"}')
+        os.symlink(target, self.settings)
+        r = self.run_installer()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("symlink", r.stderr)
+        with open(target) as fh:
+            self.assertEqual(fh.read(), '{"theme": "x"}')
+        os.remove(self.settings)
+        for text in ("[]", '{"hooks": "x"}', "\xff\xfe"):
+            with open(self.settings, "w", encoding="latin-1") as fh:
+                fh.write(text)
+            r = self.run_installer()
+            self.assertNotEqual(r.returncode, 0, text)
+            with open(self.settings, encoding="latin-1") as fh:
+                self.assertEqual(fh.read(), text)
+
     def test_warns_when_hooks_are_off_and_gemini_dir(self):
         os.makedirs(self.gemini)
         with open(self.settings, "w") as fh:
@@ -312,6 +332,12 @@ class Doctor(unittest.TestCase):
         row = self.check()
         self.assertEqual(row["status"], "WARN")
         self.assertIn("hooksConfig.enabled is false", row["detail"])
+        # Malformed settings are read as data only: no crash, never trusted.
+        for raw in (b"\xff\xfe needs-you-hook.sh", b'{"hooksConfig": "x", "hooks": 1} needs-you-hook.sh',
+                    b'[1] needs-you-hook.sh'):
+            with open(settings, "wb") as fh:
+                fh.write(raw)
+            self.assertIn(self.check()["status"], ("OK", "WARN"), raw)
 
 
 class Update(UpdateCase):

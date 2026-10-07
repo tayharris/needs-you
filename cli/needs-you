@@ -212,7 +212,13 @@ def installed_paths() -> Dict[str, str]:
         "needs-you-hook.sh": _home(".claude", "hooks", "needs-you-hook.sh"),
         "SKILL.md": _home(".claude", "skills", "needs-you", "SKILL.md"),
         "orca-snippet.md": os.path.join(conf, "orca-snippet.md"),
+        "needs-you-opencode.js": os.path.join(opencode_dir(), "plugins", "needs-you.js"),
     }
+
+
+def opencode_dir() -> str:
+    base = os.environ.get("XDG_CONFIG_HOME") or _home(".config")
+    return os.path.join(base, "opencode")
 
 
 def cli_path() -> str:
@@ -914,6 +920,8 @@ RELEASE_PATHS = {
     "codex-hooks.json": "integrations/codex/codex-hooks.json",
     "install-gemini-hooks.sh": "integrations/gemini/install-gemini-hooks.sh",
     "gemini-hooks.json": "integrations/gemini/gemini-hooks.json",
+    "install-opencode-plugin.sh": "integrations/opencode/install-opencode-plugin.sh",
+    "needs-you-opencode.js": "integrations/opencode/needs-you.js",
 }
 
 
@@ -932,6 +940,11 @@ OTHER_AGENTS = (
     ("gemini", "Gemini", gemini_home, "settings.json", "gemini-hooks.json", "install-gemini-hooks.sh",
      "--gemini-dir"),
 )
+
+
+# Every agent directory that keeps its own copy of needs-you-hook.sh in <dir>/hooks/.
+HOOK_COPIES = (("codex", "Codex", codex_home), ("gemini", "Gemini", gemini_home),
+               ("opencode", "opencode", opencode_dir))
 
 
 def _other_agent(snippet: str) -> Optional[Tuple[Any, ...]]:
@@ -1160,6 +1173,9 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         entry = files.get(name)
         if not isinstance(entry, dict):
             continue
+        if name == "needs-you-opencode.js" and os.path.islink(path):
+            notes.append("%s is a symlink; not updating it (another tool manages it)" % _tilde(path))
+            continue
         if name != "needs-you" and not os.path.isfile(path):
             continue  # never install a piece that isn't here
         want = str(entry.get("sha256") or "").lower()
@@ -1188,9 +1204,12 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
                             "size": hj.get("size"), "from": "?", "to": hj.get("version") or "?"})
     # Codex and Gemini CLI: each has its own copy of the hook, and entries in its config file.
     he = files.get("needs-you-hook.sh")
-    for agent, label, home_fn, conf_name, snippet, installer, _flag in OTHER_AGENTS:
-        home = home_fn()
-        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+    for agent, label, home_fn in HOOK_COPIES:
+        hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
+        if os.path.islink(hook):
+            # Another agent's directory: never write through a link that could point anywhere.
+            notes.append("%s is a symlink; not updating it" % _tilde(hook))
+            continue
         if os.path.isfile(hook) and isinstance(he, dict):
             want = str(he.get("sha256") or "").lower()
             if len(want) != 64 or any(c not in "0123456789abcdef" for c in want):
@@ -1200,9 +1219,10 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
                                 "backup": "%s-needs-you-hook.sh" % agent, "path": hook,
                                 "sha256": want, "size": he.get("size"), "from": _stamp(hook),
                                 "to": he.get("version") or "?"})
-        conf = os.path.join(home, conf_name)
+    for agent, label, home_fn, conf_name, snippet, installer, _flag in OTHER_AGENTS:
+        conf = os.path.join(home_fn(), conf_name)
         try:
-            with open(conf, "r", encoding="utf-8") as fh:
+            with open(conf, "r", encoding="utf-8", errors="replace") as fh:
                 referenced = "needs-you-hook.sh" in fh.read()
         except OSError:
             referenced = False
@@ -1790,7 +1810,7 @@ class Doctor:
 
     def run(self) -> List[Dict[str, str]]:
         for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.codex_hooks,
-                     self.gemini_hooks, self.skill,
+                     self.gemini_hooks, self.opencode_plugin, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -2032,7 +2052,7 @@ class Doctor:
             return
         doc: Any = None
         try:
-            with open(hooks_json, "r", encoding="utf-8") as fh:
+            with open(hooks_json, "r", encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
             referenced = "needs-you-hook.sh" in text
             try:
@@ -2065,7 +2085,7 @@ class Doctor:
         # [features] hooks = false turns every hook off.
         config_text = ""
         try:
-            with open(os.path.join(home, "config.toml"), "r", encoding="utf-8") as fh:
+            with open(os.path.join(home, "config.toml"), "r", encoding="utf-8", errors="replace") as fh:
                 config_text = fh.read()
         except OSError:
             pass
@@ -2125,7 +2145,7 @@ class Doctor:
             return
         doc: Any = {}
         try:
-            with open(settings, "r", encoding="utf-8") as fh:
+            with open(settings, "r", encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
             referenced = "needs-you-hook.sh" in text
             try:
@@ -2173,6 +2193,50 @@ class Doctor:
         if "alerts off until opted in" in parts:
             hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
         self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- opencode plugin ---------------------------------------------------
+    def opencode_plugin(self) -> None:
+        import shutil
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        d = os.path.join(base, "opencode")
+        plugin = os.path.join(d, "plugins", "needs-you.js")
+        hook = os.path.join(d, "hooks", "needs-you-hook.sh")
+        installer = ("integrations/opencode/install-opencode-plugin.sh (or the invite installer with "
+                     "--opencode-plugin)")
+        if not os.path.isdir(d) and not shutil.which("opencode"):
+            return
+        if not os.path.isfile(plugin) and not os.path.isfile(hook):
+            self.add("opencode plugin", "INFO", "not installed (optional: cards when an opencode session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts = [], [_tilde(plugin)]
+        if not os.path.isfile(plugin):
+            problems.append("%s is missing" % _tilde(plugin))
+        if not os.path.isfile(hook):
+            problems.append("%s is missing" % _tilde(hook))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "opencode_card" not in fh.read():
+                        problems.append("old hook (no opencode support)")
+            except OSError:
+                pass
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            self.add("opencode plugin", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            return
+        hint = "restart opencode after installing or updating it"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("opencode plugin", "OK", "installed: " + "; ".join(parts), hint)
 
     # -- skill -------------------------------------------------------------
     def skill(self) -> None:

@@ -91,11 +91,20 @@ def ours(hook):
     return isinstance(hook, dict) and MARK in str(hook.get("command", ""))
 
 
+# Another agent's config: never write through a symlink (it could point anywhere), and
+# treat the file as data only.
+if os.path.islink(path):
+    sys.exit("error: %s is a symlink; not writing through it. Nothing was changed: merge codex-hooks.json "
+             "into the file it points to by hand." % path)
+
 original_text = None
 doc = {}
 if os.path.exists(path):
-    with open(path, encoding="utf-8") as f:
-        original_text = f.read()
+    try:
+        with open(path, encoding="utf-8") as f:
+            original_text = f.read()
+    except UnicodeDecodeError:
+        sys.exit("error: %s isn't UTF-8 text; nothing was changed" % path)
     if original_text.strip():
         try:
             doc = json.loads(original_text)
@@ -167,11 +176,21 @@ if dry_run:
     print("hooks.json: dry run, nothing written")
     sys.exit(0)
 
-real = os.path.realpath(path)
+real = path
 os.makedirs(os.path.dirname(real), exist_ok=True)
 if original_text is not None:
+    # O_EXCL: a backup name that already exists (or is a planted symlink) is never written.
     backup = "%s.bak-%s" % (real, time.strftime("%Y%m%d-%H%M%S"))
-    with open(backup, "w", encoding="utf-8") as f:
+    n = 0
+    while True:
+        try:
+            bfd = os.open(backup if not n else "%s.%d" % (backup, n), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            n += 1
+    if n:
+        backup = "%s.%d" % (backup, n)
+    with os.fdopen(bfd, "w", encoding="utf-8") as f:
         f.write(original_text)
     print("hooks.json: backed up to %s" % backup)
     mode = os.stat(real).st_mode & 0o777
@@ -193,9 +212,10 @@ if [ "$ACTION" = "install" ]; then
     echo "hook: already up to date"
   else
     mkdir -p "$HOOKS_DIR"
-    cp "$HOOK_SRC" "$HOOKS_DIR/needs-you-hook.sh.tmp"
-    chmod 755 "$HOOKS_DIR/needs-you-hook.sh.tmp"
-    mv -f "$HOOKS_DIR/needs-you-hook.sh.tmp" "$HOOKS_DIR/needs-you-hook.sh"
+    tmp_hook=$(mktemp "$HOOKS_DIR/.needs-you-hook.XXXXXX")
+    cat "$HOOK_SRC" >"$tmp_hook"
+    chmod 755 "$tmp_hook"
+    mv -f "$tmp_hook" "$HOOKS_DIR/needs-you-hook.sh"
     echo "hook: installed"
   fi
   ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"
