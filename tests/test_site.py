@@ -21,8 +21,6 @@ DONATE_PLACEHOLDER = "#donate-tbd"
 RELEASE = os.environ.get("NEEDS_YOU_SITE_RELEASE") == "1"
 # Hosts the site may link to. Anything else (a personal domain, a tailnet name) fails.
 LINK_HOSTS = {"github.com"}
-# Hosts a <link> in <head> may load from: the IBM Plex web fonts. _headers must allow them.
-FONT_HOSTS = {"fonts.googleapis.com", "fonts.gstatic.com"}
 REPO_LINK = re.compile(r"^https://github\.com/tayharris/needs-you/(?:blob|tree)/main/(.+?)/?(?:#.*)?$")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
         "source", "track", "wbr", "path", "circle", "rect", "line", "polyline", "polygon",
@@ -38,7 +36,7 @@ class Page(HTMLParser):
         self.errors = []
         self.ids = set()
         self.links = []
-        self.head_links = []  # href of every <link> (stylesheets, preconnect, icon)
+        self.assets = []  # href of every <link> but data: URIs
         self.anchors = []  # (attrs, text) for every <a>
         self.text = []
         self._a = None
@@ -56,10 +54,9 @@ class Page(HTMLParser):
             self.ids.add(a["id"])
         for k in ("href", "src"):
             if a.get(k):
-                if tag == "link" and a[k].startswith("https://"):
-                    self.head_links.append(a[k])
-                else:
-                    self.links.append(a[k])
+                self.links.append(a[k])
+                if tag == "link" and not a[k].startswith("data:"):
+                    self.assets.append(a[k])
         if tag == "meta" and a.get("name"):
             self.meta[a["name"]] = a.get("content", "")
         if tag == "title":
@@ -169,16 +166,27 @@ class SiteTests(unittest.TestCase):
                     with self.subTest(page=name, link=link[:80]):
                         self.assertIn(m.group(1), LINK_HOSTS, "link to an unexpected host")
 
-    def test_font_hosts(self):
-        csp = read_site("_headers")
+    def test_self_hosted_assets(self):
+        # Stylesheets and fonts are same-origin only: no third-party font or CSS hosts.
         for name, p in self.pages.items():
-            for link in p.head_links:
-                host = re.match(r"^https://([^/]+)", link).group(1)
-                with self.subTest(page=name, link=link[:80]):
-                    self.assertIn(host, FONT_HOSTS, "<link> to an unexpected host")
-            if any("fonts.googleapis.com" in link for link in p.head_links):
-                self.assertIn("style-src 'self' https://fonts.googleapis.com", csp)
-                self.assertIn("font-src https://fonts.gstatic.com", csp)
+            for href in p.assets:
+                with self.subTest(page=name, href=href[:80]):
+                    self.assertNotRegex(href, r"^(?:[a-z]+:)?//", "<link> must be same-origin")
+        csp = re.search(r"Content-Security-Policy: (.*)", read_site("_headers")).group(1)
+        self.assertIn("font-src 'self';", csp)
+        self.assertIn("style-src 'self';", csp)
+
+    def test_fonts(self):
+        css = read_site("styles.css")
+        urls = re.findall(r'url\("([^"]+)"\)', css)
+        self.assertTrue(urls)
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertTrue(url.startswith("fonts/") and url.endswith(".woff2"), url)
+                with open(os.path.join(SITE, url), "rb") as fh:
+                    self.assertEqual(fh.read(4), b"wOF2")
+        self.assertEqual(css.count("font-display: swap"), css.count("@font-face"))
+        self.assertIn("SIL Open Font License", read_site(os.path.join("fonts", "OFL.txt")))
 
     def test_no_domain_yet(self):
         # The domain isn't bought yet: canonical/og:url stay commented out until it is.
@@ -198,7 +206,7 @@ class SiteTests(unittest.TestCase):
         # Only the documented placeholders: hub-a.example.ts.net, <tailnet>, devbox.
         for name in sorted(os.listdir(SITE)):
             path = os.path.join(SITE, name)
-            if not os.path.isfile(path):
+            if not os.path.isfile(path) or name.endswith(".woff2"):
                 continue
             text = read_site(name)
             with self.subTest(file=name):

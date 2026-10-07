@@ -5,7 +5,7 @@ The needs-you landing page: one screen. Plain HTML, CSS and a few lines of vanil
 | File | What |
 |---|---|
 | `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, Install, Open source, Support |
-| `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono from Google Fonts; the mock's amber matches the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`) |
+| `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the mock's amber matches the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`) |
 | `site.js` | `REPO_URL`, the one GitHub constant, and copy buttons on code blocks (the page works without JS) |
 | `_headers` | Cloudflare Pages response headers (CSP and other security headers) |
 
@@ -18,7 +18,7 @@ python3 -m http.server -d site 8000
 # open http://localhost:8000
 ```
 
-`_headers` is only applied by Cloudflare Pages, not by the local server. Because the CSP is strict (`script-src 'self'`, `style-src 'self'` plus `fonts.googleapis.com`, `font-src fonts.gstatic.com` for the web fonts), don't add inline `<script>` or `<style>` blocks or `style=""` attributes; put them in `site.js` / `styles.css`.
+`_headers` is only applied by Cloudflare Pages, not by the local server. Because the CSP is strict (`script-src 'self'`, `style-src 'self'`, `font-src 'self'`), don't add inline `<script>` or `<style>` blocks or `style=""` attributes; put them in `site.js` / `styles.css`.
 
 ## Before going live
 
