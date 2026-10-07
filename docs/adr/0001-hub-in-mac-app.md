@@ -5,7 +5,7 @@
 
 ## Context
 
-The first design ([PLAN.md](../PLAN.md), decisions 1 and 4) put the hub on 2–3 always-on Linux machines, with the Mac as a pull-only reader. That works, but the first-run cost is high: before seeing a single item, a new user has to pick servers, run `install-hub.sh` on each, share a peer secret, and mint tokens on the command line. Most people who'd try needs-you have one Mac and a few agents, not a fleet of VMs.
+The first design ([0007](0007-founding-design.md)) put the hub on 2–3 always-on Linux machines, with the Mac as a pull-only reader. That works, but the first-run cost is high: before seeing a single item, a new user has to pick servers, run `install-hub.sh` on each, share a peer secret, and mint tokens on the command line. Most people who'd try needs-you have one Mac and a few agents, not a fleet of VMs.
 
 The Mac is also the only place items are shown, so a hub there is never "further away" than the reader.
 

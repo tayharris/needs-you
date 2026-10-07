@@ -26,7 +26,7 @@ public final class FloatingPanel: NSPanel {
             backing: .buffered,
             defer: true
         )
-        // PLAN.md "Window behaviour": the part that went wrong before.
+        // mac/README.md "Design", window behaviour: the part menu bar tools usually get wrong.
         level = .floating
         collectionBehavior = Self.requiredCollectionBehavior
         isFloatingPanel = true

@@ -80,7 +80,7 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 
 Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 
-Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md](docs/API.md) (the HTTP API), [PLAN.md](docs/PLAN.md) (design history).
+Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md](docs/API.md) (the HTTP API), [ADRs](docs/adr/README.md) (design decisions, starting with [0007](docs/adr/0007-founding-design.md)).
 
 ## Config
 
@@ -105,7 +105,7 @@ needs-you/
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
 ├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd), github/ (poller)
 ├── deploy/         systemd units and an example hub config
-└── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, PLAN.md, roadmap/, adr/
+└── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, roadmap/, adr/
 ```
 
 ## Future

@@ -1,6 +1,6 @@
 # Roadmap
 
-Mostly plans. Each file's status line says what exists; `ci-cd.md` phases 1–2 are built. Each plan lists concrete steps, the files it would add, and its open decisions. Design decisions that are already made live in [../adr/](../adr/) and [../PLAN.md](../PLAN.md).
+Mostly plans. Each file's status line says what exists; `ci-cd.md` phases 1–2 are built. Each plan lists concrete steps, the files it would add, and its open decisions. Design decisions that are already made live in [../adr/](../adr/).
 
 | Plan | What |
 |---|---|

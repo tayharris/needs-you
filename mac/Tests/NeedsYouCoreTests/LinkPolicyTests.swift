@@ -42,7 +42,7 @@ final class LinkPolicyTests: XCTestCase {
             "http://example.com",          // plain http is not on the list
             "javascript:alert(1)",
             "file:///etc/passwd",
-            "jira://ACME-4170",              // mentioned in PLAN.md prose but not allow-listed
+            "jira://ACME-4170",              // an app scheme that isn't allow-listed
             "data:text/html,<b>x</b>",
             "ssh://host",
             "x-apple.systempreferences:com.apple.preference.security",

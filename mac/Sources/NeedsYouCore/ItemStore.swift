@@ -30,7 +30,7 @@ public struct ItemStore: Sendable {
     public private(set) var items: [String: Item] = [:]
     /// Newest `updated_at` seen from the hub; sent back as `since`.
     public private(set) var latestUpdatedAt: Date?
-    /// Per-card snoozes (PLAN.md: 15 min / 1 hr / tomorrow), local to this Mac.
+    /// Per-card snoozes (15 min / 1 hr / tomorrow), local to this Mac.
     public private(set) var cardSnoozes: [String: Date] = [:]
     /// Open `needs` items that arrived as Later (focus-tiers.md), with when they were held.
     /// Not counted and not in the card list until `releaseLater`; listed under Later.
@@ -249,7 +249,7 @@ public struct ItemStore: Sendable {
             }
     }
 
-    /// The badge count: open `needs` items in the current context only (PLAN.md, "Count"),
+    /// The badge count: open `needs` items in the current context only (docs/adr/0007-founding-design.md),
     /// not counting Later.
     public func needsCount(in context: ItemContext, now: Date = Date()) -> Int {
         needs(in: context, now: now).count

@@ -21,8 +21,8 @@ The agent-facing entry points are first-class product surface, not docs aftertho
 | `deploy/` | systemd unit, example hub config, admin wrapper |
 | `integrations/` | `claude-code/` (hooks, skill), `orca/` (prompt blocks), `ci/` (Actions, cron, systemd), `github/` (notifications + my-PRs poller via `gh`) |
 | `tests/` | Python `unittest` suite for hub, CLI, validation, replication |
-| `docs/` | `API.md` (wire contract), `HUB.md`, `AGENT-GUIDE.md`, `PLAN.md` (design + decisions), `guides/` |
-| `docs/adr/` | Architecture decision records |
+| `docs/` | `API.md` (wire contract), `HUB.md`, `AGENT-GUIDE.md`, `guides/` |
+| `docs/adr/` | Architecture decision records (0007 is the founding design) |
 | `docs/roadmap/` | Plans only, nothing implemented |
 | `site/` | Static landing page (Cloudflare Pages, no build) |
 | `.claude/skills/` | Project skills: `test-all`, `smoke-e2e`, `api-change`, `add-integration`, `release` |
@@ -47,7 +47,7 @@ New Swift test classes must be registered in `mac/Sources/NeedsYouSelfTest/main.
 2. **The panel never takes focus or activates the app.** `FloatingPanel` keeps `canBecomeKey`/`canBecomeMain` false and `FloatingPanelTests` guards it. No text fields or focusable views in the panel. Only an explicit user click on Settings may activate the app.
 3. **Tokens are never logged, printed (except once at mint), committed, or put in item text.** The hub stores sha256 only. The same goes for peer secrets and invite codes.
 4. **Hubs bind loopback or the tailnet only.** Never `0.0.0.0`/`::` by default; the hub refuses them unless explicitly overridden.
-5. **No personal hostnames or tailnet names outside `docs/PLAN.md`.** Use `hub-a.example.ts.net`, `<tailnet>`, `devbox`.
+5. **No personal hostnames, tailnet names, employer or client names anywhere in the repo.** Use `hub-a.example.ts.net`, `<tailnet>`, `devbox`, `acme`, `ACME-123`.
 6. **API changes update everything in one change:** `docs/API.md`, the hub, the CLI if it's affected, the Mac client (`mac/Sources/NeedsYouCore/HubClient.swift`, `Models.swift`), and tests. Unknown fields stay ignored both ways. Use the `api-change` skill.
 7. **Link scheme allow-list** (`https`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`, plus the app's own `needsyou://` action paths) is enforced in both the hub and `LinkPolicy.swift`. Every link must first fit the raw grammar (`LINK_RAW_PATTERN` / `LinkPolicy.rawLinkPattern`), and `vscode`/`cursor` only the shapes in `EDITOR_LINK_PATTERN` / `LinkPolicy.editorLinkPattern`; the regexes are byte-identical on both sides. Change both or neither: `tests/test_link_mirror.py` compares them and runs `tests/fixtures/link_cases.json` against the hub, and `LinkCasesTests.swift` runs the same file against `LinkPolicy`. Add a case there for every new rule.
 8. Senders must never fail the caller's job: the CLI exits 0 when it queues, and hooks always exit 0.

@@ -2,7 +2,7 @@ import NeedsYouCore
 import SwiftUI
 
 enum Theme {
-    // PLAN.md "Look": urgent = red 400, normal = amber 300, low = slate 400.
+    // mac/README.md "Design", look: urgent = red 400, normal = amber 300, low = slate 400.
     static let urgent = Color(red: 248 / 255, green: 113 / 255, blue: 113 / 255)
     static let normal = Color(red: 252 / 255, green: 211 / 255, blue: 77 / 255)
     static let low = Color(red: 148 / 255, green: 163 / 255, blue: 184 / 255)

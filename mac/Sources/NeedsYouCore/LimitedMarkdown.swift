@@ -1,7 +1,7 @@
 import Foundation
 
 /// The card body renderer: bold, italic, code, simple lists and allow-listed links.
-/// No HTML, no images (PLAN.md, "Cards").
+/// No HTML, no images (mac/README.md, "Design").
 public enum LimitedMarkdown {
     public static let maxLength = 2_000
 
