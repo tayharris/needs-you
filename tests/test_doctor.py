@@ -6,6 +6,9 @@ import importlib.util
 import json
 import os
 import plistlib
+import shlex
+import shutil
+import subprocess
 import sys
 import time
 import unittest
@@ -325,6 +328,89 @@ class NextSteps(DoctorTestCase):
         self.assertIn("tailscale ping devbox.example.ts.net", d.unreachable_hint("http://devbox.example.ts.net:8765"))
         self.assertIn("tailscale ping 100.101.102.103", d.unreachable_hint("http://100.101.102.103:8765"))
         self.assertIn("curl -sS https://hub.example.com/v1/health", d.unreachable_hint("https://hub.example.com"))
+
+
+class HostileValues(DoctorTestCase):
+    """Hints are commands an agent runs as is: a hub URL or a path from the config must never
+    turn into a second command."""
+
+    def run_hint(self, hint, extra_path=None):
+        self.assertTrue(hint.startswith("run: "), hint)
+        env = {"HOME": self.home, "PATH": (extra_path + ":" if extra_path else "") + MINIMAL_PATH}
+        return subprocess.run(["bash", "-c", hint[len("run: "):]], env=env, cwd=self.tmp,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_hostile_urls_get_no_command(self):
+        pwned = os.path.join(self.tmp, "pwned")
+        for url in ("http://127.0.0.1:9/;touch${IFS}%s" % pwned, "http://x$(touch%%20%s).ts.net:9" % pwned,
+                    "http://127.0.0.1:9/`id`", "http://a b.ts.net:9", "ftp://hub.example.ts.net:21"):
+            with self.subTest(url=url):
+                self.write_env(["NEEDS_YOU_URLS=%s" % url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+                r, data, checks = self.doctor_json()
+                hint = checks["hub 1"]["hint"]
+                self.assertIn("fix NEEDS_YOU_URLS in ~/.config/needs-you/env", hint)
+                for cmd in ("curl", "tailscale", "systemctl", "open -a"):
+                    self.assertNotIn(cmd, hint)
+        self.assertFalse(os.path.exists(pwned))
+
+    def test_plain_urls_are_quoted_in_commands(self):
+        cli = load_cli()
+        d = cli.Doctor(cli.Config())
+        self.assertTrue(cli._safe_url("http://hub-a.example.ts.net:8765"))
+        self.assertTrue(cli._safe_url("https://hub.example.com/needs-you"))
+        self.assertTrue(cli._safe_url("http://[fd7a:115c:a1e0::1]:8765"))
+        for bad in ("http://h:1/?q=1", "http://u@h:1", "http://h:1/a;b", "http://h:1/$(id)", "javascript:x"):
+            self.assertFalse(cli._safe_url(bad), bad)
+            self.assertIn("fix NEEDS_YOU_URLS", d.unreachable_hint(bad))
+
+    def test_paths_are_shell_words(self):
+        cli = load_cli()
+        home = os.path.expanduser("~")
+        for path in (os.path.join(home, "a b", "$(touch x)", "env"), "/opt/it's here/env", "/plain/path"):
+            with self.subTest(path=path):
+                word = cli._sh(path)
+                want = "~" + path[len(home):] if path.startswith(home + "/") else path
+                self.assertEqual(shlex.split(word), [want])
+        self.assertEqual(cli._sh(os.path.join(home, ".config", "needs-you", "env")), "~/.config/needs-you/env")
+
+    def test_chmod_hint_runs_safely_on_an_odd_path(self):
+        d = os.path.join(self.tmp, "odd dir $(touch pwned) it's")
+        os.makedirs(d)
+        env_file = os.path.join(d, "env")
+        with open(env_file, "w") as fh:
+            fh.write("NEEDS_YOU_URLS=%s\nNEEDS_YOU_TOKEN=%s\n" % (self.hub.url, self.sender))
+        os.chmod(env_file, 0o644)
+        r, data, checks = self.doctor_json(extra_env={"NEEDS_YOU_CONFIG": env_file})
+        self.assertEqual(checks["config"]["status"], "WARN")
+        r = self.run_hint(checks["config"]["hint"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.stat(env_file).st_mode & 0o777, 0o600)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "pwned")))
+
+    @unittest.skipIf(sys.platform == "darwin", "macOS uses a LaunchAgent, not cron")
+    def test_crontab_hint_runs_safely_from_an_odd_path(self):
+        bindir = os.path.join(self.tmp, "fakebin")
+        os.makedirs(bindir)
+        written = os.path.join(self.tmp, "crontab.out")
+        with open(os.path.join(bindir, "crontab"), "w") as fh:
+            fh.write('#!/bin/sh\n[ "$1" = "-l" ] && exit 1\ncat > "%s"\n' % written)
+        os.chmod(os.path.join(bindir, "crontab"), 0o755)
+        odd = os.path.join(self.tmp, "bin $(touch pwned) it's")
+        os.makedirs(odd)
+        cli = os.path.join(odd, "needs-you")
+        shutil.copy(CLI, cli)
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r = self.run_cli("doctor", "--json", urls=None, token=None, cli=cli,
+                         extra_env={"PATH": bindir + ":" + MINIMAL_PATH})
+        checks = {c["check"]: c for c in json.loads(r.stdout)["checks"]}
+        r = self.run_hint(checks["flush schedule"]["hint"], extra_path=bindir)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(written) as fh:
+            line = fh.read().strip()
+        self.assertEqual(shlex.split(line.split(" -q ")[0])[5:], [cli])
+        self.assertTrue(line.endswith("-q flush >/dev/null 2>&1 # needs-you-flush"), line)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "pwned")))
+        self.assertFalse(os.path.exists(os.path.join(odd, "pwned")))
 
 
 class ClaudeAndOrca(DoctorTestCase):

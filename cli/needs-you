@@ -78,6 +78,7 @@ import http.client
 import json
 import os
 import re
+import shlex
 import socket
 import sys
 import time
@@ -2366,6 +2367,25 @@ def _host_of(url: str) -> str:
     return urllib.parse.urlsplit(url).hostname or url
 
 
+def _sh(path: str) -> str:
+    """A path as a shell word: shown from ~ where it can be, quoted so spaces, quotes or $()
+    in it stay part of the path (`~/'odd dir'/env`; the ~ itself stays unquoted to expand)."""
+    t = _tilde(path)
+    if t == "~" or t.startswith("~/"):
+        return "~" + ("/" + shlex.quote(t[2:]) if len(t) > 2 else "")
+    return shlex.quote(t)
+
+
+_SAFE_URL_RE = re.compile(r"^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])"
+                          r"(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~/-]*)?$")
+
+
+def _safe_url(url: str) -> bool:
+    """Plain http(s)://host[:port][/path]: only then is a hub URL put into a command to run.
+    Anything else (a typo, or a URL built to inject a command) gets a "fix the config" step."""
+    return bool(_SAFE_URL_RE.match(url))
+
+
 class Doctor:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
@@ -2415,12 +2435,12 @@ class Doctor:
                 hint = ("the settings come from the environment only, so cron, LaunchAgents and hooks won't see "
                         "them; save them: (umask 077; mkdir -p %s && printf 'NEEDS_YOU_URLS=%%s\\nNEEDS_YOU_TOKEN=%%s\\n' "
                         "\"${NEEDS_YOU_URLS:-$NEEDS_YOU_URL}\" \"$NEEDS_YOU_TOKEN\" > %s)"
-                        % (_tilde(os.path.dirname(p)), shown))
+                        % (_sh(os.path.dirname(p)), _sh(p)))
         else:
             mode = st.st_mode & 0o777
             parts.append("%s (mode %o)" % (shown, mode))
             if mode & 0o077:
-                status, hint = "WARN", "chmod 600 %s" % shown
+                status, hint = "WARN", "run: chmod 600 %s" % _sh(p)
         hooks_file = os.environ.get("NEEDS_YOU_ENV_FILE")
         if hooks_file and os.path.abspath(os.path.expanduser(hooks_file)) != os.path.abspath(p):
             parts.append("hooks read NEEDS_YOU_ENV_FILE=%s instead" % _tilde(hooks_file))
@@ -2472,7 +2492,7 @@ class Doctor:
         else:
             self.add("path", "WARN", "needs-you is not on PATH%s" % ("" if on_path else "; ~/.local/bin not on PATH"),
                      "run: mkdir -p ~/.local/bin && ln -sf %s ~/.local/bin/needs-you && %s"
-                     % (_tilde(cli_path()), hint_line))
+                     % (_sh(cli_path()), hint_line))
 
     # -- hubs --------------------------------------------------------------
     def hubs(self) -> None:
@@ -2493,14 +2513,18 @@ class Doctor:
                 self.add(name, "WARN", "%s unreachable (%s)" % (url, getattr(e, "reason", e)), hints[i])
                 continue
             if status != 200:
-                if status == 421:
+                if not _safe_url(url):
+                    hints[i] = self.fix_urls_hint(url)
+                elif status == 421:
+                    host = shlex.quote(_host_of(url))
                     hints[i] = ("the hub doesn't answer to the name %s: on the hub, add it with --allowed-host %s "
                                 "(the Mac app: launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS %s, then restart it), "
                                 "or put the hub's public URL in NEEDS_YOU_URLS in %s"
-                                % (_host_of(url), _host_of(url), _host_of(url), _tilde(self.env_path)))
+                                % (host, host, host, _tilde(self.env_path)))
                 else:
-                    hints[i] = ("not a needs-you hub: run curl -sS %s/v1/health (a hub prints {\"ok\": true, ...}), "
-                                "then fix NEEDS_YOU_URLS in %s" % (url, _tilde(self.env_path)))
+                    hints[i] = ("not a needs-you hub: run curl -sS %s (a hub prints {\"ok\": true, ...}), "
+                                "then fix NEEDS_YOU_URLS in %s" % (shlex.quote(url + "/v1/health"),
+                                                                  _tilde(self.env_path)))
                 self.add(name, "WARN", "%s answered HTTP %d" % (url, status), hints[i])
                 continue
             answered.append(i)
@@ -2539,11 +2563,20 @@ class Doctor:
             loop = [i for i, u in enumerate(urls) if _is_loopback(u)]
             if loop and loop[0] != 0:
                 order = [urls[loop[0]]] + [u for j, u in enumerate(urls) if j != loop[0]]
-                self.add("hub order", "WARN", "%s is #%d in NEEDS_YOU_URLS" % (urls[loop[0]], loop[0] + 1),
-                         "if this Mac runs the hub, list it first so local agents don't depend on Tailscale: "
-                         "set NEEDS_YOU_URLS=%s in %s" % (",".join(order), _tilde(self.env_path)))
+                if all(_safe_url(u) for u in order):
+                    hint = ("if this Mac runs the hub, list it first so local agents don't depend on Tailscale: "
+                            "set NEEDS_YOU_URLS=%s in %s" % (shlex.quote(",".join(order)), _tilde(self.env_path)))
+                else:
+                    hint = self.fix_urls_hint(next(u for u in order if not _safe_url(u)))
+                self.add("hub order", "WARN", "%s is #%d in NEEDS_YOU_URLS" % (urls[loop[0]], loop[0] + 1), hint)
+
+    def fix_urls_hint(self, url: str) -> str:
+        return ("%r isn't a plain http(s)://host:port hub URL: fix NEEDS_YOU_URLS in %s (the invite installer "
+                "writes it)" % (clean(url), _tilde(self.env_path)))
 
     def unreachable_hint(self, url: str) -> str:
+        if not _safe_url(url):
+            return self.fix_urls_hint(url)
         host = _host_of(url)
         if _is_loopback(url):
             if sys.platform == "darwin":
@@ -2552,8 +2585,8 @@ class Doctor:
                     "(a system-wide install: sudo systemctl start needs-you-hub)")
         if host.endswith(".ts.net") or _tailnet_ip(host):
             return ("check the hub's machine is awake and on the tailnet: tailscale ping %s "
-                    "(posts queue and go out once it answers)" % host)
-        return "check the hub answers from here: curl -sS %s/v1/health" % url
+                    "(posts queue and go out once it answers)" % shlex.quote(host))
+        return "check the hub answers from here: curl -sS %s" % shlex.quote(url + "/v1/health")
 
     # -- outbox ------------------------------------------------------------
     def outbox(self) -> None:
@@ -2569,7 +2602,7 @@ class Doctor:
         parts.append("%d failed" % len(failed))
         status, hint = "OK", ""
         if failed:
-            f = _tilde(os.path.join(d, "failed"))
+            f = _sh(os.path.join(d, "failed"))
             status, hint = "WARN", ("a hub refused these for good; see why, then delete them: cat %s/*.json "
                                     "&& rm %s/*.json" % (f, f))
         if queued:  # first: sending them is the step that matters
@@ -2636,7 +2669,7 @@ class Doctor:
         else:
             hint = ""
             if "alerts off until opted in" in parts:
-                hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+                hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
             self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
 
     # -- Codex CLI hooks ---------------------------------------------------
@@ -2729,7 +2762,7 @@ class Doctor:
             return
         hint = "Codex runs a new hook only after you trust it: open /hooks in Codex once"
         if "alerts off until opted in" in parts:
-            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
         self.add("codex hooks", "OK", "installed in " + "; ".join(parts), hint)
 
     # -- Gemini CLI hooks --------------------------------------------------
@@ -2792,7 +2825,7 @@ class Doctor:
             return
         hint = ""
         if "alerts off until opted in" in parts:
-            hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+            hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
         self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), hint)
 
     # -- opencode plugin ---------------------------------------------------
@@ -2835,7 +2868,7 @@ class Doctor:
             return
         hint = "restart opencode after installing or updating it"
         if "alerts off until opted in" in parts:
-            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
         self.add("opencode plugin", "OK", "installed: " + "; ".join(parts), hint)
 
     def project_hooks(self) -> None:
@@ -2866,7 +2899,7 @@ class Doctor:
                             "so needs-you update leaves it alone")
         detail = "installed in %s; %s" % (where, _tilde(hook))
         if problems:
-            top = _tilde(os.path.dirname(project))
+            top = _sh(os.path.dirname(project))
             if is_recorded:
                 hint = "run: cd %s && needs-you update" % top
             elif where.endswith("settings.local.json"):
@@ -2939,7 +2972,7 @@ class Doctor:
         import subprocess
         if not shutil.which("crontab"):
             self.add("flush schedule", "WARN", "no crontab on this machine, so queued items wait for the next post",
-                     "run `%s -q flush` every 5 minutes some other way (a systemd timer)" % _tilde(cli_path()))
+                     "run `%s -q flush` every 5 minutes some other way (a systemd timer)" % _sh(cli_path()))
             return
         try:
             r = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
@@ -2950,8 +2983,8 @@ class Doctor:
             self.add("flush schedule", "OK", "crontab line tagged %s" % CRON_TAG)
         else:
             self.add("flush schedule", "WARN", "no crontab line tagged %s, so queued items wait for the next post"
-                     % CRON_TAG, "run: (crontab -l 2>/dev/null; echo '*/5 * * * * \"%s\" -q flush >/dev/null 2>&1 %s') "
-                     "| crontab -" % (cli_path(), CRON_TAG))
+                     % CRON_TAG, "run: (crontab -l 2>/dev/null; echo %s) | crontab -"
+                     % shlex.quote("*/5 * * * * %s -q flush >/dev/null 2>&1 %s" % (shlex.quote(cli_path()), CRON_TAG)))
 
 
 def _doctor_update(self: "Doctor") -> None:
