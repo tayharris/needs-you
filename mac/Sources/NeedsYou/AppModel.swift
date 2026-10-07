@@ -451,6 +451,28 @@ final class AppModel: ObservableObject {
     /// The Later section's Show now.
     func deliverLaterNow() { releaseLater(.byHand, peek: false) }
 
+    // MARK: Focus
+
+    /// Focus menu: a level for a while. Never activates the app.
+    func setFocus(_ level: FocusLevel, for duration: FocusDuration) {
+        setFocus(FocusState(level: level, until: duration.until(from: Date()), source: .menu))
+    }
+
+    /// Set the focus (menus, needsyou://focus). An inactive state ends the focus.
+    func setFocus(_ state: FocusState) {
+        guard state.isActive(at: Date()) else { endFocus(); return }
+        settings.focus = state
+        objectWillChange.send()
+    }
+
+    /// Focus → Off: what waited is delivered as one quiet peek.
+    func endFocus() {
+        let wasFocused = isFocused
+        settings.focus = .off
+        objectWillChange.send()
+        if wasFocused { releaseLater(.focusEnded) }
+    }
+
     func requestPulse(times: Int, priority: ItemPriority) {
         pulse = PulseRequest(times: times, priority: priority)
     }

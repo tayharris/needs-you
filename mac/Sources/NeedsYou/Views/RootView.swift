@@ -155,9 +155,16 @@ struct IdlePill: View {
         // At rest a small, faint "Nothing needs <you>" (still easy to drag, right-click or
         // hide); on hover the full status line.
         HStack(spacing: 6) {
-            Circle()
-                .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
-                .frame(width: 5, height: 5)
+            if model.isFocused {
+                // Focus is on (right-click → Focus).
+                Image(systemName: "moon.fill")
+                    .font(.system(size: model.metrics.idleFont - 1))
+                    .foregroundStyle(Theme.muted)
+            } else {
+                Circle()
+                    .fill(model.lastError == nil && model.isConfigured ? Color.green.opacity(0.8) : Theme.faint)
+                    .frame(width: 5, height: 5)
+            }
             Text(model.hovering ? model.idleHoverLine : model.idleRestLine)
                 .font(.system(size: model.metrics.idleFont))
                 .foregroundStyle(.white.opacity(0.85))
@@ -167,7 +174,7 @@ struct IdlePill: View {
         .animation(.easeInOut(duration: 0.15), value: model.hovering)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
-        .help(model.statusLine)
+        .help(model.focusSummary.map { "Focus: \($0) · \(model.statusLine)" } ?? model.statusLine)
     }
 }
 
@@ -176,6 +183,11 @@ struct CountPill: View {
 
     var body: some View {
         HStack(spacing: 3) {
+            if model.isFocused {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: model.metrics.countFont - 3))
+                    .foregroundStyle(Theme.muted)
+            }
             Text("\(model.count)")
                 .foregroundStyle(.white.opacity(model.count > 0 ? 0.95 : 0.5))
             if model.otherCount > 0 {
@@ -193,7 +205,8 @@ struct CountPill: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .pillInteraction(model)
         .help("\(model.needsLabel): \(model.count) \(model.context.rawValue) item\(model.count == 1 ? "" : "s")"
-              + (model.laterCount > 0 ? ", \(model.laterCount) under Later" : "") + " · \(model.statusLine)")
+              + (model.laterCount > 0 ? ", \(model.laterCount) under Later" : "")
+              + (model.focusSummary.map { " · Focus: \($0)" } ?? "") + " · \(model.statusLine)")
     }
 }
 
