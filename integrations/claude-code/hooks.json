@@ -2,7 +2,21 @@
   "hooks": {
     "Notification": [
       {
-        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input|quota_auto_resume_disabled",
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" notify", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" notify", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
         "hooks": [
           { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" notify", "async": true, "timeout": 30 }
         ]
@@ -25,14 +39,21 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" stop", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" start", "async": true, "timeout": 30 }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" end", "async": true, "timeout": 30 }
         ]
       }
     ]
