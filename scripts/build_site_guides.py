@@ -29,55 +29,66 @@ SITE = os.path.join(ROOT, "site")
 OUT_DIR = "guides"  # under site/
 ORIGIN = "https://needsyou.app/"
 
-# The guides index, in order: (group, markdown source, page name, short title, one-line summary).
-# An entry whose source doesn't exist yet is skipped. Every other docs/guides/*.md is published
-# too, under "More guides" (title from its "# " line, summary from its first paragraph), so a
-# new guide is on the site as soon as it's merged; add it here to place and describe it.
+# The guides index, grouped and ordered for a first-time reader: what it is and how to set it
+# up, then one guide per agent, then servers, CI and other senders, then running hubs, then
+# the reference.
+# GROUPS is the order of the sections; MORE is where a guide not listed in CURATED goes.
+START, AGENTS, SENDERS, MORE, RUN, REFERENCE = (
+    "Start here", "Agents", "Servers, CI and tools", "More guides", "Run it", "Reference")
+GROUPS = [START, AGENTS, SENDERS, MORE, RUN, REFERENCE]
+
+# (group, markdown source, page name, short title, one-line summary), in order within each
+# group. An entry whose source doesn't exist yet is skipped. Every other docs/guides/*.md is
+# published too, under MORE (title from its "# " line, summary from its first paragraph), so
+# a new guide is on the site as soon as it's merged; add it here to place and describe it.
 CURATED = [
-    ("Get started", "docs/guides/testers.md", "testers", "Testers",
-     "Trying needs-you: download, first run, what to try and how to report problems, on one page."),
-    ("Get started", "docs/guides/quickstart.md", "quickstart", "Quickstart",
+    (START, "docs/guides/quickstart.md", "quickstart", "Quickstart",
      "The whole setup, step by step: the Mac app, Claude Code on the Mac, servers."),
-    ("Get started", "docs/guides/concepts.md", "concepts", "Words",
+    (START, "docs/guides/testers.md", "testers", "Testers",
+     "Trying needs-you: download, first run, what to try and how to report problems, on one page."),
+    (START, "docs/guides/concepts.md", "concepts", "Words",
      "Words: hub, sender, reader, owner, invite link, server hub, tailnet, and the Settings page for each."),
-    ("Get started", "docs/guides/mac-app.md", "mac-app", "Mac app",
+    (START, "docs/guides/mac-app.md", "mac-app", "Mac app",
      "Installing and using NeedsYou.app: the pill, the cards, Settings."),
-    ("Connect machines and agents", "docs/guides/add-a-sender.md", "add-a-sender", "Add a sender",
-     "Invite links, the installer's options, CI and cron, removing a sender."),
-    ("Connect machines and agents", "docs/guides/tailscale.md", "tailscale", "Tailscale",
-     "Putting the Mac and your servers on one tailnet, and checking they can reach each other."),
-    ("Connect machines and agents", "docs/guides/claude-code.md", "claude-code", "Claude Code",
+    (AGENTS, "docs/guides/claude-code.md", "claude-code", "Claude Code",
      "Claude Code hooks for \"agent is waiting\" cards, and the skill: what gets installed and what each hook posts."),
-    ("Connect machines and agents", "docs/guides/claude-code-everywhere.md", "claude-code-everywhere", "Claude Code everywhere",
+    (AGENTS, "docs/guides/claude-code-everywhere.md", "claude-code-everywhere", "Claude Code everywhere",
      "Alerts from Claude Code sessions on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca."),
-    ("Connect machines and agents", "docs/guides/codex.md", "codex", "Codex CLI",
+    (AGENTS, "docs/guides/codex.md", "codex", "Codex CLI",
      "OpenAI Codex CLI hooks: a card when a session wants approval or is waiting for your next message."),
-    ("Connect machines and agents", "docs/guides/gemini.md", "gemini", "Gemini CLI",
+    (AGENTS, "docs/guides/gemini.md", "gemini", "Gemini CLI",
      "Gemini CLI hooks: a card when a session wants approval or is waiting for your next message."),
-    ("Connect machines and agents", "docs/guides/opencode.md", "opencode", "opencode",
+    (AGENTS, "docs/guides/copilot.md", "copilot", "Copilot CLI",
+     "GitHub Copilot CLI hooks: a card when Copilot asks for permission or finishes its turn, cleared when you answer."),
+    (AGENTS, "docs/guides/opencode.md", "opencode", "opencode",
      "An opencode plugin: a card when a session asks for permission, asks a question or goes idle."),
-    ("Connect machines and agents", "docs/guides/orca.md", "orca", "Orca",
+    (AGENTS, "docs/guides/orca.md", "orca", "Orca",
      "Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example."),
-    ("Connect machines and agents", "docs/guides/github.md", "github", "GitHub",
-     "Review requests, deploy approvals, failed CI and your PRs' state, from one poller."),
-    ("Connect machines and agents", "docs/guides/custom-connector.md", "custom-connector", "Custom connector",
+    (AGENTS, "docs/guides/mcp.md", "mcp", "MCP server",
+     "A stdlib-Python MCP server so agents without a shell can post, resolve and run doctor through MCP tools."),
+    (AGENTS, "docs/guides/custom-connector.md", "custom-connector", "Custom connector",
      "Connect any agent or tool: the exact item format, and which fields are required or optional."),
-    ("Run it", "docs/HUB.md", "hub", "Server hubs",
+    (SENDERS, "docs/guides/add-a-sender.md", "add-a-sender", "Add a sender",
+     "Invite links, the installer's options, CI and cron, removing a sender."),
+    (SENDERS, "docs/guides/tailscale.md", "tailscale", "Tailscale",
+     "Putting the Mac and your servers on one tailnet, and checking they can reach each other."),
+    (SENDERS, "docs/guides/github.md", "github", "GitHub",
+     "Review requests, deploy approvals, failed CI and your PRs' state, from one poller."),
+    (RUN, "docs/HUB.md", "hub", "Server hubs",
      "Optional always-on server hubs: install, two-hub setup, backups, upgrades, resource use."),
-    ("Run it", "docs/guides/updates.md", "updates", "Keeping up to date",
+    (RUN, "docs/guides/updates.md", "updates", "Keeping up to date",
      "Keeping up to date: the Mac app updating itself, needs-you update on senders, rollouts."),
-    ("Run it", "docs/guides/troubleshooting.md", "troubleshooting", "Troubleshooting",
+    (RUN, "docs/guides/troubleshooting.md", "troubleshooting", "Troubleshooting",
      "When an item doesn't show up: needs-you doctor, reachability, hooks."),
-    ("Reference", "docs/AGENT-GUIDE.md", "agent-guide", "Agent guide",
+    (REFERENCE, "docs/AGENT-GUIDE.md", "agent-guide", "Agent guide",
      "The sender contract: when agents should post, keys, rules, and resolving what they posted."),
-    ("Reference", "docs/API.md", "api", "API",
+    (REFERENCE, "docs/API.md", "api", "API",
      "The hub's HTTP API (v1): every endpoint, field, status code and the replication format."),
 ]
-MORE = "More guides"
 
 
 def published():
-    """CURATED entries that exist, then any other docs/guides/*.md under MORE."""
+    """CURATED entries that exist plus any other docs/guides/*.md under MORE, in GROUPS order."""
     out = [g for g in CURATED if os.path.isfile(os.path.join(ROOT, g[1]))]
     listed = {g[1] for g in CURATED}
     gdir = os.path.join(ROOT, "docs", "guides")
@@ -95,7 +106,8 @@ def published():
         if len(summary) > 200:
             summary = summary[:197].rsplit(" ", 1)[0] + "..."
         out.append((MORE, src, name[:-3], title, summary or title))
-    return out
+    # A stable sort: the groups in GROUPS order, CURATED order (then by file name) inside each.
+    return sorted(out, key=lambda g: GROUPS.index(g[0]))
 
 
 GUIDES = published()
@@ -582,13 +594,9 @@ class Builder:
                            "index.html", "the GUIDES list in scripts/build_site_guides.py", current=True)]
         parts.append('  <main id="main" class="wrap doc">\n    <h1>Guides</h1>\n')
         parts.append('    <p class="lede">Setting up needs-you and connecting the things that should alert you. '
-                     "New here? Start with the <a href=\"testers.html\">install guide</a> or the "
-                     "<a href=\"quickstart.html\">quickstart</a>.</p>\n")
-        groups = []
-        for group, _, _, _, _ in GUIDES:
-            if group not in groups:
-                groups.append(group)
-        for group in groups:
+                     "New here? Start with the <a href=\"quickstart.html\">quickstart</a>, or the "
+                     "<a href=\"testers.html\">tester guide</a> if you were invited to try it.</p>\n")
+        for group in [g for g in GROUPS if any(e[0] == g for e in GUIDES)]:
             gid = re.sub(r"[^a-z0-9]+", "-", group.lower()).strip("-")
             parts.append('    <section aria-labelledby="%s">\n      <h2 id="%s">%s</h2>\n      <ul class="guide-list">\n'
                          % (gid, gid, esc(group)))

@@ -121,7 +121,7 @@ Re-running the line on the same machine is safe: it keeps the token and doesn't 
 
 Tick off what you get to; anything that surprises you is worth a report. With a few items waiting, the pill shows a count, a new one springs out for a moment, and a click opens the cards (these are example items):
 
-<img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring."> &nbsp; <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, deploy-bot, 4 minutes ago.">
+<img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring."> &nbsp; <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
 
 <img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze.">
 
