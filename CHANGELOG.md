@@ -6,7 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Changed
 
-- Mac app: the global shortcut only shows or hides the panel; the "Hotkey also opens the top card's first link" option is gone (change the shortcut in **Settings → Panel → Keyboard**).
+- Mac app: the global shortcut opens the card list, or collapses it when it's open (a hidden or snoozed panel comes back open), and double-clicking the open panel's header bar collapses it. The "Hotkey also opens the top card's first link" option is gone (change the shortcut in **Settings → Panel → Keyboard**).
 - Mac app: **Settings → Panel → Opacity** sets the collapsed pill and the open panel (and previews) separately, each with the pointer away and over it, down to 30%. Settings page titles now scroll with the page instead of being clipped under the title bar.
 - Mac app: **Settings is a sidebar of short pages**, like System Settings, instead of long tabs, and the window fits a laptop screen (every page scrolls). Pages: General (your name, open at login, demo mode); Hubs: This Mac, Join a hub, Invite a machine, Access, Hubs (manual); Panel, Alerts, Integrations, Updates, Advanced. **Invite a Machine…** opens Invite a machine; a `needsyou://connect` link opens Join a hub.
 - Mac app: **This Mac** shows both addresses of the hub with **Copy**: *On this Mac* (`http://127.0.0.1:8765`) and *From your other machines (Tailscale)* (the MagicDNS name). Without Tailscale it says other machines can't reach the hub and links to the Tailscale guide; Invite a machine warns that its links would only work on this Mac.

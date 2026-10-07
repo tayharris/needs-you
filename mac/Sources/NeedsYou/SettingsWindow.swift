@@ -734,7 +734,7 @@ struct SettingsView: View {
         } header: {
             Text("Keyboard")
         } footer: {
-            Text("Shows or hides the pill from any app, without taking focus from what you're typing. A shortcut needs ⌃, ⌥ or ⌘.")
+            Text("Opens the panel's cards, or collapses them, from any app (a hidden panel comes back open), without taking focus from what you're typing. A shortcut needs ⌃, ⌥ or ⌘.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -1073,7 +1073,7 @@ private struct ShortcutRecorder: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            LabeledContent("Show / hide shortcut") {
+            LabeledContent("Open / collapse shortcut") {
                 HStack(spacing: 8) {
                     Text(hotKeys.isRecording ? "Type a shortcut… (Esc cancels)" : hotKeys.combo.display)
                         .font(hotKeys.isRecording ? .body : .body.monospaced())

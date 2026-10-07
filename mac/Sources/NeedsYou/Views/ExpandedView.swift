@@ -56,7 +56,7 @@ struct ExpandedView: View {
             Text(model.settings.hotKey.display)
                 .font(Theme.mono(model.metrics))
                 .foregroundStyle(Theme.faint)
-                .help("Global shortcut: show / hide the panel (Settings → Panel → Keyboard)")
+                .help("Global shortcut: open or collapse the panel (Settings → Panel → Keyboard)")
         }
         .padding(.horizontal, 12)
     }
@@ -110,7 +110,7 @@ struct ExpandedHeader: View {
 
             HeaderButton(symbol: "arrow.clockwise", help: "Refresh now", size: model.metrics.headerFont - 1) { model.pollNow(full: true) }
             HeaderButton(symbol: "gearshape", help: "Settings", size: model.metrics.headerFont - 1) { model.openSettings() }
-            HeaderButton(symbol: "chevron.up", help: "Collapse (Esc)", size: model.metrics.headerFont - 1) { model.collapse() }
+            HeaderButton(symbol: "chevron.up", help: "Collapse (Esc, \(model.settings.hotKey.display), or double-click this bar)", size: model.metrics.headerFont - 1) { model.collapse() }
             if model.canHidePanel {
                 // Hide the whole panel; the menu bar icon (or the shortcut) brings it back.
                 HeaderButton(symbol: "xmark", help: "Hide floating panel (menu bar icon or \(model.settings.hotKey.display) shows it)", size: model.metrics.headerFont - 1) { model.hidePanel() }
@@ -124,6 +124,8 @@ struct ExpandedHeader: View {
                 .onChanged { _ in model.dragHandler?(.changed) }
                 .onEnded { _ in model.dragHandler?(.ended) }
         )
+        // Double-click the header bar to collapse, without aiming for the chevron.
+        .onTapGesture(count: 2) { model.collapse() }
     }
 }
 

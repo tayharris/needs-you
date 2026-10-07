@@ -129,11 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The global shortcut shows or hides the panel. It never makes the panel key or
-    /// activates this app.
+    /// The global shortcut opens the panel's card list, or collapses it when it's open. A
+    /// hidden or snoozed panel comes back open. It never makes the panel key or activates
+    /// this app.
     private func hotKeyPressed() {
-        // Refused (a beep) when hiding would leave neither the panel nor the menu bar icon.
-        if !model.toggleVisibility() { NSSound.beep() }
+        model.toggleExpanded()
     }
 
     /// A setup card's button, from a click in the panel. Open Settings is a user click, so
