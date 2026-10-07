@@ -4,7 +4,7 @@ import Foundation
 /// so anything outside the allow-list is shown as plain text and is never opened.
 public enum LinkPolicy {
     public static let allowedSchemes: Set<String> = [
-        "https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord",
+        "https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear",
     ]
 
     /// The URL another app opens, or nil if the string isn't an allowed, well-formed link.

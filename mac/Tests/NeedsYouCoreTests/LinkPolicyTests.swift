@@ -27,6 +27,8 @@ final class LinkPolicyTests: XCTestCase {
             "figma://file/abc",
             "msteams://teams.microsoft.com/l/chat/0/0",
             "discord://discord.com/channels/1/2",
+            "linear://acme/issue/ACME-12",
+            "LINEAR://acme/issue/ACME-12",
         ]
         for s in allowed {
             XCTAssertNotNil(LinkPolicy.openableURL(s), s)
@@ -44,6 +46,7 @@ final class LinkPolicyTests: XCTestCase {
             "x-apple.systempreferences:com.apple.preference.security",
             "smb://server/share",
             "mailto:someone@example.com",
+            "linearx://acme/issue/ACME-12",
         ]
         for s in rejected {
             XCTAssertNil(LinkPolicy.openableURL(s), s)

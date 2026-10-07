@@ -138,7 +138,7 @@ Create an item, or update the open item with the same `key`.
 | `status` | | **rejected** (use resolve or PATCH) | |
 
 Link URLs must use one of these schemes (case-insensitive): `https`, `orca`, `slack`,
-`vscode`, `cursor`, `figma`, `msteams`, `discord`. Anything else, including `http`, `jira`,
+`vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
 `file` and `javascript`, is a 400. One exception: the Mac app's own scheme for the card's
 **Terminal** button, `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]`
 (nothing else under `needsyou://`). The app checks the handle (`term_` plus 8–64 lowercase

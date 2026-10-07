@@ -183,7 +183,7 @@ item to test the setup; doctor is the test.
    are not rendered. Several actions in order go in `steps` (see above), not the body.
 4. **Link to the place they act:** the ticket, PR, Orca worktree, dashboard or log. At most 6
    links. Allowed schemes: `https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`,
-   `discord`.
+   `discord`, `linear`.
 5. **Never send secrets, credentials, customer data, card data, or code beyond a short
    identifier.** Titles, short text, ticket keys, shas and links only.
 6. **Priority:**

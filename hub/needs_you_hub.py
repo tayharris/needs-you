@@ -44,7 +44,7 @@ STATUSES = ("open", "resolved", "dismissed")
 PATCH_STATUSES = ("resolved", "dismissed")
 ROLES = ("sender", "reader", "owner")
 READ_ROLES = ("reader", "owner")  # owner = reader + may create invites
-LINK_SCHEMES = ("https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord")
+LINK_SCHEMES = ("https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear")
 # The Mac app's own scheme, for one fixed action only: the card's Orca terminal jump
 # (needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]). The app validates
 # the handle and environment again before it runs anything.
@@ -2562,7 +2562,7 @@ needs-you done --key "work:nightly-import:last-run" --title "Nightly import fini
 3. The title is the action, at most 100 characters. Body at most 2,000 characters, Markdown.
    Several things to do in order go in steps, not the body: `--step "Text"` or
    `--step "Text=https://..."` (a link button), at most 10, one line each.
-4. At most 6 links; schemes https, orca, slack, vscode, cursor, figma, msteams, discord.
+4. At most 6 links; schemes https, orca, slack, vscode, cursor, figma, msteams, discord, linear.
 5. Never send secrets, credentials, customer data or code.
 6. Priority: `urgent` (broken now, breaks through snooze), `normal` (today), `low` (this week).
 7. Context: `work` or `personal`; it decides when the item is shown.
