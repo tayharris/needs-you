@@ -71,7 +71,7 @@ class UninstallHooks(unittest.TestCase):
         self.assertTrue([n for n in os.listdir(os.path.join(self.home, ".claude")) if ".bak-" in n])
         with open(os.path.join(self.home, ".local", "state", "needs-you", "claude-projects.json")) as fh:
             self.assertEqual(json.load(fh), {})
-        self.assertIn("Restart open Claude Code sessions", r.stdout)
+        self.assertIn("Restart open agent sessions", r.stdout)
         r = self.cli()
         self.assertIn("no needs-you hooks found", r.stdout)
 
@@ -151,6 +151,60 @@ class UninstallHooks(unittest.TestCase):
         self.assertEqual(self.text(target), content)
         self.assertTrue(os.path.exists(victim))
         self.assertEqual([n for n in os.listdir(outside) if ".bak-" in n], [])
+
+    def install_agents(self):
+        """Codex, Gemini CLI and opencode, by their own installers (in a temp HOME)."""
+        for script in ("codex/install-codex-hooks.sh", "gemini/install-gemini-hooks.sh",
+                       "opencode/install-opencode-plugin.sh"):
+            r = subprocess.run([BASH, os.path.join(ROOT, "integrations", script)], env=self.env,
+                               capture_output=True, text=True, timeout=60, cwd=self.tmp)
+            self.assertEqual(r.returncode, 0, script + r.stderr)
+        self.codex = os.path.join(self.home, ".codex")
+        self.gemini = os.path.join(self.home, ".gemini")
+        self.opencode = os.path.join(self.home, ".config", "opencode")
+        with open(os.path.join(self.codex, "hooks.json")) as fh:  # another tool's hook stays
+            doc = json.load(fh)
+        doc["hooks"]["Stop"].append({"hooks": [OTHER]})
+        with open(os.path.join(self.codex, "hooks.json"), "w") as fh:
+            json.dump(doc, fh)
+
+    def test_other_agents_removed_offline(self):
+        self.install_agents()
+        self.install("--user")
+        r = self.cli("--codex", "--opencode")  # only those
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.settings(self.codex, "hooks.json"), {"hooks": {"Stop": [{"hooks": [OTHER]}]}})
+        self.assertFalse(os.path.exists(os.path.join(self.codex, "hooks", "needs-you-hook.sh")))
+        self.assertFalse(os.path.exists(os.path.join(self.opencode, "plugins", "needs-you.js")))
+        self.assertFalse(os.path.exists(os.path.join(self.opencode, "hooks", "needs-you-hook.sh")))
+        self.assertTrue(self.has_hooks(os.path.join(self.gemini, "settings.json")))
+        self.assertTrue(self.has_hooks(self.user_settings()))
+        r = self.cli()  # everything else
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(self.has_hooks(os.path.join(self.gemini, "settings.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.gemini, "hooks", "needs-you-hook.sh")))
+        self.assertFalse(self.has_hooks(self.user_settings()))
+        self.assertIn("no needs-you hooks found", self.cli().stdout)
+
+    def test_other_agents_symlinks_are_never_followed(self):
+        self.install_agents()
+        outside = os.path.join(self.tmp, "outside")
+        os.makedirs(outside)
+        conf = os.path.join(self.gemini, "settings.json")
+        target = os.path.join(outside, "settings.json")
+        shutil.move(conf, target)
+        os.symlink(target, conf)
+        before = self.text(target)
+        plugin_target = os.path.join(outside, "needs-you.js")
+        plugin = os.path.join(self.opencode, "plugins", "needs-you.js")
+        shutil.move(plugin, plugin_target)
+        os.symlink(plugin_target, plugin)
+        r = self.cli("--gemini", "--opencode")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("symlink", r.stderr)
+        self.assertEqual(self.text(target), before)
+        self.assertTrue(os.path.exists(plugin_target))
+        self.assertTrue(os.path.exists(os.path.join(self.gemini, "hooks", "needs-you-hook.sh")))
 
     def test_bogus_recorded_paths_are_ignored(self):
         state = os.path.join(self.home, ".local", "state", "needs-you")

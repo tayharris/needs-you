@@ -113,8 +113,13 @@ final class AppModel: ObservableObject {
     private var feed: ItemFeed?
     private var demoFeed: DemoFeed?
     private var planner = PollPlanner()
+    /// The answering hub's `server_time` from the last poll: the next `since`.
+    private var pollCursor: Date?
     private var hasSynced = false
-    private var isPolling = false
+    /// The feed generation a poll is running for, if any.
+    private var pollingGeneration: Int?
+    /// A poll was asked for while one ran.
+    private var pollAgain = false
     private var feedGeneration = 0
     private var pollTask: Task<Void, Never>?
     private var injectTask: Task<Void, Never>?
@@ -356,6 +361,7 @@ final class AppModel: ObservableObject {
         feedGeneration += 1
         store = ItemStore()
         planner = PollPlanner()
+        pollCursor = nil
         hasSynced = false
         lastError = nil
         lastCheck = nil
@@ -422,15 +428,29 @@ final class AppModel: ObservableObject {
     }
 
     private func pollOnce() async {
-        guard !isPolling else { return }
+        // One poll at a time per feed. A request that comes in meanwhile (a live-update
+        // nudge, Refresh, wake) runs once more right after, so its change isn't left for
+        // the next interval; a poll of a replaced feed doesn't hold up the new one.
+        guard pollingGeneration != feedGeneration else {
+            pollAgain = true
+            return
+        }
+        let generation = feedGeneration
+        pollingGeneration = generation
+        defer { if pollingGeneration == generation { pollingGeneration = nil } }
+        repeat {
+            pollAgain = false
+            await pollFeed(generation: generation)
+        } while pollAgain && generation == feedGeneration
+    }
+
+    private func pollFeed(generation: Int) async {
         guard let feed else {
             lastError = nil
             return
         }
-        isPolling = true
-        defer { isPolling = false }
-        let generation = feedGeneration
-        let since = planner.nextSince(latest: store.latestUpdatedAt)
+        // The hub's own cursor (docs/API.md); feeds without one fall back to the newest updated_at.
+        let since = planner.nextSince(latest: pollCursor ?? store.latestUpdatedAt)
         do {
             let page = try await feed.fetchPage(since: since)
             guard generation == feedGeneration else { return }
@@ -438,7 +458,9 @@ final class AppModel: ObservableObject {
             // By id, last-writer-wins on updated_at; a hub switch forces a full snapshot.
             let result = updated.merge(page.items, isFullSnapshot: page.isFullSnapshot, now: Date())
             activeHub = page.source
+            pollCursor = page.cursor
             store = updated
+            endPreview(ifGone: result.removed)
             if !stepTicks.isEmpty {
                 var ticks = stepTicks
                 ticks.retain(itemIDs: Set(updated.items.keys))
@@ -481,9 +503,18 @@ final class AppModel: ObservableObject {
         }
         onTick?(now)
         var pruned = store
-        if !pruned.prune(now: now).isEmpty || pruned.snoozedCardCount != store.snoozedCardCount {
+        let expired = pruned.prune(now: now)
+        if !expired.isEmpty || pruned.snoozedCardCount != store.snoozedCardCount {
             store = pruned
+            endPreview(ifGone: expired)
         }
+    }
+
+    /// The preview's item left the open set (its sender resolved it, it was closed here, or
+    /// it expired): take the preview down rather than keep announcing it.
+    private func endPreview(ifGone removed: [Item]) {
+        guard let shown = previewItem, removed.contains(where: { $0.id == shown.id }) else { return }
+        previewItem = nil
     }
 
     // MARK: Announcements
@@ -644,13 +675,19 @@ final class AppModel: ObservableObject {
         // Automatic expansions (NEEDS_YOU_EXPAND, the morning summary) never undo a hide.
         if visibility == .hidden && !byUser && !peeking { return }
         if byUser, let target = ExpandFocus.target(clicked: clicked, items: needsItems,
-                                                   lastOpenedAt: settings.pillLastOpenedAt) {
+                                                   lastOpenedAt: settings.pillLastOpenedAt, freshAt: store.freshAt) {
             focus(on: target)
         }
         expandedByUser = byUser
         previewItem = nil
         digest = nil
-        if visibility.isHidden(at: Date()) && !peeking { visibility = .shown }
+        if visibility.isHidden(at: Date()) && !peeking {
+            // The shortcut or the morning summary ends a snooze: what it held is delivered,
+            // as when it runs out (no peek; the list is opening).
+            let wasSnoozed = visibility != .hidden
+            visibility = .shown
+            if wasSnoozed { releaseLater(.snoozeEnded, peek: false) }
+        }
         isExpanded = true
         if byUser { refreshSetupFacts() }
         markVisibleSeen()
@@ -724,6 +761,7 @@ final class AppModel: ObservableObject {
 
     private func close(_ item: Item, status: ItemStatus) {
         guard let feed, let removed = store.closeLocally(id: item.id) else { return }
+        endPreview(ifGone: [removed])
         let generation = feedGeneration
         Task {
             do {
@@ -792,10 +830,11 @@ final class AppModel: ObservableObject {
     }
 
     /// The global shortcut and the menu bar's Show Floating Panel: hidden/snoozed → shown,
-    /// shown → hidden. Returns false if hiding was refused.
+    /// shown → hidden. Returns false if hiding was refused. A peek (a menu item opened the
+    /// hidden panel) counts as hidden, matching the unchecked menu item: it stays shown.
     @discardableResult
     func toggleVisibility() -> Bool {
-        if visibility.isHidden(at: Date()) && !peeking { showPanel(); return true }
+        if visibility.isHidden(at: Date()) { showPanel(); return true }
         return hidePanel()
     }
 

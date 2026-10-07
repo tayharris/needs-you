@@ -96,14 +96,18 @@ public struct ItemStore: Sendable {
                let twin = items.values.first(where: { $0.key == incoming.key && $0.id != incoming.id }) {
                 items[twin.id] = nil
                 cardSnoozes[twin.id] = nil
-                // The replacement keeps its twin's place under Later.
-                if let held = heldForLater.removeValue(forKey: twin.id) { heldForLater[incoming.id] = held }
+                // The replacement keeps its twin's place under Later (if it still needs you).
+                if let held = heldForLater.removeValue(forKey: twin.id), incoming.kind == .needs {
+                    heldForLater[incoming.id] = held
+                }
                 items[incoming.id] = incoming
                 if incoming.hasVisibleChange(from: twin) { result.changed.append(incoming) } else { result.touched.append(incoming) }
                 continue
             }
 
             items[incoming.id] = incoming
+            // Later holds only `needs` items: one re-posted as done or info is a Recent row.
+            if incoming.kind != .needs { heldForLater[incoming.id] = nil }
             if let existing, existing.kind != .needs, incoming.kind == .needs {
                 promotedToNeeds[incoming.id] = incoming.updatedAt
             }

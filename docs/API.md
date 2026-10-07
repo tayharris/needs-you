@@ -361,7 +361,7 @@ Response `201`:
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts."}
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin."}
 ```
 
 `install_command` and `agent_prompt` are only present for `sender` invites. Both set up Claude
@@ -584,7 +584,7 @@ receiving hub's own id (the sender then stops using that peer).
 
 Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
-thread per peer sends batches of up to 200 records, always the record's *current* version, and
+thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's *current* version, and
 deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
 5 min, ±20% jitter). Outbox rows survive restarts. The admin tool writes to the same outbox, so
 `needs-you-admin token add` on one hub reaches every peer.

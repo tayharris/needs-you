@@ -420,6 +420,9 @@ final class PanelController {
                                                        snap: model.settings.snapToCorners)
             placement = newPlacement
             model.settings.setPlacement(newPlacement, forLayout: layoutKey())
+            // A peek dragged off the work display stays where it was dropped, not pulled
+            // back to the work display until it ends.
+            peekScreenID = nil
             sync(animated: true)
         }
     }

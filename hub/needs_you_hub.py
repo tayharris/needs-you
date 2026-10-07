@@ -13,6 +13,7 @@ import argparse
 import contextlib
 import hashlib
 import hmac
+import http.client
 import ipaddress
 import json
 import os
@@ -108,6 +109,7 @@ MAX_STEP_TEXT = 200
 MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
+PUSH_MAX_BYTES = MAX_REPLICATE_BYTES // 2  # a push batch stays well under the peer's limit
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
@@ -131,6 +133,16 @@ DOWNLOADS = {
     "hooks.json": ("integrations/claude-code/hooks.json", "application/json"),
     "SKILL.md": ("integrations/claude-code/skill/needs-you/SKILL.md", "text/markdown; charset=utf-8"),
     "orca-snippet.md": ("integrations/orca/snippet.md", "text/markdown; charset=utf-8"),
+    # OpenAI Codex CLI: the same needs-you-hook.sh, merged into ~/.codex/hooks.json.
+    "install-codex-hooks.sh": ("integrations/codex/install-codex-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    "codex-hooks.json": ("integrations/codex/codex-hooks.json", "application/json"),
+    # Gemini CLI: the same hook, merged into ~/.gemini/settings.json.
+    "install-gemini-hooks.sh": ("integrations/gemini/install-gemini-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    "gemini-hooks.json": ("integrations/gemini/gemini-hooks.json", "application/json"),
+    # opencode: a plugin that starts the same hook.
+    "install-opencode-plugin.sh": ("integrations/opencode/install-opencode-plugin.sh",
+                                   "text/x-shellscript; charset=utf-8"),
+    "needs-you-opencode.js": ("integrations/opencode/needs-you.js", "text/javascript; charset=utf-8"),
 }
 # Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
 # the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
@@ -144,6 +156,10 @@ CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
 
 # The invite installer flags for a machine that runs Claude Code: hooks, skill, alerts on.
 CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
+# ...and the flags to add for OpenAI Codex CLI and Gemini CLI (integrations/codex/, gemini/).
+CODEX_INSTALL_FLAG = "--codex-hooks user"
+GEMINI_INSTALL_FLAG = "--gemini-hooks user"
+OPENCODE_INSTALL_FLAG = "--opencode-plugin"
 
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
@@ -378,7 +394,10 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
     assert label is not None and url is not None
     if _URL_BAD_RE.search(url):
         raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
-    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    try:
+        scheme = urllib.parse.urlsplit(url).scheme.lower()
+    except ValueError:  # e.g. an unbalanced '[' in the host ("Invalid IPv6 URL")
+        raise _invalid(path + ".url", "%s.url is not a valid URL" % path)
     if len(url) <= len(scheme) + 1:
         raise _invalid(path + ".url", "%s.url is empty" % path)
     if (scheme in LINK_SCHEMES or scheme == "needsyou") and not LINK_RAW_RE.fullmatch(url):
@@ -1741,7 +1760,10 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         # lists the options for machines without Claude Code.
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
-                               "If this machine runs Claude Code, use %s." % (join, CLAUDE_INSTALL_FLAGS))
+                               "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
+                               "add %s; Gemini CLI, add %s; opencode, add %s."
+                               % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
+                                  OPENCODE_INSTALL_FLAG))
     return out
 
 
@@ -1815,18 +1837,33 @@ class PeerWorker(threading.Thread):
         req.add_header("X-Needs-You-Hub", self.hub.hub_id)
         if data is not None:
             req.add_header("Content-Type", "application/json")
-        with _NO_PROXY_OPENER.open(req, timeout=float(self.hub.cfg["peer_timeout_seconds"])) as resp:
-            return json.loads(resp.read().decode("utf-8") or "{}")
+        try:
+            with _NO_PROXY_OPENER.open(req, timeout=float(self.hub.cfg["peer_timeout_seconds"])) as resp:
+                out = json.loads(resp.read().decode("utf-8") or "{}")
+        except http.client.HTTPException as e:
+            # not HTTP at all, or a response cut short: not an OSError, so say so as one
+            raise ConnectionError("bad HTTP response (%s)" % type(e).__name__)
+        if not isinstance(out, dict):
+            raise ValueError("peer response is not a JSON object")
+        return out
 
     def run(self) -> None:
         while not self.hub.stopping.is_set() and not self.disabled:
             now = time.monotonic()
             did_work = False
-            if now >= self.next_push:
-                did_work = self.push_once()
-            if now >= self.next_pull and not self.disabled:
-                self.pull()
-                self.next_pull = time.monotonic() + float(self.hub.cfg["anti_entropy_seconds"])
+            try:
+                if now >= self.next_push:
+                    did_work = self.push_once()
+                if now >= self.next_pull and not self.disabled:
+                    try:
+                        self.pull()
+                    finally:
+                        self.next_pull = time.monotonic() + float(self.hub.cfg["anti_entropy_seconds"])
+            except Exception as e:  # noqa: BLE001 - this thread must outlive any one bad round
+                if not self.hub.cfg.get("quiet"):
+                    sys.stderr.write("peer %s: %s: %s\n" % (self.peer, type(e).__name__, e))
+                self._fail(e)
+                did_work = False
             if did_work:
                 continue
             now = time.monotonic()
@@ -1854,9 +1891,15 @@ class PeerWorker(threading.Thread):
         if not rows:
             self.failures = 0
             return False
-        items, toks, invs = self.hub.store.records_for(rows)
-        payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
-                   "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+        while True:
+            items, toks, invs = self.hub.store.records_for(rows)
+            payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
+                       "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+            # The peer refuses bodies over MAX_REPLICATE_BYTES (413), and would refuse the same
+            # rows on every retry: send fewer rows instead. One record is far below the limit.
+            if len(rows) == 1 or len(json.dumps(payload)) <= PUSH_MAX_BYTES:
+                break
+            rows = rows[:len(rows) // 2]
         try:
             self._request("POST", "/v1/replicate", payload)
         except urllib.error.HTTPError as e:
@@ -1905,7 +1948,7 @@ class PeerWorker(threading.Thread):
                                                last_pull_ok=self.hub.store.now_ms())
                 if not resp.get("more"):
                     break
-        except (OSError, ValueError, ApiError) as e:
+        except (OSError, ValueError, TypeError, ApiError) as e:
             try:
                 self.hub.store.save_peer_state(self.peer, last_error="pull %s: %s" % (type(e).__name__, e))
             except sqlite3.Error:
@@ -2758,7 +2801,10 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | Option | Use it when |
 |---|---|
 | `--claude-hooks user` | This machine runs Claude Code (or Orca): post an item when a session waits on a permission prompt or input. `project` installs into the current repo instead. Default `none`. |
-| `--alerts` | Turn the hooks on for every Claude Code session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
+| `--codex-hooks user` | This machine runs OpenAI Codex CLI: post an item when a Codex session asks for approval or finishes its turn and waits for you (hooks in `~/.codex/hooks.json`; trust them once with `/hooks` in Codex). Default `none`. |
+| `--gemini-hooks user` | This machine runs Gemini CLI: post an item when a session asks to approve a tool call or finishes its turn and waits for you (hooks in `~/.gemini/settings.json`). Default `none`. |
+| `--opencode-plugin` | This machine runs opencode: install a plugin in `~/.config/opencode/plugins` that posts an item when a session asks for permission or a question, or goes idle waiting for you. |
+| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI and opencode session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
@@ -2774,14 +2820,16 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--force` | Redeem again and replace an existing token. Without it, a machine that's already set up keeps its token. |
 | `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Works until the link expires or is revoked, even with no uses left. |
 
-If you are an agent: pick the options that match this machine (look for `~/.claude` and
-`orca` on PATH), say which ones you chose, run the one line, and report the output of the
+If you are an agent: pick the options that match this machine (look for `~/.claude`,
+`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
 health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
 
 - The PATH change reaches new shells only: in the shell you ran it from, call
   `~/.local/bin/needs-you` by its full path. With `--no-path`, tell the user the line it printed.
 - Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule)
   and report any `WARN` or `FAIL` lines with their fixes. `--json` gives the same as data.
+- If you added `--codex-hooks user`, tell the user to start Codex, open `/hooks` and trust the
+  needs-you entries once: Codex skips hooks nobody has trusted.
 - If you added `--claude-hooks` without `--alerts`, tell the user the hooks stay quiet until
   opted in: re-run with `--alerts`, or `NEEDS_YOU_AGENT_ALERTS=1` in the environment (sessions
   started by Orca are opted in already). Either way, open Claude Code sessions pick up the hooks

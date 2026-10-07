@@ -19,10 +19,11 @@
   needs-you health                                   check each configured hub and the token
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
-  needs-you uninstall-hooks [--user | --project [DIR]] [--dry-run]
-                                                     remove the Claude Code hooks: by default the
-                                                     user level, this directory's project and every
-                                                     recorded project install; works offline
+  needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--dry-run]
+                                                     remove the agent hooks: by default Claude
+                                                     Code's user level, this directory's project,
+                                                     every recorded project install, and the Codex,
+                                                     Gemini CLI and opencode installs; offline
 
 Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
   NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
@@ -69,6 +70,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -189,15 +191,23 @@ def _call(url: str, token: str, method: str, path: str, body: Optional[Dict[str,
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        with OPENER.open(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8") or "{}"
-            return resp.status, json.loads(raw)
-    except urllib.error.HTTPError as e:
         try:
-            parsed = json.loads(e.read().decode("utf-8") or "{}")
-        except ValueError:
-            parsed = {}
-        return e.code, parsed if isinstance(parsed, dict) else {}
+            with OPENER.open(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8") or "{}"
+                parsed = json.loads(raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError("response is not a JSON object")
+                return resp.status, parsed
+        except urllib.error.HTTPError as e:
+            try:
+                parsed = json.loads(e.read().decode("utf-8") or "{}")
+            except ValueError:
+                parsed = {}
+            return e.code, parsed if isinstance(parsed, dict) else {}
+    except http.client.HTTPException as e:
+        # Not HTTP at all (another service on that port) or a response cut short. These
+        # aren't OSErrors, so say so as one: callers treat it like a dead hub.
+        raise ConnectionError("bad HTTP response (%s)" % type(e).__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +226,7 @@ def installed_paths() -> Dict[str, str]:
         "needs-you-hook.sh": _home(".claude", "hooks", "needs-you-hook.sh"),
         "SKILL.md": _home(".claude", "skills", "needs-you", "SKILL.md"),
         "orca-snippet.md": os.path.join(conf, "orca-snippet.md"),
+        "needs-you-opencode.js": os.path.join(opencode_dir(), "plugins", "needs-you.js"),
     }
 
 
@@ -316,20 +327,78 @@ def _without_hook_entries(settings: Dict[str, Any]) -> Dict[str, Any]:
     return new
 
 
-def uninstall_hooks(user: bool, project: Optional[str], dry_run: bool, quiet: bool) -> int:
-    """`needs-you uninstall-hooks`: take the needs-you entries out of Claude Code settings
-    files and delete the copied hook script, with no hub and no download. Default: the user
-    level, the project covering the current directory and every project install recorded
-    in claude-projects.json. Exit 1 if a settings file couldn't be changed."""
+def _strip_hook_file(path: str, follow: bool, dry_run: bool, say: Any) -> Optional[bool]:
+    """Take the needs-you entries out of one JSON config file (Claude settings, Codex
+    hooks.json, Gemini settings.json: all keep hooks as {event: [{hooks: [...]}]}). True when
+    it removed (or would remove) some, False when there were none, None when it couldn't.
+    follow: write through a symlink (only the user's own ~/.claude settings)."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        settings = json.loads(text)
+        if not isinstance(settings, dict):
+            raise ValueError("not a JSON object")
+    except (OSError, ValueError) as e:
+        warn("%s: can't read it (%s); fix it first, nothing was changed" % (_tilde(path), e))
+        return None
+    new = _without_hook_entries(settings)
+    if new == settings:  # mentioned somewhere other than a hook command; leave it
+        return False
+    if dry_run:
+        say("would remove the needs-you hooks from %s" % _tilde(path))
+        return True
+    try:
+        target = os.path.realpath(path) if follow else path
+        mode = os.stat(target).st_mode & 0o777
+        bak = "%s.bak-%s-%d" % (target, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
+        fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        _write_atomic(target, (json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), mode)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    say("removed the needs-you hooks from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
+    return True
+
+
+def _delete_files(paths: List[str], dry_run: bool, say: Any) -> None:
+    """Delete our copied files (never through a symlink: callers check) and their dirs once empty."""
+    for p in paths:
+        if not os.path.isfile(p) or os.path.islink(p):
+            continue
+        if dry_run:
+            say("would delete %s" % _tilde(p))
+            continue
+        try:
+            os.remove(p)
+            say("deleted %s" % _tilde(p))
+            os.rmdir(os.path.dirname(p))
+        except OSError:
+            pass
+
+
+UNINSTALL_AGENTS = ("codex", "gemini", "opencode")
+
+
+def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], dry_run: bool,
+                    quiet: bool) -> int:
+    """`needs-you uninstall-hooks`: take the needs-you entries out of the agents' config
+    files and delete the copied hook script (and the opencode plugin), with no hub and no
+    download. With no scope: Claude Code's user level, the project covering the current
+    directory, every recorded project install, and the Codex, Gemini CLI and opencode
+    installs. --user, --project, --codex, --gemini, --opencode pick some. Exit 1 if a file
+    couldn't be changed (unreadable JSON, a symlink where needs-you would write)."""
     say = (lambda msg: None) if quiet else print  # noqa: E731
+    everything = not (user or project is not None or agents)
     dirs: List[str] = []
-    if user or project is None:
+    if user or everything:
         dirs.append(_home(".claude"))
     if project is not None:
         start = os.path.abspath(os.path.expanduser(project))
         found = project_claude_dir(start)
         dirs.append(found or os.path.join(start, ".claude"))
-    if not user and project is None:
+    if everything:
         found = project_claude_dir()
         if found:
             dirs.append(found)
@@ -353,51 +422,54 @@ def uninstall_hooks(user: bool, project: Optional[str], dry_run: bool, quiet: bo
             if not _references_hook(path):
                 forget.append(os.path.realpath(path))
                 continue
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    text = fh.read()
-                settings = json.loads(text)
-                if not isinstance(settings, dict):
-                    raise ValueError("not a JSON object")
-            except (OSError, ValueError) as e:
-                warn("%s: can't read it (%s); fix it first, nothing was changed" % (_tilde(path), e))
+            # The user's own settings may be a symlink (dotfile managers), written through as
+            # install-hooks.sh does; a project's never is (plain_project_dir above).
+            done = _strip_hook_file(path, is_user, dry_run, say)
+            if done is None:
                 failed = True
                 continue
-            new = _without_hook_entries(settings)
-            if new == settings:  # mentioned somewhere other than a hook command; leave it
+            if done and not dry_run:
+                removed += 1
+            if not dry_run:
                 forget.append(os.path.realpath(path))
-                continue
-            if dry_run:
-                say("would remove the needs-you hooks from %s" % _tilde(path))
-                continue
-            try:
-                # The user's own settings may be a symlink (dotfile managers), written through as
-                # install-hooks.sh does; a project's never is (plain_project_dir above).
-                target = os.path.realpath(path) if is_user else path
-                mode = os.stat(target).st_mode & 0o777
-                bak = "%s.bak-%s-%d" % (target, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
-                fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(text)
-                _write_atomic(target, (json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), mode)
-            except OSError as e:
-                warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        if not hook_settings(d):  # (in a dry run the entries are still there: kept)
+            _delete_files([os.path.join(d, "hooks", HOOK_FILE)], dry_run, say)
+    # Codex and Gemini CLI: their own config file and hook copy (the same entry rule as
+    # their installers; those come from the hub, so they may not be on this machine).
+    # Like the installers, never through a symlink: those files could point anywhere.
+    for agent, label, home_fn, conf_name, *_rest in OTHER_AGENTS:
+        if not (everything or agent in agents):
+            continue
+        d = home_fn()
+        conf, hook = os.path.join(d, conf_name), os.path.join(d, "hooks", HOOK_FILE)
+        if not os.path.lexists(conf) and not os.path.lexists(hook):
+            continue
+        links = [p for p in (conf, os.path.join(d, "hooks"), hook) if os.path.islink(p)]
+        if links:
+            warn("%s is a symlink; not touching the %s hooks (remove them by hand)" % (_tilde(links[0]), label))
+            failed = True
+            continue
+        if _references_hook(conf):
+            done = _strip_hook_file(conf, False, dry_run, say)
+            if done is None:
                 failed = True
                 continue
-            forget.append(os.path.realpath(path))
-            removed += 1
-            say("removed the needs-you hooks from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
-        hook = os.path.join(d, "hooks", HOOK_FILE)
-        if os.path.isfile(hook) and not os.path.islink(hook) and not hook_settings(d):
-            if dry_run:
-                say("would delete %s" % _tilde(hook))
-            else:
-                try:
-                    os.remove(hook)
-                    say("deleted %s" % _tilde(hook))
-                    os.rmdir(os.path.dirname(hook))
-                except OSError:
-                    pass
+            if done and not dry_run:
+                removed += 1
+        if not _references_hook(conf):
+            _delete_files([hook], dry_run, say)
+    # opencode: the plugin and its hook copy are ours; no config file to edit.
+    if everything or "opencode" in agents:
+        d = opencode_dir()
+        files = [os.path.join(d, "plugins", "needs-you.js"), os.path.join(d, "hooks", HOOK_FILE)]
+        links = [p for p in files + [os.path.dirname(f) for f in files] if os.path.islink(p)]
+        if links:
+            warn("%s is a symlink; not touching the opencode plugin (remove it by hand)" % _tilde(links[0]))
+            failed = True
+        elif any(os.path.isfile(f) for f in files):
+            if not dry_run and os.path.isfile(files[0]):
+                removed += 1
+            _delete_files(files, dry_run, say)
     if not dry_run:
         projects = claude_projects()
         left = {k: v for k, v in projects.items() if k not in forget}
@@ -408,11 +480,16 @@ def uninstall_hooks(user: bool, project: Optional[str], dry_run: bool, quiet: bo
             except OSError:
                 pass
     if removed:
-        say("Restart open Claude Code sessions (or open /hooks in them) to drop the hooks.")
+        say("Restart open agent sessions to drop the hooks (in Claude Code, opening /hooks is enough).")
     elif not failed and not dry_run:
-        say("no needs-you hooks found%s" % ("" if project is not None or user else
-                                           " (a project elsewhere: run this inside it, or with --project DIR)"))
+        say("no needs-you hooks found%s" % (" (a project elsewhere: run this inside it, or with --project DIR)"
+                                           if everything else ""))
     return 1 if failed else 0
+
+
+def opencode_dir() -> str:
+    base = os.environ.get("XDG_CONFIG_HOME") or _home(".config")
+    return os.path.join(base, "opencode")
 
 
 def cli_path() -> str:
@@ -572,7 +649,9 @@ def _lock():  # type: ignore[no-untyped-def]
     try:
         os.makedirs(d, mode=0o700, exist_ok=True)
         import fcntl
-        fh = open(os.path.join(d, ".lock"), "a")
+        fd = os.open(os.path.join(d, ".lock"), os.O_WRONLY | os.O_CREAT | os.O_APPEND
+                     | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        fh = os.fdopen(fd, "a")
         try:
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
@@ -581,6 +660,18 @@ def _lock():  # type: ignore[no-untyped-def]
         return fh
     except (OSError, ImportError):
         return None
+
+
+QUEUED_PATHS = ("/v1/items", "/v1/items/resolve")  # the only requests the CLI queues
+
+
+def _remove(path: str) -> None:
+    """Delete a sent entry. Another invocation's prune() (which runs without the lock) may
+    have dropped it already; that's fine."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
@@ -602,18 +693,23 @@ def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
                 with open(path, "r", encoding="utf-8") as fh:
                     entry = json.load(fh)
             except (OSError, ValueError):
-                _move_failed(path)
+                entry = None
+            # Replayed with this machine's token, so only what queue() ever writes: a planted
+            # path such as "@other.host/x" would turn url + path into another host.
+            if not (isinstance(entry, dict) and entry.get("method") == "POST"
+                    and entry.get("path") in QUEUED_PATHS and isinstance(entry.get("body"), dict)):
+                _move_failed(path)  # unreadable, or not an entry this CLI wrote
                 dropped += 1
                 continue
             try:
                 url, _status, _body = send(cfg, entry["method"], entry["path"], entry.get("body"))
-                os.remove(path)
+                _remove(path)
                 sent += 1
                 if verbose:
                     warn("sent queued %s %s via %s" % (entry["method"], entry["path"], url))
             except Rejected as e:
                 if e.status == 404 and entry["path"].endswith("/resolve"):
-                    os.remove(path)  # nothing open with that key: the resolve is moot
+                    _remove(path)  # nothing open with that key: the resolve is moot
                     sent += 1
                     continue
                 warn("hub rejected a queued request (%s); moved it to outbox/failed/" % e)
@@ -701,11 +797,13 @@ def reap_leases(cfg: Config, verbose: bool = False) -> int:
     return reaped
 
 
-# The agent's own open items, per Claude Code session. When an agent in a session posts a
-# `needs` item (the skill), the hook skips its generic "Claude is waiting for you" card for
+# The agent's own open items, per agent session. When an agent in a session posts a `needs`
+# item (the skill), the hook skips its generic "waiting for you" / "turn ended" card for
 # that session while the item is open: one card for one wait. The session is named as the
-# hook names it: $ORCA_TERMINAL_HANDLE in Orca, else Claude's session id
-# ($CLAUDE_CODE_SESSION_ID in the agent's commands, session_id in the hook input).
+# hook names it: $ORCA_TERMINAL_HANDLE in Orca (any agent), else Claude Code's session id
+# ($CLAUDE_CODE_SESSION_ID in the agent's commands, session_id in the hook input). Codex,
+# Gemini CLI and opencode don't give their commands a session id, so outside Orca they get
+# both cards.
 SESSION_ITEM_MAX_HOURS = 48.0
 
 
@@ -714,10 +812,11 @@ def session_items_dir() -> str:
 
 
 def claude_session() -> str:
-    """This command's Claude Code session, sanitized like the hook's id; "" outside one."""
-    if not os.environ.get("CLAUDECODE"):
-        return ""
-    raw = os.environ.get("ORCA_TERMINAL_HANDLE") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+    """This command's agent session as the hook names it, sanitized like the hook's id: the
+    Orca terminal handle, else (inside Claude Code) its session id; "" when there is none."""
+    raw = os.environ.get("ORCA_TERMINAL_HANDLE") or ""
+    if not raw and os.environ.get("CLAUDECODE"):
+        raw = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
     sess = re.sub(rb"[^A-Za-z0-9._-]", b"_", raw.encode("utf-8"))[:80].decode("ascii")
     return sess if sess.strip(".") else ""  # never "." or ".."
 
@@ -774,12 +873,19 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
 
 
 def _move_failed(path: str) -> None:
+    """Keep a refused entry in outbox/failed/ for a person to look at. Never through a
+    symlink out of the outbox: then the entry is just deleted."""
     d = os.path.join(os.path.dirname(path), "failed")
-    os.makedirs(d, mode=0o700, exist_ok=True)
     try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        if os.path.islink(d) or not os.path.isdir(d):
+            raise OSError("outbox/failed is not a plain directory")
         os.replace(path, os.path.join(d, os.path.basename(path)))
     except OSError:
-        pass
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -946,10 +1052,13 @@ def _main(argv: Optional[List[str]] = None) -> int:
                         help="quiet, never fails (what flush runs once a day with NEEDS_YOU_AUTO_UPDATE=1)")
         up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
         up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
-    uh = sub.add_parser("uninstall-hooks", help="remove the Claude Code hooks (offline; no hub needed)")
-    uh.add_argument("--user", action="store_true", help="only the user level (~/.claude)")
+    uh = sub.add_parser("uninstall-hooks", help="remove the agent hooks: Claude Code, Codex, Gemini CLI, "
+                        "opencode (offline; no hub needed)")
+    uh.add_argument("--user", action="store_true", help="Claude Code's user level (~/.claude)")
     uh.add_argument("--project", nargs="?", const=".", metavar="DIR",
-                    help="only the project covering DIR (default: the current directory)")
+                    help="the Claude Code project covering DIR (default: the current directory)")
+    for a in UNINSTALL_AGENTS:
+        uh.add_argument("--" + a, dest="un_" + a, action="store_true", help="the %s install" % a)
     uh.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
     dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
     dp.add_argument("--json", dest="doctor_json", action="store_true",
@@ -969,7 +1078,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return update(cfg, check=args.check, auto=args.auto, quiet=args.quiet or args.auto, as_json=args.json,
                       allow_downgrade=args.allow_downgrade)
     if args.cmd == "uninstall-hooks":  # local files only: no hub, no outbox
-        return uninstall_hooks(args.user, args.project, args.dry_run, args.quiet)
+        return uninstall_hooks(args.user, args.project, [a for a in UNINSTALL_AGENTS if getattr(args, "un_" + a)],
+                               args.dry_run, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
@@ -1195,7 +1305,42 @@ RELEASE_PATHS = {
     "hooks.json": "integrations/claude-code/hooks.json",
     "SKILL.md": "integrations/claude-code/skill/needs-you/SKILL.md",
     "orca-snippet.md": "integrations/orca/snippet.md",
+    "install-codex-hooks.sh": "integrations/codex/install-codex-hooks.sh",
+    "codex-hooks.json": "integrations/codex/codex-hooks.json",
+    "install-gemini-hooks.sh": "integrations/gemini/install-gemini-hooks.sh",
+    "gemini-hooks.json": "integrations/gemini/gemini-hooks.json",
+    "install-opencode-plugin.sh": "integrations/opencode/install-opencode-plugin.sh",
+    "needs-you-opencode.js": "integrations/opencode/needs-you.js",
 }
+
+
+def codex_home() -> str:
+    return os.environ.get("CODEX_HOME") or _home(".codex")
+
+
+def gemini_home() -> str:
+    return _home(".gemini")
+
+
+# Agents other than Claude Code that run the same needs-you-hook.sh from their own directory:
+# (name, label, home, config file in it, its /dl snippet, its /dl installer, installer's dir flag).
+OTHER_AGENTS = (
+    ("codex", "Codex", codex_home, "hooks.json", "codex-hooks.json", "install-codex-hooks.sh", "--codex-home"),
+    ("gemini", "Gemini", gemini_home, "settings.json", "gemini-hooks.json", "install-gemini-hooks.sh",
+     "--gemini-dir"),
+)
+
+
+# Every agent directory that keeps its own copy of needs-you-hook.sh in <dir>/hooks/.
+HOOK_COPIES = (("codex", "Codex", codex_home), ("gemini", "Gemini", gemini_home),
+               ("opencode", "opencode", opencode_dir))
+
+
+def _other_agent(snippet: str) -> Optional[Tuple[Any, ...]]:
+    for a in OTHER_AGENTS:
+        if a[4] == snippet:
+            return a
+    return None
 
 
 class UpdateRefused(Exception):
@@ -1417,6 +1562,9 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         entry = files.get(name)
         if not isinstance(entry, dict):
             continue
+        if name == "needs-you-opencode.js" and os.path.islink(path):
+            notes.append("%s is a symlink; not updating it (another tool manages it)" % _tilde(path))
+            continue
         if name != "needs-you" and not os.path.isfile(path):
             continue  # never install a piece that isn't here
         want = str(entry.get("sha256") or "").lower()
@@ -1461,6 +1609,37 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         if _sha256_file(hook) != str(hook_entry.get("sha256") or "").lower() or stale:
             changes.append({"file": "project hooks", "path": project, "sha256": str(hj.get("sha256") or ""),
                             "size": None, "from": _stamp(hook) or "none", "to": hook_entry.get("version") or "?"})
+    # Codex and Gemini CLI: each has its own copy of the hook, and entries in its config file.
+    he = files.get("needs-you-hook.sh")
+    for agent, label, home_fn in HOOK_COPIES:
+        hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
+        if os.path.islink(hook):
+            # Another agent's directory: never write through a link that could point anywhere.
+            notes.append("%s is a symlink; not updating it" % _tilde(hook))
+            continue
+        if os.path.isfile(hook) and isinstance(he, dict):
+            want = str(he.get("sha256") or "").lower()
+            if len(want) != 64 or any(c not in "0123456789abcdef" for c in want):
+                raise UpdateRefused("the hub's manifest has no valid checksum for needs-you-hook.sh")
+            if _sha256_file(hook) != want:
+                changes.append({"file": "needs-you-hook.sh", "label": "needs-you-hook.sh (%s)" % label,
+                                "backup": "%s-needs-you-hook.sh" % agent, "path": hook,
+                                "sha256": want, "size": he.get("size"), "from": _stamp(hook),
+                                "to": he.get("version") or "?"})
+    for agent, label, home_fn, conf_name, snippet, installer, _flag in OTHER_AGENTS:
+        conf = os.path.join(home_fn(), conf_name)
+        try:
+            with open(conf, "r", encoding="utf-8", errors="replace") as fh:
+                referenced = "needs-you-hook.sh" in fh.read()
+        except OSError:
+            referenced = False
+        sj = files.get(snippet)
+        if referenced and isinstance(sj, dict):
+            if not isinstance(files.get(installer), dict):
+                raise UpdateRefused("the hub's manifest lists %s without %s" % (snippet, installer))
+            if _read_state().get("%s_hooks_json_sha256" % agent) != sj.get("sha256"):
+                changes.append({"file": snippet, "path": conf, "sha256": str(sj.get("sha256") or ""),
+                                "size": sj.get("size"), "from": "?", "to": sj.get("version") or "?"})
     return changes, notes
 
 
@@ -1651,7 +1830,9 @@ def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, A
     Raises UpdateRefused on a mismatch; returns a note when the check couldn't run (and
     raises instead with NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1)."""
     names = sorted({c["file"] for c in changes} | ({"install-hooks.sh", "needs-you-hook.sh"}
-                                                  if any(c["file"] == "hooks.json" for c in changes) else set()))
+                                                  if any(c["file"] == "hooks.json" for c in changes) else set())
+                   | {n for c in changes if _other_agent(c["file"])
+                      for n in (_other_agent(c["file"])[5], "needs-you-hook.sh")})
     try:
         digests, why = release_digests(str(manifest.get("version") or ""), names)
     except UpdateRefused:
@@ -1746,6 +1927,26 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                 raise ValueError("install-hooks.sh failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
         _write_state(hooks_json_sha256=change["sha256"])
         return "re-merged the hook entries in ~/.claude/settings.json (it keeps a .bak)"
+    other = _other_agent(name)
+    if other:
+        import subprocess
+        import tempfile
+        agent, _label, home_fn, _conf, snippet, installer, flag = other
+        with tempfile.TemporaryDirectory(prefix="needs-you-update-") as tmp:
+            for f in (installer, "needs-you-hook.sh", snippet):
+                with open(os.path.join(tmp, f), "wb") as fh:
+                    fh.write(_download_verified(hub, f, manifest, timeout))
+            hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
+            backup = "%s-needs-you-hook.sh" % agent
+            if os.path.isfile(hook) and backup not in (_read_state().get("backups") or {}):
+                _backup(backup, hook)
+            r = subprocess.run(["bash", os.path.join(tmp, installer), flag, home_fn()],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, NEEDS_YOU_INSTALLER="1"))
+            if r.returncode != 0:
+                raise ValueError("%s failed: %s" % (installer, clean((r.stderr or r.stdout).strip()[-200:])))
+        _write_state(**{"%s_hooks_json_sha256" % agent: change["sha256"]})
+        return "re-merged the hook entries in %s (it keeps a .bak)" % _tilde(change["path"])
     data = _download_verified(hub, name, manifest, timeout)
     path = change["path"]
     if name == "needs-you":
@@ -1757,7 +1958,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
             mode = os.stat(path).st_mode & 0o777
         except OSError:
             mode = 0o644
-    _backup(name, path)
+    _backup(change.get("backup") or name, path)
     _write_atomic(path, data, mode)
     return "updated %s: %s -> %s" % (_tilde(path), change["from"] or "?", change["to"])
 
@@ -1828,7 +2029,7 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         return finish(0)
     say("from %s (hub %s, %s):" % (hub.url, clean(manifest.get("version")), hub.why))
     for c in changes:
-        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c["file"], c["from"] or "?", c["to"]))
+        say("  %s %s (%s -> %s)" % ("would update" if check else "update", c.get("label") or c["file"], c["from"] or "?", c["to"]))
     try:
         note = cross_check(cfg, manifest, changes, auto=auto or from_flush)
         result["notes"].append(note)
@@ -2035,7 +2236,8 @@ class Doctor:
         return "", ""
 
     def run(self) -> List[Dict[str, str]]:
-        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks, self.skill,
+        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
+                     self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -2261,6 +2463,208 @@ class Doctor:
                 hint = "to get cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
             self.add("claude hooks", "OK", "installed in ~/.claude/settings.json; " + "; ".join(parts), hint)
 
+    # -- Codex CLI hooks ---------------------------------------------------
+    def codex_hooks(self) -> None:
+        import re
+        import shutil
+        home = os.environ.get("CODEX_HOME") or os.path.join(self.home, ".codex")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        hooks_json = os.path.join(home, "hooks.json")
+        installer = ("integrations/codex/install-codex-hooks.sh (or the invite installer with "
+                     "--codex-hooks user)")
+        if not os.path.isdir(home):
+            if shutil.which("codex"):
+                self.add("codex hooks", "INFO", "%s not found; Codex hasn't run for this user yet" % _tilde(home),
+                         "after a first Codex run: " + installer)
+            return
+        doc: Any = None
+        try:
+            with open(hooks_json, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            referenced = "needs-you-hook.sh" in text
+            try:
+                doc = json.loads(text) if text.strip() else {}
+            except ValueError:
+                doc = None
+        except OSError:
+            text, referenced, doc = "", False, {}
+        exists = os.path.isfile(hook)
+        if not exists and not referenced:
+            self.add("codex hooks", "INFO", "not installed (optional: cards when a Codex session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts, hints = [], [_tilde(hooks_json)], []
+        if doc is None:
+            problems.append("%s isn't valid JSON, so Codex loads none of its hooks" % _tilde(hooks_json))
+        if not exists:
+            problems.append("%s references the hook but %s is missing" % (_tilde(hooks_json), _tilde(hook)))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            if not referenced:
+                problems.append("%s doesn't reference it" % _tilde(hooks_json))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "codex" not in fh.read():
+                        problems.append("old hook (no Codex support)")
+            except OSError:
+                pass
+        # [features] hooks = false turns every hook off.
+        config_text = ""
+        try:
+            with open(os.path.join(home, "config.toml"), "r", encoding="utf-8", errors="replace") as fh:
+                config_text = fh.read()
+        except OSError:
+            pass
+        section = ""
+        for line in config_text.splitlines():
+            s = line.strip()
+            if s.startswith("["):
+                section = s
+            elif section == "[features]" and re.match(r"^hooks\s*=\s*false\b", s):
+                problems.append("hooks = false under [features] in %s" % _tilde(os.path.join(home, "config.toml")))
+        # Codex runs a hook only once it's trusted (/hooks); it records that in config.toml as
+        # [hooks.state."<hooks.json>:<event>:<group>:<handler>"]. Only claim "untrusted" when that
+        # table exists for this file but not for our PermissionRequest entry.
+        if isinstance(doc, dict) and isinstance(doc.get("hooks"), dict):
+            groups = doc["hooks"].get("PermissionRequest")
+            pos = None
+            if isinstance(groups, list):
+                for gi, g in enumerate(groups):
+                    hs = g.get("hooks") if isinstance(g, dict) else None
+                    for hi, h in enumerate(hs if isinstance(hs, list) else []):
+                        if isinstance(h, dict) and "needs-you-hook.sh" in str(h.get("command", "")):
+                            pos = (gi, hi)
+            state_prefix = '[hooks.state."%s:' % hooks_json
+            if pos is not None and state_prefix in config_text:
+                if '%spermission_request:%d:%d"]' % (state_prefix, pos[0], pos[1]) not in config_text:
+                    problems.append("Codex hasn't trusted them yet")
+                    hints.append("start Codex, open /hooks and trust the needs-you entries")
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            if not hints:
+                hints.append("re-run the installer: " + installer)
+            self.add("codex hooks", "WARN", "; ".join(problems + parts), "; ".join(hints))
+            return
+        hint = "Codex runs a new hook only after you trust it: open /hooks in Codex once"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("codex hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- Gemini CLI hooks --------------------------------------------------
+    def gemini_hooks(self) -> None:
+        import shutil
+        home = os.path.join(self.home, ".gemini")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        settings = os.path.join(home, "settings.json")
+        installer = ("integrations/gemini/install-gemini-hooks.sh (or the invite installer with "
+                     "--gemini-hooks user)")
+        if not os.path.isdir(home):
+            if shutil.which("gemini"):
+                self.add("gemini hooks", "INFO", "%s not found; Gemini CLI hasn't run for this user yet"
+                         % _tilde(home), "after a first run: " + installer)
+            return
+        doc: Any = {}
+        try:
+            with open(settings, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            referenced = "needs-you-hook.sh" in text
+            try:
+                doc = json.loads(text) if text.strip() else {}
+            except ValueError:
+                doc = None  # Gemini allows comments; we can't read those settings
+        except OSError:
+            referenced = False
+        exists = os.path.isfile(hook)
+        if not exists and not referenced:
+            self.add("gemini hooks", "INFO", "not installed (optional: cards when a Gemini CLI session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts = [], [_tilde(settings)]
+        if not exists:
+            problems.append("%s references the hook but %s is missing" % (_tilde(settings), _tilde(hook)))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            if not referenced:
+                problems.append("%s doesn't reference it" % _tilde(settings))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "gemini_card" not in fh.read():
+                        problems.append("old hook (no Gemini support)")
+            except OSError:
+                pass
+        if isinstance(doc, dict):
+            hc = doc.get("hooksConfig")
+            if isinstance(hc, dict) and hc.get("enabled") is False:
+                problems.append("hooksConfig.enabled is false in %s" % _tilde(settings))
+            if isinstance(hc, dict) and isinstance(hc.get("disabled"), list) and "needs-you" in hc["disabled"]:
+                problems.append("hooksConfig.disabled lists needs-you")
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            self.add("gemini hooks", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            return
+        hint = ""
+        if "alerts off until opted in" in parts:
+            hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- opencode plugin ---------------------------------------------------
+    def opencode_plugin(self) -> None:
+        import shutil
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        d = os.path.join(base, "opencode")
+        plugin = os.path.join(d, "plugins", "needs-you.js")
+        hook = os.path.join(d, "hooks", "needs-you-hook.sh")
+        installer = ("integrations/opencode/install-opencode-plugin.sh (or the invite installer with "
+                     "--opencode-plugin)")
+        if not os.path.isdir(d) and not shutil.which("opencode"):
+            return
+        if not os.path.isfile(plugin) and not os.path.isfile(hook):
+            self.add("opencode plugin", "INFO", "not installed (optional: cards when an opencode session waits on you)",
+                     "run " + installer)
+            return
+        problems, parts = [], [_tilde(plugin)]
+        if not os.path.isfile(plugin):
+            problems.append("%s is missing" % _tilde(plugin))
+        if not os.path.isfile(hook):
+            problems.append("%s is missing" % _tilde(hook))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "opencode_card" not in fh.read():
+                        problems.append("old hook (no opencode support)")
+            except OSError:
+                pass
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            self.add("opencode plugin", "WARN", "; ".join(problems + parts), "re-run the installer: " + installer)
+            return
+        hint = "restart opencode after installing or updating it"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _tilde(self.env_path)
+        self.add("opencode plugin", "OK", "installed: " + "; ".join(parts), hint)
+
     def project_hooks(self) -> None:
         """Project-level hooks (install-hooks.sh --project) covering the current directory.
         No line at all outside such a project."""
@@ -2399,7 +2803,7 @@ def _doctor_update(self: "Doctor") -> None:
         return
     detail = "%s; hub %s serves %s%s" % (local, hub.url, clean(manifest.get("version")), tail)
     if changes:
-        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c["file"] for c in changes),
+        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c.get("label") or c["file"] for c in changes),
                  "needs-you update")
     else:
         self.add("update", "OK", detail + ("; " + "; ".join(notes) if notes else ""))

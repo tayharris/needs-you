@@ -568,6 +568,41 @@ class OwnItemTests(HookHarness):
         self.run_hook("end", {"hook_event_name": "SessionEnd"}, **term)
         self.assertTrue(self.idle(**term))
 
+    def agent_turn_ended(self, agent, event, data=None, **extra):
+        """The agent's card for `event`; True if it posted."""
+        before = len(self.calls())
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
+               "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux",
+               "NY_HOOK_BG": "1"}  # Gemini: run in the foreground, as its background copy does
+        env.update(extra)
+        payload = {"session_id": "agent-sess-1", "cwd": self.cwd, "hook_event_name": event}
+        payload.update(data or {})
+        r = subprocess.run([BASH, HOOK, "notify", agent], input=json.dumps(payload), env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        return len(self.calls()) > before
+
+    def test_other_agents_in_orca_skip_their_turn_ended_card(self):
+        # Codex, Gemini CLI and opencode give their commands no session id; in Orca the
+        # terminal handle names the session for both the CLI and the hook.
+        term = {"ORCA_TERMINAL_HANDLE": "term_0123abcd"}
+        permission = {"codex": ("PermissionRequest", {"tool_name": "Bash"}),
+                      "opencode": ("PermissionRequest", {"tool_name": "bash"}),
+                      "gemini": ("Notification", {"notification_type": "ToolPermission",
+                                                  "details": {"type": "exec", "command": "ls"}})}
+        for agent, event in (("codex", "Stop"), ("gemini", "AfterAgent"), ("opencode", "Stop")):
+            self.assertTrue(self.agent_turn_ended(agent, event, **term), agent)
+            self.real_cli("add", "--key", "work:ACME-6:%s" % agent, "--title", "t", **term)
+            self.assertFalse(self.agent_turn_ended(agent, event, **term), agent)
+            # a permission prompt still posts
+            self.assertTrue(self.agent_turn_ended(agent, permission[agent][0], permission[agent][1], **term), agent)
+            self.real_cli("resolve", "--key", "work:ACME-6:%s" % agent)
+            self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"}, **term)
+            self.assertTrue(self.agent_turn_ended(agent, event, **term), agent)
+        # Outside Orca there's no shared id: both cards, as before.
+        self.real_cli("add", "--key", "work:ACME-7:x", "--title", "t", CODEX_THREAD_ID="agent-sess-1")
+        self.assertTrue(self.agent_turn_ended("codex", "Stop"))
+
     def test_outside_claude_nothing_is_recorded(self):
         self.real_cli("add", "--key", "work:ACME-5:x", "--title", "t", CLAUDE_CODE_SESSION_ID="sess-1234-abcd")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you", "session-items")))
