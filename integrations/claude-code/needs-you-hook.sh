@@ -229,10 +229,14 @@ agent_pid() {
 }
 lease_pid=
 lease_start=
-lease() {  # fills lease_pid and lease_start once
+lease_start_utc=
+lease() {  # fills lease_pid, lease_start and lease_start_utc once
   [ -z "$lease_pid" ] || return 0
   lease_pid=$(agent_pid)
   [ -n "$lease_pid" ] && lease_start=$(LC_ALL=C ps -o lstart= -p "$lease_pid" 2>/dev/null)
+  # ps prints local time, and `needs-you flush` may run in another TZ (cron's): start_utc
+  # is what it compares (start= stays for older CLIs and this hook's own matching).
+  [ -n "$lease_start" ] && lease_start_utc=$(TZ=UTC0 LC_ALL=C ps -o lstart= -p "$lease_pid" 2>/dev/null)
   [ -n "$lease_start" ] || lease_pid=
 }
 
@@ -245,6 +249,7 @@ write_marker() {
   {
     printf 'key=%s\n' "$2"
     [ -n "$lease_start" ] && printf 'pid=%s\nstart=%s\n' "$lease_pid" "$lease_start"
+    [ -n "$lease_start_utc" ] && printf 'start_utc=%s\n' "$lease_start_utc"
     [ -n "${3:-}" ] && printf '%s\n' "$3"
   } >"$tmp" 2>/dev/null
   mv -f "$tmp" "$1" 2>/dev/null || rm -f "$tmp"
@@ -286,7 +291,7 @@ run_py() {
   lease
   NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
-  NY_PID=$lease_pid NY_START=$lease_start NY_AGENT=$agent \
+  NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
   python3 - 2>/dev/null <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
@@ -903,6 +908,8 @@ def context():
             fh.write("key=%s\n" % key)
             if os.environ.get("NY_PID") and os.environ.get("NY_START"):
                 fh.write("pid=%s\nstart=%s\n" % (os.environ["NY_PID"], os.environ["NY_START"]))
+                if os.environ.get("NY_START_UTC"):
+                    fh.write("start_utc=%s\n" % os.environ["NY_START_UTC"])
             fh.write("pct=%d\n" % pct)
         os.replace(tmp, marker)
     return rc
