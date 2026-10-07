@@ -21,6 +21,12 @@
 #   opencode opencode, through integrations/opencode/needs-you.js (a plugin that
 #            starts this hook with a small JSON object): PermissionRequest,
 #            Question and Stop (the session went idle) call `notify`.
+#   grok     Grok Build, which runs the Claude Code hooks from ~/.claude/settings.json
+#            (on by default). Detected by $GROK_HOOK_EVENT whatever the argument
+#            says: Notification permission_prompt / idle_prompt (sent as
+#            notificationType) and StopFailure call `notify`, Stop resolves (no
+#            context check: Grok's transcript isn't Claude's). Grok waits for its
+#            hooks, so like Gemini the work goes to a background copy.
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -85,8 +91,11 @@ case "${2:-}" in
   codex) agent=codex ;;
   gemini) agent=gemini ;;
   opencode) agent=opencode ;;
+  grok) agent=grok ;;
   *) agent=claude ;;
 esac
+# Grok Build runs the Claude hooks as they are: it names itself only in the environment.
+[ -n "${GROK_HOOK_EVENT:-}" ] && agent=grok
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
@@ -110,11 +119,11 @@ esac
 
 input=$(cat 2>/dev/null)
 
-# Gemini CLI waits for each hook (and reads its stdout and stderr as JSON): hand
-# the work to a background copy with no stdio and return at once. The copy
-# starts the lease search from this hook's parent.
-if [ "$agent" = gemini ] && [ -z "${NY_HOOK_BG:-}" ]; then
-  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=$PPID bash "$0" "$mode" gemini >/dev/null 2>&1 &
+# Gemini CLI waits for each hook (and reads its stdout and stderr as JSON), and so
+# does Grok: hand the work to a background copy with no stdio and return at once.
+# The copy starts the lease search from this hook's parent.
+if { [ "$agent" = gemini ] || [ "$agent" = grok ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
+  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=$PPID bash "$0" "$mode" "$agent" >/dev/null 2>&1 &
   exit 0
 fi
 
@@ -283,8 +292,8 @@ import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini", "opencode") else "claude"
-AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode"}.get(AGENT, "claude-code")
+AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini", "opencode", "grok") else "claude"
+AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode", "grok": "grok"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -303,7 +312,7 @@ def oneline(text, limit):
 
 
 event = field("hook_event_name")
-ntype = field("notification_type")
+ntype = field("notification_type") or field("notificationType")  # Grok: camelCase only
 cwd = field("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
 project = os.path.basename(project_dir.rstrip("/")) or "claude"
@@ -677,11 +686,30 @@ def opencode_card():
     return None
 
 
+def grok_card():
+    """(kind, what, msg) for a Grok Build hook event (through the Claude hooks), or None.
+    Its Notification carries no tool name, so a permission card can't say what for."""
+    if event == "Notification":
+        if ntype == "permission_prompt":
+            return "permission", "Grok needs permission", "Grok is waiting for you to approve a tool call."
+        if ntype == "idle_prompt":
+            if not turn_cards():
+                return None
+            return "notify", "Grok is waiting for you", "Grok finished its turn and is waiting for your next message."
+        return None
+    if event == "StopFailure":
+        err = oneline(field("error_message"), 300)
+        return "failure", "Grok stopped on an error", ((err + "\n\n") if err else "") + \
+            "The turn ended and won't continue on its own; send a message to retry."
+    return None
+
+
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT in ("codex", "gemini", "opencode"):
-        card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card}[AGENT]()
+    if AGENT in ("codex", "gemini", "opencode", "grok"):
+        card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
+                "grok": grok_card}[AGENT]()
         if card is None:
             return 3
         kind, what, msg = card
@@ -898,6 +926,7 @@ case "$mode" in
   stop)
     # A StopFailure card stays until the next prompt: the turn ended on an error.
     grep -qs '^kind=failure$' "$marker" || resolve_marker "$marker" "$key"
+    [ "$agent" = grok ] && exit 0  # its transcript isn't Claude's: no context card
     case "${NEEDS_YOU_CONTEXT_ALERT_PCT:-}" in
       0|0.0|off|no|false) resolve_marker "$ctx_marker" ;;
       *) run_py context >/dev/null; log "context $key -> $?" ;;
@@ -958,8 +987,10 @@ case "$mode" in
     # questions and errors still post: they are a different thing to act on.
     # The same wait in each agent: Claude's idle / needs-input notifications, and the "turn
     # ended" card of Codex (Stop), Gemini (AfterAgent) and opencode (Stop: session idle).
-    case "$agent:$(json_str notification_type):$(json_str hook_event_name)" in
-      claude:idle_prompt:*|claude:agent_needs_input:*|codex::Stop|opencode::Stop|gemini::AfterAgent)
+    ntype=$(json_str notification_type)
+    [ -n "$ntype" ] || ntype=$(json_str notificationType)
+    case "$agent:$ntype:$(json_str hook_event_name)" in
+      claude:idle_prompt:*|claude:agent_needs_input:*|grok:idle_prompt:*|codex::Stop|opencode::Stop|gemini::AfterAgent)
         if own_item_open; then
           log "notify $key -> skipped: the agent's own item for this session is open"
           exit 0

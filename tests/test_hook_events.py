@@ -663,5 +663,56 @@ class OwnItemTests(HookHarness):
         self.assertTrue(self.idle())
 
 
+class GrokTests(HookHarness):
+    """Grok Build runs the Claude hooks from ~/.claude/settings.json. It sets GROK_HOOK_EVENT
+    and sends notificationType (no notification_type): the hook must post as Grok, not as a
+    generic "Claude needs you", and must not hold up Grok (it waits for its hooks)."""
+
+    GROK = {"GROK_HOOK_EVENT": "notification", "GROK_SESSION_ID": "grok-sess-1", "NY_HOOK_BG": "1"}
+
+    def grok(self, mode, data, **extra):
+        env = dict(self.GROK)
+        env.update(extra)
+        payload = {"session_id": "grok-sess-1", "sessionId": "grok-sess-1"}
+        payload.update(data)
+        return self.run_hook(mode, payload, **env)
+
+    def test_idle_and_permission_cards(self):
+        self.grok("notify", {"hook_event_name": "Notification", "hookEventName": "notification",
+                             "notificationType": "idle_prompt", "message": "waiting", "level": "info"})
+        argv = self.last()
+        self.assertEqual(self.opt(argv, "--title"), "Grok is waiting for you: my-repo")
+        self.assertEqual(self.opt(argv, "--agent"), "grok")
+        self.assertTrue(self.opt(argv, "--key").endswith(":grok-sess-1"))
+        self.grok("notify", {"hook_event_name": "Notification", "notificationType": "permission_prompt"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Grok needs permission: my-repo")
+        self.assertEqual(self.marker("grok-sess-1")["kind"], "permission")
+        # the turn-ended (idle) card follows NEEDS_YOU_AGENT_TURN_CARDS like the other agents'
+        n = len(self.calls())
+        self.grok("notify", {"hook_event_name": "Notification", "notificationType": "idle_prompt"},
+                  NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertEqual(len(self.calls()), n)
+        self.grok("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Grok stopped on an error: my-repo")
+
+    def test_stop_resolves_without_the_claude_context_check(self):
+        self.grok("notify", {"hook_event_name": "Notification", "notificationType": "permission_prompt"})
+        transcript = os.path.join(self.home, "updates.jsonl")
+        with open(transcript, "w") as fh:  # what a Claude context check would read as 95% full
+            fh.write(json.dumps({"type": "assistant", "message": {"model": "m", "usage": {"input_tokens": 190000}}}) + "\n")
+        self.grok("stop", {"hook_event_name": "Stop", "transcript_path": transcript}, GROK_HOOK_EVENT="stop")
+        self.assertEqual([c[0] for c in self.calls()], ["add", "resolve"])
+
+    def test_returns_at_once_and_posts_in_the_background(self):
+        env = dict(self.GROK, NY_HOOK_BG=None)
+        r = self.grok("notify", {"hook_event_name": "Notification", "notificationType": "idle_prompt"}, **env)
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+        import time
+        deadline = time.time() + 10
+        while time.time() < deadline and not self.calls():
+            time.sleep(0.05)
+        self.assertEqual(self.opt(self.last(), "--agent"), "grok")
+
+
 if __name__ == "__main__":
     unittest.main()
