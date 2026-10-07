@@ -16,7 +16,7 @@ Download `NeedsYou-X.Y.Z.dmg` (or `NeedsYou-X.Y.Z-macos.zip`) from the repositor
 
 The app starts its own hub as a child process (**Settings… → This Mac → Run hub on this Mac**, on by default): SQLite in `~/Library/Application Support/NeedsYou/hub.db`, listening on `127.0.0.1:8765` (and on your Mac's tailnet address if Tailscale is running). There are no tokens to mint and no config files to edit. The hub runs on `/usr/bin/python3`; if Settings says *Python 3 isn't available on this Mac*, run `xcode-select --install`, then quit and reopen the app.
 
-A faint pill appears in a corner of the screen. That's the idle state.
+A faint pill appears in a corner of the screen. That's the idle state. Until something posts, it reads `Nothing needs you · 1 setup tip`: click it for a **Connect your first agent or machine** card whose **Copy agent prompt** button does step 2 in one click (it makes a one-use invite and copies the prompt). Later tips cover Tailscale and the Claude Code hooks; each goes away once it's done, or when you dismiss it ([setup tips](mac-app.md#setup-tips)).
 
 ## 2. Local Claude Code (2 minutes)
 

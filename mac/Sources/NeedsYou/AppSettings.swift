@@ -37,6 +37,9 @@ final class AppSettings: ObservableObject {
         static let allowFocusLinks = "allowFocusLinks"
         static let terminalAppleScript = "terminalAppleScript"
         static let pillLastOpenedAt = "pillLastOpenedAt"
+        static let showSetupTips = "showSetupTips"
+        static let setupTipsDone = "setupTipsDone"
+        static let setupTipsDismissed = "setupTipsDismissed"
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -92,6 +95,19 @@ final class AppSettings: ObservableObject {
                 defaults.removeObject(forKey: Key.pillLastOpenedAt)
             }
         }
+    }
+    /// Settings → Panel → Show setup tips: local cards about what isn't set up yet
+    /// (SetupChecklist). Default on.
+    @Published var showSetupTips: Bool {
+        didSet { defaults.set(showSetupTips, forKey: Key.showSetupTips) }
+    }
+    /// Setup tips whose condition was met once (SetupTip raw values); they never come back.
+    @Published var setupTipsDone: Set<String> {
+        didSet { if setupTipsDone != oldValue { defaults.set(setupTipsDone.sorted(), forKey: Key.setupTipsDone) } }
+    }
+    /// Setup tips the user dismissed; "Show dismissed tips again" clears this.
+    @Published var setupTipsDismissed: Set<String> {
+        didSet { if setupTipsDismissed != oldValue { defaults.set(setupTipsDismissed.sorted(), forKey: Key.setupTipsDismissed) } }
     }
     /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
     @Published var focus: FocusState {
@@ -178,6 +194,7 @@ final class AppSettings: ObservableObject {
             Key.snapToCorners: false,
             Key.allowFocusLinks: false,
             Key.terminalAppleScript: false,
+            Key.showSetupTips: true,
         ])
         runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
@@ -206,6 +223,9 @@ final class AppSettings: ObservableObject {
             pillLastOpenedAt = Date()
             defaults.set(Date().timeIntervalSince1970, forKey: Key.pillLastOpenedAt)
         }
+        showSetupTips = defaults.bool(forKey: Key.showSetupTips)
+        setupTipsDone = Set(defaults.stringArray(forKey: Key.setupTipsDone) ?? [])
+        setupTipsDismissed = Set(defaults.stringArray(forKey: Key.setupTipsDismissed) ?? [])
         previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard
         edgeGlow = defaults.string(forKey: EdgeGlowMode.defaultsKey).flatMap(EdgeGlowMode.init(rawValue:)) ?? .standard
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))

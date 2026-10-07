@@ -183,6 +183,9 @@ struct CardList: View {
         let needs = model.needsItems
         let recent = model.recentItems
         let later = model.laterItems
+        // Setup tips (SetupChecklist) sit in the priority groups after the hub's cards;
+        // they aren't in the store, so they're never counted or PATCHed.
+        let setup = model.setupCards.map { $0.item }
         VStack(alignment: .leading, spacing: model.metrics.cardSpacing) {
             ForEach(model.quietedSenders, id: \.self) { sender in
                 // NoisySenderGuard: a looping sender can't keep interrupting.
@@ -210,8 +213,9 @@ struct CardList: View {
                     .padding(.vertical, 2)
                     ForEach(newer) { item in CardView(item: item, model: model) }
                 }
+                ForEach(setup) { item in CardView(item: item, model: model) }
             } else {
-                PriorityGroups(needs: needs, model: model)
+                PriorityGroups(needs: needs + setup, model: model)
             }
             if !later.isEmpty {
                 // Held by a focus, a snooze or a rule; delivered when it ends.

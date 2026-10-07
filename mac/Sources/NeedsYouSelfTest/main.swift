@@ -50,6 +50,7 @@ let entries =
     + testEntries(PanelBehaviorTests.self, PanelBehaviorTests.allTests)
     + testEntries(SettingsPagesTests.self, SettingsPagesTests.allTests)
     + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
+    + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

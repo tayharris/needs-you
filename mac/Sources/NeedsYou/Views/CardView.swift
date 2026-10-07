@@ -73,8 +73,14 @@ struct CardView: View {
                         .padding(.top, 2)
                 }
 
-                CardActions(item: item, model: model)
-                    .padding(.top, 2)
+                if let setup = model.setupCard(for: item) {
+                    // A local setup tip: its own buttons, nothing that PATCHes a hub.
+                    SetupCardActions(card: setup, model: model)
+                        .padding(.top, 2)
+                } else {
+                    CardActions(item: item, model: model)
+                        .padding(.top, 2)
+                }
             }
         }
         .padding(m.cardPadding)
@@ -274,6 +280,37 @@ struct CardActions: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("More")
+            }
+        }
+    }
+}
+
+/// A setup card's row: its buttons (Open Settings, Copy agent prompt) and Dismiss, plus
+/// the result of the last button press. Plain buttons, like every card control: the panel
+/// never becomes key.
+struct SetupCardActions: View {
+    let card: SetupCard
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let notice = model.setupNotice, notice.tip == card.tip {
+                Text(notice.text)
+                    .font(Theme.meta(model.metrics))
+                    .foregroundStyle(notice.failed ? Theme.urgent.opacity(0.85) : Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 12) {
+                ForEach(Array(card.buttons.enumerated()), id: \.offset) { _, button in
+                    ActionButton(title: button.title, symbol: button.symbol, size: model.metrics.actionFont) {
+                        model.runSetup(button.action, for: card.tip)
+                    }
+                }
+                ActionButton(title: "Dismiss", symbol: "xmark", size: model.metrics.actionFont) {
+                    model.dismissSetupTip(card.tip)
+                }
+                .help("Don't show this tip again (Settings → Panel → Setup tips brings it back)")
+                Spacer()
             }
         }
     }

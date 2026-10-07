@@ -104,15 +104,20 @@ final class ConnectController: ObservableObject {
 
     var canInvite: Bool { settings.hasOwnerHub }
 
-    func createInvite(name: String, role: HubRole, uses: Int, ttlHours: Int) {
+    /// `onFinish` gets the invite, or nil with the reason in `inviteStatus` (the setup
+    /// card's Copy agent prompt). A superseded request never calls it.
+    func createInvite(name: String, role: HubRole, uses: Int, ttlHours: Int,
+                      onFinish: (@MainActor (InviteResponse?) -> Void)? = nil) {
         let owners = settings.ownerHubConfigs()
         guard !owners.isEmpty else {
             inviteStatus = .failure("No owner token: connect with an owner link or run the hub on this Mac.")
+            onFinish?(nil)
             return
         }
         let request = InviteRequest(name: name, role: role, uses: uses, ttlHours: ttlHours)
         guard !request.name.isEmpty else {
             inviteStatus = .failure("Give the machine a name, e.g. “build-box”.")
+            onFinish?(nil)
             return
         }
         inviteTask?.cancel()
@@ -127,6 +132,7 @@ final class ConnectController: ObservableObject {
                     guard let self, !Task.isCancelled, let response else { return }
                     self.invite = response
                     self.inviteStatus = response.expiresAt.map { .success("Invite ready. Expires \(Self.formatExpiry($0)).") } ?? .success("Invite ready.")
+                    onFinish?(response)
                     return
                 } catch {
                     lastError = error
@@ -137,6 +143,7 @@ final class ConnectController: ObservableObject {
             }
             guard let self, !Task.isCancelled else { return }
             self.inviteStatus = .failure((lastError as? LocalizedError)?.errorDescription ?? lastError.localizedDescription)
+            onFinish?(nil)
         }
     }
 
@@ -179,6 +186,7 @@ final class ConnectController: ObservableObject {
                     guard let self, !Task.isCancelled else { return }
                     self.accessInvites = invites
                     self.accessTokens = tokens.sorted { ($0.current ? 0 : 1, $0.name) < ($1.current ? 0 : 1, $1.name) }
+                    self.model.noteAccessTokens(tokens)
                     self.accessStatus = success.map { .success($0) }
                     return
                 } catch {

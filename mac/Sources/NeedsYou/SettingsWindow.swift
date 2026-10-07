@@ -249,6 +249,7 @@ struct SettingsView: View {
             visibilitySection
             OpenPanelSettingsSection(settings: settings)
             OpacitySettingsSection(settings: settings)
+            SetupTipsSettingsSection(settings: settings)
             keyboardSection
             extra[.panel]
         case .alerts:

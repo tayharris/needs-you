@@ -26,7 +26,12 @@ final class LocalHubController: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var state: State = .off
+    @Published private(set) var state: State = .off {
+        didSet {
+            // Setup tips need to know whether other machines can reach this hub.
+            if case .running(let url) = state { model.localHubPublicURL = url } else { model.localHubPublicURL = nil }
+        }
+    }
     /// Settings → This Mac: the loopback and tailnet addresses, and whether Tailscale is
     /// there. Set from the plan the hub was started with; nil while the hub is off.
     @Published private(set) var reach: LocalHubReach?
