@@ -9,6 +9,9 @@ public protocol ItemFeed: Sendable {
     /// What the app polls: items (after a `since` poll, closed ones too), whether they form
     /// a full snapshot, which hub served them, and its cursor. The default wraps `fetchOpen`.
     func fetchPage(since: Date?) async throws -> FeedPage
+    /// The same, also sending the hub's opaque `next` cursor from the last page (only with a
+    /// `since`; docs/API.md "The polling loop"). The default ignores `cursor`.
+    func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage
 }
 
 /// One poll response.
@@ -25,19 +28,28 @@ public struct FeedPage: Equatable, Sendable {
     public var cursor: Date?
     /// The hub had more than it returned (`more`).
     public var more: Bool
+    /// The hub's opaque `next` cursor, sent back with the next `since` poll of the same hub.
+    /// Nil from hubs before it (0.1.2 and older) and feeds without one.
+    public var next: String?
 
-    public init(items: [Item], isFullSnapshot: Bool, source: String? = nil, cursor: Date? = nil, more: Bool = false) {
+    public init(items: [Item], isFullSnapshot: Bool, source: String? = nil, cursor: Date? = nil, more: Bool = false,
+                next: String? = nil) {
         self.items = items
         self.isFullSnapshot = isFullSnapshot
         self.source = source
         self.cursor = cursor
         self.more = more
+        self.next = next
     }
 }
 
 extension ItemFeed {
     public func fetchPage(since: Date?) async throws -> FeedPage {
         FeedPage(items: try await fetchOpen(since: since), isFullSnapshot: since == nil)
+    }
+
+    public func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage {
+        try await fetchPage(since: since)
     }
 }
 
@@ -106,11 +118,16 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
 
     // MARK: Request building (pure, tested)
 
-    /// GET /v1/items?status=open[&since=<ts>]
-    public static func listURL(base: URL, since: Date?) -> URL {
+    /// GET /v1/items?status=open[&since=<ts>[&cursor=<next>]]. The cursor goes only with a
+    /// `since`: a hub that predates it ignores it and uses `since`, and so does a newer hub
+    /// whose database was replaced since it issued the cursor.
+    public static func listURL(base: URL, since: Date?, cursor: String? = nil) -> URL {
         var components = URLComponents(url: base.appendingPathComponent("v1/items"), resolvingAgainstBaseURL: false)!
         var query = [URLQueryItem(name: "status", value: "open")]
-        if let since { query.append(URLQueryItem(name: "since", value: HubJSON.formatDate(since))) }
+        if let since {
+            query.append(URLQueryItem(name: "since", value: HubJSON.formatDate(since)))
+            if let cursor, !cursor.isEmpty { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        }
         components.queryItems = query
         // "+" is legal in a query but many servers read it as a space; encode it.
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
@@ -144,22 +161,30 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
     public static let maxPagesPerPoll = 10
 
     /// docs/API.md "The polling loop": with `since`, closed items come back too (that's how
-    /// a sender's resolve or dismiss reaches the Mac), `server_time` is the next cursor, and
-    /// `more` means poll again at once.
+    /// a sender's resolve or dismiss reaches the Mac), `next` and `server_time` are the next
+    /// cursor, and `more` means poll again at once.
     public func fetchPage(since: Date?) async throws -> FeedPage {
-        var page = try await fetchOnePage(since: since)
+        try await fetchPage(since: since, cursor: nil)
+    }
+
+    /// `cursor` is the `next` of this hub's previous page; it goes with `since` only. A hub
+    /// that sends `next` pages by it (always moving on, `limit` at most); an older one by
+    /// `server_time`.
+    public func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage {
+        var page = try await fetchOnePage(since: since, cursor: since == nil ? nil : cursor)
         var pages = 1
-        while page.more, since != nil, let cursor = page.cursor, pages < Self.maxPagesPerPoll {
-            let next = try await fetchOnePage(since: cursor)
+        while page.more, since != nil, let serverTime = page.cursor, pages < Self.maxPagesPerPoll {
+            let next = try await fetchOnePage(since: serverTime, cursor: page.next)
             page = FeedPage(items: page.items + next.items, isFullSnapshot: false,
-                            cursor: next.cursor ?? cursor, more: next.more)
+                            cursor: next.cursor ?? serverTime, more: next.more, next: next.next)
             pages += 1
         }
         return page
     }
 
-    private func fetchOnePage(since: Date?) async throws -> FeedPage {
-        let request = Self.makeRequest(url: Self.listURL(base: config.baseURL, since: since), method: "GET", token: config.token)
+    private func fetchOnePage(since: Date?, cursor: String?) async throws -> FeedPage {
+        let request = Self.makeRequest(url: Self.listURL(base: config.baseURL, since: since, cursor: cursor),
+                                       method: "GET", token: config.token)
         let data = try await send(request)
         do {
             return try Self.page(from: data, since: since)
@@ -175,7 +200,8 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
         let list = try HubJSON.decodeListResponse(data)
         let full = since == nil
         return FeedPage(items: full ? list.items.filter { $0.status == .open } : list.items,
-                        isFullSnapshot: full && !list.more, cursor: list.serverTime, more: list.more)
+                        isFullSnapshot: full && !list.more, cursor: list.serverTime, more: list.more,
+                        next: list.next)
     }
 
     public func patch(id: String, _ patch: ItemPatch) async throws {
