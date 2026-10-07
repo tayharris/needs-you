@@ -13,10 +13,11 @@ Mostly plans. Each file's status line says what exists; `ci-cd.md` phases 1–2 
 | [fresh-user-test-plan.md](fresh-user-test-plan.md) | Install from a release on a second Mac or user account: Gatekeeper, no Command Line Tools, firewall, Invite and Access |
 | [doc-test-findings.md](doc-test-findings.md) | The 2026-10-06 doc walk-through and the bugs it found (fixed) |
 | [future.md](future.md) | GitHub org webhooks, Discord/Slack fallback for urgent items, team mode, in-app help and onboarding, jumping to an agent's terminal from a card |
+| [launch-prep.md](launch-prep.md) | Next up: the minimal site, a repo ready to install from (DMG, README, guides, open source and donate links), and the Mac UI pass (settings, panel size, alert brightness, hotkey) |
 | [stale-items.md](stale-items.md) | Cards that outlive their sender (killed sessions, missed resolves): process leases, expiry backstops, app-side dismiss |
 
 Related decision in progress: [ADR 0004: an always-on hub](../adr/0004-always-on-hub.md) (Proposed). The phone widget and GitHub webhooks both depend on it.
 
 ## Licensing
 
-Open-source license TBD at public launch; options and a suggestion are in [sharing-checklist.md](sharing-checklist.md#license-options). The repo is private for now and is planned to go open source as a non-profit project. There is deliberately no LICENSE file yet; don't add one until the license is chosen.
+Apache-2.0 (`LICENSE`). The repo is private for now and is planned to go open source as a non-profit project; what's left before that is in [sharing-checklist.md](sharing-checklist.md).
