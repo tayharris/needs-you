@@ -4,6 +4,13 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- Mac app: **Settings is a sidebar of short pages**, like System Settings, instead of long tabs, and the window fits a laptop screen (every page scrolls). Pages: General (your name, open at login, demo mode); Hubs: This Mac, Join a hub, Invite a machine, Access, Hubs (manual); Panel, Alerts, Integrations, Updates, Advanced. **Invite a Machine…** opens Invite a machine; a `needsyou://connect` link opens Join a hub.
+- Mac app: **This Mac** shows both addresses of the hub with **Copy**: *On this Mac* (`http://127.0.0.1:8765`) and *From your other machines (Tailscale)* (the MagicDNS name). Without Tailscale it says other machines can't reach the hub and links to the Tailscale guide; Invite a machine warns that its links would only work on this Mac.
+- Mac app: **Connect with link is now Join a hub**, with plain words on where links come from (another Mac's Invite a machine, or a server hub's `needs-you-admin invite create`), a **Paste** button, and a join link on the clipboard filled in when the page opens.
+- Mac app: Settings copy reviewed for first-time users: every page has a one-line summary, and sections explain themselves in short sentences.
+
 ### Added
 
 - **GitHub poller** ([guide](docs/guides/github.md)): `integrations/github/needs-you-github` runs every 5 minutes on one machine with `gh` logged in and posts a card when GitHub waits on you: a review request, a deployment waiting for your approval (urgent), CI that failed on your branch, a mention or assignment (low), and your own PRs that are approved and green ("Merge ..."), have changes requested, merge conflicts or failing checks (a step per failing check with its logs). Each card clears on the run after its condition goes away, and expires 15 minutes after the poller stops. It uses `If-Modified-Since` and `X-Poll-Interval`, copies only titles (cleaned and truncated), never reads the token, and always exits 0. Examples for cron, a systemd user timer and a LaunchAgent.
