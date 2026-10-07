@@ -1,7 +1,7 @@
 # Release signing and provenance
 
 How needs-you releases prove where they came from, and the one step only the owner can take:
-creating the Ed25519 release key. Background: [security audit #17](audit-2026-10-07.md#17-low-installer-and-release-integrity).
+creating the Ed25519 release key. Background: [security audit #17](audit-2026-10-07.md#17-low-installer-and-release-integrity-mostly-fixed-the-signing-key-is-the-owners-step).
 
 ## What is in place
 
@@ -24,9 +24,35 @@ gh attestation verify NeedsYou-1.2.3-macos.zip --repo tayharris/needs-you
 gh attestation verify release-manifest.json --repo tayharris/needs-you
 ```
 
-`needs-you update`, when `gh` is installed, downloads the release's `release-manifest.json`,
-checks that it lists the server tarball it compared the files against, and runs
-`gh attestation verify` on it. Any failure refuses the update, like the release-match check.
+`needs-you update`, when `gh` is installed, downloads the release's `release-manifest.json`
+and runs, on that downloaded file (argument array, 120 s timeout):
+
+```bash
+gh attestation verify release-manifest.json --repo tayharris/needs-you \
+  --signer-workflow tayharris/needs-you/.github/workflows/release.yml \
+  --source-ref refs/tags/vX.Y.Z --predicate-type https://slsa.dev/provenance/v1 \
+  --deny-self-hosted-runners --format json
+```
+
+It then parses the JSON and requires one verified attestation whose subject sha256 equals the
+sha256 it computed for that file, with SLSA provenance, `sourceRepositoryURI`
+`https://github.com/tayharris/needs-you`, `sourceRepositoryRef` `refs/tags/vX.Y.Z`,
+`buildSignerURI` the release workflow, and `runnerEnvironment` `github-hosted` (these
+certificate fields come from GitHub's OIDC token, so a workflow can't forge them). A non-zero
+exit, empty or invalid JSON, a timeout or any mismatch refuses the update, like the
+release-match check.
+
+**What this covers:** the CLI verifies provenance of the manifest only, and binds every file
+it installs to it through checksums: each file from the hub must equal its copy in the
+release's server tarball, and the tarball's sha256 must equal both its `SHA256SUMS` line and
+its entry in the attested manifest.
+
+**Self-hosted runners:** releases must be built on GitHub-hosted runners for this check to
+pass. Pointing the `RELEASE_MAC_RUNNER` variable (on `main`) at a self-hosted Mac makes every
+release fail `--deny-self-hosted-runners`, so `needs-you update` with `gh` refuses it. That is
+deliberate: a self-hosted runner is a machine GitHub can't vouch for. If releases ever move
+there for good, it is a trade-off to decide and document here (and drop the flag in the CLI
+in the same change), never something to allow silently.
 
 **Private repository:** GitHub creates artifact attestations for public repositories on this
 plan (private ones need GitHub Enterprise Cloud). While `tayharris/needs-you` is private, the

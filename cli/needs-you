@@ -1164,10 +1164,56 @@ def _gh() -> Optional[str]:
     return shutil.which("gh")
 
 
+RELEASE_WORKFLOW = RELEASE_REPO + "/.github/workflows/release.yml"
+SLSA_PREDICATE = "https://slsa.dev/provenance/v1"
+
+
+def check_attestation(output: str, sha256: str, v: str) -> None:
+    """`gh attestation verify --format json` output must hold a verified attestation for
+    exactly these bytes (subject sha256), with SLSA provenance, signed by RELEASE_REPO's
+    release workflow for tag vX.Y.Z on a GitHub-hosted runner. The certificate fields come
+    from GitHub's OIDC token, so the workflow can't forge them. Raises UpdateRefused otherwise
+    (empty or invalid JSON included)."""
+    try:
+        entries = json.loads(output)
+    except ValueError:
+        raise UpdateRefused("gh attestation verify printed no valid JSON")
+    if not isinstance(entries, list) or not entries:
+        raise UpdateRefused("gh attestation verify returned no attestation")
+    repo_uri = "https://github.com/" + RELEASE_REPO
+    tag_ref = "refs/tags/v" + v
+    reasons = []
+    for e in entries:
+        try:
+            vr = e["verificationResult"]
+            st, cert = vr["statement"], vr["signature"]["certificate"]
+            digests = {str((s.get("digest") or {}).get("sha256") or "").lower() for s in st.get("subject") or []}
+            checks = (
+                (sha256.lower() in digests, "the attested digest isn't the downloaded file's"),
+                (st.get("predicateType") == SLSA_PREDICATE, "not SLSA provenance"),
+                (cert.get("sourceRepositoryURI") == repo_uri, "built from another repository"),
+                (cert.get("sourceRepositoryRef") == tag_ref, "built from another ref than %s" % tag_ref),
+                (str(cert.get("buildSignerURI") or "").startswith("https://github.com/%s@" % RELEASE_WORKFLOW),
+                 "signed by another workflow"),
+                (cert.get("runnerEnvironment") == "github-hosted", "built on a self-hosted runner"),
+            )
+        except (KeyError, TypeError, AttributeError):
+            reasons.append("an attestation of an unexpected shape")
+            continue
+        bad = [why for ok, why in checks if not ok]
+        if not bad:
+            return
+        reasons.append(", ".join(bad))
+    raise UpdateRefused("release v%s's provenance doesn't fit: %s" % (v, clean("; ".join(reasons))))
+
+
 def release_provenance(gh: str, v: str, tarball: str, tarball_sha: str, tmp: str) -> str:
     """Security audit #17 (c): the release's release-manifest.json must list this server
     tarball with this sha256, and carry a GitHub build-provenance attestation from
-    RELEASE_REPO's release workflow (`gh attestation verify`). Raises UpdateRefused on any
+    RELEASE_REPO's release workflow for this tag (`gh attestation verify` on the downloaded
+    file, then check_attestation). Each installed file is bound to that attestation through
+    the chain: hub file == the tarball's copy, tarball sha256 == the attested manifest's entry
+    (== SHA256SUMS). Raises UpdateRefused on any
     failure (never fails open), except that a private repo can't have attestations (GitHub
     attests public repos only on this plan, and the release workflow skips the step there):
     then it returns a note saying so. Returns what was checked."""
@@ -1194,10 +1240,18 @@ def release_provenance(gh: str, v: str, tarball: str, tarball_sha: str, tmp: str
         raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
     if listed.get(tarball) != tarball_sha:
         raise UpdateRefused("release v%s's release-manifest.json doesn't list this %s" % (v, tarball))
+    manifest_sha = _sha256_file(path)
+    if not manifest_sha:
+        raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
+    # The exact file just read, pinned to the release workflow, the tag and GitHub-hosted runners.
     try:
-        r = subprocess.run([gh, "attestation", "verify", path, "--repo", RELEASE_REPO],
+        r = subprocess.run([gh, "attestation", "verify", path, "--repo", RELEASE_REPO,
+                            "--signer-workflow", RELEASE_WORKFLOW, "--source-ref", "refs/tags/v" + v,
+                            "--predicate-type", SLSA_PREDICATE, "--deny-self-hosted-runners",
+                            "--format", "json"],
                            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
         if r.returncode == 0:
+            check_attestation(r.stdout, manifest_sha, v)
             return "build provenance verified"
         why = clean((r.stderr.strip().splitlines() or ["no output"])[-1])
         p = subprocess.run([gh, "api", "repos/" + RELEASE_REPO, "--jq", ".private"],
