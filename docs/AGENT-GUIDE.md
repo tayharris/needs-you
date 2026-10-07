@@ -106,6 +106,41 @@ curl -fsS -X POST "$NEEDS_YOU_URL/v1/items" \
 
 No outbox or failover with curl: loop over `NEEDS_YOU_URLS` yourself or accept the loss.
 
+### Steps: when the person has to do several things
+
+When handling the item takes **more than one action, in order** (rotate a key, then restart
+a job, then confirm in a channel), send them as `steps` instead of a numbered list in the
+body. The Mac shows them as a numbered checklist at the person's text size, each step's link
+as a button next to it, and offers **Done** once they've ticked every step.
+
+```bash
+needs-you add --key "work:billing:rotate-stripe-key" --priority urgent \
+  --title "Rotate the Stripe key before 3 pm" \
+  --body  "The old key leaked in a CI log (build 812). Nothing has used it yet." \
+  --step  "Roll the key in the Stripe dashboard=https://dashboard.stripe.com/apikeys" \
+  --step  "Paste it into the vault as \`billing/stripe\`=https://vault.example.ts.net/ui/billing" \
+  --step  "Restart the billing workers" \
+  --agent "orca:secret-scanner" --project billing
+```
+
+- **Body or steps?** The body explains *why* and gives the options for a decision. Steps are
+  the *to-do list*: things the person does, each a short imperative. A single action is a
+  title (and maybe a link), not a one-step list. Don't repeat the steps in the body.
+- At most 10 steps, each 200 characters or fewer on one line. Inline markdown (bold, code,
+  links) is fine.
+- A step can have one link (`{"label", "url"}`, same schemes as `links`). With the CLI,
+  `--step "Text=URL"` makes a link labelled "Open"; use `--steps-json` for your own label:
+  `--steps-json '[{"text": "Approve the run", "link": {"label": "Approve", "url": "https://..."}}]'`
+  (or `--steps-json @steps.json`). `--step` splits at the first `=` that starts a URL, so
+  `--step "Set MODE=live"` stays plain text.
+- `"done": true` marks a step you already did or saw done (it shows ticked). Re-post with
+  the same key when your view changes: a re-post replaces the whole list, and a change to the
+  steps re-animates the card.
+- The person's ticks stay on their Mac; you never hear about them. Resolve when the work is
+  actually done, as always.
+- With curl, add `"steps": [{"text": "...", "link": {"label": "...", "url": "..."}}, ...]` to
+  the item (see [API.md](API.md)).
+
 ### When something seems wrong
 
 Run `needs-you doctor --json` whenever you're unsure the machine is set up (a post queued
@@ -126,7 +161,7 @@ item to test the setup; doctor is the test.
 3. **The title says the action.** Lead with what the person has to do or decide, in 100
    characters or fewer. The body gives the options and where the question already lives (a
    ticket comment or PR thread). 2,000 characters at most. Markdown is fine; HTML and images
-   are not rendered.
+   are not rendered. Several actions in order go in `steps` (see above), not the body.
 4. **Link to the place they act:** the ticket, PR, Orca worktree, dashboard or log. At most 6
    links. Allowed schemes: `https`, `orca`, `slack`, `vscode`, `cursor`, `figma`, `msteams`,
    `discord`.

@@ -2436,6 +2436,8 @@ needs-you done --key "work:nightly-import:last-run" --title "Nightly import fini
    updates the item instead of adding another.
 2. Resolve what you post once it no longer applies.
 3. The title is the action, at most 100 characters. Body at most 2,000 characters, Markdown.
+   Several things to do in order go in steps, not the body: `--step "Text"` or
+   `--step "Text=https://..."` (a link button), at most 10, one line each.
 4. At most 6 links; schemes https, orca, slack, vscode, cursor, figma, msteams, discord.
 5. Never send secrets, credentials, customer data or code.
 6. Priority: `urgent` (broken now, breaks through snooze), `normal` (today), `low` (this week).

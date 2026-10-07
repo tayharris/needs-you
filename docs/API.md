@@ -56,11 +56,16 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   "title": "ACME-123: push blocked on the migration fork",
   "body": "Choose: **merge** or **bypass**.", // markdown, or null when empty
   "links": [{"label": "Jira", "url": "https://example.atlassian.net/browse/ACME-123"}],
+  "steps": [                                 // the person's checklist, in order; [] when none
+    {"text": "Pick **merge** or **bypass** in the PR thread", "done": false,
+     "link": {"label": "PR #42", "url": "https://github.com/example/app/pull/42"}},
+    {"text": "Re-run the push", "done": false}
+  ],
   "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
   "updated_at": "2026-10-06T18:04:05.456Z",  // moves on EVERY write (re-post, resolve, patch)
-  "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body or priority change
+  "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority or steps change
   "seen_at": null,
   "expires_at": null,                        // done/info default to created/re-posted + 24 h
   "superseded_by": null                      // set when this item lost a same-key merge (see Replication)
@@ -70,7 +75,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 ### Change detection: `content_updated_at`
 
 `content_updated_at` is the re-animation signal. It is set at creation and changes only when a
-re-post changes `title`, `body` or `priority`. Re-posting identical content, changing only
+re-post changes `title`, `body`, `priority` or `steps` (any step's text, link or `done`, or
+the list itself). Re-posting identical content, changing only
 links/source/kind/context, resolving, dismissing and setting `seen_at` all move `updated_at`
 but never `content_updated_at`.
 
@@ -118,6 +124,7 @@ Create an item, or update the open item with the same `key`.
 | `kind` | string | `needs`, `done` or `info` | `needs` |
 | `priority` | string | `urgent`, `normal` or `low` | `normal` |
 | `links` | array | ≤ 6 of `{"label": ≤ 80 chars, "url": ≤ 2,000 chars}` | `[]` |
+| `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
 | `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |
 | `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h; `needs`: none |
 | `status` | | **rejected** (use resolve or PATCH) | |
@@ -137,22 +144,37 @@ and isolate controls U+202A–U+202E and U+2066–U+2069, which can make text re
 it isn't. Ordinary right-to-left text, marks (U+200E/U+200F) and joiners (U+200C/U+200D) are
 fine. Link URLs may not contain whitespace or invisible format characters at all (percent-encode
 a space as `%20`). Item records that arrive by replication keep only links that pass these
-rules.
+rules. The same goes for steps: their text and link fields follow these rules on POST, and a
+replicated step whose link fails keeps its text and loses the link.
+
+**Steps** are the things the person has to do, in order. Each step is an object:
+
+| Field | Type | Rule | Default |
+|---|---|---|---|
+| `text` | string | required, 1–200 chars after trimming, no newlines or control characters; inline markdown | |
+| `link` | object | optional `{"label", "url"}`, validated exactly like an entry of `links` (same limits and schemes) | none |
+| `done` | boolean | `true` or `false` (anything else is a 400) | `false` |
+
+Unknown step fields are ignored. Errors name the step, for example `steps[2].link.url`. The
+hub returns every step as `{"text", "done"}` plus `"link"` when it has one; an item without
+steps has `"steps": []`. Steps are the sender's view: there is no endpoint to tick one, and
+the Mac app keeps the person's ticks locally (it offers Done once every step is ticked).
 
 Semantics:
 
 1. If an item with this `key` is open (and not expired), it is updated **in place, keeping its
    id**. A re-post is the sender's full current view: `title`, `body`, `context`, `kind`,
-   `priority`, `links`, `source` and `expires_at` are all replaced (omitted optional fields
-   become empty/default). `updated_at` always moves (strictly forward, even within one
-   millisecond). `content_updated_at` moves only if `title`, `body` or `priority` changed. The
+   `priority`, `links`, `steps`, `source` and `expires_at` are all replaced (omitted optional
+   fields become empty/default). `updated_at` always moves (strictly forward, even within one
+   millisecond). `content_updated_at` moves only if `title`, `body`, `priority` or `steps`
+   changed. The
    item's token becomes the re-posting token. The volume guard does not apply to updates.
 2. Otherwise a new item is created with a new id. If the token already owns 60 open,
    unexpired items, the hub returns `429 too_many_open` instead.
 
 Response: `201` when created, `200` when an existing item was updated. The body is the item
 plus `"created": true|false` and `"changed": true|false` (`changed` is true on create and when
-title/body/priority changed).
+title/body/priority/steps changed).
 
 ### `POST /v1/items/resolve` (sender)
 
@@ -409,7 +431,11 @@ Hubs are peers with no leader. Each hub has a `hub_id`, a list of peer URLs and 
 
 Replication carries full records: the item JSON above with the raw stored `status` (expiry not
 applied) plus `token_id`, `origin_hub` (where it was minted) and `updated_by` (the hub that
-made this version). Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
+made this version). `steps` is carried as the array. A record **without** a `steps` key comes
+from a hub that predates steps: the receiver keeps its own steps for that id when the record's
+`content_updated_at` equals its own (a resolve, dismiss, seen or unchanged re-post on the old
+hub), and otherwise stores none. An empty array clears them. Older hubs ignore the field, so
+their own copies have no steps. Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
 token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ### Push: `POST /v1/replicate`
@@ -461,7 +487,7 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
    - the **lowest id wins** (ULIDs start with the creation time, so the earliest-minted item
      survives);
    - the winner takes the **freshest content**: the `title`, `body`, `priority`, `context`,
-     `kind`, `links`, `source`, `expires_at` and `content_updated_at` of whichever record has the
+     `kind`, `links`, `steps`, `source`, `expires_at` and `content_updated_at` of whichever record has the
      greatest `(content_updated_at, updated_at, updated_by)`; `created_at` becomes the earliest,
      `seen_at` the latest;
    - every loser becomes `status: "resolved"` with `superseded_by: <winner id>`;

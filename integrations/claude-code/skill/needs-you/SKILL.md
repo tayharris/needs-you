@@ -35,6 +35,20 @@ needs-you resolve --key "work:ACME-123:push-decision"     # once it's handled
 needs-you done --key "work:nightly-import:last-run" --title "Nightly import finished: 3 files, 0 errors"
 ```
 
+When the person has to do **several things in order**, send them as steps instead of a list in the body. The Mac shows a numbered checklist with each step's link as a button:
+
+```bash
+needs-you add --key "work:billing:rotate-stripe-key" --priority urgent \
+  --title "Rotate the Stripe key before 3 pm" \
+  --body "The old key leaked in a CI log (build 812). Nothing has used it yet." \
+  --step "Roll the key in the Stripe dashboard=https://dashboard.stripe.com/apikeys" \
+  --step "Store it in the vault as \`billing/stripe\`" \
+  --step "Restart the billing workers" \
+  --agent "claude-code" --project billing
+```
+
+At most 10 steps, each one line of 200 characters or fewer, an imperative the person does. `--step "Text=URL"` adds a link button labelled "Open" (split at the first `=` that starts a URL); for your own label use `--steps-json '[{"text": "...", "link": {"label": "Approve", "url": "https://..."}}]'`. The body still says why; don't repeat the steps there. One action is just a title, not a one-step list.
+
 The CLI queues the item and still exits 0 if the hub is down, so posting never fails your task. Don't retry in a loop.
 
 Without the CLI, use curl against the first hub in `~/.config/needs-you/env`:
