@@ -22,7 +22,9 @@
 #   ORCA_TERMINAL_HANDLE is set       session started by Orca
 # NEEDS_YOU_AGENT_ALERTS=0 turns it off even inside Orca.
 #
-# Optional settings (environment, or lines in ~/.config/needs-you/env):
+# Optional settings (environment, or lines in the sender env file: the same
+# file the CLI reads, $NEEDS_YOU_CONFIG or $XDG_CONFIG_HOME/needs-you/env,
+# by default ~/.config/needs-you/env; NEEDS_YOU_ENV_FILE overrides it here):
 #   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: NEEDS_YOU_DEFAULT_CONTEXT, else work)
 #   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
@@ -69,8 +71,10 @@ mode=${1:-}
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
-# The environment wins over the file.
-env_file="${NEEDS_YOU_ENV_FILE:-$HOME/.config/needs-you/env}"
+# The environment wins over the file. Found the way the CLI finds it
+# (NEEDS_YOU_CONFIG, else $XDG_CONFIG_HOME/needs-you/env, else ~/.config/...),
+# so `--alerts` on a machine with XDG_CONFIG_HOME set isn't silently ignored.
+env_file="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
 file_val() {
   [ -r "$env_file" ] || return 0
   sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$env_file" | tail -n 1 |

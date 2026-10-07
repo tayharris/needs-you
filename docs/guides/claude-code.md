@@ -108,7 +108,7 @@ Installed hooks do nothing until a session is opted in, so everyday interactive 
 NEEDS_YOU_AGENT_ALERTS=1 claude      # one session
 ```
 
-The environment wins over the file. A good pattern: leave it off on your laptop, turn it on for the VMs where agents run unattended.
+The environment wins over the file. The hooks read the same env file as the CLI: `$XDG_CONFIG_HOME/needs-you/env` when `XDG_CONFIG_HOME` is set (`~/.config/needs-you/env` otherwise), or the file `NEEDS_YOU_CONFIG` names; `NEEDS_YOU_ENV_FILE` points only the hooks somewhere else. A good pattern: leave it off on your laptop, turn it on for the VMs where agents run unattended.
 
 ## Options
 

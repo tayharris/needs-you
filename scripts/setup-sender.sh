@@ -6,7 +6,7 @@
 #      ~/.local/bin, copied from this repo checkout or downloaded from a URL.
 #   2. Asks for the hub URL(s) (comma-separated failover list) and this
 #      machine's token (hidden input), and writes ~/.config/needs-you/env
-#      with mode 600.
+#      ($XDG_CONFIG_HOME/needs-you/env when that is set) with mode 600.
 #   3. Checks GET /v1/health on every hub.
 #   4. Schedules `needs-you flush` every 5 minutes (crontab on Linux, a
 #      LaunchAgent on macOS), like the invite installer.
@@ -26,7 +26,7 @@ PROG=$(basename "$0")
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 
-CONFIG_DIR="$HOME/.config/needs-you"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"  # where the CLI and the hooks look
 ENV_FILE="$CONFIG_DIR/env"
 BIN_DIR="$HOME/.local/bin"
 

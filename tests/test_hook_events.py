@@ -47,6 +47,7 @@ class HookHarness(unittest.TestCase):
                "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
                "NEEDS_YOU_HOOK_PLATFORM": "linux"}
         env.update(extra)
+        env = {k: v for k, v in env.items() if v is not None}  # None: unset it
         payload = {"session_id": "sess-1234-abcd", "cwd": self.cwd}
         payload.update(data)
         r = subprocess.run([BASH, HOOK, mode], input=json.dumps(payload), env=env,
@@ -217,6 +218,30 @@ class LinkTests(HookHarness):
         with open(os.path.join(conf, "env"), "w") as fh:
             fh.write("NEEDS_YOU_SSH_ALIAS=devbox\n")
         self.assertEqual(self.notify_links(), ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+
+    def test_env_file_follows_xdg_config_home_like_the_cli(self):
+        # --alerts writes NEEDS_YOU_AGENT_ALERTS=1 where the CLI looks; the hook must look there too.
+        xdg = os.path.join(self.home, "xdg")
+        conf = os.path.join(xdg, "needs-you")
+        os.makedirs(conf)
+        with open(os.path.join(conf, "env"), "w") as fh:
+            fh.write("NEEDS_YOU_AGENT_ALERTS=1\nNEEDS_YOU_SSH_ALIAS=devbox\n")
+        env = {"NEEDS_YOU_AGENT_ALERTS": None}  # not in the environment: only the file opts in
+        data = {"hook_event_name": "Notification", "notification_type": "idle_prompt"}
+        self.run_hook("notify", data, **env)
+        self.assertEqual(self.calls(), [])  # ~/.config/needs-you/env doesn't exist
+        self.run_hook("notify", data, XDG_CONFIG_HOME=xdg, **env)
+        self.assertEqual(self.links(self.last()), ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+        # NEEDS_YOU_CONFIG (the CLI's override) wins over XDG, NEEDS_YOU_ENV_FILE over both
+        other = os.path.join(self.home, "other.env")
+        with open(other, "w") as fh:
+            fh.write("NEEDS_YOU_AGENT_ALERTS=0\n")
+        n = len(self.calls())
+        self.run_hook("notify", data, XDG_CONFIG_HOME=xdg, NEEDS_YOU_CONFIG=other, **env)
+        self.assertEqual(len(self.calls()), n)
+        self.run_hook("notify", data, XDG_CONFIG_HOME=xdg, NEEDS_YOU_CONFIG=other,
+                      NEEDS_YOU_ENV_FILE=os.path.join(conf, "env"), **env)
+        self.assertEqual(len(self.calls()), n + 1)
 
     def test_path_is_percent_encoded(self):
         self.cwd = os.path.join(self.home, "my repo")

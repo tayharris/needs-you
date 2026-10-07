@@ -11,6 +11,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
+- Claude Code hooks: **`--alerts` works with `XDG_CONFIG_HOME` set.** The hook read `~/.config/needs-you/env` while the CLI and the invite installer use `$XDG_CONFIG_HOME/needs-you/env`, so the opt-in line was never seen. The hook now finds the env file exactly as the CLI does (`NEEDS_YOU_CONFIG`, then `$XDG_CONFIG_HOME/needs-you/env`, then `~/.config/needs-you/env`; `NEEDS_YOU_ENV_FILE` still overrides it for the hook), and `scripts/setup-sender.sh` writes it there too.
 
 ## [0.1.2] - 2026-10-07
 
