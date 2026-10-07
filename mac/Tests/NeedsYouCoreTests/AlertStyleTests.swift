@@ -17,7 +17,20 @@ final class AlertStyleTests: XCTestCase {
         ("testOffSilencesOtherItems", testOffSilencesOtherItems),
         ("testGlowFitsThePadding", testGlowFitsThePadding),
         ("testReducedMotionAndPrefs", testReducedMotionAndPrefs),
+        ("testAmbientIsOneSoftPulse", testAmbientIsOneSoftPulse),
     ]
+
+    func testAmbientIsOneSoftPulse() {
+        let subtle = AlertStyle.look(.subtle, priority: .normal)
+        for chosen in [AlertIntensity.subtle, .normal, .bright] {
+            let l = AlertStyle.ambientLook(chosen, priority: .normal)
+            XCTAssertEqual(l.pulses, 1)
+            XCTAssertEqual(l.glowPeak, subtle.glowPeak)
+        }
+        XCTAssertEqual(AlertStyle.ambientLook(.off, priority: .low).pulses, 0, "Off stays off")
+        XCTAssertEqual(AlertStyle.ambientLook(.off, priority: .urgent).pulses, 1, "urgent keeps its floor")
+        XCTAssertEqual(AlertStyle.ambientLook(.bright, priority: .urgent).pulses, 1)
+    }
 
     func testNormalIsTheOriginalLook() {
         // Urgent arrivals pulsed twice, others once; peak 1, radius 7, ring 0.9 at 1.25 pt.

@@ -65,7 +65,11 @@ final class Phase3Controller: ObservableObject {
     /// holds ~4 s, then springs back. Urgent pulses twice. (The panel controller animates
     /// the size change with an overshoot curve, or a fade under Reduce Motion.)
     private func announce(_ items: [Item]) {
-        guard let top = items.min(by: { $0.priority < $1.priority }) else { return }
+        // The most urgent; on a tie, one from the context being shown.
+        let shown = model.context
+        guard let top = items.min(by: { a, b in
+            a.priority != b.priority ? a.priority < b.priority : (a.context == shown && b.context != shown)
+        }) else { return }
         let urgent = items.contains { $0.priority == .urgent }
         model.previewItem = top
         model.requestPulse(times: urgent ? 2 : 1, priority: top.priority)
@@ -110,6 +114,8 @@ final class Phase3Controller: ObservableObject {
         guard model.lastCheck != nil else { return }
         defaults.set(now, forKey: Key.lastSummary)
         model.settings.viewContext = .work
+        // The start of the day delivers Later (unless a focus is still on).
+        model.releaseLater(.startOfDay, peek: false)
         model.expand()
         model.summarySince = summary.sinceYesterdayBoundary(now: now, lastShown: last)
     }

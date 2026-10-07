@@ -180,7 +180,15 @@ struct CardList: View {
     var body: some View {
         let needs = model.needsItems
         let recent = model.recentItems
+        let later = model.laterItems
         VStack(alignment: .leading, spacing: model.metrics.cardSpacing) {
+            ForEach(model.quietedSenders, id: \.self) { sender in
+                // NoisySenderGuard: a looping sender can't keep interrupting.
+                Label("Quieted \(sender): over \(NoisySenderGuard.defaultThreshold) alerts this hour", systemImage: "speaker.slash")
+                    .font(Theme.meta(model.metrics))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(2)
+            }
             if needs.isEmpty {
                 EmptyState(model: model)
             }
@@ -202,6 +210,33 @@ struct CardList: View {
                 }
             } else {
                 PriorityGroups(needs: needs, model: model)
+            }
+            if !later.isEmpty {
+                // Held by a focus, a snooze or a rule; delivered when it ends.
+                HStack(spacing: 4) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { model.showLater.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: model.showLater ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("LATER · \(later.count)")
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(model.focusSummary.map { "Focus: \($0). These arrive when it ends." } ?? "These arrive when the snooze ends or at the start of the day.")
+                    Button("Show now") { model.deliverLaterNow() }
+                        .buttonStyle(.plain)
+                        .help("Move them into the list and the count")
+                }
+                .font(.system(size: model.metrics.sectionFont, weight: .semibold))
+                .foregroundStyle(Theme.faint)
+                .padding(.top, 4)
+                if model.showLater {
+                    ForEach(later) { item in CardView(item: item, model: model) }
+                }
             }
             if !recent.isEmpty {
                 Button {

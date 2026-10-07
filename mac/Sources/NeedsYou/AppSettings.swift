@@ -54,6 +54,23 @@ final class AppSettings: ObservableObject {
         didSet { if ui != oldValue { ui.save(to: defaults, previous: oldValue) } }
     }
 
+    /// Settings → Alerts → Delivery: the tier per priority and kind with no focus, and
+    /// whether urgent breaks through a focus (DeliveryDefaults keys).
+    @Published var delivery: DeliveryDefaults {
+        didSet { if delivery != oldValue { delivery.save(to: defaults, previous: oldValue) } }
+    }
+    /// Settings → Alerts → Bypass rules, JSON under `bypassRules` (at most 50).
+    @Published var bypassRules: RuleBook {
+        didSet {
+            guard bypassRules != oldValue, let data = bypassRules.encoded() else { return }
+            defaults.set(data, forKey: RuleBook.defaultsKey)
+        }
+    }
+    /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
+    @Published var focus: FocusState {
+        didSet { if focus != oldValue { focus.save(to: defaults) } }
+    }
+
     /// The app's defaults, or the NEEDS_YOU_DEFAULTS_SUITE suite (test instances).
     nonisolated static func makeDefaults(environment: [String: String] = ProcessInfo.processInfo.environment) -> UserDefaults {
         if let suite = environment["NEEDS_YOU_DEFAULTS_SUITE"], !suite.isEmpty, let d = UserDefaults(suiteName: suite) {
@@ -148,6 +165,9 @@ final class AppSettings: ObservableObject {
         tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
         snapToCorners = defaults.bool(forKey: Key.snapToCorners)
         ui = UIPrefs.load(from: defaults)
+        delivery = DeliveryDefaults.load(from: defaults)
+        bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))
+        focus = FocusState.load(from: defaults)
         hotKey = HotKeyValidator.stored(defaults.string(forKey: Key.hotKey))
         hotKeyOpensTopLink = defaults.bool(forKey: Key.hotKeyOpensTopLink)
         // Stored prefs that hide both the icon and the panel: keep the icon.

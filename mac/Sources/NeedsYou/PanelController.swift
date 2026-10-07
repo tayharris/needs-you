@@ -248,9 +248,11 @@ final class PanelController {
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
             return CGSize(width: m.idleWidth(textWidth: width), height: model.hovering ? m.idleHoverHeight : m.idleHeight)
         case .waiting:
+            let later = model.laterCount
             let digits = String(model.count).count + (model.otherCount > 0 ? String(model.otherCount).count + 2 : 0)
+                + (later > 0 ? String(later).count + 1 : 0)
             return CGSize(width: m.countWidth(digits: digits), height: m.countHeight)
-        case .preview:
+        case .preview, .digest:
             return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:
             let list = ListHeightPolicy.height(content: model.expandedContentHeight, cardBottoms: model.cardBottoms,
@@ -274,7 +276,7 @@ final class PanelController {
         switch display {
         case .idle: return model.hovering ? 11 : 9
         case .waiting: return 11
-        case .preview: return 14
+        case .preview, .digest: return 14
         case .expanded: return 14
         }
     }
@@ -284,7 +286,7 @@ final class PanelController {
         case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
         case .waiting:
             return CGFloat(PanelOpacity.alpha(base: model.hovering ? 1.0 : 0.85, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
-        case .preview, .expanded:
+        case .preview, .digest, .expanded:
             // Settings → Panel → Opacity; hovering always shows it at full strength.
             return CGFloat(PanelOpacity.alpha(base: 1.0, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
         }

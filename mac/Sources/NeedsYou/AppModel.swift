@@ -2,11 +2,13 @@ import AppKit
 import Foundation
 import NeedsYouCore
 
-/// A request for the ring glow to pulse `times` times.
+/// A request for the ring glow to pulse `times` times. `ambient` is the delivery tiers'
+/// single soft brighten (AlertStyle.ambientLook).
 struct PulseRequest: Equatable {
     let id = UUID()
     let times: Int
     let priority: ItemPriority
+    var ambient = false
 }
 
 /// What the panel is showing; drives both the SwiftUI content and the window size.
@@ -14,7 +16,17 @@ enum PanelDisplay: Equatable {
     case idle
     case waiting
     case preview(Item)
+    /// "3 waited while you were focused": Later delivered as one quiet peek.
+    case digest(LaterDigest)
     case expanded
+
+    /// The arrival peeks (they spring out on the display you're working on).
+    var isPeek: Bool {
+        switch self {
+        case .preview, .digest: return true
+        default: return false
+        }
+    }
 }
 
 /// App state: the item store, the poll loop, and the panel's UI state.
@@ -45,6 +57,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var activeHub: String?
     @Published private(set) var pulse: PulseRequest?
     @Published var showRecent = false
+    /// The Later section in the expanded panel is open.
+    @Published var showLater = false
+    /// The quiet peek that delivers Later, if one is showing.
+    @Published private(set) var digest: LaterDigest?
     /// Ticks every 15 s so ages ("2h") and snooze expiry stay current.
     @Published private(set) var now = Date()
     /// Height of the expanded card list as laid out by SwiftUI.
@@ -92,6 +108,9 @@ final class AppModel: ObservableObject {
     private var injectTask: Task<Void, Never>?
     private var tickTimer: Timer?
     private var feedHubCount = 0
+    private var digestTask: Task<Void, Never>?
+    /// Holds a sender that interrupts more than 6 times an hour to ambient.
+    private var noisyGuard = NoisySenderGuard()
 
     /// Set by LocalHubController when the bundled hub can't run (no Python, port taken).
     @Published var localHubIssue: String?
@@ -122,7 +141,28 @@ final class AppModel: ObservableObject {
     var display: PanelDisplay {
         if isExpanded { return .expanded }
         if let previewItem { return .preview(previewItem) }
-        return count > 0 || otherCount > 0 ? .waiting : .idle
+        if let digest { return .digest(digest) }
+        return count > 0 || otherCount > 0 || laterCount > 0 ? .waiting : .idle
+    }
+
+    // MARK: Delivery tiers (docs/roadmap/focus-tiers.md)
+
+    /// The focus level in force right now.
+    var focusLevel: FocusLevel { settings.focus.effectiveLevel(at: Date()) }
+    var isFocused: Bool { focusLevel != .off }
+    /// "Urgent only until 14:30", or nil.
+    var focusSummary: String? { settings.focus.summary(at: Date()) { Self.timeFormatter.string(from: $0) } }
+    /// Items held under Later in this context (not counted; the faint "+N").
+    var laterItems: [Item] { store.laterItems(in: context, now: now) }
+    var laterCount: Int { store.laterCount(in: context, now: now) }
+    /// Senders the noisy-sender guard is holding to ambient this hour ("devbox · cron").
+    var quietedSenders: [String] { noisyGuard.heldSenders(now: now).map(NoisySenderGuard.displayName) }
+
+    func deliveryState(at date: Date) -> DeliveryState {
+        DeliveryState(context: context, visibility: visibility, focus: settings.focus.effectiveLevel(at: date),
+                      defaults: settings.delivery, rules: settings.bypassRules,
+                      urgentBreaksSnooze: settings.urgentBreaksSnooze,
+                      urgentShowsHiddenPanel: settings.urgentShowsHiddenPanel, now: date)
     }
 
     /// "needs Sam" / "needs you".
@@ -296,9 +336,16 @@ final class AppModel: ObservableObject {
         if case .snoozed(let until) = visibility, until <= now {
             visibility = .shown
             objectWillChange.send()
+            releaseLater(.snoozeEnded)
+        }
+        if settings.focus.level != .off && !settings.focus.isActive(at: now) {
+            settings.focus = .off
+            releaseLater(.focusEnded)
         }
         if let resolved = contextResolver?(now), resolved != settings.viewContext {
             settings.viewContext = resolved
+            // The schedule switching to work is the start of the day: Later is delivered.
+            if resolved == .work { releaseLater(.startOfDay) }
         }
         onTick?(now)
         var pruned = store
@@ -309,42 +356,100 @@ final class AppModel: ObservableObject {
 
     // MARK: Announcements
 
+    /// Each new or visibly changed item gets a delivery tier (DeliveryPolicy): interrupt is
+    /// the spring-out preview and pulse, ambient one soft brighten, later is held under
+    /// Later (not counted) until the focus or snooze ends. Never activates the app.
     private func handleAnnouncements(_ items: [Item]) {
-        let needs = items.filter { $0.kind == .needs && !store.isCardSnoozed($0.id, now: Date()) }
-        guard !needs.isEmpty else { return }
+        let date = Date()
+        let arrivals = items.filter { !store.isCardSnoozed($0.id, now: date) }
+        guard !arrivals.isEmpty else { return }
 
-        if visibility.isHidden(at: Date()) && !peeking {
+        let state = deliveryState(at: date)
+        var updated = store
+        var decided: [(item: Item, decision: DeliveryDecision)] = []
+        for item in arrivals {
+            var decision = DeliveryPolicy.decide(item, state: state)
+            if decision.tier == .interrupt && !noisyGuard.admit(item, now: date) {
+                decision = DeliveryDecision(tier: .ambient, reason: .noisySender)
+            }
+            if decision.holdsForLater {
+                updated.holdForLater(id: item.id, at: date)
+            } else if decision.tier != .later {
+                updated.unhold(id: item.id)
+            }
+            decided.append((item: item, decision: decision))
+        }
+        store = updated
+        let interrupts = decided.filter { $0.decision.tier == .interrupt }.map(\.item)
+
+        if visibility.isHidden(at: date) && !peeking {
             // Out of sight: the menu bar count updates by itself; an urgent item pulses the
-            // icon once, or brings the panel back (see HiddenArrivalPolicy).
-            switch HiddenArrivalPolicy.decide(
-                visibility: visibility, announced: needs, urgentBreaksSnooze: settings.urgentBreaksSnooze,
-                urgentShowsHiddenPanel: settings.urgentShowsHiddenPanel, now: Date()
-            ) {
+            // icon once, or brings the panel back (the tier table's snoozed/hidden column).
+            switch DeliveryPolicy.hiddenArrival(decided) {
             case .none:
                 break
             case .pulseMenuBar:
                 menuBarPulse = UUID()
             case .showPanel:
                 // Open decision 2: break through with a single pulse. The snooze/hide ends.
+                let wasSnoozed = visibility != .hidden
                 visibility = .shown
-                if let urgent = needs.first(where: { $0.priority == .urgent }), urgent.context != context {
-                    settings.viewContext = urgent.context
+                if let top = interrupts.min(by: { $0.priority < $1.priority }), top.context != context {
+                    settings.viewContext = top.context
                 }
-                pulse = PulseRequest(times: 1, priority: .urgent)
+                pulse = PulseRequest(times: 1, priority: interrupts.map(\.priority).min() ?? .urgent)
                 menuBarPulse = UUID()
+                if wasSnoozed { releaseLater(.snoozeEnded, peek: false) }
             }
             return
         }
 
-        let inContext = needs.filter { $0.context == context }
-        guard !inContext.isEmpty, !isExpanded else { return }
-        if let announcer {
-            announcer(self, inContext)
-        } else {
-            let urgent = inContext.contains { $0.priority == .urgent }
-            pulse = PulseRequest(times: urgent ? 2 : 1, priority: inContext.map(\.priority).min() ?? .normal)
+        guard !isExpanded else { return }
+        if !interrupts.isEmpty {
+            digest = nil
+            if let announcer {
+                announcer(self, interrupts)
+            } else {
+                let urgent = interrupts.contains { $0.priority == .urgent }
+                pulse = PulseRequest(times: urgent ? 2 : 1, priority: interrupts.map(\.priority).min() ?? .normal)
+            }
+            return
+        }
+        let ambient = decided.filter { $0.decision.tier == .ambient }.map(\.item)
+        if let top = ambient.map(\.priority).min() {
+            pulse = PulseRequest(times: 1, priority: top, ambient: true)
         }
     }
+
+    /// Deliver Later: everything held joins the list and the count, with one quiet peek
+    /// ("3 waited while you were focused") when the panel is in view. Waits while a focus
+    /// or snooze is still on, unless it's by hand (Show now).
+    func releaseLater(_ reason: LaterRelease, peek: Bool = true) {
+        let date = Date()
+        if reason != .byHand {
+            if settings.focus.isActive(at: date) { return }
+            if case .snoozed(let until) = visibility, until > date { return }
+        }
+        var updated = store
+        let released = updated.releaseLater(now: date)
+        guard !released.isEmpty else { return }
+        store = updated
+        let here = released.filter { $0.context == context }
+        guard peek, !here.isEmpty, isPanelVisible, !isExpanded, previewItem == nil else { return }
+        let top = here.map(\.priority).min() ?? .normal
+        let shown = LaterDigest(count: here.count, reason: reason, priority: top)
+        digest = shown
+        pulse = PulseRequest(times: 1, priority: top, ambient: true)
+        digestTask?.cancel()
+        digestTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled, let self, self.digest == shown else { return }
+            self.digest = nil
+        }
+    }
+
+    /// The Later section's Show now.
+    func deliverLaterNow() { releaseLater(.byHand, peek: false) }
 
     func requestPulse(times: Int, priority: ItemPriority) {
         pulse = PulseRequest(times: times, priority: priority)
@@ -362,6 +467,7 @@ final class AppModel: ObservableObject {
         if visibility == .hidden && !byUser && !peeking { return }
         expandedByUser = byUser
         previewItem = nil
+        digest = nil
         if visibility.isHidden(at: Date()) && !peeking { visibility = .shown }
         isExpanded = true
         markVisibleSeen()
@@ -441,6 +547,7 @@ final class AppModel: ObservableObject {
     func snoozePanel(_ option: SnoozeOption) {
         isExpanded = false
         previewItem = nil
+        digest = nil
         peeking = false
         visibility = .snoozed(until: option.until(from: Date()))
     }
@@ -456,6 +563,7 @@ final class AppModel: ObservableObject {
         guard canHidePanel else { return false }
         isExpanded = false
         previewItem = nil
+        digest = nil
         peeking = false
         summarySince = nil
         visibility = .hidden
@@ -464,7 +572,10 @@ final class AppModel: ObservableObject {
 
     func showPanel() {
         peeking = false
+        let wasSnoozed: Bool
+        if case .snoozed = visibility { wasSnoozed = true } else { wasSnoozed = false }
         visibility = .shown
+        if wasSnoozed { releaseLater(.snoozeEnded) }
     }
 
     /// The global shortcut and the menu bar's Show Floating Panel: hidden/snoozed → shown,
