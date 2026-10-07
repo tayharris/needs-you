@@ -220,8 +220,9 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     /// The installer flags for a machine that runs Claude Code: hooks, skill, alerts on
     /// (docs/guides/claude-code-everywhere.md). The join page lists the rest.
     public static let claudeFlags = "--claude-hooks user --skill --alerts"
-    /// The flag to add on a machine that runs OpenAI Codex CLI (integrations/codex/).
+    /// The flags to add on a machine that runs OpenAI Codex CLI or Gemini CLI.
     public static let codexFlag = "--codex-hooks user"
+    public static let geminiFlag = "--gemini-hooks user"
 
     /// What to paste into an agent on the new machine. A hub that predates the Claude
     /// flags sends a shorter prompt; this one is used instead.
@@ -229,7 +230,7 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         if let hubAgentPrompt, hubAgentPrompt.contains("--claude-hooks") { return hubAgentPrompt }
         return "Set up needs-you alerts on this machine: read \(joinURL) and follow it. "
             + "If this machine runs Claude Code, use \(Self.claudeFlags). "
-            + "If it runs OpenAI Codex CLI, add \(Self.codexFlag)."
+            + "If it runs OpenAI Codex CLI, add \(Self.codexFlag); Gemini CLI, add \(Self.geminiFlag)."
     }
     /// What to run on the new machine: the full Claude Code setup.
     public var shellOneLiner: String {
