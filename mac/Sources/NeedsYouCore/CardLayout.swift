@@ -134,9 +134,11 @@ public enum LinkRowPolicy {
 /// Settings → Panel → Opacity: how see-through the count pill, preview and open panel are
 /// when the pointer isn't over them. Hovering always shows them at full strength.
 public enum PanelOpacity {
-    public static let choices: [Double] = [1.0, 0.9, 0.8, 0.7, 0.6]
+    public static let choices: [Double] = [1.0, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3]
     public static let standard = 1.0
-    public static let minimum = 0.6
+    /// The collapsed pill with the pointer away (the original 85%).
+    public static let pillRestStandard = 0.85
+    public static let minimum = 0.3
 
     /// The closest offered choice (hand-edited or out-of-range values snap to one).
     public static func nearestChoice(_ value: Double) -> Double {
@@ -144,11 +146,12 @@ public enum PanelOpacity {
         return choices.min(by: { abs($0 - value) < abs($1 - value) }) ?? standard
     }
 
-    /// The panel's alpha: `base` (what the state wants) scaled by the setting, unless hovering.
-    public static func alpha(base: Double, setting: Double, hovering: Bool) -> Double {
-        if hovering { return base }
-        let s = min(1, max(minimum, setting.isFinite ? setting : standard))
-        return base * s
+    /// The alpha for a shape: `rest` while the pointer is away, `hover` while it's over,
+    /// never below `minimum` whatever is stored.
+    public static func alpha(rest: Double, hover: Double, hovering: Bool) -> Double {
+        let v = hovering ? hover : rest
+        guard v.isFinite else { return standard }
+        return min(1, max(minimum, v))
     }
 }
 

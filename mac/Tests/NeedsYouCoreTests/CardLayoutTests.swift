@@ -117,17 +117,16 @@ final class CardLayoutTests: XCTestCase {
     }
 
     func testOpacity() {
-        XCTAssertEqual(PanelOpacity.alpha(base: 1, setting: 1, hovering: false), 1)
-        XCTAssertEqual(PanelOpacity.alpha(base: 0.85, setting: 1, hovering: false), 0.85)
-        XCTAssertEqual(PanelOpacity.alpha(base: 1, setting: 0.7, hovering: false), 0.7)
-        // Hovering always shows full strength.
-        XCTAssertEqual(PanelOpacity.alpha(base: 1, setting: 0.6, hovering: true), 1)
+        XCTAssertEqual(PanelOpacity.alpha(rest: 0.85, hover: 1, hovering: false), 0.85)
+        XCTAssertEqual(PanelOpacity.alpha(rest: 0.85, hover: 1, hovering: true), 1)
+        XCTAssertEqual(PanelOpacity.alpha(rest: 1, hover: 0.7, hovering: true), 0.7)
         // Never below the minimum, whatever is stored.
-        XCTAssertEqual(PanelOpacity.alpha(base: 1, setting: 0.1, hovering: false), PanelOpacity.minimum)
-        XCTAssertEqual(PanelOpacity.alpha(base: 1, setting: .nan, hovering: false), 1)
-        XCTAssertEqual(PanelOpacity.nearestChoice(0.84), 0.8)
+        XCTAssertEqual(PanelOpacity.alpha(rest: 0.1, hover: 1, hovering: false), PanelOpacity.minimum)
+        XCTAssertEqual(PanelOpacity.alpha(rest: .nan, hover: 1, hovering: false), 1)
+        XCTAssertEqual(PanelOpacity.alpha(rest: 1, hover: 7, hovering: true), 1)
+        XCTAssertEqual(PanelOpacity.nearestChoice(0.84), 0.85)
         XCTAssertEqual(PanelOpacity.nearestChoice(5), 1)
-        XCTAssertEqual(PanelOpacity.nearestChoice(0), 0.6)
+        XCTAssertEqual(PanelOpacity.nearestChoice(0), 0.3)
         XCTAssertEqual(PanelOpacity.nearestChoice(.infinity), 1)
     }
 
@@ -150,6 +149,9 @@ final class CardLayoutTests: XCTestCase {
     func testDefaultsAreTheOriginalBehaviour() {
         let p = UIPrefs.defaults
         XCTAssertEqual(p.panelOpacity, 1)
+        XCTAssertEqual(p.panelHoverOpacity, 1)
+        XCTAssertEqual(p.pillOpacity, 0.85)
+        XCTAssertEqual(p.pillHoverOpacity, 1)
         XCTAssertEqual(p.maxVisibleCards, 0)
         XCTAssertEqual(p.cardBodies, .full)
         XCTAssertFalse(p.compactLinks)
@@ -165,6 +167,9 @@ final class CardLayoutTests: XCTestCase {
         }
         var p = UIPrefs()
         p.panelOpacity = 0.7
+        p.panelHoverOpacity = 0.9
+        p.pillOpacity = 0.4
+        p.pillHoverOpacity = 0.8
         p.maxVisibleCards = 3
         p.cardBodies = .preview
         p.compactLinks = true
@@ -173,10 +178,13 @@ final class CardLayoutTests: XCTestCase {
 
         // Hand-edited values: opacity snaps to a choice, an unknown card count is ignored.
         store.set(0.83, forKey: UIPrefs.Key.panelOpacity)
+        store.set(0.01, forKey: UIPrefs.Key.pillOpacity)
         store.set(7, forKey: UIPrefs.Key.maxVisibleCards)
         store.set("tiny", forKey: UIPrefs.Key.cardBodies)
         let loaded = UIPrefs.load(from: store)
-        XCTAssertEqual(loaded.panelOpacity, 0.8)
+        XCTAssertEqual(loaded.panelOpacity, 0.85)
+        XCTAssertEqual(loaded.pillOpacity, 0.3)
+        XCTAssertEqual(loaded.pillHoverOpacity, 0.8)
         XCTAssertEqual(loaded.maxVisibleCards, 0)
         XCTAssertEqual(loaded.cardBodies, .full)
         XCTAssertTrue(loaded.compactLinks)

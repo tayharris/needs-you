@@ -229,20 +229,3 @@ public enum KeyNames {
     public static func letter(_ l: String) -> UInt32? { letters.first { $0.0 == l.lowercased() }?.1 }
     public static func digit(_ d: Int) -> UInt32? { digits.first { $0.0 == d }?.1 }
 }
-
-/// What the global shortcut does.
-public enum HotKeyAction: Equatable, Sendable {
-    /// Show or hide the floating panel (the original).
-    case toggleVisibility
-    /// Open the top card's first allowed link (the Orca terminal jump, a VS Code window...).
-    case openTopCard(Item)
-
-    /// "Hotkey also opens the top card's first link" (off by default): with it on and
-    /// something waiting that has an allowed link, the shortcut opens it instead of showing
-    /// or hiding the panel. `top` is the first card in panel order (urgent first, oldest).
-    public static func decide(openTopLink: Bool, top: Item?) -> HotKeyAction {
-        guard openTopLink, let top, top.kind == .needs, top.status == .open,
-              case .open = MenuItemAction.forItem(top) else { return .toggleVisibility }
-        return .openTopCard(top)
-    }
-}

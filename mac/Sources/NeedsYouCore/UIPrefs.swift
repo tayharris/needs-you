@@ -17,6 +17,9 @@ public struct UIPrefs: Equatable, Sendable {
         public static let alertUrgent = "alertStyleUrgent"
         public static let alertOther = "alertStyleOther"
         public static let panelOpacity = "panelOpacity"
+        public static let panelHoverOpacity = "panelHoverOpacity"
+        public static let pillOpacity = "pillOpacity"
+        public static let pillHoverOpacity = "pillHoverOpacity"
         public static let maxVisibleCards = "maxVisibleCards"
         public static let cardBodies = "cardBodies"
         public static let compactLinks = "compactLinks"
@@ -35,8 +38,12 @@ public struct UIPrefs: Equatable, Sendable {
     public var alertUrgent: AlertIntensity = .normal
     /// How loud normal and low items are.
     public var alertOther: AlertIntensity = .normal
-    /// Count pill, preview and open panel opacity when not hovered (one of PanelOpacity.choices).
+    /// Opacity (one of PanelOpacity.choices) of the open panel and the arrival preview with
+    /// the pointer away and over them, and of the collapsed count pill likewise.
     public var panelOpacity: Double = PanelOpacity.standard
+    public var panelHoverOpacity: Double = PanelOpacity.standard
+    public var pillOpacity: Double = PanelOpacity.pillRestStandard
+    public var pillHoverOpacity: Double = PanelOpacity.standard
     /// Cards shown before the list scrolls; 0 = as many as fit.
     public var maxVisibleCards: Int = 0
     public var cardBodies: CardBodyMode = .full
@@ -69,6 +76,9 @@ public struct UIPrefs: Equatable, Sendable {
         if let raw = store.string(forKey: Key.alertUrgent), let v = AlertIntensity(rawValue: raw) { p.alertUrgent = v }
         if let raw = store.string(forKey: Key.alertOther), let v = AlertIntensity(rawValue: raw) { p.alertOther = v }
         if let v = store.object(forKey: Key.panelOpacity) as? NSNumber { p.panelOpacity = PanelOpacity.nearestChoice(v.doubleValue) }
+        if let v = store.object(forKey: Key.panelHoverOpacity) as? NSNumber { p.panelHoverOpacity = PanelOpacity.nearestChoice(v.doubleValue) }
+        if let v = store.object(forKey: Key.pillOpacity) as? NSNumber { p.pillOpacity = PanelOpacity.nearestChoice(v.doubleValue) }
+        if let v = store.object(forKey: Key.pillHoverOpacity) as? NSNumber { p.pillHoverOpacity = PanelOpacity.nearestChoice(v.doubleValue) }
         if let v = store.object(forKey: Key.maxVisibleCards) as? NSNumber, ListHeightPolicy.choices.contains(v.intValue) {
             p.maxVisibleCards = v.intValue
         }
@@ -91,6 +101,9 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.alertUrgent != alertUrgent { store.set(alertUrgent.rawValue, forKey: Key.alertUrgent) }
         if previous?.alertOther != alertOther { store.set(alertOther.rawValue, forKey: Key.alertOther) }
         if previous?.panelOpacity != panelOpacity { store.set(panelOpacity, forKey: Key.panelOpacity) }
+        if previous?.panelHoverOpacity != panelHoverOpacity { store.set(panelHoverOpacity, forKey: Key.panelHoverOpacity) }
+        if previous?.pillOpacity != pillOpacity { store.set(pillOpacity, forKey: Key.pillOpacity) }
+        if previous?.pillHoverOpacity != pillHoverOpacity { store.set(pillHoverOpacity, forKey: Key.pillHoverOpacity) }
         if previous?.maxVisibleCards != maxVisibleCards { store.set(maxVisibleCards, forKey: Key.maxVisibleCards) }
         if previous?.cardBodies != cardBodies { store.set(cardBodies.rawValue, forKey: Key.cardBodies) }
         if previous?.compactLinks != compactLinks { store.set(compactLinks, forKey: Key.compactLinks) }

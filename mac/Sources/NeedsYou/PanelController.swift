@@ -342,10 +342,12 @@ final class PanelController {
         switch display {
         case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
         case .waiting:
-            return CGFloat(PanelOpacity.alpha(base: model.hovering ? 1.0 : 0.85, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
+            let ui = model.settings.ui
+            return CGFloat(PanelOpacity.alpha(rest: ui.pillOpacity, hover: ui.pillHoverOpacity, hovering: model.hovering))
         case .preview, .digest, .expanded:
             // Settings → Panel → Opacity; hovering always shows it at full strength.
-            return CGFloat(PanelOpacity.alpha(base: 1.0, setting: model.settings.ui.panelOpacity, hovering: model.hovering))
+            let ui = model.settings.ui
+            return CGFloat(PanelOpacity.alpha(rest: ui.panelOpacity, hover: ui.panelHoverOpacity, hovering: model.hovering))
         }
     }
 

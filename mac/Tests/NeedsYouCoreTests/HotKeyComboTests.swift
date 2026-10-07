@@ -17,7 +17,6 @@ final class HotKeyComboTests: XCTestCase {
         ("testReservedShortcuts", testReservedShortcuts),
         ("testStoredFallsBack", testStoredFallsBack),
         ("testMenuKeyEquivalent", testMenuKeyEquivalent),
-        ("testHotKeyAction", testHotKeyAction),
     ]
 
     private let c = HotKeyCombo.command, s = HotKeyCombo.shift, o = HotKeyCombo.option, k = HotKeyCombo.control
@@ -123,25 +122,5 @@ final class HotKeyComboTests: XCTestCase {
         XCTAssertNil(HotKeyCombo(keyCode: 0x60, modifiers: c).menuKeyEquivalent)     // F5
         XCTAssertNil(HotKeyCombo(keyCode: 0x7B, modifiers: c).menuKeyEquivalent)     // ←
         XCTAssertNil(HotKeyCombo(keyCode: KeyNames.returnKey, modifiers: c).menuKeyEquivalent)
-    }
-
-    func testHotKeyAction() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let linked = Item(id: "a", key: "a", title: "PR", links: [ItemLink(label: "PR", url: "https://example.com/pr")], createdAt: now)
-        let jump = Item(id: "j", key: "j", title: "Agent", links: [ItemLink(label: "Terminal", url: "needsyou://orca/terminal?handle=term_1")], createdAt: now)
-        let bare = Item(id: "b", key: "b", title: "No link", createdAt: now)
-        let blocked = Item(id: "x", key: "x", title: "Bad", links: [ItemLink(label: "x", url: "file:///etc/passwd")], createdAt: now)
-
-        // Off (the default): always show / hide.
-        XCTAssertEqual(HotKeyAction.decide(openTopLink: false, top: linked), .toggleVisibility)
-        // On: open the top card's first allowed link.
-        XCTAssertEqual(HotKeyAction.decide(openTopLink: true, top: linked), .openTopCard(linked))
-        // On, but nothing to open: show / hide as usual.
-        XCTAssertEqual(HotKeyAction.decide(openTopLink: true, top: nil), .toggleVisibility)
-        XCTAssertEqual(HotKeyAction.decide(openTopLink: true, top: bare), .toggleVisibility)
-        XCTAssertEqual(HotKeyAction.decide(openTopLink: true, top: blocked), .toggleVisibility)
-        if case .open = MenuItemAction.forItem(jump) {
-            XCTAssertEqual(HotKeyAction.decide(openTopLink: true, top: jump), .openTopCard(jump))
-        }
     }
 }
