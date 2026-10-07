@@ -21,6 +21,8 @@ DONATE_PLACEHOLDER = "#donate-tbd"
 RELEASE = os.environ.get("NEEDS_YOU_SITE_RELEASE") == "1"
 # Hosts the site may link to. Anything else (a personal domain, a tailnet name) fails.
 LINK_HOSTS = {"github.com"}
+# Hosts a <link> in <head> may load from: the IBM Plex web fonts. _headers must allow them.
+FONT_HOSTS = {"fonts.googleapis.com", "fonts.gstatic.com"}
 REPO_LINK = re.compile(r"^https://github\.com/tayharris/needs-you/(?:blob|tree)/main/(.+?)/?(?:#.*)?$")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
         "source", "track", "wbr", "path", "circle", "rect", "line", "polyline", "polygon",
@@ -36,6 +38,7 @@ class Page(HTMLParser):
         self.errors = []
         self.ids = set()
         self.links = []
+        self.head_links = []  # href of every <link> (stylesheets, preconnect, icon)
         self.anchors = []  # (attrs, text) for every <a>
         self.text = []
         self._a = None
@@ -53,7 +56,10 @@ class Page(HTMLParser):
             self.ids.add(a["id"])
         for k in ("href", "src"):
             if a.get(k):
-                self.links.append(a[k])
+                if tag == "link" and a[k].startswith("https://"):
+                    self.head_links.append(a[k])
+                else:
+                    self.links.append(a[k])
         if tag == "meta" and a.get("name"):
             self.meta[a["name"]] = a.get("content", "")
         if tag == "title":
@@ -162,6 +168,31 @@ class SiteTests(unittest.TestCase):
                 if m:
                     with self.subTest(page=name, link=link[:80]):
                         self.assertIn(m.group(1), LINK_HOSTS, "link to an unexpected host")
+
+    def test_font_hosts(self):
+        csp = read_site("_headers")
+        for name, p in self.pages.items():
+            for link in p.head_links:
+                host = re.match(r"^https://([^/]+)", link).group(1)
+                with self.subTest(page=name, link=link[:80]):
+                    self.assertIn(host, FONT_HOSTS, "<link> to an unexpected host")
+            if any("fonts.googleapis.com" in link for link in p.head_links):
+                self.assertIn("style-src 'self' https://fonts.googleapis.com", csp)
+                self.assertIn("font-src https://fonts.gstatic.com", csp)
+
+    def test_no_domain_yet(self):
+        # The domain isn't bought yet: canonical/og:url stay commented out until it is.
+        html = re.sub(r"<!--.*?-->", "", read_site("index.html"), flags=re.S)
+        self.assertNotIn('rel="canonical"', html)
+        self.assertNotIn('property="og:url"', html)
+
+    def test_css_hex_only_in_primitives(self):
+        # Like the design tokens it follows: a hex appears only as a primitive
+        # (--name: #hex; at the top of :root); every rule references a variable.
+        for n, line in enumerate(read_site("styles.css").splitlines(), 1):
+            if re.search(r"#[0-9a-fA-F]{3,8}\b", line):
+                with self.subTest(line=n):
+                    self.assertRegex(line, r"^\s*--[\w-]+: #[0-9a-fA-F]{3,8};", line.strip())
 
     def test_no_personal_hostnames(self):
         # Only the documented placeholders: hub-a.example.ts.net, <tailnet>, devbox.
