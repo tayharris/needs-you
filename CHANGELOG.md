@@ -6,7 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Changed
 
-- Mac app: **a new-item preview with a link has a button for it** ("VS Code ↗", "Approve ↗"). Clicking it opens the link and marks the item done, without opening the panel. Clicking anywhere else on the preview opens the panel **scrolled to that card**, outlined for a moment, instead of at the top of the list. Clicking the pill also scrolls to the newest card that arrived since you last opened it, and so does clicking an item without a link in the menu bar menu.
+- Mac app: **a new-item preview with a link has a button for it** ("VS Code ↗", "Approve ↗"). Clicking it opens the link and marks the item done, without opening the panel. Like the card links, the button also shows where the link really goes ("Approve ci.example.com ↗"). Clicking anywhere else on the preview opens the panel **scrolled to that card**, outlined for a moment, instead of at the top of the list. Clicking the pill also scrolls to the newest card that arrived since you last opened it, and so does clicking an item without a link in the menu bar menu.
 
 ### Fixed
 
