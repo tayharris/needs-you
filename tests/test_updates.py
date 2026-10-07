@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import unittest
+import urllib.error
 import urllib.request
 
 from support import OPENER, ROOT, FakeClock, HubTestCase, hubmod, request
@@ -168,6 +169,117 @@ class ClientVersions(HubTestCase):
             rows = [dict(r) for r in self.hub.store.conn.execute("SELECT * FROM tokens")]
         self.assertLessEqual(kinds, {"item", "token", "invite"})
         self.assertNotIn("client", json.dumps([hubmod.token_wire(r) for r in rows]))
+
+
+def call_status(method, url, token, client=None, body=None):
+    try:
+        return call(method, url, token, client, body)
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"{}")
+
+
+class RequestUpdate(HubTestCase):
+    """POST/DELETE /v1/tokens/<id>/request-update, and `update_requested` in sender responses."""
+
+    def setUp(self):
+        super().setUp()
+        self.clock = FakeClock()
+        self.hub = self.make_hub(clock=self.clock)
+        self.sender, self.srec = self.hub.store.add_token("devbox", "sender")
+        self.other, _ = self.hub.store.add_token("ci", "sender")
+        self.owner, _ = self.hub.store.add_token("mac", "owner")
+        self.reader, _ = self.hub.store.add_token("viewer", "reader")
+        self.old = "cli=0.0.9; hook=none; skill=none; orca=none"
+
+    def url(self, who="devbox"):
+        return self.hub.url + "/v1/tokens/" + who + "/request-update"
+
+    def post_item(self, token=None, client=None):
+        return call_status("POST", self.hub.url + "/v1/items", token or self.sender, client or self.old,
+                           {"key": "k", "title": "t"})
+
+    def listed(self):
+        body = call("GET", self.hub.url + "/v1/tokens", self.owner)[1]
+        return {t["name"]: t for t in body["tokens"]}
+
+    def test_owner_only(self):
+        for tok in (self.sender, self.reader):
+            self.assertEqual(call_status("POST", self.url(), tok)[0], 403)
+            self.assertEqual(call_status("DELETE", self.url(), tok)[0], 403)
+        self.assertEqual(call_status("POST", self.url(), "ny_nope")[0], 401)
+        self.assertEqual(call_status("POST", self.url("nobody"), self.owner)[0], 404)
+        status, body = call_status("POST", self.url("mac"), self.owner)
+        self.assertEqual((status, body["error"]), (400, "invalid"))  # only senders run the CLI
+        self.assertEqual(self.hub.store.update_requests(), {})
+
+    def test_flag_in_sender_responses_until_cleared(self):
+        self.post_item()  # reports 0.0.9
+        self.assertNotIn("update_requested", self.post_item()[1])
+        status, body = call("POST", self.url(self.srec["id"]), self.owner)
+        now = hubmod.fmt_ts(int(self.clock() * 1000))
+        self.assertEqual(body, {"id": self.srec["id"], "name": "devbox", "update_requested_at": now})
+        self.assertEqual(self.listed()["devbox"]["update_requested_at"], now)
+        self.assertIsNone(self.listed()["ci"]["update_requested_at"])
+        # Every sender response carries it: post, resolve, token-checked health.
+        self.assertIs(self.post_item()[1]["update_requested"], True)
+        self.assertIs(call("POST", self.hub.url + "/v1/items/resolve", self.sender, self.old, {"key": "k"})[1]["update_requested"], True)
+        self.assertIs(call("GET", self.hub.url + "/v1/health", self.sender)[1]["update_requested"], True)
+        # Not to other tokens, not on errors, not to the owner.
+        self.assertNotIn("update_requested", self.post_item(self.other)[1])
+        self.assertNotIn("update_requested", call("GET", self.hub.url + "/v1/tokens", self.owner)[1])
+        status, body = call_status("POST", self.hub.url + "/v1/items", self.sender, self.old, {"title": ""})
+        self.assertEqual(status, 400)
+        self.assertNotIn("update_requested", body)
+        # Withdrawn: gone from responses and the list; clearing twice is fine.
+        self.assertEqual(call("DELETE", self.url(), self.owner)[1]["update_requested_at"], None)
+        self.assertEqual(call("DELETE", self.url(), self.owner)[0], 200)
+        self.assertNotIn("update_requested", self.post_item()[1])
+        self.assertIsNone(self.listed()["devbox"]["update_requested_at"])
+
+    def test_clears_when_the_reported_cli_changes(self):
+        self.post_item()
+        call("POST", self.url(), self.owner)
+        self.assertIs(self.post_item(client="cli=0.0.9")[1]["update_requested"], True)
+        # A request without the header (old hook calling curl) keeps it.
+        self.assertIs(call("GET", self.hub.url + "/v1/health", self.sender)[1]["update_requested"], True)
+        self.assertNotIn("update_requested", self.post_item(client="cli=0.1.0")[1])
+        self.assertIsNone(self.listed()["devbox"]["update_requested_at"])
+
+    def test_unknown_version_adopts_the_first_report(self):
+        call("POST", self.url(), self.owner)  # never seen: no baseline
+        self.assertIs(call("GET", self.hub.url + "/v1/health", self.sender)[1]["update_requested"], True)
+        self.assertIs(self.post_item(client="cli=0.0.9")[1]["update_requested"], True)  # baseline 0.0.9
+        self.assertIs(self.post_item(client="cli=0.0.9")[1]["update_requested"], True)
+        self.assertNotIn("update_requested", self.post_item(client="cli=0.0.10")[1])
+
+    def test_a_current_machine_clears_at_once(self):
+        call("POST", self.url(), self.owner)
+        self.assertNotIn("update_requested", self.post_item(client="cli=" + hubmod.VERSION)[1])
+
+    def test_revoked_tokens_lose_requests_and_nothing_replicates(self):
+        call("POST", self.url(), self.owner)
+        with self.hub.store.lock:
+            kinds = {r[0] for r in self.hub.store.conn.execute("SELECT kind FROM outbox")}
+        self.assertLessEqual(kinds, {"item", "token", "invite"})
+        self.hub.store.revoke_token("devbox")
+        self.assertEqual(call_status("POST", self.url(), self.owner)[0], 404)
+        self.hub.store.purge()
+        self.assertEqual(self.hub.store.update_requests(), {})
+
+    def test_admin_tool(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        import needs_you_admin as admin  # hub/ is on sys.path (support.py)
+        db = self.hub.store.path
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(admin.main(["--db", db, "--json", "token", "request-update", "devbox"]), 0)
+        self.assertEqual(json.loads(out.getvalue())["name"], "devbox")
+        self.assertIn(self.srec["id"], self.hub.store.update_requests())
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(admin.main(["--db", db, "token", "clear-update", "devbox"]), 0)
+            self.assertEqual(admin.main(["--db", db, "token", "request-update", "nobody"]), 1)
+        self.assertEqual(self.hub.store.update_requests(), {})
 
 
 class Migration(HubTestCase):
