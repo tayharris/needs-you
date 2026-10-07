@@ -26,6 +26,7 @@ let entries =
     + testEntries(PanelPositionTests.self, PanelPositionTests.allTests)
     + testEntries(PrefsMigrationTests.self, PrefsMigrationTests.allTests)
     + testEntries(OrcaJumpTests.self, OrcaJumpTests.allTests)
+    + testEntries(TerminalJumpTests.self, TerminalJumpTests.allTests)
     + testEntries(PanelStyleTests.self, PanelStyleTests.allTests)
     + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
     + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)

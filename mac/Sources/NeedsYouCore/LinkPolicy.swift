@@ -29,10 +29,11 @@ public enum LinkPolicy {
     }
 
     /// The URL to act on, or nil if the string isn't an allowed, well-formed link. The
-    /// app's own scheme counts for one path only, the Orca terminal jump; callers hand
-    /// those to `OrcaJump`, never to NSWorkspace (that would route back to this app).
+    /// app's own scheme counts only for the actions in `appActionPaths` that parse
+    /// (`AppAction`: the Orca jump, the terminal jump); callers hand those to their
+    /// runner, never to NSWorkspace (that would route back to this app).
     public static func openableURL(_ string: String) -> URL? {
-        if let jump = OrcaJump.parse(string) { return jump.url }
+        if let action = AppAction.parse(string) { return action.url }
         return externalURL(string)
     }
 
