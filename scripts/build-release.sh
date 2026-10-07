@@ -5,9 +5,11 @@
 #
 # Writes:
 #   NeedsYou-X.Y.Z-macos.zip      the app, ad-hoc signed (mac/scripts/bundle.sh)
+#   NeedsYou-X.Y.Z.dmg            the same app in a disk image with an Applications link
+#                                 (needs hdiutil, so macOS only; skipped with a message elsewhere)
 #   needs-you-server-X.Y.Z.tar.gz hub, CLI, scripts, deploy, integrations, docs (git archive HEAD)
 #   needs-you-cli-X.Y.Z           the sender CLI, one file
-#   SHA256SUMS                    of the three above
+#   SHA256SUMS                    of the assets above
 #   NOTES.md                      release notes: the CHANGELOG section plus install steps
 #                                 (not an asset, so not in SHA256SUMS)
 #
@@ -52,6 +54,17 @@ if [ "${NEEDS_YOU_SKIP_APP:-}" != 1 ]; then
   build="$OUT/.app-build"
   NEEDS_YOU_VERSION="$V" NEEDS_YOU_DIST="$build" "$ROOT/mac/scripts/bundle.sh"
   ditto -c -k --keepParent "$build/NeedsYou.app" "$OUT/NeedsYou-$V-macos.zip"
+  if command -v hdiutil >/dev/null 2>&1; then
+    # The drag-to-install layout: the app next to a link to /Applications.
+    stage="$OUT/.dmg-stage"
+    mkdir -p "$stage"
+    ditto "$build/NeedsYou.app" "$stage/NeedsYou.app"
+    ln -s /Applications "$stage/Applications"
+    hdiutil create -volname NeedsYou -srcfolder "$stage" -format UDZO -ov "$OUT/NeedsYou-$V.dmg"
+    rm -rf "$stage"
+  else
+    echo "build-release: hdiutil not found (it ships with macOS), skipping NeedsYou-$V.dmg" >&2
+  fi
   rm -rf "$build"
 fi
 
@@ -64,7 +77,7 @@ if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$@"; }; else su
 (
   cd "$OUT"
   assets=()
-  for f in "NeedsYou-$V-macos.zip" "needs-you-server-$V.tar.gz" "needs-you-cli-$V"; do
+  for f in "NeedsYou-$V-macos.zip" "NeedsYou-$V.dmg" "needs-you-server-$V.tar.gz" "needs-you-cli-$V"; do
     [ -f "$f" ] && assets+=("$f")
   done
   sum "${assets[@]}" >SHA256SUMS
@@ -75,7 +88,7 @@ if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$@"; }; else su
   cat <<EOF
 ## Install
 
-**Mac app.** Download \`NeedsYou-$V-macos.zip\`, unzip it and drag \`NeedsYou.app\` to \`/Applications\`. Its built-in hub needs \`/usr/bin/python3\`, which comes with Apple's Command Line Tools. Without them, Settings says *Python 3 isn't available on this Mac*: run \`xcode-select --install\` in Terminal, wait for it to finish, then quit and reopen the app.
+**Mac app.** Download \`NeedsYou-$V.dmg\`, open it and drag \`NeedsYou.app\` onto the \`Applications\` link. Or download \`NeedsYou-$V-macos.zip\`, unzip it and drag \`NeedsYou.app\` to \`/Applications\`. Its built-in hub needs \`/usr/bin/python3\`, which comes with Apple's Command Line Tools. Without them, Settings says *Python 3 isn't available on this Mac*: run \`xcode-select --install\` in Terminal, wait for it to finish, then quit and reopen the app.
 
 The app is **ad-hoc signed, not notarized**, so macOS blocks the first launch of a downloaded copy:
 

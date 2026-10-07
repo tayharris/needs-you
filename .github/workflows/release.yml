@@ -1,11 +1,21 @@
-# Push a vX.Y.Z tag -> tests -> a DRAFT GitHub Release with the Mac app zip, the server
-# tarball, the CLI and SHA256SUMS. A person reviews and publishes the draft.
+# Push a vX.Y.Z tag -> tests -> a DRAFT GitHub Release with the Mac app (DMG and zip),
+# the server tarball, the CLI and SHA256SUMS. A person reviews and publishes the draft.
 # The app is ad-hoc signed; the notes carry the Gatekeeper steps. See docs/roadmap/ci-cd.md.
+#
+# Dry run: Actions -> release -> Run workflow (or `gh workflow run release.yml --ref <branch>
+# -f dry_run=true`). It builds every asset and uploads them as a workflow artifact; it
+# creates no release and pushes no tag. A non-dry dispatch only drafts from a tag ref.
 name: release
 
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and upload the assets as a workflow artifact only (no release, no tag)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -19,18 +29,36 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check the ref
+        if: env.DRY_RUN != 'true' && github.ref_type != 'tag'
+        run: |
+          echo "A release needs a vX.Y.Z tag ref; run with dry_run=true from a branch." >&2
+          exit 1
       - name: Build assets
         env:
-          NEEDS_YOU_TAG: ${{ github.ref_name }}
+          NEEDS_YOU_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: scripts/build-release.sh "$RUNNER_TEMP/release"
       - name: Verify checksums
         working-directory: ${{ runner.temp }}/release
-        run: shasum -a 256 -c SHA256SUMS
+        run: |
+          ls NeedsYou-*.dmg NeedsYou-*-macos.zip
+          shasum -a 256 -c SHA256SUMS
+      - name: Upload the dry-run assets
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dry-run
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 7
       - name: Draft the release
+        if: env.DRY_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -38,4 +66,4 @@ jobs:
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "needs-you ${TAG#v}" --notes-file NOTES.md \
-            NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* SHA256SUMS
+            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* SHA256SUMS
