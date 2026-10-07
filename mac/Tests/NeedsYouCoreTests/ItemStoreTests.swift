@@ -228,7 +228,23 @@ final class ItemStoreLaterTests: XCTestCase {
         ("testHoldsGoAwayWithTheirItem", testHoldsGoAwayWithTheirItem),
         ("testTwinReplacementKeepsTheHold", testTwinReplacementKeepsTheHold),
         ("testLaterOrderAndContext", testLaterOrderAndContext),
+        ("testHeldItemThatStopsBeingNeedsLeavesLater", testHeldItemThatStopsBeingNeedsLeavesLater),
     ]
+
+    // An agent's "waiting" card held by a focus, re-posted as done: it's a Recent row now,
+    // not also under Later (and not in the "3 waited" peek).
+    func testHeldItemThatStopsBeingNeedsLeavesLater() {
+        var store = ItemStore(items: [item("a"), item("old", key: "k:same")])
+        store.holdForLater(id: "a", at: t0)
+        store.holdForLater(id: "old", at: t0)
+        store.merge([item("a", kind: .done, updated: 5), item("new", key: "k:same", kind: .info, updated: 5)],
+                    isFullSnapshot: false, now: t0)
+        XCTAssertFalse(store.isHeldForLater("a"))
+        XCTAssertFalse(store.isHeldForLater("new"))
+        XCTAssertTrue(store.laterItems(now: t0).isEmpty)
+        XCTAssertEqual(Set(store.recent(in: .work, now: t0).map(\.id)), ["a", "new"])
+        XCTAssertTrue(store.releaseLater(now: t0).isEmpty)
+    }
 
     func testHeldItemsLeaveTheCountAndList() {
         var store = ItemStore(items: [item("a"), item("b", priority: .urgent)])

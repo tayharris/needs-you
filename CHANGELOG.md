@@ -12,6 +12,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).
 - Mac app: an item a sender resolves or dismisses (`needs-you resolve`, a hook) now leaves the panel on the next poll, or at once with live updates. It used to stay up to 5 minutes, until the next full poll, because incremental polls threw away closed items. Polls also use the hub's `server_time` cursor and follow `more`, as `docs/API.md` describes, so an item stored in the same millisecond as a poll isn't missed.
+- Mac app: a card held under **Later** (by a focus or snooze) that its sender re-posts as done or info leaves Later. It used to show both under Later and in Recent, and count in the "N waited" peek.
 
 ## [0.1.2] - 2026-10-07
 
