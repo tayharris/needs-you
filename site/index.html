@@ -31,6 +31,7 @@
       <nav aria-label="Primary">
         <a href="#how">How it works</a>
         <a class="nav-wide" href="#inside">Under the hood</a>
+        <a class="nav-wide" href="#works">Works with</a>
         <a href="#install">Install</a>
         <a href="#source">Source</a>
       </nav>
@@ -189,6 +190,38 @@
         </table>
       </div>
       <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a data-repo="/blob/main/docs/guides/concepts.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/concepts.md">Words</a> and <a data-repo="/blob/main/docs/HUB.md#resource-use" href="https://github.com/tayharris/needs-you/blob/main/docs/HUB.md#resource-use">Server hubs</a>.</p>
+    </section>
+
+    <section id="works" aria-labelledby="works-title">
+      <h2 id="works-title">Works with</h2>
+      <!-- The "Works with" list: edit it here (and the matching line in README.md).
+           Move an agent from Coming soon to Supported, with a link to its guide, only once
+           its integration is merged and tested. Text only, no third-party logos. -->
+      <div class="works">
+        <div class="works-group">
+          <h3 class="works-h3">Supported</h3>
+          <ul class="works-list">
+            <li><a data-repo="/blob/main/docs/guides/claude-code.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/claude-code.md">Claude Code</a> <span>hooks + skill</span></li>
+            <li><a data-repo="/blob/main/docs/guides/orca.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">Orca</a> <span>automation prompt blocks</span></li>
+          </ul>
+        </div>
+        <div class="works-group">
+          <h3 class="works-h3">Coming soon</h3>
+          <ul class="works-list works-soon">
+            <li>Codex</li>
+            <li>Kimi</li>
+            <li>Grok</li>
+            <li>Gemini CLI</li>
+            <li>Cursor</li>
+            <li>GitHub Copilot</li>
+            <li>Aider</li>
+            <li>Cline</li>
+            <li>Continue</li>
+            <li>opencode</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a data-repo="/blob/main/docs/guides/add-a-sender.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/add-a-sender.md">Add a sender</a>.</p>
     </section>
 
     <section id="install" aria-labelledby="install-title">
