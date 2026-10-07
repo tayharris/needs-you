@@ -41,3 +41,6 @@ outbox/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Local scratch: session prompts and notes, never committed
+temp/
