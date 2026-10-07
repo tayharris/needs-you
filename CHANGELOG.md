@@ -7,6 +7,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - Mac app: a card you mark **Done** (or dismiss) right after opening the panel no longer flashes back for a poll. Opening the panel marks cards seen, and a poll that brought the seen version before the Done reached the hub put the card back; now only a change from its sender (new title, body, priority or steps) brings a closed card back.
+- Mac app: **changing hubs, or turning Run hub on this Mac on or off, keeps your card snoozes, what's held under Later and the cards you just closed.** They were wiped, so held cards rejoined the list without a peek and snoozed or just-closed ones came back. They now apply to the same items on the new hub (by item id, or by the sender's key on a hub that doesn't replicate with the old one; a Done stays with the hub it was sent to).
 
 ## [0.1.3] - 2026-10-07
 

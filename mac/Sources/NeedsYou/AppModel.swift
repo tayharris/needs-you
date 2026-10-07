@@ -361,7 +361,10 @@ final class AppModel: ObservableObject {
         pollTask?.cancel()
         injectTask?.cancel()
         feedGeneration += 1
-        store = ItemStore()
+        // The items start over (the new hub's first poll is a full one), but card snoozes,
+        // Later holds and local closes carry over: the same items come back from a hub
+        // that replicates with the old one.
+        store = store.carryingLocalState()
         planner = PollPlanner()
         pollCursor = nil
         pollNext = nil
@@ -771,7 +774,11 @@ final class AppModel: ObservableObject {
             do {
                 try await feed.patch(id: item.id, ItemPatch(status: status))
             } catch {
-                guard generation == feedGeneration else { return }
+                guard generation == feedGeneration else {
+                    // The feed changed meanwhile and carried the close over: let it go.
+                    store.forgetClose(id: item.id)
+                    return
+                }
                 store.restore(removed)
                 lastError = "Couldn't update item"
             }
