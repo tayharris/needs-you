@@ -16,6 +16,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - Mac app: polls send the hub's new `next` cursor back (with `since`, so older hubs keep working) and page by it, so a burst of more than 500 changes in one millisecond can no longer stall live updates.
+- CLI: **two runs at once could send out of order.** While one run held the outbox lock to send queued requests, another sent its own request straight away, so a `resolve K` could reach the hub before a queued `add K` and the item stayed open. Now a request always goes out behind what is queued: it waits up to 2 s for the other run, then stays queued behind it and exits 0.
+- CLI: a queued item the hub refused with `429 too_many_open` (the open-items guard) was moved to `outbox/failed/` and never sent. It now stays queued and is retried on the next run; the requests behind it still go out, and a later resolve of the same key cancels it.
+- CLI: `needs-you health` reported a reachable hub as `OK` with no token configured (`token=-`), so a machine that couldn't post looked healthy. It now says the token is missing and exits 1.
+- CLI: removed handling for a `404` on `resolve`, which the hub never sends (resolving nothing is `200` with `"resolved": 0`).
 - Hub: **one record a peer couldn't read stopped replication to it for good.** A record with, say, a status from a newer hub made the peer refuse the whole push batch, which was retried forever with everything queued behind it, and a pull page with such a record never moved its cursor. Now the readable records go through, the unreadable one is skipped, logged and counted in `/v1/health` (`skipped_push` / `skipped_pull`), and timeouts and `5xx` are still retried.
 - Hub: **`since` paging could repeat the same page forever** when more than `limit` items were stored in one millisecond (a replicated batch) or expired since the last poll; `more` stayed true and `server_time` never moved. A `since` page that stops early now ends on a whole millisecond and holds every item up to it.
 - Mac app: **What the words mean** in Settings → Your inbox looks like a link now (it was grey like the text around it).

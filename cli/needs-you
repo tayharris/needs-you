@@ -51,8 +51,12 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
   needs-you self-update                              same as `update` (the old name)
 
 If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ and the
-command still exits 0. Every invocation sends the outbox first. The outbox is capped
-(oldest dropped, with a warning), so a hub that is gone for weeks can't fill the disk.
+command still exits 0. Every invocation sends the outbox first, and a request goes out only
+behind what is queued, so `resolve K` never overtakes a queued `add K`. While another run is
+sending the outbox, a request waits for it up to 2 s, then stays queued behind it (exit 0).
+A queued item the hub refuses for now (429, the open-items guard) stays queued and is retried
+later; a later resolve of its key cancels it. The outbox is capped (oldest dropped, with a
+warning), so a hub that is gone for weeks can't fill the disk.
 
 Steps are a checklist of what the person has to do, in order (at most 10; text <= 200
 chars, limited markdown). `--step "Text=URL"` gives the step a link button labelled
@@ -643,8 +647,17 @@ def pending() -> List[str]:
     return [os.path.join(d, n) for n in names]
 
 
-def _lock():  # type: ignore[no-untyped-def]
-    """Non-blocking exclusive lock on the outbox, so two invocations don't double-send."""
+# How long a request waits for another run that is sending the outbox before it queues
+# behind it instead (rule: never hang the caller). Once one wait timed out, this process
+# doesn't wait again (a `flush` resolving many ended sessions stays quick).
+LOCK_WAIT_SECONDS = 2.0
+_LOCK_GAVE_UP = False
+
+
+def _lock(wait: float = 0.0):  # type: ignore[no-untyped-def]
+    """Exclusive lock on the outbox, so two invocations don't double-send or overtake each
+    other. Waits up to `wait` seconds for it; None if it's still held (or can't be taken)."""
+    global _LOCK_GAVE_UP
     d = outbox_dir()
     try:
         os.makedirs(d, mode=0o700, exist_ok=True)
@@ -652,12 +665,18 @@ def _lock():  # type: ignore[no-untyped-def]
         fd = os.open(os.path.join(d, ".lock"), os.O_WRONLY | os.O_CREAT | os.O_APPEND
                      | getattr(os, "O_NOFOLLOW", 0), 0o600)
         fh = os.fdopen(fd, "a")
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            fh.close()
-            return None
-        return fh
+        deadline = time.monotonic() + (0.0 if _LOCK_GAVE_UP else wait)
+        while True:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return fh
+            except OSError:
+                if time.monotonic() >= deadline:
+                    fh.close()
+                    if wait > 0:
+                        _LOCK_GAVE_UP = True
+                    return None
+                time.sleep(0.05)
     except (OSError, ImportError):
         return None
 
@@ -674,21 +693,42 @@ def _remove(path: str) -> None:
         pass
 
 
-def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
-    """Send queued entries oldest first. Stops at the first unreachable attempt.
-    Returns (sent, dropped, remaining)."""
-    files = pending()
-    if files:
-        prune()
-        files = pending()
-    if not files or not cfg.ok:
-        return 0, 0, len(files)
-    lock = _lock()
-    if lock is None:
-        return 0, 0, len(pending())
-    sent = dropped = 0
-    try:
-        for path in pending():
+class _Flush:
+    """One pass over the outbox, under its lock. `results` has the outcome for each entry
+    sent or refused: (url, status, response) or a Rejected."""
+
+    def __init__(self) -> None:
+        self.sent = self.dropped = 0
+        self.unreachable: Optional[Unreachable] = None
+        self.results: Dict[str, Any] = {}
+        self.tried: set = set()
+
+
+def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None) -> _Flush:
+    """Send queued entries oldest first; the caller holds the lock. Stops at the first
+    unreachable attempt. Entries queued meanwhile (by runs that gave up waiting for the lock)
+    are sent too, in order.
+
+    `429 too_many_open` (the volume guard) on a queued add keeps it queued for a later run,
+    and the entries behind it still go (a resolve among them may be what lowers the count).
+    So per-key order holds: a later resolve of that key makes the held add moot (it's
+    deleted), and a later add of the key replaces it (a re-post is the full current view).
+    `mine` is the caller's own entry: a refusal deletes it (the caller reports it) instead of
+    moving it to outbox/failed/ or holding it."""
+    out = _Flush()
+    held: Dict[str, List[str]] = {}  # key -> queued adds kept back by 429
+
+    def drop_held(key: Optional[str]) -> None:
+        if key:
+            for p in held.pop(key, []):
+                _remove(p)
+
+    while out.unreachable is None:
+        fresh = [p for p in pending() if p not in out.tried]
+        if not fresh:
+            break
+        for path in fresh:
+            out.tried.add(path)
             try:
                 with open(path, "r", encoding="utf-8") as fh:
                     entry = json.load(fh)
@@ -699,27 +739,72 @@ def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
             if not (isinstance(entry, dict) and entry.get("method") == "POST"
                     and entry.get("path") in QUEUED_PATHS and isinstance(entry.get("body"), dict)):
                 _move_failed(path)  # unreadable, or not an entry this CLI wrote
-                dropped += 1
+                out.dropped += 1
                 continue
+            is_resolve = entry["path"].endswith("/resolve")
+            key = entry["body"].get("key")
+            key = key if isinstance(key, str) and key else None
             try:
-                url, _status, _body = send(cfg, entry["method"], entry["path"], entry.get("body"))
+                result = send(cfg, entry["method"], entry["path"], entry.get("body"))
                 _remove(path)
-                sent += 1
-                if verbose:
-                    warn("sent queued %s %s via %s" % (entry["method"], entry["path"], url))
+                out.sent += 1
+                out.results[path] = result
+                drop_held(key)  # resolved, or re-posted in full: the held add is moot
+                if verbose and path != mine:
+                    warn("sent queued %s %s via %s" % (entry["method"], entry["path"], result[0]))
             except Rejected as e:
-                if e.status == 404 and entry["path"].endswith("/resolve"):
-                    _remove(path)  # nothing open with that key: the resolve is moot
-                    sent += 1
+                out.results[path] = e
+                if path == mine:
+                    _remove(path)
+                    continue
+                if e.status == 429 and not is_resolve:
+                    if key:
+                        drop_held(key)
+                        held[key] = [path]
+                    if verbose:
+                        warn("hub refused a queued item for now (%s); kept it queued" % e)
                     continue
                 warn("hub rejected a queued request (%s); moved it to outbox/failed/" % e)
                 _move_failed(path)
-                dropped += 1
-            except Unreachable:
+                out.dropped += 1
+            except Unreachable as e:
+                out.unreachable = e
                 break
+    return out
+
+
+def flush(cfg: Config, verbose: bool = False) -> Tuple[int, int, int]:
+    """Send queued entries oldest first, if no other run is doing it right now. Stops at the
+    first unreachable attempt. Returns (sent, dropped, remaining)."""
+    files = pending()
+    if files:
+        prune()
+        files = pending()
+    if not files or not cfg.ok:
+        return 0, 0, len(files)
+    lock = _lock()
+    if lock is None:
+        return 0, 0, len(pending())
+    try:
+        out = _flush_locked(cfg, verbose)
     finally:
         lock.close()
-    return sent, dropped, len(pending())
+    _catch_stragglers(cfg, out)
+    return out.sent, out.dropped, len(pending())
+
+
+def _catch_stragglers(cfg: Config, done: _Flush) -> None:
+    """An entry queued by a run that gave up waiting just as we released the lock would sit
+    until the next run: send it now (if the hub was reachable and nobody else has the lock)."""
+    if done.unreachable is not None or not [p for p in pending() if p not in done.tried]:
+        return
+    lock = _lock()
+    if lock is None:
+        return  # the run that has it sends them
+    try:
+        _flush_locked(cfg)
+    finally:
+        lock.close()
 
 
 # ---------------------------------------------------------------------------
@@ -894,23 +979,47 @@ def _move_failed(path: str) -> None:
 
 def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bool,
             as_json: bool) -> int:
+    """Send one request in order: it joins the outbox and goes out behind everything queued
+    before it, so a `resolve K` can never overtake a queued `add K`, also when another run is
+    sending the outbox right now (we wait for it up to LOCK_WAIT_SECONDS, then leave ours
+    queued behind its entries and exit 0)."""
     if not cfg.ok:
         f = queue(method, path, body)
         warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); queued %s" % (config_path(), f))
         return 0
     try:
-        url, status, resp = send(cfg, method, path, body)
-    except Unreachable as e:
-        f = queue(method, path, body)
-        warn("no hub reachable (%s); queued %s" % (e, os.path.basename(f)))
-        return 0
-    except Rejected as e:
-        if e.status == 404 and path.endswith("/resolve"):
-            if not quiet:
-                warn("nothing open with that key/id (already resolved?)")
+        import fcntl  # noqa: F401  (the outbox lock)
+        mine: Optional[str] = queue(method, path, body)
+    except (OSError, ImportError):
+        mine = None  # no usable outbox here: send directly, as there's nothing to keep order with
+    if mine is None:
+        try:
+            result: Any = send(cfg, method, path, body)
+        except Unreachable as e:
+            warn("no hub reachable (%s), and the outbox can't be written: dropped" % e)
             return 0
+        except Rejected as e:
+            result = e
+    else:
+        lock = _lock(wait=LOCK_WAIT_SECONDS)
+        if lock is None:
+            warn("another needs-you run is sending the outbox; queued %s behind it" % os.path.basename(mine))
+            return 0
+        try:
+            out = _flush_locked(cfg, mine=mine)
+        finally:
+            lock.close()
+        _catch_stragglers(cfg, out)
+        result = out.results.get(mine)
+        if result is None:
+            if os.path.exists(mine):
+                warn("no hub reachable (%s); queued %s" % (out.unreachable, os.path.basename(mine)))
+            return 0
+    if isinstance(result, Rejected):
+        e = result
         warn("hub rejected the request: HTTP %d %s" % (e.status, clean(e.body.get("message") or e.body.get("error") or "")))
         return 2
+    url, status, resp = result
     if as_json:
         print(json.dumps(resp, sort_keys=True))
     elif not quiet:
@@ -1085,8 +1194,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
         return run_command(cfg, args)
 
-    # Every invocation drains the outbox first, so queued items go out in order.
-    sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
+    # Every invocation drains the outbox first, so queued items go out in order (add and
+    # resolve do it in deliver(), holding the outbox lock until their own request is sent).
+    sent = dropped = 0
+    remaining = len(pending())
+    if args.cmd in ("flush", "health"):
+        sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
 
     if args.cmd == "flush":
         reaped = reap_leases(cfg, verbose=not args.quiet)
@@ -2144,7 +2257,11 @@ def health(cfg: Config, queued: int) -> int:
         except (OSError, ValueError) as e:
             print("%s  DOWN  %s" % (url, getattr(e, "reason", e)))
             continue
-        if status == 200 and body.get("token_error"):
+        if status == 200 and not cfg.token:
+            # The hub is up, but nothing could be posted to it: say so, don't count it healthy.
+            print("%s  UP    hub=%s but no token is configured (NEEDS_YOU_TOKEN in %s)"
+                  % (url, clean(body.get("hub_id")), config_path()))
+        elif status == 200 and body.get("token_error"):
             print("%s  UP    hub=%s but the token was rejected: %s" % (url, clean(body.get("hub_id")),
                                                                     clean(body["token_error"])))
         elif status == 200:
