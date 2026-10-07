@@ -4,6 +4,19 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-07
+
+### Upgrade note
+
+The hub's database moves to schema 6 the first time 0.1.3 opens it (the Mac app's built-in hub and server hubs alike). An older hub can't open it afterwards, so update server hubs with the Mac (`git pull && sudo ./scripts/install-hub.sh`), a copy of the old database is kept next to it as `hub.db.bak-5` if you ever need to roll back. Mixed versions still replicate while you update: a 0.1.3 hub works with 0.1.2 peers and clients.
+
+### Added
+
+- **Codex CLI, Gemini CLI and opencode.** The same "agent is waiting" and approval cards Claude Code has: `--codex-hooks user`, `--gemini-hooks user` or `--opencode-plugin` on the invite's shell one-liner (the agent prompt says which). Each clears its card when you answer, and `needs-you doctor` checks it. Guides: [Codex CLI](docs/guides/codex.md), [Gemini CLI](docs/guides/gemini.md), [opencode](docs/guides/opencode.md). Codex asks you to trust the new hook once under `/hooks`.
+- **[Custom connector guide](docs/guides/custom-connector.md)** for any other agent, tool or service: the exact item format (every field, required or optional, limits), how to map a tool's events to cards, and tested examples for a JSON hook, a webhook relay and a notification command. It starts with a prompt to paste into an agent so it builds the connector itself.
+- **Guides on the site:** every guide is at [needsyou.app/guides](https://needsyou.app/guides/), built from the markdown in the repo, with a Works with list on the home page.
+- **`needs-you uninstall-hooks`** removes the agent hooks offline (no hub or invite link needed).
+
 ### Changed (API)
 
 - `GET /v1/items` responses carry **`next`**, an opaque cursor, and the hub accepts it back as **`cursor=`**. It follows the hub's per-write sequence, so paging always moves on and a page never holds more than `limit` items. Send `cursor=<next>&since=<server_time>`: an older hub ignores `cursor` and uses `since`, and a newer hub falls back to `since` when the cursor comes from a replaced database. `since` alone keeps working for older clients. See [API.md](docs/API.md#get-v1items-reader).

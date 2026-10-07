@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.1.2
+# needs-you-version: 0.1.3
 # install-gemini-hooks.sh: add the needs-you hooks to Gemini CLI's settings.json.
 #
 #   ./install-gemini-hooks.sh                  ~/.gemini/settings.json
