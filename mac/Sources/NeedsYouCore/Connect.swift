@@ -215,16 +215,23 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         self.hubInstallCommand = hubInstallCommand
     }
 
-    /// What to paste into an agent on the new machine.
+    /// The installer flags for a machine that runs Claude Code: hooks, skill, alerts on
+    /// (docs/guides/claude-code-everywhere.md). The join page lists the rest.
+    public static let claudeFlags = "--claude-hooks user --skill --alerts"
+
+    /// What to paste into an agent on the new machine. A hub that predates the Claude
+    /// flags sends a shorter prompt; this one is used instead.
     public var agentPrompt: String {
-        hubAgentPrompt ?? "Set up needs-you alerts on this machine: read \(joinURL) and follow it."
+        if let hubAgentPrompt, hubAgentPrompt.contains("--claude-hooks") { return hubAgentPrompt }
+        return "Set up needs-you alerts on this machine: read \(joinURL) and follow it. "
+            + "If this machine runs Claude Code, use \(Self.claudeFlags)."
     }
-    /// What to run on the new machine.
+    /// What to run on the new machine: the full Claude Code setup.
     public var shellOneLiner: String {
-        if let hubInstallCommand { return hubInstallCommand }
+        if let hubInstallCommand, hubInstallCommand.contains("--claude-hooks") { return hubInstallCommand }
         var base = joinURL
         while base.hasSuffix("/") { base.removeLast() }
-        return "curl -fsSL \(base)/install.sh | bash -s -- --yes"
+        return "curl -fsSL \(base)/install.sh | bash -s -- --yes \(Self.claudeFlags)"
     }
 }
 

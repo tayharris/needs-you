@@ -85,6 +85,9 @@ DOWNLOADS = {
     "SKILL.md": ("integrations/claude-code/skill/needs-you/SKILL.md", "text/markdown; charset=utf-8"),
 }
 
+# The invite installer flags for a machine that runs Claude Code: hooks, skill, alerts on.
+CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
+
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
 
@@ -1435,8 +1438,11 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
     out = {"join_url": join,
            "mac_url": "needsyou://connect?hub=%s&code=%s" % (urllib.parse.quote(public_url, safe=""), code)}
     if role == "sender":
-        out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes" % join
-        out["agent_prompt"] = "Set up needs-you alerts on this machine: read %s and follow it." % join
+        # The whole Claude Code setup (docs/guides/claude-code-everywhere.md); the join page
+        # lists the options for machines without Claude Code.
+        out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
+        out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
+                               "If this machine runs Claude Code, use %s." % (join, CLAUDE_INSTALL_FLAGS))
     return out
 
 

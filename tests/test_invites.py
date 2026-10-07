@@ -60,7 +60,11 @@ class Create(InviteCase):
         self.assertEqual(body["role"], "sender")
         self.assertIn("expires_at", body)
         self.assertEqual(body["install_command"],
-                         "curl -fsSL %s/install.sh | bash -s -- --yes" % body["join_url"])
+                         "curl -fsSL %s/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts"
+                         % body["join_url"])
+        self.assertEqual(body["agent_prompt"],
+                         "Set up needs-you alerts on this machine: read %s and follow it. If this machine "
+                         "runs Claude Code, use --claude-hooks user --skill --alerts." % body["join_url"])
         # >= 128 bits, url-safe, and only the hash is stored
         code = body["code"]
         self.assertGreaterEqual(len(code) - len("nyi_"), 22)

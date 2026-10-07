@@ -287,11 +287,12 @@ Response `201`:
  "mac_url": "needsyou://connect?hub=http%3A%2F%2Fhub-a.example.ts.net%3A8765&code=nyi_...",
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
- "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it."}
+ "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts."}
 ```
 
-`install_command` and `agent_prompt` are only present for `sender` invites. The URLs use the
+`install_command` and `agent_prompt` are only present for `sender` invites. Both set up Claude
+Code alerts (`--claude-hooks user --skill --alerts`); the join page lists the other options. The URLs use the
 hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
 
 ### `GET /v1/invites` (owner)
