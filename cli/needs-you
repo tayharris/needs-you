@@ -2289,8 +2289,10 @@ _OFF = ("0", "false", "no", "off")
 
 def _tilde(path: str) -> str:
     home = os.path.expanduser("~")
-    if path == home or path.startswith(home + os.sep):
-        return "~" + path[len(home):]
+    # Either side may be the resolved form (macOS: /var/... is /private/var/...).
+    for h, p in ((home, path), (os.path.realpath(home), os.path.realpath(path))):
+        if p == h or p.startswith(h + os.sep):
+            return "~" + p[len(h):]
     return path
 
 
