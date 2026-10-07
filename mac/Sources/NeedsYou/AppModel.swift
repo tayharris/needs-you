@@ -665,7 +665,7 @@ final class AppModel: ObservableObject {
         // Automatic expansions (NEEDS_YOU_EXPAND, the morning summary) never undo a hide.
         if visibility == .hidden && !byUser && !peeking { return }
         if byUser, let target = ExpandFocus.target(clicked: clicked, items: needsItems,
-                                                   lastOpenedAt: settings.pillLastOpenedAt) {
+                                                   lastOpenedAt: settings.pillLastOpenedAt, freshAt: store.freshAt) {
             focus(on: target)
         }
         expandedByUser = byUser

@@ -131,10 +131,15 @@ public enum PreviewLink {
 /// Which card the panel scrolls to and highlights when it opens: the clicked preview's
 /// item, else (a click on the pill) the newest card that arrived since the panel was last
 /// open, so a new alert is never left below the fold. Nil leaves the list at the top.
+/// `freshAt` is when a card last became new (`ItemStore.freshAt`: created, its content
+/// changed, or it turned into `needs`), the same rule as the pill's "N new".
 public enum ExpandFocus {
-    public static func target(clicked: String?, items: [Item], lastOpenedAt: Date?) -> String? {
+    public static func target(clicked: String?, items: [Item], lastOpenedAt: Date?,
+                              freshAt: (Item) -> Date = { $0.createdAt }) -> String? {
         if let clicked { return items.contains { $0.id == clicked } ? clicked : nil }
         guard let lastOpenedAt else { return nil }
-        return items.filter { $0.createdAt > lastOpenedAt }.max { $0.createdAt < $1.createdAt }?.id
+        return items.map { ($0, freshAt($0)) }
+            .filter { $0.1 > lastOpenedAt }
+            .max { $0.1 < $1.1 }?.0.id
     }
 }

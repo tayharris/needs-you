@@ -16,6 +16,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Mac app: opening a snoozed panel with the shortcut, or the 7:30 start-of-day summary opening it, ends the snooze like End Snooze does: what waited under **Later** joins the list. It used to stay under Later until the next day.
 - Mac app: a live update, **Refresh** or a wake that arrives while a poll is running is no longer dropped (its change waited up to 30 s for the next poll), and after changing hubs in Settings the new list loads at once even while a poll of the old hub was still waiting on it (it could show nothing for 30 s).
 - Mac app: **Show Floating Panel** in the menu bar menu shows the panel while it's open for a moment from a menu item (hidden, unchecked). It used to hide it instead.
+- Mac app: clicking the pill opens the panel at the newest card the pill counts as new, including one whose content changed or that turned into a `needs` item since you last looked. Only newly created cards were considered, so the panel could open at the top while the changed card sat below the fold.
 
 ## [0.1.2] - 2026-10-07
 
