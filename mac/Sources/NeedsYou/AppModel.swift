@@ -460,6 +460,7 @@ final class AppModel: ObservableObject {
             activeHub = page.source
             pollCursor = page.cursor
             store = updated
+            endPreview(ifGone: result.removed)
             if !stepTicks.isEmpty {
                 var ticks = stepTicks
                 ticks.retain(itemIDs: Set(updated.items.keys))
@@ -502,9 +503,18 @@ final class AppModel: ObservableObject {
         }
         onTick?(now)
         var pruned = store
-        if !pruned.prune(now: now).isEmpty || pruned.snoozedCardCount != store.snoozedCardCount {
+        let expired = pruned.prune(now: now)
+        if !expired.isEmpty || pruned.snoozedCardCount != store.snoozedCardCount {
             store = pruned
+            endPreview(ifGone: expired)
         }
+    }
+
+    /// The preview's item left the open set (its sender resolved it, it was closed here, or
+    /// it expired): take the preview down rather than keep announcing it.
+    private func endPreview(ifGone removed: [Item]) {
+        guard let shown = previewItem, removed.contains(where: { $0.id == shown.id }) else { return }
+        previewItem = nil
     }
 
     // MARK: Announcements
@@ -751,6 +761,7 @@ final class AppModel: ObservableObject {
 
     private func close(_ item: Item, status: ItemStatus) {
         guard let feed, let removed = store.closeLocally(id: item.id) else { return }
+        endPreview(ifGone: [removed])
         let generation = feedGeneration
         Task {
             do {
