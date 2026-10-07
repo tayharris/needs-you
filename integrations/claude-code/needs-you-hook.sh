@@ -8,7 +8,7 @@
 #
 # Reads the hook input JSON from stdin (session_id, cwd, message,
 # notification_type). The card says where the session runs: the tmux pane
-# (session:window.pane, plus the attach command), VS Code, or SSH. Always exits 0 and never prints to stdout, so it can't
+# (session:window.pane), VS Code, or SSH. Always exits 0 and never prints to stdout, so it can't
 # block or steer Claude. Installed by install-hooks.sh.
 #
 # Off unless one of these is true (so ordinary interactive use stays quiet):
@@ -187,8 +187,6 @@ if os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK
 elif os.environ.get("SSH_CONNECTION") and not tmux_target:
     where.append("SSH")
 lines.append("`%s` on `%s`%s" % (short_cwd, host, ", " + ", ".join(where) if where else ""))
-if tmux_target:
-    lines.append("Attach: `tmux attach -t %s`" % shlex.quote(tmux_target.split(":", 1)[0]))
 links = []
 orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
 if handle:

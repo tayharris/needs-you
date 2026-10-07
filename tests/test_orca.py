@@ -178,7 +178,7 @@ class HookOrcaBodyTests(unittest.TestCase):
                                      PATH=bindir + ":" + os.environ.get("PATH", "/usr/bin:/bin")))
         self.assertIn("`/home/me/wt/ACME-1/api` on `", body)
         self.assertIn(", tmux `kube:2.1`, VS Code", body)
-        self.assertIn("Attach: `tmux attach -t kube`", body)
+        self.assertNotIn("attach", body)
 
     def test_ssh_without_tmux(self):
         body = self.body(self.notify(ORCA_TERMINAL_HANDLE="", NEEDS_YOU_AGENT_ALERTS="1",
