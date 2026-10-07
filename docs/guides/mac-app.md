@@ -28,8 +28,9 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 |---|---|
 | A barely visible pill | Nothing needs you. Hover for "all clear" and the last check time. |
 | A pill with a number and a colored ring | Open `needs` items in the current context. Red = urgent, amber = normal, slate = low. |
-| `3 · 1` | 3 in the current context, 1 waiting in the other (work vs personal). |
+| `3 · 1` | 3 in the current context, 1 waiting in the other (work vs personal). Settings → Panel → **Collapsed pill** can show them as `W 3 \| P 1` instead, or split by priority. |
 | `3 +2`, a moon | 2 more are waiting under Later; a focus is on (see [Focus](#focus-heads-down-except-what-you-choose)). |
+| `3` `2 new` | 2 of the 3 arrived (or changed, or turned into `needs`) since you last opened the panel. Opening it clears the badge. |
 | The pill springs out with a title | A new item just arrived. |
 
 - **Click** the pill to expand the cards; **Escape** or click outside to collapse.
@@ -101,6 +102,10 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Links on one short row | Panel → Look → **Compact links** | Off, On (3 links, `+N` shows the rest) |
 | Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
 | See-through when the pointer isn't over it | Panel → Look → **Opacity** | 100%, 90%, 80%, 70%, 60% |
+| Size of the collapsed pill only | Panel → Collapsed pill → **Pill size** | Medium, Small, Large |
+| What the collapsed pill says | Panel → Collapsed pill → **Shows** | Count only; Count and top item (the top card's title, truncated); Minimal dot (a dot in the top priority's colour, the count on hover) |
+| How the count is split | Panel → Collapsed pill → **Split** | None (`3 · 1`); Work \| Personal (`W 3 \| P 1`, the current side brighter); By priority (urgent, normal and low counts in their colours, empty ones hidden) |
+| The `2 new` badge | Panel → Collapsed pill → **New since last opened** | On, Off |
 | The global shortcut | Panel → Keyboard | ⌃⌥Space, or record your own (it must use ⌃, ⌥ or ⌘) |
 | How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
 | How loud normal and low items are | Alerts → **Normal and low items** | Normal, Off, Subtle, Bright |
