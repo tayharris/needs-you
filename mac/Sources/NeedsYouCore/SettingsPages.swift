@@ -6,21 +6,24 @@ import Foundation
 
 /// One Settings page. (The name is from when these were tabs; menu items and links open
 /// one with `SettingsWindowController.show(tab:)`.)
+///
+/// The middle group is named after tasks, not parts: Your inbox (the hub inside this app),
+/// Connect a machine (make an invite link), Machines (who's connected) and Other hubs
+/// (advanced: joining another hub, adding one by hand, always-on server hubs).
 public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     case general
-    // Hubs
-    case thisMac, joinHub, invite, access, hubs
+    // Inbox and machines
+    case inbox, connect, machines, otherHubs
     // The app
     case panel, alerts, integrations, updates, advanced
 
     public var title: String {
         switch self {
         case .general: return "General"
-        case .thisMac: return "This Mac"
-        case .joinHub: return "Join a hub"
-        case .invite: return "Invite a machine"
-        case .access: return "Access"
-        case .hubs: return "Hubs (manual)"
+        case .inbox: return "Your inbox"
+        case .connect: return "Connect a machine"
+        case .machines: return "Machines"
+        case .otherHubs: return "Other hubs (advanced)"
         case .panel: return "Panel"
         case .alerts: return "Alerts"
         case .integrations: return "Integrations"
@@ -33,11 +36,10 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     public var symbol: String {
         switch self {
         case .general: return "gearshape"
-        case .thisMac: return "desktopcomputer"
-        case .joinHub: return "link"
-        case .invite: return "person.badge.plus"
-        case .access: return "key"
-        case .hubs: return "server.rack"
+        case .inbox: return "tray.full"
+        case .connect: return "plus.circle"
+        case .machines: return "desktopcomputer"
+        case .otherHubs: return "server.rack"
         case .panel: return "rectangle.on.rectangle"
         case .alerts: return "bell.badge"
         case .integrations: return "puzzlepiece.extension"
@@ -51,16 +53,14 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .general:
             return "Your name, starting at login, and demo mode."
-        case .thisMac:
-            return "The hub that runs inside this app. Your agents and servers send alerts to it."
-        case .joinHub:
-            return "Use a link from another Mac or a server hub to see its alerts here."
-        case .invite:
-            return "Make a link that sets up a server, an agent or another Mac to use your hub."
-        case .access:
-            return "Open invite links and the machines that can use your hub. Revoke any of them."
-        case .hubs:
-            return "Add a hub by its URL and a token, if you were given those instead of a link."
+        case .inbox:
+            return "This Mac holds your alerts: it runs the hub your machines and agents send to."
+        case .connect:
+            return "Make a link that sets up a server, an agent or another Mac to use your inbox."
+        case .machines:
+            return "Every machine connected to your inbox, and open invite links. Revoke any of them."
+        case .otherHubs:
+            return "Optional. Join a hub someone else runs, add one by URL, or use always-on server hubs."
         case .panel:
             return "How the floating pill and its cards look, where they show, and the shortcut."
         case .alerts:
@@ -77,23 +77,35 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     public var group: SettingsSidebarGroup {
         switch self {
         case .general: return .start
-        case .thisMac, .joinHub, .invite, .access, .hubs: return .hubs
+        case .inbox, .connect, .machines, .otherHubs: return .hubs
         case .panel, .alerts, .integrations, .updates, .advanced: return .app
         }
     }
 
-    /// Access lists the owner hub's invites and tokens, so it only shows with an owner
-    /// token (and not in demo mode). Every other page always shows; Invite a machine
+    /// Machines lists the owner hub's invites and tokens, so it only shows with an owner
+    /// token (and not in demo mode). Every other page always shows; Connect a machine
     /// explains how to get an owner token when there isn't one.
     public func isVisible(canInvite: Bool) -> Bool {
-        self != .access || canInvite
+        self != .machines || canInvite
     }
 
     /// The page to show for a request: a hidden page falls back to the nearest one that
-    /// explains why (Access → Invite a machine).
+    /// explains why (Machines → Connect a machine).
     public func resolved(canInvite: Bool) -> SettingsTab {
-        isVisible(canInvite: canInvite) ? self : .invite
+        isVisible(canInvite: canInvite) ? self : .connect
     }
+
+    // The old page names, so code written against them still lands on the right page.
+    @available(*, deprecated, renamed: "inbox")
+    public static let thisMac = SettingsTab.inbox
+    @available(*, deprecated, renamed: "connect")
+    public static let invite = SettingsTab.connect
+    @available(*, deprecated, renamed: "machines")
+    public static let access = SettingsTab.machines
+    @available(*, deprecated, renamed: "otherHubs")
+    public static let joinHub = SettingsTab.otherHubs
+    @available(*, deprecated, renamed: "otherHubs")
+    public static let hubs = SettingsTab.otherHubs
 }
 
 /// The sidebar's groups, in order.
@@ -106,7 +118,7 @@ public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
     public var title: String? {
         switch self {
         case .start: return nil
-        case .hubs: return "Hubs"
+        case .hubs: return "Inbox and machines"
         case .app: return "Needs You"
         }
     }
@@ -117,10 +129,80 @@ public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-// MARK: - Join a hub: the clipboard
+/// Links the Settings pages show, on GitHub in the repository the updater uses (https, so
+/// they pass the link allow-list).
+public enum SettingsLinks {
+    /// docs/HUB.md: optional always-on server hubs, set up from the command line.
+    public static func serverHubGuide(repository: String = UpdateSource.defaultRepository) -> URL {
+        URL(string: "https://github.com/\(repository)/blob/main/docs/HUB.md")!
+    }
 
-/// Settings → Join a hub: picking up a join link from the clipboard. The page reads the
-/// clipboard only while it is open (the person opened Settings), never in the background.
+    /// docs/guides/concepts.md: the words (hub, sender, reader, owner, link, server hub).
+    public static func wordsGuide(repository: String = UpdateSource.defaultRepository) -> URL {
+        URL(string: "https://github.com/\(repository)/blob/main/docs/guides/concepts.md")!
+    }
+}
+
+// MARK: - Connect a machine: the kinds of machine
+
+extension HubRole {
+    /// The choice on Connect a machine, in plain words.
+    public var connectTitle: String {
+        switch self {
+        case .sender: return "A server or agent that sends alerts"
+        case .reader: return "Another Mac that shows the same alerts"
+        case .owner: return "Another Mac that can also connect machines (advanced)"
+        }
+    }
+
+    /// One more sentence about the choice.
+    public var connectDetail: String {
+        switch self {
+        case .sender: return "It gets the needs-you command, not this app. It sends alerts but can't see yours."
+        case .reader: return "It needs this app. It shows the same alerts, but can't connect machines."
+        case .owner: return "Like another Mac, and it can also make links and revoke machines. Only for your own Macs."
+        }
+    }
+
+    /// The role on Machines.
+    public var machineLabel: String {
+        switch self {
+        case .sender: return "Sends alerts"
+        case .reader: return "Mac, shows alerts"
+        case .owner: return "Mac, owner"
+        }
+    }
+}
+
+// MARK: - Machines: one row
+
+/// The line under a machine's name on Machines: what it is, its open items and, for a
+/// sender, the CLI version it last reported.
+public enum MachineRowText {
+    /// A sender that hasn't reported a CLI version: it hasn't posted since it was updated
+    /// to a CLI that reports one (or hasn't posted at all).
+    public static let versionUnknown = "version unknown (hasn't posted since updating)"
+
+    public static func detail(_ token: TokenSummary) -> String {
+        var parts = [token.role?.machineLabel ?? "Unknown role"]
+        if token.current { parts.append("this Mac") }
+        if token.openItems > 0 { parts.append("\(token.openItems) open") }
+        if token.role == .sender || token.role == nil {
+            if let cli = token.client["cli"], SemVer(cli) != nil {
+                parts.append("CLI \(cli)")
+            } else {
+                parts.append(versionUnknown)
+            }
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Other hubs: a join link on the clipboard
+
+/// Settings → Other hubs → Join a hub with a link: picking up a join link from the
+/// clipboard. The page reads the clipboard only while it is open (the person opened
+/// Settings), never in the background.
 public enum ConnectLinkClipboard {
     /// Longer clipboard text is never a join link; don't even look at it.
     public static let maxLength = 2048

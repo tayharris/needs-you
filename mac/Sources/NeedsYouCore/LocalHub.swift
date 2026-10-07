@@ -179,7 +179,7 @@ public struct LocalHubPlan: Equatable, Sendable {
 
 // MARK: - Who can reach it
 
-/// Settings → This Mac: the two addresses of the hub on this Mac, and whether other
+/// Settings → Your inbox: the two addresses of the hub on this Mac, and whether other
 /// machines can reach it.
 public struct LocalHubReach: Equatable, Sendable {
     public enum Tailscale: Equatable, Sendable {
