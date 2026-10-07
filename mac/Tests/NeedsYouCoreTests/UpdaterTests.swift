@@ -58,7 +58,7 @@ final class UpdaterTests: XCTestCase {
     private var sums: [String: String] { ["NeedsYou-0.2.0-macos.zip": zipSum] }
     private var greenRun: WorkflowRun { WorkflowRun(id: 42, headSHA: commit, conclusion: "success") }
 
-    private func decide(_ r: ReleaseInfo? = nil, _ m: ReleaseManifest? = nil, sums s: [String: String]? = nil,
+    private func decide(_ r: ReleaseInfo? = nil, m: ReleaseManifest? = nil, sums s: [String: String]? = nil,
                         run: WorkflowRun?? = nil, os: OperatingSystemVersion? = nil,
                         policy: UpdatePolicy = UpdatePolicy()) -> UpdateDecision {
         UpdateGate.evaluate(release: r ?? release(), manifest: m ?? manifest(), sums: s ?? sums,
@@ -189,7 +189,7 @@ final class UpdaterTests: XCTestCase {
     }
 
     func testUpToDateAndOlder() {
-        XCTAssertEqual(decide(release("v0.1.1"), manifest(version: "0.1.1")), .upToDate)
+        XCTAssertEqual(decide(release("v0.1.1"), m: manifest(version: "0.1.1")), .upToDate)
         XCTAssertEqual(decide(release("v0.1.0")), .upToDate)
         XCTAssertEqual(UpdateGate.preflight(release: release("v0.0.9"), current: current, policy: UpdatePolicy()), .upToDate)
         isBlocked(decide(release("latest")), "isn't X.Y.Z")
@@ -222,10 +222,10 @@ final class UpdaterTests: XCTestCase {
     func testChecksumMismatches() {
         isBlocked(decide(sums: [:]), "SHA256SUMS doesn't list")
         isBlocked(decide(sums: ["NeedsYou-0.2.0-macos.zip": String(repeating: "00", count: 32)]), "disagree")
-        isBlocked(decide(manifest(sha: "nothex")), "doesn't list")
-        isBlocked(decide(manifest(size: 999)), "size")
+        isBlocked(decide(m: manifest(sha: "nothex")), "doesn't list")
+        isBlocked(decide(m: manifest(size: 999)), "size")
         let other = ReleaseManifest(version: "0.2.0", runID: 42, assets: [.init(name: "other.zip", sha256: zipSum, size: 1)])
-        isBlocked(decide(other), "doesn't list NeedsYou-0.2.0-macos.zip")
+        isBlocked(decide(m: other), "doesn't list NeedsYou-0.2.0-macos.zip")
     }
 
     func testRunMustBeGreen() {
@@ -236,16 +236,16 @@ final class UpdaterTests: XCTestCase {
     }
 
     func testManifestTestsAndVersion() {
-        isBlocked(decide(manifest(tests: "failure")), "tests as failure")
-        isBlocked(decide(manifest(tests: "local")), "tests as local")
-        isBlocked(decide(manifest(version: "0.2.1")), "manifest says 0.2.1")
-        if case .ready = decide(manifest(tests: nil)) {} else { XCTFail("an older manifest without tests is fine") }
+        isBlocked(decide(m: manifest(tests: "failure")), "tests as failure")
+        isBlocked(decide(m: manifest(tests: "local")), "tests as local")
+        isBlocked(decide(m: manifest(version: "0.2.1")), "manifest says 0.2.1")
+        if case .ready = decide(m: manifest(tests: nil)) {} else { XCTFail("an older manifest without tests is fine") }
     }
 
     func testMinMacOS() {
-        isBlocked(decide(manifest(minMacOS: "15.0")), "macOS 15.0")
-        isBlocked(decide(manifest(minMacOS: "soon")), "isn't a version")
-        if case .ready = decide(manifest(minMacOS: nil)) {} else { XCTFail() }
+        isBlocked(decide(m: manifest(minMacOS: "15.0")), "macOS 15.0")
+        isBlocked(decide(m: manifest(minMacOS: "soon")), "isn't a version")
+        if case .ready = decide(m: manifest(minMacOS: nil)) {} else { XCTFail() }
     }
 
     func testSoak() {
