@@ -54,6 +54,8 @@ final class AppModel: ObservableObject {
     /// Cards whose full body and links are shown (Show more / Show details / +N). Cleared
     /// when the panel collapses.
     @Published private(set) var expandedCards: Set<String> = []
+    /// Steps ticked on this Mac (local only, never sent to the hub; kept while the item is).
+    @Published private(set) var stepTicks = StepTicks()
     /// Phase 3: the new-item preview currently shown, if any.
     @Published var previewItem: Item?
     /// Phase 3: set while the start-of-day summary is open; items created after this
@@ -267,6 +269,11 @@ final class AppModel: ObservableObject {
             let result = updated.merge(page.items, isFullSnapshot: page.isFullSnapshot, now: Date())
             activeHub = page.source
             store = updated
+            if !stepTicks.isEmpty {
+                var ticks = stepTicks
+                ticks.retain(itemIDs: Set(updated.items.keys))
+                if ticks != stepTicks { stepTicks = ticks }
+            }
             lastCheck = Date()
             lastError = nil
             if hasSynced {
@@ -369,6 +376,10 @@ final class AppModel: ObservableObject {
 
     func toggleCardExpanded(_ item: Item) {
         if expandedCards.contains(item.id) { expandedCards.remove(item.id) } else { expandedCards.insert(item.id) }
+    }
+
+    func toggleStep(_ item: Item, _ index: Int) {
+        stepTicks.toggle(item, index)
     }
 
     func setContext(_ context: ItemContext) {

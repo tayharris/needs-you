@@ -64,6 +64,31 @@ public struct ItemLink: Codable, Hashable, Sendable {
     }
 }
 
+/// One thing the person has to do, in order (`steps` in docs/API.md). `text` is limited
+/// markdown; `link` is a button (shown as plain text if its scheme isn't allowed); `done`
+/// is the sender's view. Decoding is lenient: a missing `done` is false, a malformed link
+/// is dropped, unknown fields are ignored.
+public struct ItemStep: Codable, Hashable, Sendable {
+    public var text: String
+    public var link: ItemLink?
+    public var done: Bool
+
+    enum CodingKeys: String, CodingKey { case text, link, done }
+
+    public init(text: String, link: ItemLink? = nil, done: Bool = false) {
+        self.text = text
+        self.link = link
+        self.done = done
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        link = try? c.decodeIfPresent(ItemLink.self, forKey: .link)
+        done = (try? c.decodeIfPresent(Bool.self, forKey: .done)) ?? false
+    }
+}
+
 public struct ItemSource: Codable, Hashable, Sendable {
     public var host: String?
     public var agent: String?
@@ -90,6 +115,8 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var title: String
     public var body: String?
     public var links: [ItemLink]
+    /// The checklist; empty for items without one (and from hubs that predate steps).
+    public var steps: [ItemStep]
     public var source: ItemSource?
     public var status: ItemStatus
     public var createdAt: Date
@@ -98,7 +125,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var expiresAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, key, context, kind, priority, title, body, links, source, status
+        case id, key, context, kind, priority, title, body, links, steps, source, status
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case seenAt = "seen_at"
@@ -108,7 +135,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public init(
         id: String, key: String, context: ItemContext = .work, kind: ItemKind = .needs,
         priority: ItemPriority = .normal, title: String, body: String? = nil,
-        links: [ItemLink] = [], source: ItemSource? = nil, status: ItemStatus = .open,
+        links: [ItemLink] = [], steps: [ItemStep] = [], source: ItemSource? = nil, status: ItemStatus = .open,
         createdAt: Date, updatedAt: Date? = nil, seenAt: Date? = nil, expiresAt: Date? = nil
     ) {
         self.id = id
@@ -119,6 +146,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         self.title = title
         self.body = body
         self.links = links
+        self.steps = steps
         self.source = source
         self.status = status
         self.createdAt = createdAt
@@ -137,6 +165,9 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? "(untitled)"
         body = try c.decodeIfPresent(String.self, forKey: .body)
         links = try c.decodeIfPresent([ItemLink].self, forKey: .links) ?? []
+        // Lenient: a malformed steps value never costs the item; steps without text are skipped.
+        steps = ((try? c.decodeIfPresent([ItemStep].self, forKey: .steps)) ?? [])
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         source = try c.decodeIfPresent(ItemSource.self, forKey: .source)
         status = try c.decodeIfPresent(ItemStatus.self, forKey: .status) ?? .open
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
@@ -145,9 +176,9 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         expiresAt = try c.decodeIfPresent(Date.self, forKey: .expiresAt)
     }
 
-    /// Re-animation rule from PLAN.md: only title, body or priority changes count.
+    /// Re-animation rule (docs/API.md `content_updated_at`): title, body, priority or steps.
     public func hasVisibleChange(from old: Item) -> Bool {
-        title != old.title || body != old.body || priority != old.priority
+        title != old.title || body != old.body || priority != old.priority || steps != old.steps
     }
 
     public func isExpired(at now: Date) -> Bool {
