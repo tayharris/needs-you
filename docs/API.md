@@ -139,12 +139,34 @@ Create an item, or update the open item with the same `key`.
 
 Link URLs must use one of these schemes (case-insensitive): `https`, `orca`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,
-`file` and `javascript`, is a 400. One exception: the Mac app's own scheme for the card's
-**Terminal** button, `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]`
-(nothing else under `needsyou://`). The app checks the handle (`term_` plus 8–64 lowercase
-hex or `-`) and the environment name (letters, digits, space, `.`, `_`, `-`; ≤ 64) and runs
-`orca terminal switch` with them as arguments, never through a shell; anything else does
-nothing. Text strings are trimmed.
+`file` and `javascript`, is a 400. Text strings are trimmed.
+
+One exception: the Mac app's own scheme, for a fixed set of **app actions** (the card's
+**Terminal** button). The hub accepts `needsyou://<host>/<path>?<query>` only for these
+`<host>/<path>` pairs (case-insensitive), and nothing else under `needsyou://`:
+
+| Action | Link | What the app does |
+|---|---|---|
+| `orca/terminal` | `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]` | `orca terminal switch`. The handle is `term_` plus 8–64 lowercase hex or `-`; the environment name is letters, digits, space, `.`, `_`, `-`, ≤ 64 |
+| `terminal/focus` | `needsyou://terminal/focus?app=<app>&<id>` | Focuses one terminal tab or pane on the Mac (below) |
+
+`terminal/focus` takes `app` and exactly the parameters for that app, each at most once:
+
+| `app` | Parameters | Mac side |
+|---|---|---|
+| `wezterm` | `pane=<n>` (1–6 digits, `$WEZTERM_PANE`) | `wezterm cli activate-pane --pane-id <n>`, then WezTerm comes forward |
+| `tmux` | `pane=<n>` (the pane id `%<n>` without the `%`, 1–6 digits) **or** `target=<session>:<window>.<pane>` (session: letters, digits, `_`, `-`, ≤ 64, not starting with `-`; window and pane: 1–4 digits); optional `host=<iterm\|terminal\|wezterm\|ghostty>`, the terminal tmux runs in | `tmux select-window -t` / `select-pane -t` on the default tmux server, then the host terminal comes forward |
+| `iterm` | `session=<UUID>` (the part of `$ITERM_SESSION_ID` after `:`) **or** `tty=/dev/ttys<n>` | AppleScript (opt-in on the Mac): selects that session's window, tab and session |
+| `terminal` | `tty=/dev/ttys<n>` (1–4 digits) | AppleScript (opt-in on the Mac): selects the Terminal.app tab with that tty |
+| `ghostty` | none | Ghostty comes forward (no tab selection yet) |
+
+The hub checks only the action prefix; the app parses every link into a typed value and
+refuses anything else (an unknown parameter, a repeated one, a value outside its pattern, a
+value starting with `-`, user, port or fragment), and then does nothing. It runs only fixed
+executables from fixed paths with argument arrays, never a shell, and AppleScript only as
+fixed handlers called with the validated value as a typed parameter. Worst case for a
+sender: the Mac shows a different terminal tab. A hub older than an action rejects the item
+with 400; senders that add one (the Claude Code hook) retry without their `needsyou://` links.
 
 Control characters are refused in every text field (`title`, `body` except newline and tab,
 link labels, `source` fields): C0, DEL, C1 (U+0080–U+009F), and the bidi embedding, override

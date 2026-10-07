@@ -45,10 +45,14 @@ PATCH_STATUSES = ("resolved", "dismissed")
 ROLES = ("sender", "reader", "owner")
 READ_ROLES = ("reader", "owner")  # owner = reader + may create invites
 LINK_SCHEMES = ("https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear")
-# The Mac app's own scheme, for one fixed action only: the card's Orca terminal jump
-# (needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]). The app validates
-# the handle and environment again before it runs anything.
-APP_LINK_PREFIX = "needsyou://orca/terminal?"
+# The Mac app's own scheme, for a fixed set of actions only (mirrored by
+# LinkPolicy.appActionPaths in the Mac app). Each is "<host>/<path>" and the URL must be
+# exactly needsyou://<host>/<path>?<query>. The app parses each into a typed value and
+# validates every parameter again before it runs anything (docs/API.md, "Links").
+#   orca/terminal    the Orca jump: ?handle=term_<uuid>[&environment=<name>]
+#   terminal/focus   a Mac terminal tab: ?app=<wezterm|tmux|iterm|terminal>&...
+APP_LINK_PATHS = ("orca/terminal", "terminal/focus")
+APP_LINK_PREFIXES = tuple("needsyou://%s?" % p for p in APP_LINK_PATHS)
 
 MAX_TITLE = 100
 MAX_BODY = 2000
@@ -296,7 +300,7 @@ def link_allowed(url: Any) -> bool:
         return False
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if scheme == "needsyou":
-        return url.lower().startswith(APP_LINK_PREFIX)
+        return url.lower().startswith(APP_LINK_PREFIXES)
     return scheme in LINK_SCHEMES
 
 
@@ -321,8 +325,9 @@ def _validate_link(link: Any, path: str) -> Dict[str, str]:
         raise _invalid(path + ".url", "%s.url contains spaces or invisible characters" % path)
     scheme = urllib.parse.urlsplit(url).scheme.lower()
     if not link_allowed(url):
-        raise _invalid(path + ".url", "%s.url scheme %r is not allowed (allowed: %s, %s...)"
-                       % (path, scheme, ", ".join(LINK_SCHEMES), APP_LINK_PREFIX))
+        raise _invalid(path + ".url", "%s.url scheme %r is not allowed (allowed: %s, %s)"
+                       % (path, scheme, ", ".join(LINK_SCHEMES),
+                          ", ".join(p + "..." for p in APP_LINK_PREFIXES)))
     if len(url) <= len(scheme) + 1:
         raise _invalid(path + ".url", "%s.url is empty" % path)
     return {"label": label, "url": url}

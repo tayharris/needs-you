@@ -7,6 +7,11 @@ public enum LinkPolicy {
         "https", "orca", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear",
     ]
 
+    /// The app's own `needsyou://<host>/<path>?…` actions a card may carry, mirrored by the
+    /// hub's `APP_LINK_PATHS` (hard rule 7: change both). Each one has a parser below that
+    /// validates every parameter; a path here without a parser opens nothing.
+    public static let appActionPaths: [String] = ["orca/terminal", "terminal/focus"]
+
     /// The URL another app opens, or nil if the string isn't an allowed, well-formed link.
     public static func externalURL(_ string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)

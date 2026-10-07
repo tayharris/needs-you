@@ -329,8 +329,11 @@ def post(args, links):
         except Exception:
             return 1
     rc = run(links)
-    if rc == 2 and links and links[0].startswith("Terminal="):
-        rc = run(links[1:])  # a hub older than the Terminal link rejects it; post without
+    # A hub older than one of the app's needsyou:// actions rejects the item (400, exit 2);
+    # post again without them so the card still arrives.
+    plain = [l for l in links if not l.partition("=")[2].lower().startswith("needsyou://")]
+    if rc == 2 and len(plain) < len(links):
+        rc = run(plain)
     return rc
 
 
