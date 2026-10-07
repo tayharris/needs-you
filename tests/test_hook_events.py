@@ -182,6 +182,10 @@ class FailureTests(HookHarness):
                                  "message": "Usage limit reached"})
         self.assertEqual(self.opt(self.last(), "--title"), "Claude hit its usage limit: my-repo")
 
+    def test_agent_needs_input_title_names_claude(self):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "agent_needs_input"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude needs your input: my-repo")
+
     def test_hooks_json_registers_the_events(self):
         with open(HOOKS_JSON) as fh:
             hooks = json.load(fh)["hooks"]

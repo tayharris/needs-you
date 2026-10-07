@@ -76,7 +76,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Any other permission prompt | **Claude needs permission for <tool>: my-repo** (MCP tools as `<server> <tool>`) |
 | Idle, waiting for your input | **Claude is waiting for you: my-repo** |
 | MCP server asks for input / a sign-in | **Claude needs an answer: my-repo** / **Claude needs you to sign in: my-repo** |
-| Claude Code's `agent_needs_input` notification | **Agent needs input: my-repo** |
+| Claude Code's `agent_needs_input` notification | **Claude needs your input: my-repo** |
 | Usage limit, won't resume on its own | **Claude hit its usage limit: my-repo** |
 | Turn ended on an API error | **Claude hit a rate limit**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
 | Context at 80% or more (low priority, a card of its own) | **Claude's context is 85% full: my-repo**, suggesting `/compact` or `/clear` |

@@ -567,7 +567,7 @@ def notify():
             "idle_prompt": "Claude is waiting for you",
             "elicitation_dialog": "Claude needs an answer",
             "elicitation_url_dialog": "Claude needs you to sign in",
-            "agent_needs_input": "Agent needs input",
+            "agent_needs_input": "Claude needs your input",
             "quota_auto_resume_disabled": "Claude hit its usage limit",
         }.get(ntype, "Claude needs you")
         msg = oneline(data.get("message"), 400)
