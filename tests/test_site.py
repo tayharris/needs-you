@@ -4,8 +4,7 @@ Structure (balanced tags, one h1, title, description), in-page anchors, local fi
 every link into this repo on GitHub points at a path that exists here, the sections and
 links the landing page promises, and no personal hostnames.
 
-The donate link is a placeholder (#donate-tbd) until the donation service is chosen.
-Set NEEDS_YOU_SITE_RELEASE=1 (before deploying) to make that placeholder a failure.
+There is no donate link (removed for launch); the test guards against a placeholder coming back.
 """
 from __future__ import annotations
 
@@ -17,8 +16,6 @@ from html.parser import HTMLParser
 from support import ROOT
 
 SITE = os.path.join(ROOT, "site")
-DONATE_PLACEHOLDER = "#donate-tbd"
-RELEASE = os.environ.get("NEEDS_YOU_SITE_RELEASE") == "1"
 # The site's own origin (canonical and og:url).
 SITE_ORIGIN = "https://needsyou.app/"
 # Hosts the site may link to. Anything else (a personal domain, a tailnet name) fails.
@@ -142,8 +139,6 @@ class SiteTests(unittest.TestCase):
         for name, p in self.pages.items():
             for link in p.links:
                 with self.subTest(page=name, link=link[:80]):
-                    if link == DONATE_PLACEHOLDER:
-                        continue  # test_donate_link decides
                     if link.startswith("#"):
                         self.assertIn(link[1:], p.ids, "no element with this id")
                     elif link.startswith(("data:", "mailto:")):
@@ -221,7 +216,7 @@ class SiteTests(unittest.TestCase):
 
     def test_sections(self):
         p = self.pages["index.html"]
-        for sid in ("how", "see", "install", "source", "donate"):
+        for sid in ("how", "see", "install", "source"):
             self.assertIn(sid, p.ids)
         self.assertIn("mock", read_site("index.html"))  # the hero stays the CSS pill mock
         how = re.search(r'<ol class="how">(.*?)</ol>', read_site("index.html"), re.S).group(1)
@@ -283,17 +278,11 @@ class SiteTests(unittest.TestCase):
         self.assertIn("Apache-2.0", p.body_text())
         self.assertTrue([a for a, _ in p.anchors if a.get("data-repo") == ""], "a link to the repo itself")
 
-    def test_donate_link(self):
+    def test_no_placeholder_links(self):
         p = self.pages["index.html"]
-        donate = [a for a in p.anchors if "support the project" in p.anchor_text(a).lower()]
-        self.assertEqual(len(donate), 1)
-        href = donate[0][0].get("href", "")
-        if RELEASE:
-            self.assertNotEqual(href, DONATE_PLACEHOLDER,
-                                "pick the donation service and set the real URL before release")
-        else:
-            self.assertTrue(href == DONATE_PLACEHOLDER or href.startswith("https://"), href)
-
+        for a, _ in p.anchors:
+            href = a.get("href", "")
+            self.assertFalse(href.endswith("-tbd") or href in ("#", ""), href)
 
 if __name__ == "__main__":
     unittest.main()

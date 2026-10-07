@@ -4,7 +4,7 @@ The needs-you landing page: one screen. Plain HTML, CSS and a few lines of vanil
 
 | File | What |
 |---|---|
-| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, screenshots, under the hood (architecture diagram and measured resource use), Install, Open source, Support |
+| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, screenshots, under the hood (architecture diagram and measured resource use), Install, Open source |
 | `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the mock's amber matches the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`) |
 | `site.js` | `REPO_URL`, the one GitHub constant, and copy buttons on code blocks (the page works without JS) |
 | `_headers` | Cloudflare Pages response headers (CSP and other security headers) |
@@ -24,7 +24,6 @@ python3 -m http.server -d site 8000
 ## Before going live
 
 - **GitHub links** 404 for visitors while the repo is private. They all come from `REPO_URL` in `site.js` (each link has `data-repo="<path>"` and a matching `href` for no-JS readers; `tests/test_site.py` keeps them equal). Deploy with the public repo.
-- **Donate**: the link is the placeholder `#donate-tbd` until the service is chosen. `NEEDS_YOU_SITE_RELEASE=1 python3 -m unittest discover -s tests` fails while it's there; run that before deploying.
 
 ## Checks before publishing
 
