@@ -109,16 +109,31 @@ _TS_RE = re.compile(
 )
 
 
+# Accepted timestamps: 1970-01-01 .. 9999-12-31 (fmt_ts can print every one of them; a stored
+# value outside this range would make every listing that includes it fail).
+MAX_TS_MS = 253402300799999
+
+
 def parse_ts(value: Any) -> int:
     """Parse an ISO 8601 timestamp (or epoch seconds) into epoch milliseconds."""
+    ms = _parse_ts(value)
+    if not 0 <= ms <= MAX_TS_MS:
+        raise ValueError("timestamp out of range: %r" % (value,))
+    return ms
+
+
+def _parse_ts(value: Any) -> int:
     if isinstance(value, bool):
         raise ValueError("not a timestamp")
     if isinstance(value, (int, float)):
-        return int(round(float(value) * 1000))
+        f = float(value)
+        if f != f or f in (float("inf"), float("-inf")):
+            raise ValueError("not a timestamp")
+        return int(round(f * 1000))
     if not isinstance(value, str):
         raise ValueError("not a timestamp")
     s = value.strip()
-    if re.match(r"^\d+(\.\d+)?$", s):
+    if re.match(r"^\d{1,15}(\.\d{1,9})?$", s):
         return int(round(float(s) * 1000))
     m = _TS_RE.match(s)
     if not m:
@@ -182,6 +197,13 @@ def sanitize_host(host: Any) -> str:
 
 KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+$")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# Bidi embedding/override/isolate controls (and the C1 range): they can make a label or title
+# read differently from what it is (e.g. reverse "moc.live" into "evil.com"). Ordinary RTL text
+# doesn't need them, so they are refused in every text field.
+_SPOOF_RE = re.compile("[\u0080-\u009f\u202a-\u202e\u2066-\u2069]")
+# A URL must not hide anything: no whitespace or invisible format characters at all.
+_URL_BAD_RE = re.compile("[\\s\u0080-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e"
+                         "\u2060-\u2069\ufeff]")
 
 
 def _str_field(data: Dict[str, Any], name: str, max_len: int, required: bool = False,
@@ -200,7 +222,7 @@ def _str_field(data: Dict[str, Any], name: str, max_len: int, required: bool = F
     if len(v) > max_len:
         raise _invalid(path, "%s is longer than %d characters" % (path, max_len))
     bad = _CTRL_RE if allow_newlines else re.compile(r"[\x00-\x1f\x7f]")
-    if bad.search(v):
+    if bad.search(v) or _SPOOF_RE.search(v):
         raise _invalid(path, "%s contains control characters" % path)
     return v
 
@@ -212,6 +234,16 @@ def _enum_field(data: Dict[str, Any], name: str, allowed: Tuple[str, ...], defau
     if not isinstance(v, str) or v.strip().lower() not in allowed:
         raise _invalid(name, "%s must be one of %s" % (name, ", ".join(allowed)))
     return v.strip().lower()
+
+
+def link_allowed(url: Any) -> bool:
+    """The scheme allow-list (mirrored by the Mac app's LinkPolicy.swift)."""
+    if not isinstance(url, str) or _URL_BAD_RE.search(url) or _CTRL_RE.search(url):
+        return False
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme == "needsyou":
+        return url.lower().startswith(APP_LINK_PREFIX)
+    return scheme in LINK_SCHEMES
 
 
 def validate_links(links: Any) -> List[Dict[str, str]]:
@@ -228,10 +260,10 @@ def validate_links(links: Any) -> List[Dict[str, str]]:
         label = _str_field(link, "label", MAX_LINK_LABEL, required=True, path="links[%d].label" % i)
         url = _str_field(link, "url", MAX_LINK_URL, required=True, path="links[%d].url" % i)
         assert label is not None and url is not None
+        if _URL_BAD_RE.search(url):
+            raise _invalid("links[%d].url" % i, "links[%d].url contains spaces or invisible characters" % i)
         scheme = urllib.parse.urlsplit(url).scheme.lower()
-        if scheme == "needsyou" and url.lower().startswith(APP_LINK_PREFIX):
-            pass
-        elif scheme not in LINK_SCHEMES:
+        if not link_allowed(url):
             raise _invalid("links[%d].url" % i, "links[%d].url scheme %r is not allowed (allowed: %s, %s...)"
                            % (i, scheme, ", ".join(LINK_SCHEMES), APP_LINK_PREFIX))
         if len(url) <= len(scheme) + 1:
@@ -1259,7 +1291,10 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
                 raise ValueError(c)
             out[c] = v
         out["body"] = rec.get("body") or ""
-        out["links"] = json.dumps(rec.get("links") or [])
+        # Defence in depth: a peer (or an older hub) can't hand us a link this hub would refuse.
+        links = rec.get("links") or []
+        out["links"] = json.dumps([lk for lk in (links if isinstance(links, list) else [])
+                                   if isinstance(lk, dict) and link_allowed(lk.get("url"))])
         out["source"] = json.dumps(rec.get("source") or {})
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
@@ -1498,14 +1533,33 @@ class PeerWorker(threading.Thread):
 # HTTP
 # ---------------------------------------------------------------------------
 
+_LOG_SECRET_RES = (
+    (re.compile(r"/join/[^/\s\"?#]+"), "/join/<code>"),       # invite codes in join paths
+    (re.compile(r"\bnyi_[A-Za-z0-9_\-]+"), "nyi_<redacted>"),   # invite codes anywhere else
+    (re.compile(r"\bny_[A-Za-z0-9_\-]{16,}"), "ny_<redacted>"), # tokens, should one ever appear
+)
+
+
+def redact_log(line: str) -> str:
+    """An access-log line with invite codes and tokens removed and control characters
+    escaped (the request line is client-controlled; terminal escapes stay inert)."""
+    for rx, repl in _LOG_SECRET_RES:
+        line = rx.sub(repl, line)
+    return "".join(c if c.isprintable() else "\\x%02x" % ord(c) if ord(c) < 256 else "\\u%04x" % ord(c)
+                   for c in line)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "needs-you-hub/" + VERSION
     protocol_version = "HTTP/1.0"
     hub: "Hub"  # set on the subclass per server
+    # Socket timeout per connection (StreamRequestHandler applies it): a client that opens a
+    # connection and then sends nothing, or stops reading, can't hold a thread forever.
+    timeout = 60.0
 
     def log_message(self, fmt: str, *args: Any) -> None:  # quieter, and to stderr
         if self.hub.cfg.get("access_log", True) and not self.hub.cfg.get("quiet"):
-            sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
+            sys.stderr.write("%s %s\n" % (self.address_string(), redact_log(fmt % args)))
 
     # -- helpers ---------------------------------------------------------
 
@@ -1532,6 +1586,8 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             raise ApiError(400, "invalid", "bad Content-Length")
+        if length < 0:  # rfile.read(-1) would read until the client hangs up, unbounded
+            raise ApiError(400, "invalid", "bad Content-Length")
         if length > limit:
             raise ApiError(413, "too_large", "request body over %d bytes" % limit)
         raw = self.rfile.read(length) if length else b""
@@ -1539,7 +1595,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "invalid", "a JSON body is required")
         try:
             return json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
             raise ApiError(400, "invalid", "body is not valid JSON")
 
     def _bearer(self) -> Optional[str]:
@@ -2195,9 +2251,9 @@ def install_script(hub: Hub, inv: Dict[str, Any], code: str) -> str:
     links = invite_links(hub.public_url, code, inv["role"])
     values = {"HUB_URL": hub.public_url, "CODE": code, "ROLE": inv["role"], "INVITE_NAME": inv["name"],
               "MAC_URL": links["mac_url"], "USES_LEFT": str(max(0, Store.invite_left(inv)))}
-    for k, v in values.items():
-        tmpl = tmpl.replace("__NY_%s__" % k, _sh_quote(v))
-    return tmpl
+    # One pass, so a value that happens to contain another placeholder is never re-substituted.
+    return re.sub(r"__NY_([A-Z_]+?)__",
+                  lambda m: _sh_quote(values[m.group(1)]) if m.group(1) in values else m.group(0), tmpl)
 
 
 def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:

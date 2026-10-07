@@ -142,7 +142,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
 | `allow_any_interface` | `--allow-any-interface` | false | Allow `0.0.0.0` / `::`. |
 | `quiet` | `--quiet` | false | No access log. |
-| `access_log` | | true | One stderr line per request. |
+| `access_log` | | true | One stderr line per request. Invite codes in `/join/` paths (and anything shaped like a code or token) are replaced with `<code>`/`<redacted>`, and control characters are escaped. |
 | `max_open_per_token` | | 60 | Volume guard. |
 | `default_expiry_hours` | | 24 | Expiry for `done`/`info` items without `expires_at`. |
 | `maintenance_seconds` | | 600 | Purge + WAL checkpoint + incremental vacuum interval. |
