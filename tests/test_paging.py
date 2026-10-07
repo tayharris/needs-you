@@ -148,3 +148,40 @@ class NextCursor(PagingCase):
         request("POST", self.hub.url + "/v1/items/resolve", self.sender, {"key": "a"})
         _, body = self.list(status="open", **q)
         self.assertEqual([(i["id"], i["status"]) for i in body["items"]], [(a["id"], "resolved")])
+
+
+class TruncatedFullListing(PagingCase):
+    """A full listing cut short by `limit` (`more: true`) continues where it stopped: polling
+    on with its `next` / `server_time` brings the items it left out. Its cursors used to point
+    past every one of them, so they never arrived until they changed."""
+
+    def setUp(self):
+        super().setUp()
+        self.ids = []
+        for n in range(5):
+            self.ids.append(self.post({"key": "k%d" % n, "title": "t"})["id"])
+            if n % 2:
+                self.clock.advance(0.002)
+        request("POST", self.hub.url + "/v1/items/resolve", self.sender, {"key": "k1"})
+
+    def check(self, next_query):
+        s, body = self.list(status="open", limit="2")
+        self.assertEqual(s, 200, body)
+        self.assertTrue(body["more"])
+        open_ids = {i for n, i in enumerate(self.ids) if n != 1}
+        seen = {i["id"] for i in body["items"]}
+        q = next_query(body)
+        for _ in range(10):
+            s, body = self.list(limit="2", **q)
+            self.assertEqual(s, 200, body)
+            seen |= {i["id"] for i in body["items"] if i["status"] == "open"}
+            if not body["more"]:
+                break
+            q = next_query(body)
+        self.assertEqual(seen, open_ids)
+
+    def test_with_next(self):
+        self.check(lambda b: {"cursor": b["next"], "since": b["server_time"]})
+
+    def test_with_since_only(self):
+        self.check(lambda b: {"since": b["server_time"]})

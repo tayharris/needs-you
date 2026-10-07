@@ -324,7 +324,10 @@ the item, or <code>404</code> for an unknown id. Patching an already-closed item
 <div class="code"><pre><code class="language-json">{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "next": "01M492BJ7A...J.812.1791306245123",
  "hub_id": "hub-a", "more": false}</code></pre></div>
 <p><strong>Without <code>cursor</code> or <code>since</code>:</strong> the full current set for <code>status</code>. <code>status=open</code> returns every
-item that is open and not expired. <code>resolved</code> includes expired items (shown as resolved).</p>
+item that is open and not expired. <code>resolved</code> includes expired items (shown as resolved).
+If it has more than <code>limit</code> items, the response has <code>more: true</code> and its <code>next</code> and
+<code>server_time</code> continue after the last item it returned: poll on with them (step 2 below) and
+the items it left out come as changes.</p>
 <p><strong>With <code>cursor</code> or <code>since</code>:</strong> every item that changed on this hub after the cursor, **in any
 status**, plus every item whose <code>expires_at</code> passed since then (reported as resolved). This is
 how a poller learns about resolves, dismissals and expiry, not only new items. "Changed on

@@ -1108,11 +1108,22 @@ class Store:
                 args.append(now)
             elif status == "dismissed":
                 sql += " AND status = 'dismissed'"
-            sql += " ORDER BY local_at, id LIMIT ?"
+            # By seq, so a listing cut short by `limit` can continue after its last item.
+            sql += " ORDER BY seq LIMIT ?"
             args.append(limit + 1)
             rows = [dict(r) for r in self.conn.execute(sql, args).fetchall()]
+            if len(rows) > limit:
+                # Cut short: both cursors continue after the last item returned, so polling on
+                # brings the rest (as changes; with them, items in other states, which pollers
+                # handle anyway). For `since`: just before the earliest version not returned.
+                rows = rows[:limit]
+                last = rows[-1]["seq"]
+                first_left = self.conn.execute("SELECT MIN(local_at) FROM items WHERE seq > ?",
+                                               (last,)).fetchone()[0]
+                server_time = min(now, first_left if first_left is not None else now) - 1
+                return rows, server_time, True, ListCursor(epoch, last, now)
         # 1 ms behind "now": a write landing in this same millisecond is still after the cursor.
-        return rows[:limit], now - 1, len(rows) > limit, ListCursor(epoch, max_seq, now)
+        return rows, now - 1, False, ListCursor(epoch, max_seq, now)
 
     def _list_by_cursor(self, cur: "ListCursor", limit: int, now: int
                         ) -> Tuple[List[Dict[str, Any]], int, bool, "ListCursor"]:

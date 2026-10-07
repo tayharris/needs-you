@@ -13,6 +13,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Hub: a number too large for SQLite in a `cursor`, in `/v1/replicate/changes?after=` or in `/v1/stream`'s `after`, or a numeric `expires_at`/`seen_at` too large for a float, was a `500`. A cursor like that is refused like any cursor the hub didn't issue (or ignored for `since`), the others are `400 invalid`, and the stream starts from now.
 - Hub: `POST /v1/items/resolve` trims the key (and id) as `POST /v1/items` does, so `needs-you resolve --key " deploy:42 "` closes the item `needs-you add` stored as `deploy:42`. It used to resolve nothing.
 - Hub: the database's `-wal` and `-shm` files (which hold the same items and token hashes) were created readable by everyone (`0644`) under a default umask; only the database itself was `0600`. They are `0600` now. Server hubs installed with the systemd units were not affected (`UMask=0077`).
+- Hub: **a full `GET /v1/items` cut short by `limit` lost the rest.** Its `next` and `server_time` pointed past every item it left out, so a client that polled on (the Mac app, past 500 open items) never got them until they changed. Full listings are now in write order, and when cut short both cursors continue after the last item returned.
 
 ## [0.1.3] - 2026-10-07
 

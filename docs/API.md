@@ -315,6 +315,9 @@ Response:
 
 **Without `cursor` or `since`:** the full current set for `status`. `status=open` returns every
 item that is open and not expired. `resolved` includes expired items (shown as resolved).
+If it has more than `limit` items, the response has `more: true` and its `next` and
+`server_time` continue after the last item it returned: poll on with them (step 2 below) and
+the items it left out come as changes.
 
 **With `cursor` or `since`:** every item that changed on this hub after the cursor, **in any
 status**, plus every item whose `expires_at` passed since then (reported as resolved). This is
