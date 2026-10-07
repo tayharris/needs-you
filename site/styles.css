@@ -304,6 +304,33 @@ code, pre { font-family: var(--font-mono); }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 }
 
+/* Screenshots of the app (site/img/, 2x PNGs made by mac/scripts/screenshots.sh). Framed
+   dark in both themes, like the mock: the app's panel is a dark HUD either way. */
+.shots {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: start;
+}
+.shots + .shots { margin-top: var(--space-3); }
+.shots-wide { grid-template-columns: minmax(0, 1fr); }
+.shot-stack { display: grid; gap: var(--space-3); }
+.shot {
+  margin: 0;
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--hud-surface);
+  border: 1px solid var(--hud-border);
+  border-radius: var(--radius);
+}
+.shot img { display: block; max-width: 100%; height: auto; }
+.shot-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-3); }
+.shot-window img { border: 1px solid var(--hud-border); border-radius: var(--radius); }
+.shot figcaption {
+  align-self: stretch;
+  color: var(--hud-secondary);
+  font-size: var(--size-h6); line-height: 1.5;
+}
+
 /* Footer */
 .foot { padding-bottom: var(--space-8); color: var(--text-muted); font-size: var(--size-h6); }
 .foot p { margin: 0; padding-top: var(--space-6); border-top: 1px solid var(--border-subtle); }
@@ -315,6 +342,11 @@ code, pre { font-family: var(--font-mono); }
   .mock { padding: var(--space-4); align-items: stretch; }
   .pill { align-self: flex-end; }
   .card { max-width: none; }
+  .shot { padding: var(--space-3); }
+}
+
+@media (max-width: 40rem) {
+  .shots { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Under the hood: the architecture diagram and the "how heavy is it" table.

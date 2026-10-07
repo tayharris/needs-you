@@ -4,10 +4,11 @@ The needs-you landing page: one screen. Plain HTML, CSS and a few lines of vanil
 
 | File | What |
 |---|---|
-| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, under the hood (architecture diagram and measured resource use), Install, Open source, Support |
+| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, screenshots, under the hood (architecture diagram and measured resource use), Install, Open source, Support |
 | `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the mock's amber matches the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`) |
 | `site.js` | `REPO_URL`, the one GitHub constant, and copy buttons on code blocks (the page works without JS) |
 | `_headers` | Cloudflare Pages response headers (CSP and other security headers) |
+| `img/` | Screenshots of the app (2x PNGs, each under 200 KB), made from example items by `mac/scripts/screenshots.sh`, then optimised by hand (the flat backdrop around the panel made transparent, a 256-colour palette; any PNG optimiser will do). The guides in `docs/guides/` use these same files. Retake them when the panel or Settings changes visibly; check each one by eye for names, hosts or tokens before committing |
 
 The favicon is an inline SVG data URI in `index.html`, so there's no separate icon file.
 

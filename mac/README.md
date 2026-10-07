@@ -178,12 +178,14 @@ NEEDS_YOU_SUPPORT_DIR=$(mktemp -d) dist/NeedsYou.app/Contents/MacOS/NeedsYou &  
 | `NEEDS_YOU_DEMO_FIXTURE=file.json` | Demo seed items (the hub's list shape) |
 | `NEEDS_YOU_POLL_SECONDS=n` | Poll interval (default 30; 5 in demo) |
 | `NEEDS_YOU_EXPAND=1` | Start expanded (still never takes focus) |
-| `NEEDS_YOU_SNAPSHOT_DIR=dir` | Write a PNG of each panel state into dir (no Screen Recording permission needed) |
+| `NEEDS_YOU_SNAPSHOT_DIR=dir` | Snapshot tour: write a 2x PNG of each panel state and of Settings → Your inbox, Connect a machine and Panel into dir (no Screen Recording permission). Demo items are drawn as a real inbox (no DEMO badge, the hub shown running at example addresses); no global shortcut is registered |
 | `NEEDS_YOU_SUPPORT_DIR=dir` | `hub.db`, `owner.token` and `tokens.json` here instead of Application Support |
 | `NEEDS_YOU_DEFAULTS_SUITE=name` | Read and write settings in this defaults suite instead of `app.needsyou.mac` |
 | `NEEDS_YOU_HUB_PORT=n` | Run the local hub on port n instead of 8765 (test copies next to the real app) |
 | `NEEDS_YOU_HUB_LOOPBACK_ONLY=1` | Local hub on 127.0.0.1 only; skip the tailnet address and `tailscale status` |
 | `NEEDS_YOU_HUB_SCRIPT=path` | Run this `needs_you_hub.py` instead of the bundled one |
+
+**Screenshots.** `scripts/screenshots.sh [out-dir]` makes the site's and the guides' screenshots (`site/img/`) from example items: it builds a throwaway copy with its own bundle id and defaults suite (like `upgrade-test.sh`), runs the snapshot tour with no items (the idle pill) and with its example items, then quits it. Safe next to the running app: no hub, no shortcut, nothing in `/Applications` or the real defaults. Its pill shows on screen for about half a minute per run. Look at every image before committing it.
 
 `swift run NeedsYou` finds the hub at `../hub/needs_you_hub.py` in the repo. `scripts/bundle.sh` copies `hub/`, `cli/needs-you` and `integrations/claude-code/` into `Contents/Resources/` with the repo layout, so the hub serves the CLI and the Claude Code files to joining machines (`/dl`).
 

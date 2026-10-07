@@ -11,7 +11,8 @@ import NeedsYouCore
 ///   NEEDS_YOU_DEMO_INJECT_SECONDS=n  demo: post a new item every n seconds (default 45, 0 = never)
 ///   NEEDS_YOU_POLL_SECONDS=n         poll interval (default 30; 5 in demo mode)
 ///   NEEDS_YOU_EXPAND=1               start expanded (never takes focus)
-///   NEEDS_YOU_SNAPSHOT_DIR=dir       debug: write PNGs of each panel state
+///   NEEDS_YOU_SNAPSHOT_DIR=dir       debug: write PNGs of the panel's states and some Settings
+///                                    pages (no global shortcut is registered)
 ///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
 ///   NEEDS_YOU_DEFAULTS_SUITE=name    use this UserDefaults suite instead of the app's domain
 @MainActor
@@ -112,6 +113,12 @@ final class AppSettings: ObservableObject {
     /// The in-app focus (menus or needsyou://focus); kept across relaunches until it ends.
     @Published var focus: FocusState {
         didSet { if focus != oldValue { focus.save(to: defaults) } }
+    }
+
+    /// NEEDS_YOU_SNAPSHOT_DIR: the snapshot tour (a debug aid) writes its PNGs here.
+    nonisolated static var snapshotDirectory: URL? {
+        guard let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_DIR"], !dir.isEmpty else { return nil }
+        return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
     }
 
     /// The app's defaults, or the NEEDS_YOU_DEFAULTS_SUITE suite (test instances).

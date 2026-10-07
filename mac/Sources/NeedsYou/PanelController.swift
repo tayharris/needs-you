@@ -469,22 +469,7 @@ final class PanelController {
     /// Screen Recording permission; the behind-window material renders as plain dark.
     func writeSnapshot(to url: URL) {
         guard let view = panel.contentView, panel.isVisible else { return }
-        let image = NSImage(size: view.bounds.size)
-        image.lockFocus()
-        NSColor(white: 0.13, alpha: 1).setFill()
-        view.bounds.fill()
-        image.unlockFocus()
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        let composed = NSImage(size: view.bounds.size)
-        composed.lockFocus()
-        image.draw(at: .zero, from: .zero, operation: .copy, fraction: 1)
-        rep.draw(in: view.bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        composed.unlockFocus()
-        if let tiff = composed.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
-           let png = bitmap.representation(using: .png, properties: [:]) {
-            try? png.write(to: url)
-        }
+        try? SnapshotImage.png(of: view, background: NSColor(white: 0.13, alpha: 1))?.write(to: url)
     }
 
     // MARK: Menus
@@ -520,6 +505,37 @@ final class PanelController {
         menu.addItem(ClosureMenuItem(title: "About Needs You") { AboutPanel.show() })
         menu.addItem(ClosureMenuItem(title: "Quit Needs You") { NSApp.terminate(nil) })
         return menu
+    }
+}
+
+/// Debug snapshots (NEEDS_YOU_SNAPSHOT_DIR): a view drawn with cacheDisplay at a fixed
+/// scale (2x by default, sharp on Retina whatever the Mac's own display), optionally over
+/// a solid background. No Screen Recording permission needed.
+@MainActor
+enum SnapshotImage {
+    static func png(of view: NSView, scale: CGFloat = 2, background: NSColor? = nil) -> Data? {
+        let size = view.bounds.size
+        guard size.width >= 1, size.height >= 1 else { return nil }
+        func bitmap() -> NSBitmapImageRep? {
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int((size.width * scale).rounded()),
+                                       pixelsHigh: Int((size.height * scale).rounded()), bitsPerSample: 8,
+                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                       colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+            rep?.size = size   // points: drawing into it is scaled up
+            return rep
+        }
+        guard let drawn = bitmap() else { return nil }
+        view.cacheDisplay(in: view.bounds, to: drawn)
+        guard let background else { return drawn.representation(using: .png, properties: [:]) }
+        guard let out = bitmap(), let context = NSGraphicsContext(bitmapImageRep: out) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        let rect = NSRect(origin: .zero, size: size)
+        background.setFill()
+        rect.fill()
+        drawn.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        return out.representation(using: .png, properties: [:])
     }
 }
 

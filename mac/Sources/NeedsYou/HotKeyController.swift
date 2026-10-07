@@ -20,6 +20,9 @@ final class HotKeyController: ObservableObject {
     init(settings: AppSettings, action: @escaping () -> Void) {
         self.settings = settings
         self.action = action
+        // A snapshot run (NEEDS_YOU_SNAPSHOT_DIR) sits next to the real app: leave the
+        // shortcut to it.
+        guard AppSettings.snapshotDirectory == nil else { return }
         if !register(settings.hotKey) {
             NSLog("NeedsYou: couldn't register \(settings.hotKey.display) (status \(hotKey?.status ?? -1)); is it bound to input-source switching?")
         }

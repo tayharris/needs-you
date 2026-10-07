@@ -24,6 +24,8 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 
 ## Using it
 
+<img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze.">
+
 | You see | It means |
 |---|---|
 | A barely visible pill | Nothing needs you. Hover for "all clear" and the last check time. |
@@ -32,6 +34,16 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 | `3 +2`, a moon | 2 more are waiting under Later; a focus is on (see [Focus](#focus-heads-down-except-what-you-choose)). |
 | `3` `2 new` | 2 of the 3 arrived (or changed, or turned into `needs`) since you last opened the panel. Opening it clears the badge. |
 | The pill springs out with a title | A new item just arrived. It stays out 14 s; point at it to keep it there, click it to open the panel. |
+
+The pill when nothing needs you, with 4 work items and 1 personal one waiting (count only, then split work | personal and count and top item), and a new item springing out:
+
+<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: Nothing needs you."> &nbsp; <img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal shown faintly, in a red ring."> &nbsp; <img src="../../site/img/pill-split.png" width="90" alt="The split pill: W 4, P 1."> &nbsp; <img src="../../site/img/pill-top-item.png" width="248" alt="The pill showing the count and the top item's title.">
+
+<img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, deploy-bot, 4 minutes ago.">
+
+The open panel shows one context at a time; the tab in its header switches (here, Personal):
+
+<img src="../../site/img/panel-personal.png" width="376" alt="The open panel on the Personal tab with one low-priority card: Renew example.org, it expires in 9 days, with a Registrar link.">
 
 - **Click** the pill to expand the cards. A click anywhere else closes it, as do **Escape**, the chevron, a double-click on the header bar and the shortcut. To keep it up while you read a card next to the page its link opened, turn off **Settings → Panel → Open panel → Collapse when clicking elsewhere**. If the glass is hard to read over bright windows, raise **Settings → Panel → Opacity → Background darkness**.
 - Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or **Settings → Panel → Open panel → Automatic**, to go back to fitting the cards.
@@ -137,6 +149,10 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 
 The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
 
+<img src="../../site/img/settings-opacity.png" width="530" alt="Settings, Panel, Opacity: Background darkness 30%, Collapsed pill 85%, Collapsed pill pointer over it 100%, Open panel 100%, Open panel pointer over it 100%, each with a one-line explanation.">
+
+*Settings → Panel → Opacity, at the defaults.*
+
 ## Terminal button
 
 Agent cards from the Claude Code hook (and Orca) carry a **Terminal** button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done.
@@ -165,6 +181,8 @@ If a CLI switch fails (the pane is gone), the command goes on the clipboard. Log
 ## Settings
 
 Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a sidebar of short pages, like System Settings. The look, alerts and shortcut are under **Make it yours** above; the pages:
+
+<img src="../../site/img/settings-inbox.png" width="380" alt="Settings, Your inbox: How it works in three lines, then Run hub on this Mac, on and Running."> <img src="../../site/img/settings-connect.png" width="380" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite.">
 
 - **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.
 - **Your inbox:** three lines on how it works (your machines and agents send alerts, this Mac holds them because it's the hub, the pill shows them), **Run hub on this Mac** (on by default) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).

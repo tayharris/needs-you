@@ -57,7 +57,11 @@ Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `release-m
    - **Either version, from Terminal:** `xattr -dr com.apple.quarantine /Applications/NeedsYou.app`, then open it normally.
 3. **Work Macs** with endpoint security (SentinelOne, CrowdStrike, Jamf Protect and the like) may flag or kill an ad-hoc signed app that listens on a port. If that happens, note the product and its message for your report; don't fight your IT department over it.
 
-What you should see: **no Dock icon and no window.** A faint pill appears at the top right of the screen. That's the idle state ("nothing needs you"). It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by **right-clicking the pill**: Settings…, About Needs You, Quit Needs You.
+What you should see: **no Dock icon and no window.** A faint pill appears at the top right of the screen. That's the idle state ("nothing needs you"):
+
+<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you.">
+
+It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by **right-clicking the pill**: Settings…, About Needs You, Quit Needs You.
 
 ## 4. Check the hub on this Mac (Your inbox)
 
@@ -66,6 +70,8 @@ The hub starts by itself (**Run hub on this Mac** is on by default). Check it:
 1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Inbox and machines**: **Your inbox**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
 2. Open **Your inbox**. It starts with how it works: your machines send alerts, this Mac holds them (it's the hub), the pill shows them. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
 3. Optional: **General → Open at login**.
+
+<img src="../../site/img/settings-inbox.png" width="560" alt="Settings, Your inbox page: How it works in three lines (your machines and agents send alerts; this Mac holds them, it's the hub; the pill shows them until they're handled), then Run hub on this Mac, on and Running.">
 
 If the pill says **Hub can't start** (click it to open Settings):
 
@@ -94,6 +100,8 @@ Do this for the Mac itself first (so Claude Code on the Mac can post), then for 
 
 1. Right-click the pill → **Settings…** → **Connect a machine** (under **Inbox and machines**).
 2. **What is it?** *A server or agent that sends alerts*. **Machine name:** anything, e.g. `laptop` or `devbox`. **Uses:** how many machines this link should set up. **Expires after:** keep the default.
+
+   <img src="../../site/img/settings-connect.png" width="560" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite.">
 3. Click **Create invite**. The join link appears with two copy buttons:
    - **Shell one-liner** copies a command to run on the machine:
 
@@ -115,7 +123,11 @@ Re-running the line on the same machine is safe: it keeps the token and doesn't 
 
 ## 7. What to try
 
-Tick off what you get to; anything that surprises you is worth a report.
+Tick off what you get to; anything that surprises you is worth a report. With a few items waiting, the pill shows a count, a new one springs out for a moment, and a click opens the cards (these are example items):
+
+<img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring."> &nbsp; <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, deploy-bot, 4 minutes ago.">
+
+<img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze.">
 
 - [ ] **Post and resolve an item** from a connected machine:
 

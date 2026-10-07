@@ -92,32 +92,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Focus rule: nothing here opens a window or activates the app. With no hub set
         // up, the pill shows a "set up" state; clicking it is what opens Settings.
-        if let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_DIR"] {
-            runSnapshotTour(into: URL(fileURLWithPath: dir))
+        if let dir = AppSettings.snapshotDirectory {
+            runSnapshotTour(into: dir)
         }
     }
 
-    /// Debug aid: step through the main states and write a PNG of each, so the layout can
-    /// be checked without Screen Recording permission.
+    /// Debug aid (NEEDS_YOU_SNAPSHOT_DIR): step through the main states and write a PNG of
+    /// each, then some Settings pages, so the layout can be checked (and the site's
+    /// screenshots made, mac/scripts/screenshots.sh) without Screen Recording permission.
+    /// Nothing here activates the app or makes a window key. The Settings pages are drawn
+    /// with the default look; the look settings are put back afterwards. Best run on a test
+    /// copy with its own defaults suite, as screenshots.sh does.
     private func runSnapshotTour(into dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let savedUI = settings.ui
         let steps: [(String, (AppModel) -> Void)] = [
             ("1-collapsed", { _ in }),
             ("2-expanded", { $0.expand() }),
             ("3-expanded-recent", { $0.showRecent = true }),
             ("4-personal", { $0.setContext(.personal) }),
-            ("5-collapsed-again", { $0.setContext(.work); $0.collapse() }),
+            ("5-collapsed-again", { $0.showRecent = false; $0.setContext(.work); $0.collapse() }),
             ("6-preview", { model in
-                let item = Item(id: "tour", key: "tour", priority: .urgent,
-                                title: "ACME-4700: prod deploy check is red",
-                                source: ItemSource(host: "ci", agent: "deploy-check"), createdAt: Date())
+                // The most urgent open item, as if it had just arrived.
+                let item = model.needsItems.first { $0.priority == .urgent }
+                    ?? Item(id: "tour", key: "tour", priority: .urgent,
+                            title: "ACME-4700: prod deploy check is red",
+                            source: ItemSource(host: "ci", agent: "deploy-check"), createdAt: Date())
                 if let announcer = model.announcer { announcer(model, [item]) } else { model.requestPulse(times: 2, priority: .urgent) }
             }),
             ("7-summary", { [weak self] model in
                 model.previewItem = nil
                 self?.phase3?.showSummaryNow()
             }),
+            ("8-pill-split", { model in
+                model.collapse()
+                model.settings.ui.pillSplit = .context
+            }),
+            ("9-pill-top-item", { model in
+                model.settings.ui.pillSplit = .none
+                model.settings.ui.pillDetail = .topItem
+            }),
         ]
+        // Settings pages, drawn as a running hub on this Mac at example addresses.
+        let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
+                                     tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
@@ -125,6 +144,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name).png"))
             }
+            // The pages show the out-of-the-box look and alerts settings.
+            model.collapse()
+            settings.ui = UIPrefs()
+            for (tab, shots) in pages {
+                await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
+                                                   into: dir, name: "settings-\(tab.rawValue)")
+            }
+            settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
     }

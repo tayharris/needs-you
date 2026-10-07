@@ -62,6 +62,66 @@ final class SettingsWindowController {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    // MARK: Debug snapshot
+
+    /// Debug aid (NEEDS_YOU_SNAPSHOT_DIR): renders one page to PNGs, `<name>.png` for the
+    /// top and `<name>-2.png`, `-3`… scrolled down half a screen at a time (up to `shots`).
+    /// The window is fully transparent and ignores the mouse: nobody sees it, it never
+    /// becomes key and the app isn't activated, so it follows the focus rule. Uses
+    /// cacheDisplay, so no Screen Recording permission. `showcase` draws the hub on this
+    /// Mac as running (see SettingsView.showcase); the real Settings window is untouched.
+    func writeSnapshot(of tab: SettingsTab, showcase: LocalHubReach, shots: Int = 1,
+                       into dir: URL, name: String) async {
+        let navigation = SettingsNavigation()
+        navigation.tab = tab
+        let view = SettingsView(model: model, settings: model.settings, connect: connect, localHub: localHub,
+                                hotKeys: hotKeys, navigation: navigation, extra: extraSettings.mapValues { $0() },
+                                close: {}, showcase: showcase)
+        // Drawn like the front window (it never is one: it isn't key).
+        let w = NSWindow(contentViewController: NSHostingController(rootView: view.environment(\.controlActiveState, .key)))
+        w.title = "Needs You Settings"
+        w.styleMask = [.titled, .closable, .resizable]
+        w.appearance = NSAppearance(named: .darkAqua)
+        w.isReleasedWhenClosed = false
+        w.alphaValue = 0
+        w.ignoresMouseEvents = true
+        w.setContentSize(Self.preferredSize)
+        w.orderFrontRegardless()   // never key, never activates: alpha 0 and no mouse
+        defer { w.orderOut(nil) }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+        // The whole window, title bar included (the theme frame), else just the content.
+        guard let content = w.contentView else { return }
+        let frameView = content.superview ?? content
+        let scroll = Self.firstScrollView(in: content)
+        for screen in 0..<max(1, shots) {
+            if screen > 0 {
+                guard let scroll, let doc = scroll.documentView else { break }
+                let visible = scroll.contentView.bounds.height
+                let maxY = max(0, doc.frame.height - visible)
+                let y = min(maxY, CGFloat(screen) * (visible / 2).rounded())
+                if y <= scroll.contentView.bounds.origin.y { break }   // already at the bottom
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                try? await Task.sleep(nanoseconds: 600_000_000)
+            }
+            frameView.layoutSubtreeIfNeeded()
+            let file = screen == 0 ? "\(name).png" : "\(name)-\(screen + 1).png"
+            try? SnapshotImage.png(of: frameView)?.write(to: dir.appendingPathComponent(file))
+        }
+    }
+
+    private static func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView, let doc = scroll.documentView,
+           doc.frame.height > scroll.contentView.bounds.height + 1 {
+            return scroll
+        }
+        for sub in view.subviews {
+            if let found = firstScrollView(in: sub) { return found }
+        }
+        return nil
+    }
+
     /// The preferred size, but never taller or wider than the screen's usable area (less a
     /// margin), and never below the minimum.
     private static func fittingSize(on screen: NSScreen?) -> NSSize {
@@ -133,6 +193,9 @@ struct SettingsView: View {
     @ObservedObject var navigation: SettingsNavigation
     var extra: [SettingsTab: AnyView] = [:]
     var close: () -> Void
+    /// Snapshot tour only (NEEDS_YOU_SNAPSHOT_DIR): draw the pages as if the hub on this
+    /// Mac were running at these addresses, even in demo mode. Never set in a real window.
+    var showcase: LocalHubReach? = nil
 
     @State private var rows: [HubRow] = []
     @State private var message: String?
@@ -154,10 +217,13 @@ struct SettingsView: View {
     @State private var clipboardChangeCount = -1
 
     /// Only when nothing works out of the box (the local hub is off and no hubs are set).
-    private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo }
+    private var isFirstRun: Bool { !settings.hasHubs && !settings.isDemo && showcase == nil }
+
+    /// Demo mode, as the pages describe it (a showcase snapshot draws a real inbox).
+    private var demoUI: Bool { settings.isDemo && showcase == nil }
 
     /// An owner token (the local hub gives one) and not in demo mode.
-    private var canInvite: Bool { connect.canInvite && !settings.isDemo }
+    private var canInvite: Bool { showcase != nil || (connect.canInvite && !settings.isDemo) }
 
     /// The page to show (Machines falls back to Connect a machine without an owner token).
     private var page: SettingsTab { navigation.tab.resolved(canInvite: canInvite) }
@@ -222,7 +288,7 @@ struct SettingsView: View {
         case .inbox:
             howItWorksSection
             thisMacSection
-            if settings.runLocalHub && !settings.isDemo && localHubRunning, let reach = localHub.reach {
+            if let reach = runningReach {
                 addressesSection(reach)
             }
             extra[.inbox]
@@ -282,6 +348,16 @@ struct SettingsView: View {
     private var localHubRunning: Bool {
         if case .running = localHub.state { return true }
         return false
+    }
+
+    /// The running local hub's addresses (the showcase's in a snapshot), or nil.
+    private var runningReach: LocalHubReach? {
+        if let showcase { return showcase }
+        return settings.runLocalHub && !settings.isDemo && localHubRunning ? localHub.reach : nil
+    }
+
+    private var hubState: LocalHubController.State {
+        showcase.map { .running(publicURL: $0.tailnetURL ?? $0.localURL) } ?? localHub.state
     }
 
     // MARK: General
@@ -376,12 +452,12 @@ struct SettingsView: View {
             )) {
                 LabelWithDetail("Run hub on this Mac", "Your agents and servers send alerts to it. Nothing else to install.")
             }
-            .disabled(settings.isDemo)
-            if settings.isDemo {
+            .disabled(demoUI)
+            if demoUI {
                 Text("Demo mode is on, so the hub isn't running. Turn demo mode off in General.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else if settings.runLocalHub {
-                switch localHub.state {
+                switch hubState {
                 case .off:
                     EmptyView()
                 case .starting:
@@ -580,7 +656,8 @@ struct SettingsView: View {
 
     /// Links from this Mac's hub carry its address; without Tailscale that's 127.0.0.1.
     private var inviteReachWarning: String? {
-        guard settings.runLocalHub, !settings.isDemo, let reach = localHub.reach, !reach.reachableFromOtherMachines else { return nil }
+        guard showcase == nil, settings.runLocalHub, !settings.isDemo, let reach = localHub.reach,
+              !reach.reachableFromOtherMachines else { return nil }
         return "This Mac isn't on Tailscale, so links made here point at 127.0.0.1 and only work on this Mac."
     }
 

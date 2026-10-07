@@ -41,7 +41,7 @@ struct ExpandedView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            if model.isDemo {
+            if model.showsDemoBadge {
                 Text("DEMO")
                     .font(.system(size: model.metrics.sectionFont - 1, weight: .bold, design: .monospaced))
                     .padding(.horizontal, 4).padding(.vertical, 1)

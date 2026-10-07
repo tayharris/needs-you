@@ -160,6 +160,11 @@ final class AppModel: ObservableObject {
     var needsItems: [Item] { store.needs(in: context, now: now) }
     var recentItems: [Item] { store.recent(in: context, now: now) }
     var isDemo: Bool { settings.isDemo }
+    /// Snapshot runs (NEEDS_YOU_SNAPSHOT_DIR, a debug aid) draw demo items the way a real
+    /// inbox shows them, for screenshots: no DEMO badge, and "this Mac" as the source.
+    let showcase = AppSettings.snapshotDirectory != nil
+    /// The DEMO badge in the open panel's footer.
+    var showsDemoBadge: Bool { isDemo && !showcase }
     /// False shows the "set up" pill (click opens Settings): no hub at all, or only the
     /// local hub and it can't run (no Python, port taken).
     var isConfigured: Bool {
@@ -299,7 +304,7 @@ final class AppModel: ObservableObject {
         if !isConfigured { return localHubIssue != nil ? "Hub on this Mac can't start · click for Settings" : "No hub set up · click to set up" }
         let time = lastCheck.map { Self.timeFormatter.string(from: $0) } ?? "–"
         if let lastError { return "\(lastError) · \(time)" }
-        let source = isDemo ? "demo" : (activeHub ?? "hub")
+        let source = showsDemoBadge ? "demo" : (activeHub ?? (isDemo ? LocalHub.displayName : "hub"))
         return "\(source) · \(time)"
     }
 
