@@ -25,11 +25,11 @@ Files to add: `.github/workflows/ci.yml`, and later the conformance job (see [AD
 
 Cutting a release: rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - <date>` (and add a fresh `Unreleased` above it), bump the three versions, commit, then tag `vX.Y.Z` and push the tag (with approval). `scripts/build-release.sh OUT_DIR` builds the same assets locally. The fresh-user check is [fresh-user-test-plan.md](fresh-user-test-plan.md).
 
-`.github/workflows/release.yml`, triggered on `push: tags: ['v*.*.*']`:
+`.github/workflows/release.yml`, triggered on `push: tags: ['v*.*.*']` (and `workflow_dispatch` with `dry_run`, default on: build everything, upload it as a workflow artifact, no release, no tag):
 
 1. `needs: [the ci jobs]` via a reusable workflow (`workflow_call` on `ci.yml`), so nothing builds unless tests pass on the tagged commit.
 2. Check the tag matches the `VERSION` file (below); fail otherwise.
-3. **Mac app** (`macos-latest`): `NEEDS_YOU_VERSION=$V mac/scripts/bundle.sh`; `ditto -c -k --keepParent mac/dist/NeedsYou.app NeedsYou-$V-macos.zip`.
+3. **Mac app** (`macos-latest`): `NEEDS_YOU_VERSION=$V mac/scripts/bundle.sh`; `ditto -c -k --keepParent mac/dist/NeedsYou.app NeedsYou-$V-macos.zip`; `NeedsYou-$V.dmg` with `hdiutil create -volname NeedsYou -srcfolder <the app plus an /Applications link> -format UDZO`.
 4. **Server tarball** (`ubuntu-latest`): `git archive --prefix=needs-you-$V/ HEAD hub cli scripts deploy integrations docs README.md VERSION | gzip > needs-you-server-$V.tar.gz`.
 5. **CLI:** `cli/needs-you` copied as `needs-you-cli-$V` (it's one file).
 6. `sha256sum * > SHA256SUMS`. Later: sign `SHA256SUMS` with a minisign or Sigstore key.

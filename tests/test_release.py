@@ -111,6 +111,7 @@ class BuildReleaseTests(unittest.TestCase):
         self.assertIn("Open Anyway", notes)
         self.assertIn("xattr -dr com.apple.quarantine", notes)
         self.assertIn("NeedsYou-%s-macos.zip" % self.v, notes)
+        self.assertIn("NeedsYou-%s.dmg" % self.v, notes)
         self.assertIn("SHA256SUMS", notes)
         self.assertNotIn("## [", notes)  # the section body only, no headings from other versions
 

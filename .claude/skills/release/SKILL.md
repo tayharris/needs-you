@@ -1,11 +1,11 @@
 ---
 name: release
-description: Release steps for needs-you (changelog, version bump, tests, tag; the release workflow builds the Mac app zip, server tarball, CLI and checksums into a draft GitHub Release). Use when asked to cut, package or publish a release.
+description: Release steps for needs-you (changelog, version bump, tests, tag; the release workflow builds the Mac app DMG and zip, server tarball, CLI and checksums into a draft GitHub Release). Use when asked to cut, package or publish a release.
 ---
 
 # release (manual, for now)
 
-Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and then drafts the GitHub Release with `scripts/build-release.sh` (see `docs/roadmap/ci-cd.md`). The steps below are the manual fallback; `scripts/build-release.sh OUT_DIR` replaces step 4. Never push a tag or publish a release without the user's explicit go-ahead for that specific push.
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and then drafts the GitHub Release with `scripts/build-release.sh` (see `docs/roadmap/ci-cd.md`). The steps below are the manual fallback; `scripts/build-release.sh OUT_DIR` replaces step 4. To check the workflow without a tag, dispatch it as a dry run (`gh workflow run release.yml --ref <branch> -f dry_run=true`): it builds and uploads the assets as a workflow artifact and creates no release. Never push a tag or publish a release without the user's explicit go-ahead for that specific push.
 
 ## Versions
 
@@ -28,13 +28,15 @@ Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and the
    V=X.Y.Z; OUT=$(mktemp -d)/needs-you-$V; mkdir -p "$OUT"
    NEEDS_YOU_VERSION=$V mac/scripts/bundle.sh
    ditto -c -k --keepParent mac/dist/NeedsYou.app "$OUT/NeedsYou-$V-macos.zip"
+   STAGE=$(mktemp -d); ditto mac/dist/NeedsYou.app "$STAGE/NeedsYou.app"; ln -s /Applications "$STAGE/Applications"
+   hdiutil create -volname NeedsYou -srcfolder "$STAGE" -format UDZO -ov "$OUT/NeedsYou-$V.dmg"
    git archive --format=tar.gz --prefix=needs-you-$V/ -o "$OUT/needs-you-server-$V.tar.gz" HEAD \
      hub cli scripts deploy integrations docs README.md LICENSE
    cp cli/needs-you "$OUT/needs-you-cli-$V"
    (cd "$OUT" && shasum -a 256 * > SHA256SUMS)
    ```
 
-5. **Smoke the artifacts:** unzip the app and launch it in demo mode (`NEEDS_YOU_DEMO=1 .../Contents/MacOS/NeedsYou`); extract the tarball and run `python3 hub/needs_you_hub.py --help`; run the CLI copy with `--version`.
+5. **Smoke the artifacts:** open the DMG (the window shows the app and an Applications link), unzip the app and launch it in demo mode (`NEEDS_YOU_DEMO=1 .../Contents/MacOS/NeedsYou`); extract the tarball and run `python3 hub/needs_you_hub.py --help`; run the CLI copy with `--version`.
 6. **Tag** (ask first): `git tag -a vX.Y.Z -m "needs-you X.Y.Z"`; push only with approval.
 7. **GitHub Release** (ask first): `gh release create vX.Y.Z "$OUT"/* --title "needs-you X.Y.Z" --notes-file <notes>`. Notes: user-visible changes, any API changes (link `docs/API.md`), upgrade steps (`git pull && sudo ./scripts/install-hub.sh` for server hubs).
 
