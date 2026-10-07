@@ -43,6 +43,7 @@
         <li><a href="#items-post-but-nothing-shows-on-the-mac">Items post, but nothing shows on the Mac</a></li>
         <li><a href="#duplicate-or-stale-cards">Duplicate or stale cards</a></li>
         <li><a href="#claude-code-hooks">Claude Code hooks</a></li>
+        <li><a href="#codex-hooks">Codex hooks</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
@@ -136,6 +137,18 @@ tailscale status | head                          # is this machine on the tailne
 <li>Project-level hooks use <code>$CLAUDE_PROJECT_DIR/.claude/hooks/needs-you-hook.sh</code>. If the repo was cloned without <code>.claude/hooks/</code>, re-run <code>install-hooks.sh --project</code>.</li>
 <li>A card that doesn't clear: the resolve runs only if this session posted (marker files in <code>~/.local/state/needs-you/claude-hooks/</code>). Deleting that directory is safe. A session that was killed is cleared by the next <code>needs-you flush</code> once its Claude process is gone (<code>needs-you doctor</code> shows whether the flush is scheduled), or 48 hours after its last post.</li>
 <li>Too noisy? <code>idle_prompt</code> fires after about a minute of waiting. Opt in only on machines where agents run unattended.</li>
+</ul>
+<h2 id="codex-hooks">Codex hooks <a class="anchor" href="#codex-hooks" aria-label="Link to this section">#</a></h2>
+<p><code>needs-you doctor</code> has a <code>codex hooks</code> line. Simulate an approval prompt and its resolve with a log to stderr:</p>
+<div class="code"><pre><code class="language-bash">echo '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"'"$PWD"'","tool_name":"Bash","tool_input":{"command":"make test"}}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.codex/hooks/needs-you-hook.sh notify codex
+echo '{"session_id":"t1"}' | NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.codex/hooks/needs-you-hook.sh resolve codex</code></pre></div>
+<p>The log lines mean the same as for the Claude Code hooks above. Codex-specific causes:</p>
+<ul>
+<li><strong>Not trusted.</strong> Codex skips hooks nobody has reviewed and says so at startup. Open <code>/hooks</code> in Codex and trust the needs-you entries. Editing those entries by hand makes them untrusted again.</li>
+<li><strong>Hooks turned off.</strong> <code>hooks = false</code> under <code>[features]</code> in <code>~/.codex/config.toml</code> (or a managed <code>requirements.toml</code>) disables every hook; doctor reports the first.</li>
+<li><strong>Another <code>CODEX_HOME</code>.</strong> The installer and doctor follow <code>$CODEX_HOME</code>; run them with the same value Codex uses.</li>
+<li><strong>Every turn makes a card.</strong> That's the <code>Stop</code> hook: Codex finished and is waiting for you. Opt in only where Codex runs unattended, set <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> to keep only approval cards, or turn it off for a session with <code>NEEDS_YOU_AGENT_ALERTS=0</code>.</li>
 </ul>
 <h2 id="github-poller">GitHub poller <a class="anchor" href="#github-poller" aria-label="Link to this section">#</a></h2>
 <ul>

@@ -356,7 +356,7 @@ token. Codes are <code>nyi_</code> plus 192 random bits (URL-safe base64); hubs 
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts."}</code></pre></div>
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin."}</code></pre></div>
 <p><code>install_command</code> and <code>agent_prompt</code> are only present for <code>sender</code> invites. Both set up Claude
 Code alerts (<code>--claude-hooks user --skill --alerts</code>); the join page lists the other options. The URLs use the
 hub's <code>public_url</code> (config <code>public_url</code> / <code>--public-url</code>; without it, the first bind address).</p>
@@ -521,7 +521,7 @@ token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code
 receiving hub's own id (the sender then stops using that peer).</p>
 <p>Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
 per peer into a durable <code>outbox</code> table in the same SQLite transaction as the write. A worker
-thread per peer sends batches of up to 200 records, always the record's <em>current</em> version, and
+thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's <em>current</em> version, and
 deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
 5 min, ±20% jitter). Outbox rows survive restarts. The admin tool writes to the same outbox, so
 <code>needs-you-admin token add</code> on one hub reaches every peer.</p>

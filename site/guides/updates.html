@@ -68,7 +68,7 @@
 <div class="code"><pre><code class="language-bash">needs-you update --check     # what would change, and from where
 needs-you update             # do it
 needs-you update --rollback  # put back the files the last update replaced</code></pre></div>
-<p><code>needs-you update</code> updates what's already installed on the machine (it never adds a piece): the CLI, the Claude Code hook and its entries in <code>~/.claude/settings.json</code> (re-merged by <code>install-hooks.sh</code>, which keeps a <code>.bak</code>), the skill, and the Orca snippet. It:</p>
+<p><code>needs-you update</code> updates what's already installed on the machine (it never adds a piece): the CLI, the Claude Code hook and its entries in <code>~/.claude/settings.json</code> (re-merged by <code>install-hooks.sh</code>, which keeps a <code>.bak</code>), a project's own hooks when you run it inside that project, the skill, and the Orca snippet. It:</p>
 <ul>
 <li>asks only the hub this machine was invited by: the first URL in <code>NEEDS_YOU_URLS</code>, or <code>NEEDS_YOU_UPDATE_HUB</code> if you set one. Never a failover hub, never a URL a hub sends;</li>
 <li>talks to it only over https, loopback or the tailnet (a <code>100.64.0.0/10</code> or <code>fd7a:115c:a1e0::/48</code> address, or a <code>*.ts.net</code> name that resolves into them). Plain http to anything else is refused;</li>
