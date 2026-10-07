@@ -38,7 +38,7 @@ final class LocalHubController: ObservableObject {
 
     private let settings: AppSettings
     private let model: AppModel
-    private let log = Logger(subsystem: "app.needsyou.mac", category: "hub")
+    private let log = Logger(subsystem: AppIdentity.logSubsystem, category: "hub")
 
     private var process: Process?
     private var plan: LocalHubPlan?

@@ -12,7 +12,7 @@ import os
 /// environment. If nothing works, the command goes on the clipboard; the worst case is
 /// "opens the right app".
 enum OrcaJumpRunner {
-    private static let log = Logger(subsystem: "app.needsyou.mac", category: "orca-jump")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "orca-jump")
 
     static func run(_ jump: OrcaJump) {
         DispatchQueue.global(qos: .userInitiated).async {

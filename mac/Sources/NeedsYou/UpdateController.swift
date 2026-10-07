@@ -45,7 +45,7 @@ final class UpdateController: ObservableObject {
 
     private let defaults: UserDefaults
     private let model: AppModel
-    private let log = Logger(subsystem: "app.needsyou.mac", category: "update")
+    private let log = Logger(subsystem: AppIdentity.logSubsystem, category: "update")
     private let launchedAt = Date()
     private var timer: Timer?
     private var checkTask: Task<Void, Never>?
@@ -57,8 +57,6 @@ final class UpdateController: ObservableObject {
         var version: SemVer
         var app: URL
     }
-
-    static let bundleID = "app.needsyou.mac"
 
     init(defaults: UserDefaults, model: AppModel, environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.defaults = defaults
@@ -72,7 +70,7 @@ final class UpdateController: ObservableObject {
         source = resolved
         var isLocalFeed = false
         if case .localFeed = resolved.kind { isLocalFeed = true }
-        let realApp = Bundle.main.bundleIdentifier == UpdateController.bundleID && Bundle.main.bundleURL.pathExtension == "app"
+        let realApp = Bundle.main.bundleIdentifier == AppIdentity.bundleID && Bundle.main.bundleURL.pathExtension == "app"
         enabled = version != nil && (realApp || isLocalFeed)
     }
 
@@ -438,7 +436,7 @@ final class UpdateController: ObservableObject {
         guard let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) as? [String: Any] else {
             throw UpdateError.message("The zip has no NeedsYou.app.")
         }
-        if let problem = UpdateGate.verifyBundle(info: info, expectedID: Self.bundleID, version: c.version, newerThan: current) {
+        if let problem = UpdateGate.verifyBundle(info: info, expectedID: AppIdentity.bundleID, version: c.version, newerThan: current) {
             throw UpdateError.message(problem)
         }
         if let escape = symlinkEscaping(app) {
