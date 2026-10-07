@@ -15,6 +15,7 @@ final class CardLayoutTests: XCTestCase {
         ("testLongBodies", testLongBodies),
         ("testLinkRowPlans", testLinkRowPlans),
         ("testLinkLabels", testLinkLabels),
+        ("testLinkDestinationShowsTheRealHost", testLinkDestinationShowsTheRealHost),
         ("testOpacity", testOpacity),
         ("testListHeight", testListHeight),
         ("testDefaultsAreTheOriginalBehaviour", testDefaultsAreTheOriginalBehaviour),
@@ -84,6 +85,28 @@ final class CardLayoutTests: XCTestCase {
         XCTAssertEqual(short, "Open the…")
         XCTAssertTrue(short.count <= 10)
         XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: " ", url: "https://e.com"), maxLength: nil), "https://e.com")
+    }
+
+    func testLinkDestinationShowsTheRealHost() {
+        func dest(_ label: String, _ url: String) -> String? { LinkRowPolicy.destination(ItemLink(label: label, url: url)) }
+        // A label that names one site but links to another shows where it really goes.
+        XCTAssertEqual(dest("github.com/acme/pr/1", "https://evil.example.net/x"), "evil.example.net")
+        XCTAssertEqual(dest("Pull request", "https://www.GitHub.com/acme/pr/1"), "github.com")
+        // Other allowed schemes show the app.
+        XCTAssertEqual(dest("Thread", "slack://channel?id=C1"), "slack")
+        XCTAssertEqual(dest("Window", "vscode://file/home/me/repo"), "vscode")
+        // Nothing extra when the label already is the host or the URL, or is empty (the URL shows).
+        XCTAssertNil(dest("github.com", "https://github.com"))
+        XCTAssertNil(dest("https://example.com/a", "https://example.com/a"))
+        XCTAssertNil(dest("", "https://example.com/a"))
+        // Not allowed: shown as plain text anyway. The Orca jump is the app's own action.
+        XCTAssertNil(dest("Open", "file:///etc/passwd"))
+        XCTAssertNil(dest("Open", "http://example.com"))
+        XCTAssertNil(dest("Terminal", "needsyou://orca/terminal?handle=term_4f261ae3-041a-47c6-872a-cf02e1e40804"))
+        // Shortened compact labels still get the host, which isn't shortened.
+        let link = ItemLink(label: "A very long label that gets cut", url: "https://docs.example.com/x")
+        XCTAssertEqual(LinkRowPolicy.label(link, maxLength: LinkRowPolicy.compactLabelLength).count, LinkRowPolicy.compactLabelLength)
+        XCTAssertEqual(LinkRowPolicy.destination(link), "docs.example.com")
     }
 
     func testOpacity() {
