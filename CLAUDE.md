@@ -19,7 +19,7 @@ The agent-facing entry points are first-class product surface, not docs aftertho
 | `mac/` | `NeedsYou.app` (SwiftPM). `NeedsYouCore` = testable logic, `NeedsYou` = AppKit/SwiftUI app |
 | `scripts/` | `install-hub.sh` (systemd hub), `setup-sender.sh` (sender machine) |
 | `deploy/` | systemd unit, example hub config, admin wrapper |
-| `integrations/` | `claude-code/` (hooks, skill), `orca/` (prompt blocks), `ci/` (Actions, cron, systemd) |
+| `integrations/` | `claude-code/` (hooks, skill), `orca/` (prompt blocks), `ci/` (Actions, cron, systemd), `github/` (notifications + my-PRs poller via `gh`) |
 | `tests/` | Python `unittest` suite for hub, CLI, validation, replication |
 | `docs/` | `API.md` (wire contract), `HUB.md`, `AGENT-GUIDE.md`, `PLAN.md` (design + decisions), `guides/` |
 | `docs/adr/` | Architecture decision records |

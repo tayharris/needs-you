@@ -1,0 +1,6 @@
+# needs-you-github every 5 minutes. Install with `crontab -e` as the user whose `gh` is
+# logged in and who ran the needs-you invite installer (~/.config/needs-you/env).
+# cron's PATH is minimal: the poller finds the CLI in ~/.local/bin by itself, and gh in
+# /usr/bin; set NEEDS_YOU_GITHUB_GH=/path/to/gh in ~/.config/needs-you/env otherwise.
+# Errors go to cron mail; the poller always exits 0.
+*/5 * * * *  $HOME/.local/bin/needs-you-github >/dev/null  # needs-you-github

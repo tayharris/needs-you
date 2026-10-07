@@ -1,0 +1,38 @@
+{"data": {
+  "mine": {"nodes": [
+    {"number": 20, "title": "Cache the session store", "url": "https://github.com/acme/app/pull/20", "isDraft": false,
+     "reviewDecision": "APPROVED", "mergeable": "MERGEABLE", "headRefName": "cache-sessions",
+     "repository": {"nameWithOwner": "acme/app", "url": "https://github.com/acme/app"},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS", "contexts": {"nodes": [
+       {"__typename": "CheckRun", "name": "test", "conclusion": "SUCCESS", "status": "COMPLETED",
+        "detailsUrl": "https://github.com/acme/app/actions/runs/1/job/1"}]}}}}]}},
+    {"number": 21, "title": "Rename the billing flag", "url": "https://github.com/acme/app/pull/21", "isDraft": false,
+     "reviewDecision": "CHANGES_REQUESTED", "mergeable": "MERGEABLE", "headRefName": "billing-flag",
+     "repository": {"nameWithOwner": "acme/app", "url": "https://github.com/acme/app"},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS", "contexts": {"nodes": []}}}}]}},
+    {"number": 22, "title": "Upgrade the ORM", "url": "https://github.com/acme/app/pull/22", "isDraft": false,
+     "reviewDecision": "REVIEW_REQUIRED", "mergeable": "CONFLICTING", "headRefName": "orm",
+     "repository": {"nameWithOwner": "acme/app", "url": "https://github.com/acme/app"},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": null}}]}},
+    {"number": 23, "title": "Feature X", "url": "https://github.com/acme/app/pull/23", "isDraft": false,
+     "reviewDecision": null, "mergeable": "MERGEABLE", "headRefName": "feature-x",
+     "repository": {"nameWithOwner": "acme/app", "url": "https://github.com/acme/app"},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE", "contexts": {"nodes": [
+       {"__typename": "CheckRun", "name": "lint [ruff]", "conclusion": "FAILURE", "status": "COMPLETED",
+        "detailsUrl": "https://github.com/acme/app/actions/runs/2/job/21"},
+       {"__typename": "CheckRun", "name": "test", "conclusion": "SUCCESS", "status": "COMPLETED",
+        "detailsUrl": "https://github.com/acme/app/actions/runs/2/job/22"},
+       {"__typename": "StatusContext", "context": "ci/legacy", "state": "ERROR",
+        "targetUrl": "https://ci.example.com/build/7"},
+       {"__typename": "CheckRun", "name": "e2e", "conclusion": "TIMED_OUT", "status": "COMPLETED",
+        "detailsUrl": "http://insecure.example.com/e2e"}]}}}}]}},
+    {"number": 24, "title": "WIP: draft", "url": "https://github.com/acme/app/pull/24", "isDraft": true,
+     "reviewDecision": "CHANGES_REQUESTED", "mergeable": "CONFLICTING", "headRefName": "wip",
+     "repository": {"nameWithOwner": "acme/app", "url": "https://github.com/acme/app"},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE", "contexts": {"nodes": []}}}}]}}
+  ]},
+  "review": {"nodes": [
+    {"number": 12, "repository": {"nameWithOwner": "acme/app"}},
+    {"number": 3, "repository": {"nameWithOwner": "example-user/dotfiles"}}
+  ]}
+}}

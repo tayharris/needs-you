@@ -15,7 +15,7 @@ Next:
 - [Quickstart](docs/guides/quickstart.md): the whole setup, step by step.
 - [Claude Code alerts everywhere](docs/guides/claude-code-everywhere.md): one copy-paste path to "my Claude sessions alert my Mac", on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca.
 - [Tailscale](docs/guides/tailscale.md): connecting servers to the Mac.
-- [Claude Code](docs/guides/claude-code.md) and [Orca](docs/guides/orca.md) integrations.
+- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md) and [GitHub](docs/guides/github.md) integrations.
 - [AGENT-GUIDE.md](docs/AGENT-GUIDE.md): the rules agents follow when they post.
 
 To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
@@ -67,6 +67,7 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 | [Claude Code everywhere](docs/guides/claude-code-everywhere.md) | Alerts from local, SSH, tmux, VS Code Remote-SSH and Orca sessions |
 | [Tailscale](docs/guides/tailscale.md) | Putting the Mac and servers on one tailnet, checking reachability |
 | [Orca](docs/guides/orca.md) | Orca agents and automations, on one or many servers |
+| [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
 
@@ -95,7 +96,7 @@ needs-you/
 ├── cli/            needs-you: the sender CLI, one Python file
 ├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
-├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd)
+├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd), github/ (poller)
 ├── deploy/         systemd units and an example hub config
 └── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, PLAN.md, roadmap/, adr/
 ```

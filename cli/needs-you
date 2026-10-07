@@ -9,6 +9,11 @@
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
   needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
   needs-you resolve (--key KEY | --id ID)
+  needs-you run [--key KEY] [--title TITLE] [--done-after SECONDS] [--no-output] [...] -- CMD [ARGS...]
+                                                     run CMD with its output and exit code passed
+                                                     through; on failure post a card (exit code and
+                                                     the last stderr lines), on success resolve it,
+                                                     and after a long run post a `done` FYI
   needs-you flush                                    send anything queued in the outbox, and
                                                      resolve Claude Code cards whose session ended
   needs-you health                                   check each configured hub and the token
@@ -554,6 +559,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     g = rp.add_mutually_exclusive_group(required=True)
     g.add_argument("--key")
     g.add_argument("--id")
+    add_run_parser(sub)
     sub.add_parser("flush", help="send queued items now")
     sub.add_parser("health", help="check hubs and token")
     sub.add_parser("self-update", help="replace this CLI with the copy served by the first healthy hub")
@@ -570,6 +576,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return self_update(cfg, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
+    if args.cmd == "run":  # the command starts at once; the outbox is sent after it
+        return run_command(cfg, args)
 
     # Every invocation drains the outbox first, so queued items go out in order.
     sent, dropped, remaining = flush(cfg, verbose=not args.quiet and args.cmd == "flush")
@@ -599,6 +607,170 @@ def main(argv: Optional[List[str]] = None) -> int:
         warn("at most %d steps" % MAX_STEPS)
         return 2
     return deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+
+
+# ---------------------------------------------------------------------------
+# run: wrap a command (cron jobs, long builds)
+# ---------------------------------------------------------------------------
+
+RUN_TAIL_LINES = 5
+RUN_LINE_MAX = 160
+_ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[@-Z\\-_])")
+_INVISIBLE_RE = re.compile("[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
+# Best effort only: the docs tell people to use --no-output for anything that may print secrets.
+_SECRET_KV_RE = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key))"
+                           r"(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+_SECRET_AUTH_RE = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{12,}")
+_SECRET_RAW_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}"
+                            r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|ny_[\w-]{20,}|nyi_[\w-]{10,})")
+
+
+def add_run_parser(sub: Any) -> None:
+    rp = sub.add_parser("run", help="run a command; card on failure, resolve on success, done after a long run")
+    rp.add_argument("--key", help="default <context>:<host>:run:<command name>")
+    rp.add_argument("--title", help='the failure card\'s title (default "<command> failed on <host>")')
+    rp.add_argument("--done-title", help='the done FYI\'s title (default "<command> finished on <host>")')
+    rp.add_argument("--done-after", type=float, default=300.0, metavar="SECONDS",
+                    help="post a done FYI when a successful run took at least this long (default 300; "
+                         "negative: never)")
+    rp.add_argument("--no-output", action="store_true",
+                    help="never put the command's stderr in the card (use for anything that may print secrets)")
+    rp.add_argument("--context", choices=("work", "personal"), default=None,
+                    help="default: personal for personal:* keys, else $NEEDS_YOU_DEFAULT_CONTEXT, else work")
+    rp.add_argument("--priority", choices=("urgent", "normal", "low"), default="normal")
+    rp.add_argument("--link", action="append", type=parse_link, metavar="LABEL=URL",
+                    help="e.g. Logs=https://...; repeatable, at most 6")
+    rp.add_argument("--agent", help="source agent (default run:<command name>)")
+    rp.add_argument("--project", help="source project")
+    rp.add_argument("--expires-in", type=float, metavar="HOURS", help="expiry for the failure card")
+    rp.add_argument("command", nargs=argparse.REMAINDER, help="-- CMD [ARGS...]")
+
+
+def _duration(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return "%ds" % s
+    if s < 3600:
+        return "%dm %02ds" % (s // 60, s % 60)
+    return "%dh %02dm" % (s // 3600, (s % 3600) // 60)
+
+
+def scrub_tail(raw: bytes, lines: int = RUN_TAIL_LINES, width: int = RUN_LINE_MAX) -> List[str]:
+    """The last few lines of a command's stderr, safe for a card: escape sequences and control
+    characters dropped, carriage-return redraws collapsed, obvious secrets redacted, truncated."""
+    text = raw.decode("utf-8", "replace")
+    out: List[str] = []
+    for line in text.split("\n"):
+        line = _ANSI_RE.sub("", line)
+        line = line.rsplit("\r", 1)[-1] if "\r" in line.rstrip("\r") else line.rstrip("\r")
+        line = _INVISIBLE_RE.sub("", line.replace("\t", "    ")).rstrip()
+        line = _SECRET_RAW_RE.sub("<redacted>", line)
+        line = _SECRET_KV_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", line)
+        line = _SECRET_AUTH_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", line)
+        line = line.replace("```", "'''")
+        if line.strip():
+            out.append(line if len(line) <= width else line[:width - 1] + "…")
+    return out[-lines:]
+
+
+def run_command(cfg: Config, args: argparse.Namespace) -> int:
+    import signal
+    import subprocess
+    cmd = list(args.command or [])
+    if cmd and cmd[0] == "--":
+        cmd = cmd[1:]
+    if not cmd:
+        warn("run: no command given (needs-you run [options] -- CMD [ARGS...])")
+        return 2
+    if args.link and len(args.link) > 6:
+        warn("at most 6 links")
+        return 2
+    name = os.path.basename(cmd[0]) or cmd[0]
+    key = args.key or "%s:%s:run:%s" % (args.context or cfg.default_context, cfg.host,
+                                        re.sub(r"[^A-Za-z0-9._-]", "-", name)[:60])
+    context = args.context or ("personal" if key.startswith("personal:") else cfg.default_context)
+    start = time.monotonic()
+    tail = b""
+    interrupted = False
+    start_error = ""
+    try:
+        proc = subprocess.Popen(cmd, stderr=None if args.no_output else subprocess.PIPE)
+    except OSError as e:
+        rc = 127 if isinstance(e, FileNotFoundError) else 126
+        start_error = e.strerror or type(e).__name__
+        warn("run: cannot start %s: %s" % (name, start_error))
+    else:
+        old_term = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, lambda s, f: proc.send_signal(s))  # stopping us stops the command
+        try:
+            if proc.stderr is not None:
+                fd = proc.stderr.fileno()
+                while True:
+                    try:
+                        chunk = os.read(fd, 65536)
+                    except InterruptedError:
+                        continue
+                    if not chunk:
+                        break
+                    try:
+                        sys.stderr.buffer.write(chunk)
+                        sys.stderr.buffer.flush()
+                    except (OSError, ValueError):
+                        pass
+                    tail = (tail + chunk)[-16384:]
+            rc = proc.wait()
+        except KeyboardInterrupt:  # Ctrl-C reached the command too; a person is watching
+            interrupted = True
+            try:
+                rc = proc.wait()
+            except KeyboardInterrupt:
+                proc.kill()
+                rc = proc.wait()
+        finally:
+            signal.signal(signal.SIGTERM, old_term)
+    if rc < 0:
+        rc = 128 - rc
+    elapsed = time.monotonic() - start
+    if interrupted:
+        return rc
+    try:  # reporting must never change the command's result
+        flush(cfg)
+        _report_run(cfg, args, key, context, name, cmd, rc, elapsed, tail, start_error)
+    except Exception as e:  # noqa: BLE001
+        warn("run: could not report (%s)" % type(e).__name__)
+    return rc
+
+
+def _report_run(cfg: Config, args: argparse.Namespace, key: str, context: str, name: str, cmd: List[str],
+                rc: int, elapsed: float, tail: bytes, start_error: str) -> None:
+    source = {"host": cfg.host, "agent": (args.agent or "run:" + name)[:100]}
+    if args.project:
+        source["project"] = args.project
+    if rc == 0:
+        deliver(cfg, "POST", "/v1/items/resolve", {"key": key}, True, False)
+        if args.done_after >= 0 and elapsed >= args.done_after:
+            title = args.done_title or "%s finished on %s" % (name, cfg.host)
+            item = {"key": key, "kind": "done", "context": context, "priority": "low",
+                    "title": title[:100], "body": "Took %s." % _duration(elapsed), "source": source}
+            if args.link:
+                item["links"] = args.link
+            deliver(cfg, "POST", "/v1/items", item, True, False)
+        return
+    title = args.title or "%s failed on %s" % (name, cfg.host)
+    if start_error:
+        body = "`%s` could not start on `%s`: %s." % (name, cfg.host, start_error)
+    else:
+        body = "`%s` exited %d on `%s` after %s." % (name, rc, cfg.host, _duration(elapsed))
+    lines = [] if args.no_output else scrub_tail(tail)
+    if lines:
+        body += "\n\nLast lines of stderr:\n```\n%s\n```" % "\n".join(lines)
+    item = {"key": key, "kind": "needs", "context": context, "priority": args.priority,
+            "title": title[:100], "body": body[:2000], "source": source}
+    if args.link:
+        item["links"] = args.link
+    if args.expires_in is not None:
+        item["expires_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + args.expires_in * 3600))
+    deliver(cfg, "POST", "/v1/items", item, True, False)
 
 
 def self_update(cfg: Config, quiet: bool) -> int:

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LaunchAgent for needs-you-github on a Mac: every 5 minutes while you're logged in.
+     Replace /Users/me with your home directory, then:
+       cp io.needs-you.github.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.needs-you.github.plist
+     Stop it: launchctl bootout gui/$(id -u)/io.needs-you.github
+     PATH must hold gh (Homebrew: /opt/homebrew/bin). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.needs-you.github</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/me/.local/bin/needs-you-github</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/me/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>/Users/me/Library/Logs/needs-you-github.log</string>
+</dict>
+</plist>
