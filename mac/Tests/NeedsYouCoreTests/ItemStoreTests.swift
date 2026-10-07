@@ -218,3 +218,83 @@ final class ItemStoreCountTests: XCTestCase {
         XCTAssertEqual(store.recent(in: .work, now: t0).map(\.id), ["i1", "d1"])
     }
 }
+
+/// The Later list (docs/roadmap/focus-tiers.md, build step 4).
+final class ItemStoreLaterTests: XCTestCase {
+    static var allTests = [
+        ("testHeldItemsLeaveTheCountAndList", testHeldItemsLeaveTheCountAndList),
+        ("testReleaseDeliversEverythingOnce", testReleaseDeliversEverythingOnce),
+        ("testOnlyOpenNeedsAreHeld", testOnlyOpenNeedsAreHeld),
+        ("testHoldsGoAwayWithTheirItem", testHoldsGoAwayWithTheirItem),
+        ("testTwinReplacementKeepsTheHold", testTwinReplacementKeepsTheHold),
+        ("testLaterOrderAndContext", testLaterOrderAndContext),
+    ]
+
+    func testHeldItemsLeaveTheCountAndList() {
+        var store = ItemStore(items: [item("a"), item("b", priority: .urgent)])
+        store.holdForLater(id: "b", at: t0)
+        XCTAssertEqual(store.needsCount(in: .work, now: t0), 1)
+        XCTAssertEqual(store.needs(in: .work, now: t0).map(\.id), ["a"])
+        XCTAssertEqual(store.highestPriority(in: .work, now: t0), .normal, "a held urgent item doesn't colour the ring")
+        XCTAssertEqual(store.laterItems(now: t0).map(\.id), ["b"])
+        XCTAssertEqual(store.laterCount(in: .work, now: t0), 1)
+        XCTAssertTrue(store.isHeldForLater("b"))
+        store.unhold(id: "b")
+        XCTAssertEqual(store.needsCount(in: .work, now: t0), 2)
+    }
+
+    func testReleaseDeliversEverythingOnce() {
+        var store = ItemStore(items: [item("a"), item("b"), item("c")])
+        store.holdForLater(id: "a", at: t0)
+        store.holdForLater(id: "b", at: t0.addingTimeInterval(5))
+        XCTAssertEqual(store.releaseLater(now: t0).map(\.id), ["a", "b"])
+        XCTAssertEqual(store.needsCount(in: .work, now: t0), 3)
+        XCTAssertTrue(store.releaseLater(now: t0).isEmpty)
+    }
+
+    func testOnlyOpenNeedsAreHeld() {
+        var store = ItemStore(items: [item("d", kind: .done), item("i", kind: .info)])
+        store.holdForLater(id: "d", at: t0)
+        store.holdForLater(id: "i", at: t0)
+        store.holdForLater(id: "missing", at: t0)
+        XCTAssertTrue(store.heldForLater.isEmpty)
+    }
+
+    func testHoldsGoAwayWithTheirItem() {
+        var store = ItemStore(items: [item("a"), item("b"), item("c", expires: 60), item("d")])
+        for id in ["a", "b", "c", "d"] { store.holdForLater(id: id, at: t0) }
+        // Resolved on the hub.
+        store.merge([item("a", status: .resolved, updated: 10)], isFullSnapshot: false, now: t0)
+        // Closed here.
+        store.closeLocally(id: "b", now: t0)
+        // Expired.
+        store.prune(now: t0.addingTimeInterval(61))
+        XCTAssertEqual(Set(store.heldForLater.keys), ["d"])
+        // Missing from a full snapshot.
+        store.merge([], isFullSnapshot: true, now: t0.addingTimeInterval(62))
+        XCTAssertTrue(store.heldForLater.isEmpty)
+    }
+
+    func testTwinReplacementKeepsTheHold() {
+        var store = ItemStore(items: [item("old", key: "k:same")])
+        store.holdForLater(id: "old", at: t0)
+        store.merge([item("new", key: "k:same", updated: 5)], isFullSnapshot: false, now: t0)
+        XCTAssertTrue(store.isHeldForLater("new"))
+        XCTAssertFalse(store.isHeldForLater("old"))
+        XCTAssertEqual(store.needsCount(in: .work, now: t0), 0)
+    }
+
+    func testLaterOrderAndContext() {
+        var store = ItemStore(items: [item("w1"), item("w2"), item("p1", context: .personal)])
+        store.holdForLater(id: "w2", at: t0)
+        store.holdForLater(id: "p1", at: t0.addingTimeInterval(1))
+        store.holdForLater(id: "w1", at: t0.addingTimeInterval(2))
+        store.holdForLater(id: "w2", at: t0.addingTimeInterval(9))   // keeps its first time
+        XCTAssertEqual(store.laterItems(now: t0).map(\.id), ["w2", "p1", "w1"])
+        XCTAssertEqual(store.laterItems(in: .work, now: t0).map(\.id), ["w2", "w1"])
+        XCTAssertEqual(store.laterCount(in: .personal, now: t0), 1)
+        // A card snooze hides it from Later too.
+        store.snoozeCard(id: "w1", until: t0.addingTimeInterval(900))
+        XCTAssertEqual(store.laterCount(in: .work, now: t0), 1)
+    }
+}

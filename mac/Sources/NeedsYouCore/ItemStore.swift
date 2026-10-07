@@ -32,6 +32,9 @@ public struct ItemStore: Sendable {
     public private(set) var latestUpdatedAt: Date?
     /// Per-card snoozes (PLAN.md: 15 min / 1 hr / tomorrow), local to this Mac.
     public private(set) var cardSnoozes: [String: Date] = [:]
+    /// Open `needs` items that arrived as Later (focus-tiers.md), with when they were held.
+    /// Not counted and not in the card list until `releaseLater`; listed under Later.
+    public private(set) var heldForLater: [String: Date] = [:]
     /// Items closed locally while the PATCH is in flight, with the `updated_at` they had
     /// and when they were closed, so a poll that races the PATCH doesn't resurrect them.
     private var locallyClosed: [String: Tombstone] = [:]
@@ -80,6 +83,7 @@ public struct ItemStore: Sendable {
                     result.removed.append(removed)
                 }
                 cardSnoozes[incoming.id] = nil
+                heldForLater[incoming.id] = nil
                 continue
             }
 
@@ -88,6 +92,8 @@ public struct ItemStore: Sendable {
                let twin = items.values.first(where: { $0.key == incoming.key && $0.id != incoming.id }) {
                 items[twin.id] = nil
                 cardSnoozes[twin.id] = nil
+                // The replacement keeps its twin's place under Later.
+                if let held = heldForLater.removeValue(forKey: twin.id) { heldForLater[incoming.id] = held }
                 items[incoming.id] = incoming
                 if incoming.hasVisibleChange(from: twin) { result.changed.append(incoming) } else { result.touched.append(incoming) }
                 continue
@@ -109,6 +115,7 @@ public struct ItemStore: Sendable {
             for (id, item) in items where !seenIDs.contains(id) {
                 items[id] = nil
                 cardSnoozes[id] = nil
+                heldForLater[id] = nil
                 result.removed.append(item)
             }
             // Anything we closed locally that the hub no longer lists is settled.
@@ -126,10 +133,12 @@ public struct ItemStore: Sendable {
         for (id, item) in items where item.isExpired(at: now) {
             items[id] = nil
             cardSnoozes[id] = nil
+            heldForLater[id] = nil
             dropped.append(item)
         }
-        // Snoozes end, and never outlive their item.
+        // Snoozes end, and never outlive their item; nor does a Later hold.
         cardSnoozes = cardSnoozes.filter { $0.value > now && items[$0.key] != nil }
+        heldForLater = heldForLater.filter { items[$0.key] != nil }
         // Local-close tombstones: 24 h at most, and never more than the cap.
         locallyClosed = locallyClosed.filter { now.timeIntervalSince($0.value.closedAt) < Self.closedRetention }
         if locallyClosed.count > Self.maxClosedTombstones {
@@ -147,6 +156,7 @@ public struct ItemStore: Sendable {
         guard let item = items.removeValue(forKey: id) else { return nil }
         locallyClosed[id] = Tombstone(updatedAt: item.updatedAt, closedAt: now)
         cardSnoozes[id] = nil
+        heldForLater[id] = nil
         return item
     }
 
@@ -167,6 +177,46 @@ public struct ItemStore: Sendable {
         items[id]?.seenAt = date
     }
 
+    // MARK: - Later (delivery tiers)
+
+    /// Keep an open `needs` item under Later: out of the count and the card list until
+    /// `releaseLater`. Holding again keeps the first time.
+    public mutating func holdForLater(id: String, at date: Date) {
+        guard let item = items[id], item.kind == .needs else { return }
+        if heldForLater[id] == nil { heldForLater[id] = date }
+    }
+
+    /// Back into the list (it arrived again as interrupt or ambient, or was opened by hand).
+    public mutating func unhold(id: String) { heldForLater[id] = nil }
+
+    public func isHeldForLater(_ id: String) -> Bool { heldForLater[id] != nil }
+
+    /// The Later section: held items still shown, oldest hold first. All contexts when nil.
+    public func laterItems(in context: ItemContext? = nil, now: Date = Date()) -> [Item] {
+        heldForLater
+            .compactMap { entry -> (Item, Date)? in
+                guard let item = items[entry.key], item.status == .open, !item.isExpired(at: now),
+                      !isCardSnoozed(entry.key, now: now), context == nil || item.context == context
+                else { return nil }
+                return (item, entry.value)
+            }
+            .sorted { $0.1 != $1.1 ? $0.1 < $1.1 : $0.0.id < $1.0.id }
+            .map { $0.0 }
+    }
+
+    public func laterCount(in context: ItemContext? = nil, now: Date = Date()) -> Int {
+        laterItems(in: context, now: now).count
+    }
+
+    /// Deliver everything held: it joins the list and the count. Returns the items released
+    /// that are still shown (for the "3 waited" peek).
+    @discardableResult
+    public mutating func releaseLater(now: Date = Date()) -> [Item] {
+        let released = laterItems(now: now)
+        heldForLater = [:]
+        return released
+    }
+
     // MARK: - Queries
 
     public func isCardSnoozed(_ id: String, now: Date = Date()) -> Bool {
@@ -180,9 +230,10 @@ public struct ItemStore: Sendable {
     }
 
     /// Open `needs` items in a context, urgent → normal → low, oldest first within a priority.
+    /// Items held under Later aren't here (see `laterItems`).
     public func needs(in context: ItemContext, now: Date = Date()) -> [Item] {
         visibleItems(now: now)
-            .filter { $0.kind == .needs && $0.context == context }
+            .filter { $0.kind == .needs && $0.context == context && heldForLater[$0.id] == nil }
             .sorted { lhs, rhs in
                 if lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
                 if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
@@ -190,7 +241,8 @@ public struct ItemStore: Sendable {
             }
     }
 
-    /// The badge count: open `needs` items in the current context only (PLAN.md, "Count").
+    /// The badge count: open `needs` items in the current context only (PLAN.md, "Count"),
+    /// not counting Later.
     public func needsCount(in context: ItemContext, now: Date = Date()) -> Int {
         needs(in: context, now: now).count
     }

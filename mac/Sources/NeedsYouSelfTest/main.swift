@@ -8,6 +8,7 @@ import MiniXCTest
 let entries =
     testEntries(ItemStoreMergeTests.self, ItemStoreMergeTests.allTests)
     + testEntries(ItemStoreCountTests.self, ItemStoreCountTests.allTests)
+    + testEntries(ItemStoreLaterTests.self, ItemStoreLaterTests.allTests)
     + testEntries(LinkPolicyTests.self, LinkPolicyTests.allTests)
     + testEntries(HubClientTests.self, HubClientTests.allTests)
     + testEntries(SupportTests.self, SupportTests.allTests)
