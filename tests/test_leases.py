@@ -40,7 +40,7 @@ class LeaseTests(HubTestCase):
         self.sender, self.reader = self.tokens(self.hub)
         host = subprocess.run([BASH, "-c", 'h=$(hostname -s 2>/dev/null || hostname); '
                                'printf %s "${h%%.*}" | tr -c "A-Za-z0-9._-" _ | cut -c1-80'],
-                              capture_output=True, text=True).stdout
+                              capture_output=True, text=True).stdout.strip()
         self.prefix = "agent:%s:" % host
 
     def env(self, **extra):
