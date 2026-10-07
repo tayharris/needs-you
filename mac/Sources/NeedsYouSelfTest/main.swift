@@ -44,6 +44,7 @@ let entries =
     + testEntries(WorkDisplayTests.self, WorkDisplayTests.allTests)
     + testEntries(UpdaterTests.self, UpdaterTests.allTests)
     + testEntries(RolloutStatusTests.self, RolloutStatusTests.allTests)
+    + testEntries(PanelBehaviorTests.self, PanelBehaviorTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

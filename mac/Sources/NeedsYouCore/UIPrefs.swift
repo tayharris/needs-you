@@ -5,7 +5,8 @@ import Foundation
 /// UserDefaults as plain values so `defaults read app.needsyou.mac` stays readable.
 ///
 /// - The defaults are the original look, so an upgrade changes nothing until the user
-///   picks something.
+///   picks something. The exceptions are deliberate: arrival peeks stay out 14 s (was 4 s)
+///   and the open panel no longer collapses when you click elsewhere.
 /// - Unknown or out-of-range stored values fall back to the default for that key (a newer
 ///   build may store a choice this one doesn't know).
 /// - `load` never writes, and `save` only writes these keys, so a rollback loses nothing.
@@ -19,6 +20,9 @@ public struct UIPrefs: Equatable, Sendable {
         public static let maxVisibleCards = "maxVisibleCards"
         public static let cardBodies = "cardBodies"
         public static let compactLinks = "compactLinks"
+        public static let previewSeconds = "previewSeconds"
+        public static let collapseOnClickOutside = "collapseOnClickOutside"
+        public static let expandedListHeight = "expandedListHeight"
     }
 
     public var panelSize: PanelSize = .regular
@@ -34,6 +38,15 @@ public struct UIPrefs: Equatable, Sendable {
     public var cardBodies: CardBodyMode = .full
     /// At most three short link labels per card.
     public var compactLinks = false
+    /// Seconds an arrival peek stays out (one of PeekDuration.choices; 0 = until clicked or
+    /// pointed at). Default 14.
+    public var previewSeconds: Int = PeekDuration.standard
+    /// The open panel collapses when you click in another app. Default off: it stays open,
+    /// so you can read a card while its link is open. Esc, the chevron and the shortcut
+    /// still close it.
+    public var collapseOnClickOutside = false
+    /// The open panel's list height in points, set by dragging its grip; 0 = automatic.
+    public var expandedListHeight: Double = 0
 
     public init() {}
 
@@ -51,6 +64,9 @@ public struct UIPrefs: Equatable, Sendable {
         }
         if let raw = store.string(forKey: Key.cardBodies), let v = CardBodyMode(rawValue: raw) { p.cardBodies = v }
         if let v = store.object(forKey: Key.compactLinks) as? NSNumber { p.compactLinks = v.boolValue }
+        if let v = store.object(forKey: Key.previewSeconds) as? NSNumber { p.previewSeconds = PeekDuration.sanitized(v.intValue) }
+        if let v = store.object(forKey: Key.collapseOnClickOutside) as? NSNumber { p.collapseOnClickOutside = v.boolValue }
+        if let v = store.object(forKey: Key.expandedListHeight) as? NSNumber { p.expandedListHeight = ListResize.sanitized(v.doubleValue) }
         return p
     }
 
@@ -64,6 +80,9 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.maxVisibleCards != maxVisibleCards { store.set(maxVisibleCards, forKey: Key.maxVisibleCards) }
         if previous?.cardBodies != cardBodies { store.set(cardBodies.rawValue, forKey: Key.cardBodies) }
         if previous?.compactLinks != compactLinks { store.set(compactLinks, forKey: Key.compactLinks) }
+        if previous?.previewSeconds != previewSeconds { store.set(previewSeconds, forKey: Key.previewSeconds) }
+        if previous?.collapseOnClickOutside != collapseOnClickOutside { store.set(collapseOnClickOutside, forKey: Key.collapseOnClickOutside) }
+        if previous?.expandedListHeight != expandedListHeight { store.set(expandedListHeight, forKey: Key.expandedListHeight) }
     }
 
     public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }
