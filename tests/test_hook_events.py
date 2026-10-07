@@ -240,6 +240,99 @@ class LinkTests(HookHarness):
                                            NEEDS_YOU_SSH_ALIAS="devbox"), [])
 
 
+UUID = "4F261AE3-041A-47C6-872A-CF02E1E40804"
+TERM = "Terminal=needsyou://terminal/focus?"
+
+
+class TerminalLinkTests(HookHarness):
+    """The Terminal link to the Mac terminal tab: from the local terminal's environment on
+    the Mac, from LC_NEEDS_YOU_TERM over SSH. Mirrors TerminalJump's validation."""
+
+    def terminal(self, **extra):
+        extra.setdefault("NEEDS_YOU_AGENT_LINK", "none")  # only the terminal link
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"}, **extra)
+        return self.links(self.last())
+
+    def mac(self, **extra):
+        return self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", **extra)
+
+    def test_wezterm(self):
+        self.assertEqual(self.mac(TERM_PROGRAM="WezTerm", WEZTERM_PANE="12"), [TERM + "app=wezterm&pane=12"])
+        self.assertEqual(self.mac(TERM_PROGRAM="WezTerm", WEZTERM_PANE="12;x"), [])
+
+    def test_tmux_wins_and_names_its_host(self):
+        tmux = {"TMUX": "/private/tmp/tmux-501/default,123,0", "TMUX_PANE": "%7"}
+        self.assertEqual(self.mac(**tmux), [TERM + "app=tmux&pane=7"])
+        self.assertEqual(self.mac(ITERM_SESSION_ID="w0t0p0:" + UUID, **tmux), [TERM + "app=tmux&pane=7&host=iterm"])
+        self.assertEqual(self.mac(WEZTERM_PANE="3", **tmux), [TERM + "app=tmux&pane=7&host=wezterm"])
+        self.assertEqual(self.mac(TERM_PROGRAM="Apple_Terminal", **tmux), [TERM + "app=tmux&pane=7&host=terminal"])
+        self.assertEqual(self.mac(TMUX="x", TMUX_PANE="%7;rm"), [])
+
+    def test_iterm_session_uuid(self):
+        self.assertEqual(self.mac(TERM_PROGRAM="iTerm.app", ITERM_SESSION_ID="w0t1p0:" + UUID),
+                         [TERM + "app=iterm&session=" + UUID])
+        self.assertEqual(self.mac(ITERM_SESSION_ID="w0t1p0:not-a-uuid"), [])
+
+    def test_terminal_app_tty(self):
+        self.assertEqual(self.mac(TERM_PROGRAM="Apple_Terminal", NEEDS_YOU_HOOK_TTY="ttys004"),
+                         [TERM + "app=terminal&tty=/dev/ttys004"])
+        self.assertEqual(self.mac(TERM_PROGRAM="Apple_Terminal", NEEDS_YOU_HOOK_TTY="??"), [])
+
+    def test_ghostty_and_unknown(self):
+        self.assertEqual(self.mac(TERM_PROGRAM="ghostty"), [TERM + "app=ghostty"])
+        self.assertEqual(self.mac(TERM_PROGRAM="Hyper"), [])
+        self.assertEqual(self.mac(), [])
+
+    def test_vscode_terminal_gets_none(self):
+        self.assertEqual(self.mac(TERM_PROGRAM="vscode", WEZTERM_PANE="1"), [])
+
+    def test_not_on_linux_without_the_mac_variable(self):
+        self.assertEqual(self.terminal(WEZTERM_PANE="12", TERM_PROGRAM="WezTerm"), [])
+
+    def test_ssh_reads_lc_needs_you_term(self):
+        ssh = {"SSH_CONNECTION": "10.0.0.2 5000 10.0.0.3 22"}
+        for value, want in [
+            ("app=iterm&session=" + UUID, "app=iterm&session=" + UUID),
+            ("app=wezterm&pane=4", "app=wezterm&pane=4"),
+            ("app=terminal&tty=/dev/ttys012", "app=terminal&tty=/dev/ttys012"),
+            ("app=terminal&tty=%2Fdev%2Fttys012", "app=terminal&tty=/dev/ttys012"),
+            ("app=tmux&target=main:1.0&host=iterm", "app=tmux&target=main:1.0&host=iterm"),
+            ("host=wezterm&app=tmux&pane=9", "app=tmux&pane=9&host=wezterm"),
+            ("app=ghostty", "app=ghostty"),
+        ]:
+            self.assertEqual(self.terminal(LC_NEEDS_YOU_TERM=value, **ssh), [TERM + want], value)
+            self.assertEqual(self.terminal(LC_NEEDS_YOU_TERM=value), [TERM + want], "linux, no ssh: " + value)
+        for bad in ["", "iterm", "app=iterm", "app=xterm&pane=1", "app=wezterm&pane=-1", "app=wezterm&pane=1&pane=2",
+                    "app=wezterm&pane=1&cmd=rm", "app=wezterm&pane=1;rm", "app=terminal&tty=/dev/ttys1%0A",
+                    "app=iterm&session=" + UUID + "%22", "app=tmux&target=-x:1.0", "app=tmux&pane=1&target=a:1.2",
+                    "app=tmux&pane=1&host=tmux", "app=wezterm&pane=1&host=iterm", "app=ghostty&pane=1",
+                    "app=iterm&session=" + UUID + "&tty=/dev/ttys001", "a" * 301]:
+            self.assertEqual(self.terminal(LC_NEEDS_YOU_TERM=bad, **ssh), [], bad)
+
+    def test_ssh_ignores_the_remote_terminal(self):
+        # The remote's own tmux/WezTerm variables name panes on the remote, not on the Mac.
+        self.assertEqual(self.terminal(SSH_CONNECTION="1 2 3 4", NEEDS_YOU_HOOK_PLATFORM="darwin",
+                                       TMUX="x", TMUX_PANE="%3", WEZTERM_PANE="2"), [])
+
+    def test_comes_first_and_editor_links_follow(self):
+        self.assertEqual(self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", WEZTERM_PANE="12", NEEDS_YOU_AGENT_LINK=""),
+                         [TERM + "app=wezterm&pane=12", "VS Code=vscode://file" + self.cwd])
+
+    def test_orca_wins(self):
+        h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
+        self.assertEqual(self.mac(WEZTERM_PANE="12", ORCA_TERMINAL_HANDLE=h),
+                         ["Terminal=needsyou://orca/terminal?handle=" + h])
+
+    def test_old_hub_retry_drops_every_app_link(self):
+        with open(self.cli, "w") as fh:
+            fh.write(FAKE_CLI + "sys.exit(2 if any('=needsyou://' in a for a in sys.argv) else 0)\n")
+        self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", WEZTERM_PANE="12", NEEDS_YOU_AGENT_LINK="")
+        calls = self.calls()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.links(calls[0])[0], TERM + "app=wezterm&pane=12")
+        self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file" + self.cwd])
+
+
 def usage_line(total, model="claude-opus-5", sidechain=False, cache=True):
     u = ({"input_tokens": 10, "cache_read_input_tokens": total - 1010, "cache_creation_input_tokens": 1000,
           "output_tokens": 999} if cache else {"input_tokens": total, "output_tokens": 5})

@@ -14,7 +14,7 @@
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
 # it can (VS Code folder, Remote-SSH window, the VS Code Claude tab, the Orca
-# terminal). Always exits 0 and never prints to stdout, so it can't block or
+# terminal, the Mac terminal tab: below). Always exits 0 and never prints to stdout, so it can't block or
 # steer Claude. Installed by install-hooks.sh.
 #
 # Off unless one of these is true (so ordinary interactive use stays quiet):
@@ -34,6 +34,15 @@
 #                             orca://skills/share/<id>), so Orca sessions get
 #                             a needsyou://orca/terminal link and an
 #                             `orca terminal switch` command in the body.
+#   LC_NEEDS_YOU_TERM         on an SSH host: which Mac terminal tab holds the
+#                             connection, as the link's query (for example
+#                             "app=iterm&session=<UUID>"), set in the Mac's
+#                             shell and carried by ssh's default SendEnv LC_*.
+#                             On the Mac itself the hook reads TERM_PROGRAM,
+#                             TMUX_PANE, WEZTERM_PANE, ITERM_SESSION_ID or the
+#                             tty instead. Either way the card gets a Terminal
+#                             link, needsyou://terminal/focus?app=...
+#                             (not alongside the Orca one: Orca wins)
 #   NEEDS_YOU_SSH_ALIAS       the name the Mac's ~/.ssh/config (or VS Code
 #                             Remote-SSH) uses for this host; on a host other
 #                             than the Mac it adds a Remote-SSH folder link
@@ -187,7 +196,7 @@ run_py() {
   NY_PID=$lease_pid NY_START=$lease_start \
   python3 - 2>/dev/null <<'PY'
 import json, os, re, shlex, subprocess, sys
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
 try:
@@ -267,6 +276,102 @@ def where_lines():
     return lines
 
 
+# ---------------------------------------------------------------- terminal link
+# needsyou://terminal/focus?app=<app>&<id> (docs/API.md). The same rules as the Mac
+# app's TerminalJump: exactly these parameters, each value matching its pattern. Values
+# are ids only (a pane number, a session UUID, a tty), never anything secret.
+TERM_PARAMS = {"wezterm": ("pane",), "tmux": ("pane", "target", "host"),
+               "iterm": ("session", "tty"), "terminal": ("tty",), "ghostty": ()}
+TERM_VALUE = {
+    "pane": r"[0-9]{1,6}",
+    "target": r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}:[0-9]{1,4}\.[0-9]{1,4}",
+    "session": r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}",
+    "tty": r"/dev/ttys[0-9]{1,4}",
+    "host": r"iterm|terminal|wezterm|ghostty",
+}
+
+
+def terminal_url(params):
+    """The link for a dict of parameters, or "" if they aren't exactly a valid set."""
+    app = params.get("app", "")
+    allowed = TERM_PARAMS.get(app)
+    if allowed is None or set(params) - {"app"} - set(allowed):
+        return ""
+    ids = [k for k in allowed if k != "host" and k in params]
+    if len(ids) != (0 if app == "ghostty" else 1):
+        return ""
+    for k in ids + (["host"] if "host" in params else []):
+        if not re.fullmatch(TERM_VALUE[k], params[k] or "", re.ASCII):
+            return ""
+    query = ["app=" + app] + ["%s=%s" % (k, params[k]) for k in ids]
+    if "host" in params:
+        query.append("host=" + params["host"])
+    return "needsyou://terminal/focus?" + "&".join(query)
+
+
+def claude_tty():
+    t = os.environ.get("NEEDS_YOU_HOOK_TTY")  # tests
+    if t is None and os.environ.get("NY_PID"):
+        try:
+            t = subprocess.run(["ps", "-o", "tty=", "-p", os.environ["NY_PID"]], stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, timeout=2).stdout.strip()
+        except Exception:
+            t = ""
+    t = t or ""
+    return t if t.startswith("/dev/") else "/dev/" + t if t else ""
+
+
+def tmux_host():
+    """The terminal the local tmux runs in, from what its server inherited (best effort)."""
+    env = os.environ
+    if env.get("ITERM_SESSION_ID") or env.get("LC_TERMINAL") == "iTerm2":
+        return "iterm"
+    if env.get("WEZTERM_PANE") or env.get("WEZTERM_EXECUTABLE"):
+        return "wezterm"
+    if env.get("GHOSTTY_RESOURCES_DIR") or env.get("TERM_PROGRAM") == "ghostty":
+        return "ghostty"
+    if env.get("TERM_PROGRAM") == "Apple_Terminal":
+        return "terminal"
+    return ""
+
+
+def terminal_link():
+    """The Mac terminal tab this session runs in, or ""."""
+    env = os.environ
+    platform = env.get("NEEDS_YOU_HOOK_PLATFORM") or sys.platform
+    if env.get("SSH_CONNECTION") or platform != "darwin":
+        # Remote: only the Mac can name its tab (LC_NEEDS_YOU_TERM, forwarded by ssh).
+        raw = env.get("LC_NEEDS_YOU_TERM", "")
+        if not raw or len(raw) > 300:
+            return ""
+        try:
+            pairs = parse_qsl(raw, keep_blank_values=True, strict_parsing=True)
+        except ValueError:
+            return ""
+        params = dict(pairs)
+        return terminal_url(params) if len(params) == len(pairs) else ""
+    term = env.get("TERM_PROGRAM", "")
+    if term == "vscode" or env.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode":
+        return ""  # the VS Code links cover it
+    pane = env.get("TMUX_PANE", "")
+    if env.get("TMUX") and re.fullmatch(r"%[0-9]{1,6}", pane):
+        params = {"app": "tmux", "pane": pane[1:]}
+        host = tmux_host()
+        if host:
+            params["host"] = host
+        return terminal_url(params)
+    if re.fullmatch(r"[0-9]{1,6}", env.get("WEZTERM_PANE", "")):
+        return terminal_url({"app": "wezterm", "pane": env["WEZTERM_PANE"]})
+    iterm = env.get("ITERM_SESSION_ID", "")
+    if iterm:
+        return terminal_url({"app": "iterm", "session": iterm.split(":", 1)[-1]})
+    if term == "Apple_Terminal":
+        return terminal_url({"app": "terminal", "tty": claude_tty()})
+    if term == "ghostty":
+        return terminal_url({"app": "ghostty"})
+    return ""
+
+
 def make_links():
     links = []
     orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
@@ -276,6 +381,11 @@ def make_links():
         if re.match(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$", orca_env):
             url += "&environment=" + quote(orca_env, safe="")
         links.append("Terminal=" + url)
+    elif not handle:
+        # Otherwise the Mac terminal tab (the app validates it again before it runs anything).
+        term = terminal_link()
+        if term:
+            links.append("Terminal=" + term)
     tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "").strip()
     if tmpl.lower() == "none":
         return links
