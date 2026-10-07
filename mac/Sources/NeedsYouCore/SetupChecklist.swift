@@ -17,6 +17,12 @@ public enum SetupTip: String, CaseIterable, Sendable {
     case reachFromOtherMachines = "tailscale"
     /// Claude Code is set up for this user, but without the needs-you hooks.
     case claudeHooks = "claude-hooks"
+    /// The hub on this Mac started but doesn't answer. Not a tip but the hub's state: shown
+    /// while it lasts (setup tips on or off), never done for good, never dismissed.
+    case restartHub = "hub-restart"
+
+    /// Shown for as long as its condition holds, whatever was dismissed or turned off.
+    public var isStatus: Bool { self == .restartHub }
 }
 
 /// A Settings page a tip opens. The app maps it to its own tab (one switch), so renaming
@@ -33,6 +39,8 @@ public enum SetupAction: Equatable, Sendable {
     /// Makes a sender invite through the normal invite flow and copies its agent prompt.
     /// The invite code goes to the pasteboard only, never into card text or logs.
     case copyAgentPrompt
+    /// Stops and starts the hub on this Mac. Runs in place: no window, no activation.
+    case restartLocalHub
 }
 
 public struct SetupButton: Equatable, Sendable {
@@ -53,6 +61,8 @@ public struct SetupCard: Equatable, Sendable {
     public var tip: SetupTip
     public var item: Item
     public var buttons: [SetupButton]
+    /// False for a status card: it goes when its condition does.
+    public var dismissible: Bool { !tip.isStatus }
 }
 
 /// The hub on this Mac, as far as setup tips care.
@@ -60,6 +70,8 @@ public enum SetupLocalHub: Equatable, Sendable {
     case off
     /// Starting, restarting or failed: no tip is decided from it yet.
     case notReady
+    /// Started, but it hasn't answered its health check in time.
+    case notAnswering
     /// Running; `loopbackOnly` when other machines can't reach it (no tailnet address).
     case running(loopbackOnly: Bool)
 }
@@ -123,10 +135,12 @@ public enum SetupChecklist {
 
     /// Tips that apply now and aren't done or dismissed, in order.
     public static func pending(_ s: SetupState) -> [SetupTip] {
-        guard s.enabled, !s.isDemo else { return [] }
+        guard !s.isDemo else { return [] }
+        let status = SetupTip.allCases.filter { $0.isStatus && applies($0, s) }
+        guard s.enabled else { return status }
         let done = satisfied(s)
-        return SetupTip.allCases.filter { tip in
-            !done.contains(tip) && !s.closed.contains(tip.rawValue) && applies(tip, s)
+        return status + SetupTip.allCases.filter { tip in
+            !tip.isStatus && !done.contains(tip) && !s.closed.contains(tip.rawValue) && applies(tip, s)
         }
     }
 
@@ -143,6 +157,8 @@ public enum SetupChecklist {
         case .claudeHooks:
             // After the first sender: the first agent prompt installs the hooks anyway.
             return s.claudeCodeInstalled && !s.claudeHooksInstalled && s.senderSeen && s.hubReachable
+        case .restartHub:
+            return s.localHub == .notAnswering
         }
     }
 
@@ -190,6 +206,13 @@ public enum SetupChecklist {
                 buttons = [SetupButton(title: "Copy agent prompt", symbol: "doc.on.doc", action: .copyAgentPrompt)]
             }
             links = [ItemLink(label: "Claude Code guide", url: guideURL("claude-code.md"))]
+        case .restartHub:
+            priority = .normal
+            title = "The hub on this Mac isn't answering"
+            body = "It started but hasn't answered for \(Int(LocalHubReadiness.defaultTimeout)) s, so alerts can't "
+                + "arrive. Restart it here; Settings shows what it last said."
+            buttons = [SetupButton(title: "Restart hub", symbol: "arrow.clockwise", action: .restartLocalHub),
+                       SetupButton(title: "Open Settings", symbol: "gearshape", action: .openSettings(.thisMac))]
         }
         let id = idPrefix + tip.rawValue
         let item = Item(id: id, key: id, context: s.context, kind: .needs, priority: priority,

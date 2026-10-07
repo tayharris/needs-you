@@ -76,6 +76,8 @@ If the pill says **Hub can't start** (click it to open Settings):
 | *Python 3 isn't available on this Mac* | Run `xcode-select --install` in Terminal and let it finish (a few minutes). Then right-click the pill → **Quit Needs You** and open the app again. |
 | *Port 8765 is already in use by another program* | Another copy of Needs You (in another user account, or one you built) or another program holds port 8765. Quit it, then quit and reopen this one. |
 
+If it says **Hub not answering**, the hub started but hasn't answered for 30 seconds. Click the pill: the card there has **Restart hub** (so does **Your inbox**, with the hub's last output). If it keeps happening, quit and reopen the app, and send the output of `log show --last 10m --predicate 'subsystem == "app.needsyou.mac"'` with your report.
+
 Only want to look around? **General → Demo mode** shows sample items without a hub. Turn it off again before section 6.
 
 ## 5. Tailscale, or not?

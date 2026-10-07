@@ -474,6 +474,8 @@ struct SettingsView: View {
                     Label("Running", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
                 case .failed(let text):
                     Text(text).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    Button("Restart hub") { localHub.restart() }
+                        .help("Stop the hub on this Mac and start it again now")
                 }
             } else {
                 Text("Off. To get alerts without it, join another hub in Other hubs (advanced).")

@@ -319,7 +319,14 @@ the item, or <code>404</code> for an unknown id. Patching an already-closed item
 <div class="code"><pre><code class="language-json">{"items": [ ... ], "server_time": "2026-10-06T17:04:05.122Z", "next": "01M492BJ7A...J.812.1791306245123",
  "hub_id": "hub-a", "more": false}</code></pre></div>
 <p><strong>Without <code>cursor</code> or <code>since</code>:</strong> the full current set for <code>status</code>. <code>status=open</code> returns every
-item that is open and not expired. <code>resolved</code> includes expired items (shown as resolved).</p>
+item that is open and not expired. <code>resolved</code> includes expired items (shown as resolved). When
+the set is larger than <code>limit</code> the response has <code>more: true</code>, and its <code>next</code> continues it: a
+<code>cursor</code> poll with it returns the rest of the set as changes (in any status, like any <code>cursor</code>
+poll, so the rest comes with whatever changed since), paged by <code>limit</code> like any <code>cursor</code> poll.
+Send that one without <code>since</code>: a <code>since</code> fallback can't continue a full poll, so a cursor the
+hub can no longer read is then a <code>400</code> and the client starts over with a full poll. Hubs up to 0.1.3 gave a cut-short full poll a <code>next</code> that skipped the rest; a client that has to
+work with them sends a larger <code>limit</code> (up to 2,000) and treats a full poll with <code>more</code> as
+incomplete.</p>
 <p><strong>With <code>cursor</code> or <code>since</code>:</strong> every item that changed on this hub after the cursor, **in any
 status**, plus every item whose <code>expires_at</code> passed since then (reported as resolved). This is
 how a poller learns about resolves, dismissals and expiry, not only new items. "Changed on
@@ -329,7 +336,9 @@ replicated version arriving from a peer. That is this hub's own order, not the i
 its <code>updated_at</code> is older than the cursor.</p>
 <p><strong>The polling loop:</strong></p>
 <ol>
-<li>First poll (or after any doubt): <code>GET /v1/items?status=open</code>. Replace the local set.</li>
+<li>First poll (or after any doubt): <code>GET /v1/items?status=open</code>. Replace the local set. If it
+has <code>more</code>, the set continues in the next polls (step 3): replace only once it's all in, or
+merge without dropping anything.</li>
 <li>Keep <code>next</code> and <code>server_time</code> from the response. Next poll:
 <code>GET /v1/items?cursor=&lt;next&gt;&amp;since=&lt;server_time&gt;</code> (adding <code>status=open</code> is harmless; it is
 ignored). Upsert every returned item by <code>id</code>; drop it from the open view if its status isn't

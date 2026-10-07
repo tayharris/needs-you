@@ -1093,11 +1093,17 @@ class Store:
                 args.append(now)
             elif status == "dismissed":
                 sql += " AND status = 'dismissed'"
-            sql += " ORDER BY local_at, id LIMIT ?"
+            # By seq, so a page cut short by `limit` continues by its `next`: every version
+            # stored after the last row it returned (the rest of the set, and any change
+            # since), then the expiries after now.
+            sql += " ORDER BY seq LIMIT ?"
             args.append(limit + 1)
             rows = [dict(r) for r in self.conn.execute(sql, args).fetchall()]
+        more = len(rows) > limit
+        rows = rows[:limit]
+        nxt = ListCursor(epoch, rows[-1]["seq"] if more else max_seq, now)
         # 1 ms behind "now": a write landing in this same millisecond is still after the cursor.
-        return rows[:limit], now - 1, len(rows) > limit, ListCursor(epoch, max_seq, now)
+        return rows, now - 1, more, nxt
 
     def _list_by_cursor(self, cur: "ListCursor", limit: int, now: int
                         ) -> Tuple[List[Dict[str, Any]], int, bool, "ListCursor"]:
