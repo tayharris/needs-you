@@ -73,7 +73,28 @@ public struct OrcaJump: Equatable, Sendable {
 
     /// The arguments for the `orca` CLI.
     public var arguments: [String] {
-        ["terminal", "switch", "--terminal", handle] + (environment.map { ["--environment", $0] } ?? [])
+        ["terminal", "switch", "--terminal", handle, "--json"] + (environment.map { ["--environment", $0] } ?? [])
+    }
+
+    /// The same jump through a paired environment (for a card that didn't name one).
+    public func via(_ environment: String) -> OrcaJump? { OrcaJump(handle: handle, environment: environment) }
+
+    public static let environmentListArguments = ["environment", "list", "--json"]
+
+    /// True if `orca terminal switch --json` printed `"ok": true`. A stale handle
+    /// (wrong or missing environment) prints `"ok": false`.
+    public static func switchSucceeded(_ output: Data) -> Bool {
+        guard let obj = try? JSONSerialization.jsonObject(with: output) as? [String: Any] else { return false }
+        return obj["ok"] as? Bool == true
+    }
+
+    /// The valid environment names from `orca environment list --json`, at most 8.
+    public static func environmentNames(_ output: Data) -> [String] {
+        guard let obj = try? JSONSerialization.jsonObject(with: output) as? [String: Any],
+              let result = obj["result"] as? [String: Any],
+              let envs = result["environments"] as? [[String: Any]]
+        else { return [] }
+        return Array(envs.compactMap { $0["name"] as? String }.filter(isValidEnvironment).prefix(8))
     }
 
     /// The same command for a person to paste into a terminal.

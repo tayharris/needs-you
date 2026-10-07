@@ -15,6 +15,7 @@ final class OrcaJumpTests: XCTestCase {
         ("testArgumentsCommandAndRoundTrip", testArgumentsCommandAndRoundTrip),
         ("testLinkPolicyAllowsOnlyTheJump", testLinkPolicyAllowsOnlyTheJump),
         ("testMenuItemOpensTheJump", testMenuItemOpensTheJump),
+        ("testReadsOrcaOutput", testReadsOrcaOutput),
     ]
 
     let handle = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
@@ -74,11 +75,13 @@ final class OrcaJumpTests: XCTestCase {
 
     func testArgumentsCommandAndRoundTrip() {
         let j = OrcaJump(handle: handle, environment: "ACME Sandbox")!
-        XCTAssertEqual(j.arguments, ["terminal", "switch", "--terminal", handle, "--environment", "ACME Sandbox"])
+        XCTAssertEqual(j.arguments, ["terminal", "switch", "--terminal", handle, "--json", "--environment", "ACME Sandbox"])
         XCTAssertEqual(j.command, "orca terminal switch --terminal \(handle) --environment 'ACME Sandbox'")
         XCTAssertEqual(OrcaJump.parse(j.url), j)
         let local = OrcaJump(handle: handle)!
-        XCTAssertEqual(local.arguments, ["terminal", "switch", "--terminal", handle])
+        XCTAssertEqual(local.arguments, ["terminal", "switch", "--terminal", handle, "--json"])
+        XCTAssertEqual(local.via("ACME Sandbox"), j)
+        XCTAssertNil(local.via("--json"))
         XCTAssertEqual(local.url.absoluteString, "needsyou://orca/terminal?handle=\(handle)")
     }
 
@@ -95,5 +98,16 @@ final class OrcaJumpTests: XCTestCase {
                         links: [link], createdAt: Date())
         guard case .open(let url) = MenuItemAction.forItem(item) else { return XCTFail("not open") }
         XCTAssertEqual(OrcaJump.parse(url)?.handle, handle)
+    }
+
+    func testReadsOrcaOutput() {
+        let ok = #"{"id":"x","ok":true,"result":{"focus":{"navigated":true}}}"#
+        let stale = #"{"id":"x","ok":false,"error":{"code":"terminal_handle_stale"}}"#
+        XCTAssertTrue(OrcaJump.switchSucceeded(Data(ok.utf8)))
+        XCTAssertFalse(OrcaJump.switchSucceeded(Data(stale.utf8)))
+        XCTAssertFalse(OrcaJump.switchSucceeded(Data("not json".utf8)))
+        let list = #"{"ok":true,"result":{"environments":[{"name":"ACME Sandbox"},{"name":"-x"},{"name":"build-1"},{"id":"no-name"}]}}"#
+        XCTAssertEqual(OrcaJump.environmentNames(Data(list.utf8)), ["ACME Sandbox", "build-1"])
+        XCTAssertEqual(OrcaJump.environmentNames(Data("{}".utf8)), [])
     }
 }
