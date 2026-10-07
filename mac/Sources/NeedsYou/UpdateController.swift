@@ -68,8 +68,7 @@ final class UpdateController: ObservableObject {
         let version = (info["CFBundleShortVersionString"] as? String).flatMap { SemVer($0) }
         current = version
         build = info["CFBundleVersion"] as? String ?? "?"
-        let resolved = UpdateSource.resolve(feed: environment["NEEDS_YOU_UPDATE_FEED"] ?? defaults.string(forKey: UpdatePrefs.Key.feedURL),
-                                            repository: defaults.string(forKey: UpdatePrefs.Key.repository))
+        let resolved = UpdateSource.resolve(feed: environment["NEEDS_YOU_UPDATE_FEED"] ?? defaults.string(forKey: UpdatePrefs.Key.feedURL))
         source = resolved
         var isLocalFeed = false
         if case .localFeed = resolved.kind { isLocalFeed = true }
@@ -103,7 +102,7 @@ final class UpdateController: ObservableObject {
     /// Quitting with a staged update and automatic installs on: install without relaunching
     /// (the user asked to quit).
     func appWillTerminate() {
-        guard enabled, prefs.installAutomatically, let staged, phase == .staged(staged.version) else { return }
+        guard enabled, autoInstallAllowed, let staged, phase == .staged(staged.version) else { return }
         _ = launchInstaller(staged, relaunch: false)
     }
 
@@ -115,13 +114,16 @@ final class UpdateController: ObservableObject {
             check(manual: false)
         }
         if case .wait(_, let until) = decision, now >= until, checkTask == nil { check(manual: false) }
-        if prefs.installAutomatically, let staged, phase == .staged(staged.version),
+        if autoInstallAllowed, let staged, phase == .staged(staged.version),
            InstallWindow.canInstall(panelExpanded: model.isExpanded, hovering: model.hovering,
                                     lastArrival: model.store.latestUpdatedAt, idleSeconds: Self.idleSeconds(), now: now) {
             log.info("installing \(staged.version.description, privacy: .public) (idle)")
             install()
         }
     }
+
+    /// A test feed never installs by itself: only a click on Restart to update.
+    var autoInstallAllowed: Bool { prefs.installAutomatically && !source.isTestFeed }
 
     private var isWaiting: Bool {
         if case .wait = decision { return true }
@@ -231,6 +233,10 @@ final class UpdateController: ObservableObject {
             }
             authSource = "none (local test feed)"
             if let early = UpdateGate.preflight(release: release, current: current, policy: policy) { return early }
+            let sigData = try? Data(contentsOf: dir.appendingPathComponent(UpdateAuthenticity.signatureName))
+            if let problem = UpdateAuthenticity.verifyManifest(manifestData, signature: sigData, publicKey: UpdateAuthenticity.pinnedManifestKey) {
+                return .blocked(release.version, problem)
+            }
             let manifest = try ReleaseManifest.decode(manifestData)
             let sums = SHA256Sums.parse(String(decoding: try readLocal(dir.appendingPathComponent(UpdateGate.sumsName)), as: UTF8.self))
             return UpdateGate.evaluate(release: release, manifest: manifest, sums: sums, run: nil, current: current,
@@ -250,6 +256,13 @@ final class UpdateController: ObservableObject {
             }
             if let early = UpdateGate.preflight(release: release, current: current, policy: policy) { return early }
             let manifestData = try await asset(ReleaseManifest.fileName, of: release, auth: auth)
+            if let key = UpdateAuthenticity.pinnedManifestKey {
+                let sig = release.asset(named: UpdateAuthenticity.signatureName) == nil ? nil
+                    : try await asset(UpdateAuthenticity.signatureName, of: release, auth: auth)
+                if let problem = UpdateAuthenticity.verifyManifest(manifestData, signature: sig, publicKey: key) {
+                    return .blocked(release.version, problem)
+                }
+            }
             guard let manifest = try? ReleaseManifest.decode(manifestData) else {
                 return .blocked(release.version, "Its \(ReleaseManifest.fileName) can't be read.")
             }
@@ -330,6 +343,7 @@ final class UpdateController: ObservableObject {
     }
 
     private func get(_ url: URL, auth: UpdateAuth, what: String, accept: String = "application/vnd.github+json") async throws -> Data {
+        guard UpdateSource.mayDownload(from: url) else { throw UpdateError.message("Refused to fetch \(what) from \(url.host ?? "?").") }
         let (data, response) = try await send { try await self.session.data(for: self.request(url, auth: auth, accept: accept)) }
         try checkResponse(response, what: what, auth: auth)
         return data
@@ -343,6 +357,9 @@ final class UpdateController: ObservableObject {
 
     private func checkResponse(_ response: URLResponse, what: String, auth: UpdateAuth) throws {
         guard let http = response as? HTTPURLResponse else { throw UpdateError.message("No HTTP response for \(what).") }
+        guard UpdateSource.mayDownload(from: http.url) else {
+            throw UpdateError.message("\(what) was redirected to \(http.url?.host ?? "?"), which isn't GitHub; refused.")
+        }
         switch http.statusCode {
         case 200..<300:
             return
@@ -374,7 +391,7 @@ final class UpdateController: ObservableObject {
             staged = StagedApp(version: c.version, app: app)
             phase = .staged(c.version)
             lastResult = "\(c.version) is downloaded and verified. "
-                + (prefs.installAutomatically ? "It installs when you've been away for 10 minutes, or when you quit." : "Click Restart to update.")
+                + (autoInstallAllowed ? "It installs when you've been away for 10 minutes, or when you quit." : "Click Restart to update.")
             log.info("staged \(c.version.description, privacy: .public)")
             if thenInstall { install() }
         } catch {
@@ -396,6 +413,7 @@ final class UpdateController: ObservableObject {
         if url.isFileURL {
             try fm.copyItem(at: url, to: zip)
         } else {
+            guard UpdateSource.mayDownload(from: url) else { throw UpdateError.message("Refused to download from \(url.host ?? "?").") }
             let auth = await resolveAuth()
             let (tmp, response) = try await send { try await self.session.download(for: self.request(url, auth: auth, accept: "application/octet-stream")) }
             try checkResponse(response, what: c.zip.name, auth: auth)
@@ -406,18 +424,34 @@ final class UpdateController: ObservableObject {
         if let problem = UpdateGate.verifyDownload(sha256: digest, size: size, candidate: c) {
             throw UpdateError.message(problem)
         }
-        let unpacked = dir.appendingPathComponent("unpacked", isDirectory: true)
+        // A fresh directory only this user can write, so nothing can be swapped in between
+        // the checks below and the install.
+        let unpacked = dir.appendingPathComponent("unpacked-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: unpacked, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        for d in [updatesDirectory, dir, unpacked] {
+            let mode = (try? fm.attributesOfItem(atPath: d.path)[.posixPermissions] as? NSNumber)?.intValue ?? 0o777
+            guard mode & 0o022 == 0 else { throw UpdateError.message("\(d.path) is writable by other users.") }
+        }
         let ditto = await Self.run("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path], timeout: 120)
         guard ditto.status == 0 else { throw UpdateError.message("Couldn't unzip it (ditto: \(ditto.output.prefix(200))).") }
         let app = unpacked.appendingPathComponent("NeedsYou.app", isDirectory: true)
         guard let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) as? [String: Any] else {
             throw UpdateError.message("The zip has no NeedsYou.app.")
         }
-        if let problem = UpdateGate.verifyBundle(info: info, expectedID: Self.bundleID, version: c.version) {
+        if let problem = UpdateGate.verifyBundle(info: info, expectedID: Self.bundleID, version: c.version, newerThan: current) {
             throw UpdateError.message(problem)
+        }
+        if let escape = symlinkEscaping(app) {
+            throw UpdateError.message("The app has a symlink that points outside it (\(escape)).")
         }
         let sign = await Self.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path], timeout: 60)
         guard sign.status == 0 else { throw UpdateError.message("The app's signature doesn't verify (\(sign.output.prefix(200))).") }
+        let runningInfo = await Self.run("/usr/bin/codesign", ["-dv", Bundle.main.bundleURL.path], timeout: 30)
+        let stagedInfo = await Self.run("/usr/bin/codesign", ["-dv", app.path], timeout: 30)
+        if let problem = UpdateAuthenticity.checkSigner(runningTeam: UpdateAuthenticity.teamID(codesignOutput: runningInfo.output),
+                                                        stagedTeam: UpdateAuthenticity.teamID(codesignOutput: stagedInfo.output)) {
+            throw UpdateError.message(problem)
+        }
         guard fm.isExecutableFile(atPath: app.appendingPathComponent("Contents/Resources/scripts/install.sh").path) else {
             throw UpdateError.message("The new app has no bundled install.sh.")
         }
@@ -426,6 +460,19 @@ final class UpdateController: ObservableObject {
         _ = await Self.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", app.path], timeout: 30)
         try? fm.removeItem(at: zip)
         return app
+    }
+
+    /// The first symlink in the bundle that resolves outside it, if any.
+    private func symlinkEscaping(_ app: URL) -> String? {
+        guard let walker = fm.enumerator(atPath: app.path) else { return "unreadable" }
+        while let rel = walker.nextObject() as? String {
+            let path = app.appendingPathComponent(rel).path
+            guard let attrs = try? fm.attributesOfItem(atPath: path), attrs[.type] as? FileAttributeType == .typeSymbolicLink else { continue }
+            guard let dest = try? fm.destinationOfSymbolicLink(atPath: path) else { return rel }
+            let dir = rel.split(separator: "/").dropLast().map(String.init)
+            if UpdateAuthenticity.linkEscapes(destination: dest, directory: dir) { return rel }
+        }
+        return nil
     }
 
     /// Keeps at most one staged version (and the rollback record).
@@ -565,6 +612,8 @@ enum UpdateError: Error, LocalizedError {
 final class RedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        // Off GitHub's hosts: no redirect at all (the 3xx is then refused by the caller).
+        guard UpdateSource.mayDownload(from: request.url) else { return completionHandler(nil) }
         var next = request
         if !UpdateSource.mayCarryToken(request.url) { next.setValue(nil, forHTTPHeaderField: "Authorization") }
         completionHandler(next)

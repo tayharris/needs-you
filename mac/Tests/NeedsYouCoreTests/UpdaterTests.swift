@@ -3,6 +3,7 @@ import MiniXCTest
 #else
 import XCTest
 #endif
+import CryptoKit
 import Foundation
 import NeedsYouCore
 
@@ -34,7 +35,48 @@ final class UpdaterTests: XCTestCase {
         ("testSource", testSource),
         ("testLocalFeedRelease", testLocalFeedRelease),
         ("testPrefs", testPrefs),
+        ("testManifestSignature", testManifestSignature),
+        ("testSignerAndLinks", testSignerAndLinks),
     ]
+
+    func testManifestSignature() {
+        // An ephemeral key made here, never stored.
+        let key = Curve25519.Signing.PrivateKey()
+        let pub = key.publicKey.rawRepresentation.base64EncodedString()
+        let manifest = Data(#"{"version":"0.2.0","assets":[]}"#.utf8)
+        let sig = Data((try! key.signature(for: manifest)).base64EncodedString().utf8)
+        // No key pinned: not checked.
+        XCTAssertNil(UpdateAuthenticity.verifyManifest(manifest, signature: nil, publicKey: nil))
+        XCTAssertNil(UpdateAuthenticity.pinnedManifestKey, "pin a key only with the owner's release key")
+        // Key pinned: required and checked.
+        XCTAssertNil(UpdateAuthenticity.verifyManifest(manifest, signature: sig, publicKey: pub))
+        XCTAssertNil(UpdateAuthenticity.verifyManifest(manifest, signature: sig + Data("\n".utf8), publicKey: pub))
+        XCTAssertNotNil(UpdateAuthenticity.verifyManifest(manifest, signature: nil, publicKey: pub))
+        XCTAssertNotNil(UpdateAuthenticity.verifyManifest(Data(#"{"version":"9.9.9","assets":[]}"#.utf8), signature: sig, publicKey: pub))
+        XCTAssertNotNil(UpdateAuthenticity.verifyManifest(manifest, signature: Data("bm90IGEgc2ln".utf8), publicKey: pub))
+        let other = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation.base64EncodedString()
+        XCTAssertNotNil(UpdateAuthenticity.verifyManifest(manifest, signature: sig, publicKey: other))
+        XCTAssertNotNil(UpdateAuthenticity.verifyManifest(manifest, signature: sig, publicKey: "garbage"))
+        XCTAssertEqual(UpdateAuthenticity.signatureName, "release-manifest.json.sig")
+    }
+
+    func testSignerAndLinks() {
+        XCTAssertEqual(UpdateAuthenticity.teamID(codesignOutput: "Executable=/x\nTeamIdentifier=ABCDE12345\nSealed Resources version=2"), "ABCDE12345")
+        XCTAssertNil(UpdateAuthenticity.teamID(codesignOutput: "Signature=adhoc\nTeamIdentifier=not set\n"))
+        XCTAssertNil(UpdateAuthenticity.teamID(codesignOutput: ""))
+        XCTAssertNil(UpdateAuthenticity.checkSigner(runningTeam: nil, stagedTeam: nil))          // ad-hoc to ad-hoc
+        XCTAssertNil(UpdateAuthenticity.checkSigner(runningTeam: nil, stagedTeam: "ABCDE12345")) // ad-hoc to Developer ID
+        XCTAssertNil(UpdateAuthenticity.checkSigner(runningTeam: "ABCDE12345", stagedTeam: "ABCDE12345"))
+        XCTAssertNotNil(UpdateAuthenticity.checkSigner(runningTeam: "ABCDE12345", stagedTeam: nil))
+        XCTAssertNotNil(UpdateAuthenticity.checkSigner(runningTeam: "ABCDE12345", stagedTeam: "OTHER12345"))
+
+        XCTAssertFalse(UpdateAuthenticity.linkEscapes(destination: "Versions/Current", directory: ["Contents", "Frameworks", "X.framework"]))
+        XCTAssertFalse(UpdateAuthenticity.linkEscapes(destination: "../Resources/a", directory: ["Contents", "MacOS"]))
+        XCTAssertFalse(UpdateAuthenticity.linkEscapes(destination: "./a/../b", directory: []))
+        XCTAssertTrue(UpdateAuthenticity.linkEscapes(destination: "/etc/passwd", directory: ["Contents"]))
+        XCTAssertTrue(UpdateAuthenticity.linkEscapes(destination: "../../..", directory: ["Contents", "MacOS"]))
+        XCTAssertTrue(UpdateAuthenticity.linkEscapes(destination: "..", directory: []))
+    }
 
     func testPrefs() throws {
         let suite = "ny-updateprefs-\(UUID().uuidString)"
@@ -307,6 +349,11 @@ final class UpdaterTests: XCTestCase {
         XCTAssertNotNil(UpdateGate.verifyBundle(info: ["CFBundleIdentifier": "com.evil", "CFBundleShortVersionString": "0.2.0"], expectedID: id, version: c.version))
         XCTAssertNotNil(UpdateGate.verifyBundle(info: ["CFBundleIdentifier": id, "CFBundleShortVersionString": "0.1.9"], expectedID: id, version: c.version))
         XCTAssertNotNil(UpdateGate.verifyBundle(info: [:], expectedID: id, version: c.version))
+        // Never a downgrade or a reinstall of the same version.
+        let info: [String: Any] = ["CFBundleIdentifier": id, "CFBundleShortVersionString": "0.2.0"]
+        XCTAssertNil(UpdateGate.verifyBundle(info: info, expectedID: id, version: c.version, newerThan: SemVer(0, 1, 1)))
+        XCTAssertNotNil(UpdateGate.verifyBundle(info: info, expectedID: id, version: c.version, newerThan: SemVer(0, 2, 0)))
+        XCTAssertNotNil(UpdateGate.verifyBundle(info: info, expectedID: id, version: c.version, newerThan: SemVer(0, 3, 0)))
     }
 
     func testInstallWindow() {
@@ -350,25 +397,38 @@ final class UpdaterTests: XCTestCase {
     }
 
     func testSource() {
-        XCTAssertEqual(UpdateSource.resolve(feed: nil, repository: nil).kind, .github(UpdateSource.defaultRepository))
-        XCTAssertEqual(UpdateSource.resolve(feed: "", repository: "me/fork").kind, .github("me/fork"))
-        XCTAssertEqual(UpdateSource.resolve(feed: nil, repository: "../etc").kind, .github(UpdateSource.defaultRepository))
-        XCTAssertEqual(UpdateSource.resolve(feed: nil, repository: "a/b/c").kind, .github(UpdateSource.defaultRepository))
-        XCTAssertEqual(UpdateSource.resolve(feed: "file:///tmp/feed/", repository: nil).kind, .localFeed(URL(string: "file:///tmp/feed/")!))
-        if case .localFeed(let u) = UpdateSource.resolve(feed: "/tmp/feed", repository: nil).kind {
+        XCTAssertEqual(UpdateSource.resolve(feed: nil).kind, .github(UpdateSource.defaultRepository))
+        XCTAssertFalse(UpdateSource.resolve(feed: nil).isTestFeed)
+        XCTAssertEqual(UpdateSource.resolve(feed: "").kind, .github(UpdateSource.defaultRepository))
+        XCTAssertEqual(UpdateSource.resolve(feed: "file:///tmp/feed/").kind, .localFeed(URL(string: "file:///tmp/feed/")!))
+        XCTAssertTrue(UpdateSource.resolve(feed: "file:///tmp/feed/").isTestFeed)
+        if case .localFeed(let u) = UpdateSource.resolve(feed: "/tmp/feed").kind {
             XCTAssertEqual(u.path, "/tmp/feed")
         } else { XCTFail() }
-        // An https feed isn't a thing: GitHub it is.
-        XCTAssertEqual(UpdateSource.resolve(feed: "https://evil.example.com/", repository: nil).kind, .github(UpdateSource.defaultRepository))
+        // Only file:// or a path: an http(s) "feed" is ignored and GitHub is used.
+        XCTAssertEqual(UpdateSource.resolve(feed: "https://evil.example.com/").kind, .github(UpdateSource.defaultRepository))
+        XCTAssertEqual(UpdateSource.resolve(feed: "http://127.0.0.1:9/").kind, .github(UpdateSource.defaultRepository))
 
         let gh = UpdateSource(kind: .github("o/r"))
         XCTAssertEqual(gh.latestURL(channel: .stable)?.absoluteString, "https://api.github.com/repos/o/r/releases/latest")
         XCTAssertEqual(gh.latestURL(channel: .prerelease)?.absoluteString, "https://api.github.com/repos/o/r/releases?per_page=10")
         XCTAssertEqual(gh.runURL(id: 42)?.absoluteString, "https://api.github.com/repos/o/r/actions/runs/42")
         XCTAssertEqual(gh.assetURL(ReleaseAsset(id: 7, name: "x.zip"))?.absoluteString, "https://api.github.com/repos/o/r/releases/assets/7")
-        // An asset URL on another host is never used (it would get the token).
+        // An asset URL on another host or repo is never used.
         XCTAssertEqual(gh.assetURL(ReleaseAsset(id: 7, name: "x.zip", apiURL: "https://evil.example.com/a"))?.absoluteString,
                        "https://api.github.com/repos/o/r/releases/assets/7")
+        XCTAssertEqual(gh.assetURL(ReleaseAsset(id: 7, name: "x.zip", apiURL: "https://api.github.com/repos/evil/r/releases/assets/7"))?.absoluteString,
+                       "https://api.github.com/repos/o/r/releases/assets/7")
+        XCTAssertNil(gh.assetURL(ReleaseAsset(id: 0, name: "x.zip", apiURL: "https://api.github.com/repos/o/r/releases/assets/7")))
+        // Downloads and redirects: GitHub's hosts over https only.
+        XCTAssertTrue(UpdateSource.mayDownload(from: URL(string: "https://api.github.com/repos/o/r/releases/assets/7")))
+        XCTAssertTrue(UpdateSource.mayDownload(from: URL(string: "https://objects.githubusercontent.com/github-production-release-asset/x?sig=1")))
+        XCTAssertTrue(UpdateSource.mayDownload(from: URL(string: "https://release-assets.githubusercontent.com/x")))
+        XCTAssertFalse(UpdateSource.mayDownload(from: URL(string: "http://objects.githubusercontent.com/x")))
+        XCTAssertFalse(UpdateSource.mayDownload(from: URL(string: "https://evil.example.com/x")))
+        XCTAssertFalse(UpdateSource.mayDownload(from: URL(string: "https://api.github.com.evil.example.com/x")))
+        XCTAssertFalse(UpdateSource.mayDownload(from: URL(string: "https://user:pw@api.github.com/x")))
+        XCTAssertFalse(UpdateSource.mayDownload(from: nil))
         XCTAssertTrue(UpdateSource.mayCarryToken(URL(string: "https://api.github.com/repos/o/r")))
         XCTAssertFalse(UpdateSource.mayCarryToken(URL(string: "https://objects.githubusercontent.com/x")))
         XCTAssertFalse(UpdateSource.mayCarryToken(URL(string: "http://api.github.com/x")))

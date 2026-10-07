@@ -19,6 +19,14 @@ struct UpdatesSettingsView: View {
                     }
                 }
             }
+            if updates.source.isTestFeed {
+                Section {
+                    Label("Test update source: \(updates.sourceDescription). Updates from it are never installed automatically. Remove the updateFeedURL default (or NEEDS_YOU_UPDATE_FEED) to go back to GitHub.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             versionSection
             settingsSection
             SenderRolloutSection(updates: updates, connect: connect)

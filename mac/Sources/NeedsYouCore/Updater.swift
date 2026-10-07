@@ -417,15 +417,81 @@ public enum UpdateGate {
         return nil
     }
 
-    /// The unpacked app's Info.plist: same bundle id, the version the tag promised.
-    public static func verifyBundle(info: [String: Any], expectedID: String, version: SemVer) -> String? {
+    /// The unpacked app's Info.plist: same bundle id, the version the tag promised, and
+    /// newer than the running app (a downgrade is only ever install.sh --rollback).
+    public static func verifyBundle(info: [String: Any], expectedID: String, version: SemVer, newerThan current: SemVer? = nil) -> String? {
         guard let id = info["CFBundleIdentifier"] as? String, id == expectedID else {
             return "The downloaded app's bundle id isn't \(expectedID)."
         }
         guard let raw = info["CFBundleShortVersionString"] as? String, SemVer(raw) == version else {
             return "The downloaded app's version isn't \(version)."
         }
+        if let current, !(version > current) { return "\(version) isn't newer than this app (\(current))." }
         return nil
+    }
+}
+
+// MARK: - Authenticity beyond the checksums
+
+/// The checksums prove the zip is the one the release lists, not who made the release.
+/// These add what's possible without a Developer ID: the signing team must stay the same,
+/// symlinks can't leave the bundle, and, once the owner pins a key, an Ed25519 signature
+/// over release-manifest.json (CryptoKit, in the OS) is required.
+public enum UpdateAuthenticity {
+    /// TODO(owner): pin the base64 raw Ed25519 public key (32 bytes) here once the release
+    /// signing key exists. The private key lives only in the owner's keychain and in the
+    /// `RELEASE_MANIFEST_SIGNING_KEY` Actions secret (see docs/security/audit-2026-10-07.md,
+    /// item 17); never commit it. While this is nil, signatures aren't checked.
+    public static let pinnedManifestKey: String? = nil
+    public static let signatureSuffix = ".sig"
+    public static var signatureName: String { ReleaseManifest.fileName + signatureSuffix }
+
+    /// nil when acceptable. With a key configured, a missing or bad signature is refused.
+    /// The signature asset is the base64 of the 64-byte signature over the manifest bytes.
+    public static func verifyManifest(_ manifest: Data, signature: Data?, publicKey: String?) -> String? {
+        guard let publicKey else { return nil }
+        guard let keyData = Data(base64Encoded: publicKey), let key = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData) else {
+            return "The app's pinned release key is malformed."
+        }
+        guard let signature else { return "The release has no \(signatureName), and this app requires signed releases." }
+        let text = String(decoding: signature, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let sig = Data(base64Encoded: text), sig.count == 64 else { return "\(signatureName) isn't a signature." }
+        return key.isValidSignature(sig, for: manifest) ? nil : "\(signatureName) doesn't verify against the pinned release key."
+    }
+
+    /// `codesign -dv` prints "TeamIdentifier=ABCDE12345", or "TeamIdentifier=not set" when
+    /// ad-hoc signed.
+    public static func teamID(codesignOutput: String) -> String? {
+        for line in codesignOutput.split(whereSeparator: \.isNewline) where line.hasPrefix("TeamIdentifier=") {
+            let v = line.dropFirst("TeamIdentifier=".count).trimmingCharacters(in: .whitespaces)
+            return v.isEmpty || v == "not set" ? nil : v
+        }
+        return nil
+    }
+
+    /// An app signed by a team only accepts updates from that team. An ad-hoc app (today's
+    /// builds) has no stable identity to compare (its designated requirement is its own
+    /// cdhash), so any validly sealed build passes here and the checksums are the gate.
+    public static func checkSigner(runningTeam: String?, stagedTeam: String?) -> String? {
+        guard let runningTeam else { return nil }
+        return stagedTeam == runningTeam ? nil : "The update is signed by \(stagedTeam ?? "no team (ad-hoc)"), this app by \(runningTeam)."
+    }
+
+    /// A symlink inside the bundle (at `directory`, components relative to the bundle root)
+    /// pointing at `destination`: true when it resolves outside the bundle.
+    public static func linkEscapes(destination: String, directory: [String]) -> Bool {
+        if destination.hasPrefix("/") { return true }
+        var stack = directory
+        for part in destination.split(separator: "/", omittingEmptySubsequences: true) {
+            if part == "." { continue }
+            if part == ".." {
+                if stack.isEmpty { return true }
+                stack.removeLast()
+            } else {
+                stack.append(String(part))
+            }
+        }
+        return false
     }
 }
 
@@ -509,6 +575,7 @@ public enum UpdateAuth: Equatable, Sendable, CustomStringConvertible {
 }
 
 public struct UpdateSource: Equatable, Sendable {
+    /// Fixed in code: never taken from a setting, a manifest or a release.
     public static let defaultRepository = "tayharris/needs-you"
 
     /// "owner/repo" on GitHub, or a local feed directory (a build-release.sh output dir, or
@@ -522,26 +589,22 @@ public struct UpdateSource: Equatable, Sendable {
 
     public init(kind: Kind) { self.kind = kind }
 
-    /// The `updateFeedURL` default or NEEDS_YOU_UPDATE_FEED (a file:// URL or a path) picks a
-    /// local feed; `updateRepository` picks another GitHub repo.
-    public static func resolve(feed: String?, repository: String?) -> UpdateSource {
+    /// The `updateFeedURL` default or NEEDS_YOU_UPDATE_FEED picks a local test feed: a file://
+    /// URL or an absolute path, nothing else (an http(s) value is ignored). A test feed is
+    /// shown as such in Settings and never installs automatically.
+    public static func resolve(feed: String?) -> UpdateSource {
         if let feed = feed?.trimmingCharacters(in: .whitespaces), !feed.isEmpty {
             if let url = URL(string: feed), url.isFileURL { return UpdateSource(kind: .localFeed(url)) }
             if feed.hasPrefix("/") || feed.hasPrefix("~") {
                 return UpdateSource(kind: .localFeed(URL(fileURLWithPath: (feed as NSString).expandingTildeInPath, isDirectory: true)))
             }
         }
-        if let repo = repository?.trimmingCharacters(in: .whitespaces), isRepository(repo) {
-            return UpdateSource(kind: .github(repo))
-        }
         return UpdateSource(kind: .github(defaultRepository))
     }
 
-    public static func isRepository(_ s: String) -> Bool {
-        let parts = s.split(separator: "/", omittingEmptySubsequences: false)
-        let ok = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.")
-        return parts.count == 2 && parts.allSatisfy { !$0.isEmpty && $0.count <= 100 && $0 != "." && $0 != ".."
-            && $0.unicodeScalars.allSatisfy(ok.contains) }
+    public var isTestFeed: Bool {
+        if case .localFeed = kind { return true }
+        return false
     }
 
     public static let apiHost = "api.github.com"
@@ -563,7 +626,8 @@ public struct UpdateSource: Equatable, Sendable {
     public func assetURL(_ asset: ReleaseAsset) -> URL? {
         switch kind {
         case .github(let repo):
-            if let api = asset.apiURL, let url = URL(string: api), url.host == Self.apiHost { return url }
+            // Built from the asset id under this repo only: an `url` naming another repo or
+            // host is never followed.
             return asset.id > 0 ? URL(string: "https://\(Self.apiHost)/repos/\(repo)/releases/assets/\(asset.id)") : nil
         case .localFeed(let dir):
             guard !asset.name.contains("/"), !asset.name.hasPrefix(".") else { return nil }
@@ -575,6 +639,18 @@ public struct UpdateSource: Equatable, Sendable {
     /// drop it.
     public static func mayCarryToken(_ url: URL?) -> Bool {
         url?.scheme == "https" && url?.host?.lowercased() == apiHost
+    }
+
+    /// Where a GitHub download may go, redirects included: https to GitHub's API and its
+    /// release-asset CDN only. Anything else is refused.
+    public static let downloadHosts: Set<String> = [
+        "api.github.com", "github.com", "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com", "github-releases.githubusercontent.com",
+    ]
+
+    public static func mayDownload(from url: URL?) -> Bool {
+        guard let url, url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        return downloadHosts.contains(host) && url.user == nil && url.password == nil
     }
 
     /// A local feed has no GitHub release JSON: one is made from its manifest (published at
@@ -610,8 +686,6 @@ public struct UpdatePrefs: Equatable, Sendable {
         public static let lastCheck = "updateLastCheck"
         /// Testing: a local feed directory (file:// URL or path) instead of GitHub.
         public static let feedURL = "updateFeedURL"
-        /// Another GitHub repo ("owner/repo").
-        public static let repository = "updateRepository"
     }
 
     public var checkAutomatically = true
