@@ -31,6 +31,8 @@ public struct UIPrefs: Equatable, Sendable {
         public static let collapseOnClickOutside = "collapseOnClickOutside"
         public static let backdrop = "panelBackdrop"
         public static let expandedListHeight = "expandedListHeight"
+        public static let theme = "theme"
+        public static let accent = "themeAccent"
     }
 
     public var panelSize: PanelSize = .regular
@@ -68,6 +70,9 @@ public struct UIPrefs: Equatable, Sendable {
     public var backdrop: Double = PanelBackdrop.standard
     /// The open panel's list height in points, set by dragging its grip; 0 = automatic.
     public var expandedListHeight: Double = 0
+    /// Settings → Appearance: the panel's colours (PanelTheme) and an accent override.
+    public var theme: PanelTheme = .standard
+    public var accent: ThemeAccent = .theme
 
     public init() {}
 
@@ -96,6 +101,8 @@ public struct UIPrefs: Equatable, Sendable {
         if let v = store.object(forKey: Key.backdrop) as? NSNumber { p.backdrop = PanelBackdrop.nearestChoice(v.doubleValue) }
         if let v = store.object(forKey: Key.collapseOnClickOutside) as? NSNumber { p.collapseOnClickOutside = v.boolValue }
         if let v = store.object(forKey: Key.expandedListHeight) as? NSNumber { p.expandedListHeight = ListResize.sanitized(v.doubleValue) }
+        if let raw = store.string(forKey: Key.theme), let v = PanelTheme(rawValue: raw) { p.theme = v }
+        p.accent = ThemeAccent(stored: store.string(forKey: Key.accent))
         return p
     }
 
@@ -120,9 +127,15 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.backdrop != backdrop { store.set(backdrop, forKey: Key.backdrop) }
         if previous?.collapseOnClickOutside != collapseOnClickOutside { store.set(collapseOnClickOutside, forKey: Key.collapseOnClickOutside) }
         if previous?.expandedListHeight != expandedListHeight { store.set(expandedListHeight, forKey: Key.expandedListHeight) }
+        if previous?.theme != theme { store.set(theme.rawValue, forKey: Key.theme) }
+        if previous?.accent != accent { store.set(accent.storageString, forKey: Key.accent) }
     }
 
     public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }
+    /// The panel's colours for the theme, the accent override and macOS's appearance.
+    public func palette(systemIsDark: Bool) -> PanelPalette {
+        theme.palette(systemIsDark: systemIsDark, accent: accent)
+    }
     public var bodyFont: CGFloat { PanelStyle.bodyFont(textSize, panel: panelSize) }
     public var pillOptions: PillOptions {
         PillOptions(size: pillSize, detail: pillDetail, split: pillSplit, showNew: pillShowNew)
