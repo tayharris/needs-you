@@ -195,8 +195,7 @@
             <ul class="arch-nodes">
               <li class="arch-node arch-main">Hub on your Mac<span>SQLite, runs inside the app</span></li>
               <li class="arch-repl" aria-hidden="true">
-                <svg viewBox="0 0 12 28" focusable="false"><path d="M6 2v24M1 7l5-5 5 5M1 21l5 5 5-5"/></svg>
-                <span>copy every write</span>
+                <span>or</span>
               </li>
               <li class="arch-node arch-optional">Server hub<span>optional, always on</span></li>
             </ul>
@@ -215,7 +214,7 @@
             <p class="arch-sub">uses whichever hub answers</p>
           </div>
         </div>
-        <figcaption>Senders post to a hub. Hubs copy every write to each other. The Mac app reads from any hub that answers.</figcaption>
+        <figcaption>Senders post to a hub. Server hubs copy every write to each other. The Mac app reads from the first hub that answers, its own first.</figcaption>
       </figure>
 
       <p><strong>A hub is a small SQLite database behind a tiny web server.</strong> It's one Python file that needs only the standard library. The Mac app runs one, so your Mac is the hub: nothing to install or keep running.</p>
@@ -227,7 +226,7 @@
         <figcaption>Settings &rarr; Your inbox: the hub runs inside the app, on by default.</figcaption>
       </figure>
       <p><strong>Senders are the one-file <code>needs-you</code> command.</strong> It tries each hub in turn. If none answers (your Mac is asleep, say), it keeps the alert in a local outbox, exits cleanly so the job carries on, and sends it later.</p>
-      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server and it copies every write to your Mac's hub and back, so alerts land while the Mac sleeps. Most people don't need one.</p>
+      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. Server hubs copy every write to each other; copying to and from your Mac's own hub is coming, and until then <a href="guides/hub.html#with-the-macs-own-hub">Server hubs</a> says how to set one up. Most people don't need one.</p>
       <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
       <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day, closed items are deleted after 7 days, and a sender's outbox keeps at most 500 alerts for 7 days.</p>
 
@@ -270,6 +269,8 @@
             <li><a href="guides/cline.html">Cline</a> <span>hooks, finished tasks only</span></li>
             <li><a href="guides/aider.html">Aider</a> <span>notifications, waiting only</span></li>
             <li><a href="guides/orca.html">Orca</a> <span>automation prompt blocks</span></li>
+            <li><a href="guides/mcp.html">Any MCP agent</a> <span>MCP server</span></li>
+            <li><a href="guides/github.html">GitHub</a> <span>reviews, approvals, CI</span></li>
           </ul>
         </div>
       </div>
