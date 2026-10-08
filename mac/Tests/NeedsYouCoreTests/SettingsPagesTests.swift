@@ -89,32 +89,24 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertEqual(MachineRowText.detail(reader), "Mac, shows alerts · 1 open")
     }
 
+    /// "This Mac" comes only from what the app knows for itself (the token it is using),
+    /// never from a name: a sender picks its own invite name and host, so a machine named
+    /// like this Mac must not be shown as this Mac.
     func testThisMacRows() {
-        let hosts = MachineRowText.hostNames(["DevBox", "devbox.local", nil, "", "localhost"])
-        XCTAssertEqual(hosts, ["devbox"])
-        XCTAssertEqual(MachineRowText.hostNames(["Dev's Box.local"]), ["dev-s-box"])
-
         let app = TokenSummary(id: "1", name: "this-mac", role: .owner, current: true)
-        let agents = TokenSummary(id: "2", name: "devbox", role: .sender)
-        let old = TokenSummary(id: "3", name: "devbox-devbox", role: .sender)
-        let invited = TokenSummary(id: "4", name: "agent-devbox-2", role: .sender)
+        let spoof = TokenSummary(id: "2", name: "devbox", role: .sender)
+        let spoof2 = TokenSummary(id: "3", name: "agent-devbox", role: .sender)
+        let spoof3 = TokenSummary(id: "4", name: "this-mac", role: .sender)
         let other = TokenSummary(id: "5", name: "build-1", role: .sender)
-        let lookalike = TokenSummary(id: "6", name: "mydevbox", role: .sender)
-        let reader = TokenSummary(id: "7", name: "mac-devbox", role: .reader)
-        XCTAssertEqual(MachineRowText.thisMac(app, hostNames: hosts), .app)
-        XCTAssertEqual(MachineRowText.thisMac(agents, hostNames: hosts), .agents)
-        XCTAssertEqual(MachineRowText.thisMac(old, hostNames: hosts), .agents)
-        XCTAssertEqual(MachineRowText.thisMac(invited, hostNames: hosts), .agents)
-        XCTAssertNil(MachineRowText.thisMac(other, hostNames: hosts))
-        XCTAssertNil(MachineRowText.thisMac(lookalike, hostNames: hosts))
-        XCTAssertEqual(MachineRowText.thisMac(reader, hostNames: hosts), .other)
-        // Without this Mac's names only the current token is this Mac.
-        XCTAssertNil(MachineRowText.thisMac(agents, hostNames: []))
-
-        XCTAssertEqual(MachineRowText.detail(agents, hostNames: hosts),
-                       "Sends alerts · this Mac: agents · \(MachineRowText.versionUnknown)")
-        XCTAssertEqual(MachineRowText.ordered([other, agents, lookalike, app, old], hostNames: hosts).map(\.id),
-                       ["1", "2", "3", "5", "6"])
+        XCTAssertTrue(MachineRowText.isThisMac(app))
+        for token in [spoof, spoof2, spoof3, other] {
+            XCTAssertFalse(MachineRowText.isThisMac(token), token.name)
+            XCTAssertFalse(MachineRowText.detail(token).contains("this Mac"), token.name)
+        }
+        XCTAssertEqual(MachineRowText.detail(app), "Mac, owner · this Mac: app")
+        // The app's own row first, the rest as the hub listed them.
+        XCTAssertEqual(MachineRowText.ordered([other, spoof, app, spoof2]).map(\.id),
+                       ["1", "5", "2", "3"])
     }
 
     func testLinksUseTheUpdaterRepository() {

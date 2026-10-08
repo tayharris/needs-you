@@ -187,9 +187,9 @@ public enum MachineRowText {
     /// to a CLI that reports one (or hasn't posted at all).
     public static let versionUnknown = "version unknown (hasn't posted since updating)"
 
-    public static func detail(_ token: TokenSummary, hostNames: [String] = []) -> String {
+    public static func detail(_ token: TokenSummary) -> String {
         var parts = [token.role?.machineLabel ?? "Unknown role"]
-        if let mine = thisMac(token, hostNames: hostNames) { parts.append(mine.label) }
+        if isThisMac(token) { parts.append(thisMacLabel) }
         if token.openItems > 0 { parts.append("\(token.openItems) open") }
         if token.role == .sender || token.role == nil {
             if let cli = token.client["cli"], SemVer(cli) != nil {
@@ -202,97 +202,22 @@ public enum MachineRowText {
     }
 }
 
-/// Which part of this Mac a token on Machines belongs to. The Mac shows up more than once
-/// when its agents were set up too: the app's own token (`current`, "this-mac"), and a
-/// sender token from an invite redeemed here, named after this Mac by the hub
-/// (`<invite name>-<host>`, or just the host). Told apart by name only: the wire has no
-/// "same machine" field, so a token named after this Mac's host counts as this Mac.
-public enum ThisMacPart: Equatable, Sendable {
-    /// The Needs You app (the token Settings is using).
-    case app
-    /// The `needs-you` command and agent hooks on this Mac (a sender token).
-    case agents
-    /// Some other token named after this Mac (a reader or owner link redeemed here).
-    case other
-
-    public var label: String {
-        switch self {
-        case .app: return "this Mac: app"
-        case .agents: return "this Mac: agents"
-        case .other: return "this Mac"
-        }
-    }
-}
-
 extension MachineRowText {
-    /// This Mac's names as the hub would put them in a token name: the local host name
-    /// and the network host name, each reduced like the hub's `sanitize_host` and cut at
-    /// the first dot, lowercased. Empty names and "localhost" are dropped.
-    public static func hostNames(_ names: [String?]) -> [String] {
-        var out: [String] = []
-        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
-        for raw in names {
-            guard let raw else { continue }
-            var s = ""
-            var lastDash = false
-            for ch in raw {
-                if allowed.contains(ch) {
-                    s.append(ch)
-                    lastDash = false
-                } else if !lastDash {
-                    s.append("-")
-                    lastDash = true
-                }
-            }
-            s = s.trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
-            let first = String(s.split(separator: ".", maxSplits: 1).first ?? "").lowercased()
-            if !first.isEmpty && first != "localhost" && !out.contains(first) { out.append(first) }
-        }
-        return out
-    }
+    /// The label on the app's own row.
+    public static let thisMacLabel = "this Mac: app"
 
-    /// Whether a token is this Mac, and which part. The token Settings is using is the
-    /// app; one named after this Mac (`devbox`, `agent-devbox`, `agent-devbox-2`) is its
-    /// agents when it sends alerts.
-    public static func thisMac(_ token: TokenSummary, hostNames: [String]) -> ThisMacPart? {
-        if token.current { return .app }
-        guard namedAfter(token.name, hostNames: hostNames) else { return nil }
-        return token.role == .sender || token.role == nil ? .agents : .other
-    }
+    /// Whether a token is this Mac: only the token this app is using (`current`, which the
+    /// hub sets for the token making the request). Never decided by name: a sender picks
+    /// its own invite name and host, so a machine named like this Mac (or "this-mac") is
+    /// shown as just its name. Telling which sender runs on this Mac would need the hub to
+    /// say so (a wire change).
+    public static func isThisMac(_ token: TokenSummary) -> Bool { token.current }
 
-    /// Machines in the order shown: this Mac first (the app, then the rest of it), then
-    /// the other machines as the hub listed them.
-    public static func ordered(_ tokens: [TokenSummary], hostNames: [String]) -> [TokenSummary] {
-        func rank(_ t: TokenSummary) -> Int {
-            switch thisMac(t, hostNames: hostNames) {
-            case .app?: return 0
-            case .agents?, .other?: return 1
-            case nil: return 2
-            }
-        }
-        return tokens.enumerated()
-            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
-            .map(\.element)
+    /// Machines in the order shown: the app's own row first, then the rest as the hub
+    /// listed them.
+    public static func ordered(_ tokens: [TokenSummary]) -> [TokenSummary] {
+        tokens.filter(isThisMac) + tokens.filter { !isThisMac($0) }
     }
-
-    static func namedAfter(_ name: String, hostNames: [String]) -> Bool {
-        var n = name.lowercased()
-        // The hub's "-2", "-3"... for a name already taken.
-        if let dash = n.lastIndex(of: "-") {
-            let tail = n[n.index(after: dash)...]
-            let base = String(n[..<dash])
-            if !tail.isEmpty, tail.allSatisfy(\.isASCIIDigit), !base.isEmpty { n = base }
-        }
-        for host in hostNames where !host.isEmpty {
-            if n == host { return true }
-            for sep in ["-", ".", "_"] where n.hasSuffix(sep + host) { return true }
-        }
-        return false
-    }
-}
-
-private extension Character {
-    var isASCIIDigit: Bool { ("0"..."9").contains(self) }
 }
 
 // MARK: - Other hubs: a join link on the clipboard

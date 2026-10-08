@@ -705,10 +705,6 @@ struct SettingsView: View {
 
     // MARK: Machines
 
-    /// This Mac's host names, to label its own rows on Machines (MachineRowText.thisMac).
-    @MainActor private static let thisMacNames = MachineRowText.hostNames([LocalHubController.localHostName(),
-                                                                            ProcessInfo.processInfo.hostName])
-
     private var machinesSection: some View {
         Section {
             HStack {
@@ -721,20 +717,15 @@ struct SettingsView: View {
             if connect.accessTokens.isEmpty {
                 Text("Press Refresh to list them.").font(.caption).foregroundStyle(.secondary)
             }
-            ForEach(MachineRowText.ordered(connect.accessTokens, hostNames: Self.thisMacNames)) { token in
-                MachineRow(token: token, hostNames: Self.thisMacNames, connect: connect) { pendingRevoke = .token(token) }
+            ForEach(MachineRowText.ordered(connect.accessTokens)) { token in
+                MachineRow(token: token, connect: connect) { pendingRevoke = .token(token) }
             }
             statusText(connect.accessStatus)
         } header: {
             Text("Connected machines")
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                if connect.accessTokens.contains(where: { MachineRowText.thisMac($0, hostNames: Self.thisMacNames) == .agents }) {
-                    Text("This Mac can be listed twice: “this Mac: app” is Needs You itself, and “this Mac: agents” is the needs-you command and agent hooks set up on it with an invite.")
-                }
-                Text("Revoke a machine to stop it from using your inbox. Its open items stay until they're resolved or dismissed.")
-            }
-            .font(.caption).foregroundStyle(.secondary)
+            Text("“this Mac: app” is Needs You itself. If you set up the needs-you command or agent hooks on this Mac too, they have a row of their own, under the name you gave their invite. Revoke a machine to stop it from using your inbox. Its open items stay until they're resolved or dismissed.")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .onAppear { connect.refreshAccess() }
         .alert(pendingRevoke?.title ?? "", isPresented: Binding(
@@ -1374,7 +1365,6 @@ private struct HowItWorksStep: View {
 /// Kept on its own so per-machine buttons slot in before Revoke.
 private struct MachineRow: View {
     let token: TokenSummary
-    var hostNames: [String] = []
     @ObservedObject var connect: ConnectController
     let revoke: () -> Void
 
@@ -1382,7 +1372,7 @@ private struct MachineRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(token.name)
-                Text(MachineRowText.detail(token, hostNames: hostNames))
+                Text(MachineRowText.detail(token))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
