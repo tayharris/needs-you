@@ -96,7 +96,17 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 VERSION = "0.1.5"
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A hub never redirects. Following one would send the token to another origin and turn
+    a POST into a GET: a 3xx is an HTTPError, and send() moves on to the next hub."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        return None
+
+
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
 # ---------------------------------------------------------------------------

@@ -255,6 +255,54 @@ class Failover(CliTestCase):
         self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")),
                          ["g-not", "g-tru", "q-not", "q-tru"])
 
+    def test_redirect_is_not_followed(self):
+        """A hub URL that answers 3xx (a captive portal, a proxy, a moved host) must not get
+        the item turned into a GET, nor the token sent to wherever it points: next hub."""
+        import http.server
+        import threading
+        seen = []
+
+        class Catch(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append((self.command, self.headers.get("Authorization")))
+                body = b'{"id":"FAKE","created":true}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            do_POST = do_GET
+
+            def log_message(self, *a):
+                pass
+
+        catch = http.server.HTTPServer(("127.0.0.1", 0), Catch)
+        target = "http://127.0.0.1:%d" % catch.server_address[1]
+
+        class Moved(Catch):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", target + self.path)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            do_POST = do_GET
+
+        moved = http.server.HTTPServer(("127.0.0.1", 0), Moved)
+        for srv in (catch, moved):
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            self.addCleanup(srv.server_close)
+            self.addCleanup(srv.shutdown)
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        url = "http://127.0.0.1:%d" % moved.server_address[1]
+        r = self.run_cli("add", "--key", "r1", "--title", "t", urls=[url, a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(a.url, r.stdout)
+        r = self.run_cli("add", "--key", "r2", "--title", "t", urls=[url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("queued", r.stderr)
+        self.assertEqual(seen, [])
+        self.assertEqual([i["key"] for i in self.items(a, reader, "open")], ["r1"])
+
     def test_urls_precedence(self):
         a = self.make_hub("hub-a")
         sender, reader = self.tokens(a)
