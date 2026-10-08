@@ -43,6 +43,7 @@ Sender machines now update themselves once a day by default. Machines set up ear
 - **`NEEDS_YOU_CONFIG`** is where the invite installer and `setup-sender.sh` write the token, as the CLI, the hooks and the flush schedule read it (it went to `~/.config/needs-you/env`, and the machine could never send).
 - **One `needs-you update` at a time**: two at once (two hooks told "update requested") left a `--rollback` that restored the new files.
 - **Re-running an installer never downgrades a newer CLI**, as `needs-you update` already refused to.
+- **The Mac app has an icon, and Spotlight and Alfred find it as "Needs You".** `NeedsYou.app` had no icon and showed in Finder, Spotlight and Alfred under its file name, "NeedsYou", so searching "needs you" turned up other files first. It now has an icon (the pill on a dark rounded square, like the site's), also in the About panel, and shows as **Needs You**. The file is still `NeedsYou.app`, so the installer, updates and the login item are unchanged. If Spotlight still shows the old name after you update, run `mdimport /Applications/NeedsYou.app`.
 - **Open at login can't be turned on from the wrong place any more.** Outside Applications the toggle is greyed out and says why (*Needs You is running from Downloads. Move it to Applications to open it at login.*). If it was turned on for a copy somewhere else, the copy in Applications takes the login item over at launch.
 
 ### Changed

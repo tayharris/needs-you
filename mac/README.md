@@ -23,7 +23,7 @@ scripts/install.sh      # release build (scripts/bundle.sh, ad-hoc signed) → /
 
 `scripts/bundle.sh` alone just builds `dist/NeedsYou.app`.
 
-The app shows as **Needs You**; the file is `NeedsYou.app` (no space, so scripts don't need quoting). It's an agent app (`LSUIElement`): no Dock icon and no app menus. Look for the pill in the top-right corner and the pill-shaped icon in the menu bar.
+The app shows as **Needs You** in Finder, Spotlight and Alfred; the file is `NeedsYou.app` (no space, so scripts don't need quoting). The name with the space comes from `Resources/en.lproj/InfoPlist.strings` with `LSHasLocalizedDisplayName`; Launch Services uses it only while the unlocalized `CFBundleName`/`CFBundleDisplayName` in `Info.plist` match the file name, so those stay `NeedsYou`. Renamed by hand, the app shows its file name. It's an agent app (`LSUIElement`): no Dock icon and no app menus. Look for the pill in the top-right corner and the pill-shaped icon in the menu bar.
 
 To update an installed copy, use `scripts/install.sh` (see [Updating](#updating)) rather than copying over a running app.
 
@@ -34,6 +34,18 @@ To update an installed copy, use `scripts/install.sh` (see [Updating](#updating)
 **Move to Applications:** run from anywhere else (Downloads, the DMG, App Translocation, a build folder; `AppLocation` in Core), Settings → General starts with **Move to Applications**, and the menu bar menu has **Move to Applications…**. There's no launch alert (it would take focus). The move (`AppMover`, `AppCopier` in Core) copies the bundle with FileManager to a staging name in `/Applications` (or `~/Applications` when `/Applications` isn't writable), checks it with `codesign --verify --deep --strict`, renames it into place (an existing copy only after an inline **Replace**, then to the Bin), and has a detached shell wait for this process to exit before `open -g` on the new copy (same bundle id, and the hub's port must be free). Quarantine is kept, except on a translocated copy, which would otherwise be translocated again. Prefs (the bundle id's defaults domain), `~/Library/Application Support/NeedsYou` and the bundled hub script (resolved from `Bundle.main` at every start) don't depend on the path. `scripts/move-test.sh` runs the move end to end on a test copy (its own bundle id, defaults suite, support dir, hub port and destination; `NEEDS_YOU_MOVE_DEST` and `NEEDS_YOU_MOVE_NOW` are honoured only by a build with another bundle id): from a Downloads folder, the no-replace-without-confirm case, and from a mounted disk image.
 
 **Gatekeeper / security tools:** the build is ad-hoc signed (`codesign -s -`). A copy you built yourself runs without a prompt. A copy someone sends you may need right-click → Open the first time. Endpoint security tools (SentinelOne and similar) may flag ad-hoc signed apps. Developer ID signing is on the roadmap (`docs/roadmap/distribution.md`). Since the app keeps nothing in the Keychain, a new ad-hoc signature on every build doesn't cause password prompts.
+
+## App icon
+
+The pill on a dark rounded square, from the site's favicon. `Resources/AppIcon.svg` is the source, drawn on Apple's macOS icon grid (1024 px canvas, an 824 px superellipse body with a 100 px margin, a soft shadow inside the margin). `Resources/AppIcon.png` is its 1024 px rendering, committed because macOS has no built-in SVG rasterizer that keeps transparency. `scripts/bundle.sh` makes every iconset size from the PNG with `sips` and packs them with `iconutil` into `Contents/Resources/AppIcon.icns` (`CFBundleIconFile`) before signing, so the signature, the release zip and DMG and the updater's copy all carry it. The standard About panel shows it too.
+
+After editing the SVG, render it again at 1024 × 1024 with a transparent background in any SVG renderer and check it at 16 and 32 px. For example, with headless Chrome, render it in a bigger window and crop it, since the window clips the bottom of the page:
+
+```bash
+google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 \
+  --window-size=1200,1200 --screenshot=/tmp/big.png "file://$PWD/Resources/AppIcon.svg"
+# then crop (0, 0, 1024, 1024) into Resources/AppIcon.png
+```
 
 ## Menu bar icon
 
@@ -204,6 +216,6 @@ To try a link by hand: `open 'needsyou://connect?hub=http%3A%2F%2F127.0.0.1%3A9&
 
 - `Sources/NeedsYouCore`: model, hub client, failover, demo feed, merge/count rules, link policy, limited markdown, snooze/schedule maths, panel geometry and free positioning, `FloatingPanel`, connect links and invites (`Connect.swift`), the local hub's command line and network detection (`LocalHub.swift`), bounded prefs and `prefsVersion` migrations (`Prefs.swift`), the `tokens.json` store (`TokenStore.swift`), menu bar rules and text (`MenuBar.swift`), the bundle id (`AppIdentity.swift`), setup tips (`SetupChecklist.swift`: which local setup cards apply, their text and guide links). Unit-tested.
 - `Sources/NeedsYou`: the app (AppKit `NSPanel` + SwiftUI). `LocalHubController` runs the hub child; `ConnectController` redeems links and creates invites; `MenuBarController` owns the status item. `Phase3/` holds the new-item preview, work/personal schedule, 7:30 summary and SSE. It plugs in through `AppModel` hooks and can be removed.
-- `Resources/Info.plist`: bundle metadata (`app.needsyou.mac`, display name "Needs You", `LSUIElement`, the `needsyou` URL scheme, ATS exceptions).
+- `Resources/Info.plist`: bundle metadata (`app.needsyou.mac`, the icon, `LSHasLocalizedDisplayName`, `LSUIElement`, the `needsyou` URL scheme, ATS exceptions). `Resources/en.lproj/InfoPlist.strings`: the display name "Needs You". `Resources/AppIcon.svg` and `AppIcon.png`: the app icon (see [App icon](#app-icon)).
 
 **Focus rule.** The panel must never become key or main, and must never activate the app. `FloatingPanel` hard-wires `canBecomeKey`/`canBecomeMain` to false, and `FloatingPanelTests` guards it. The only code that activates the app is `SettingsWindowController.show()` and `AboutPanel.show()`, which run only from a user click (Settings…, Invite a Machine…, the set-up pill, a setup card's Open Settings, About, or opening a `needsyou://` link). The menu bar menu and dragging the pill never activate it. Starting or restarting the hub never activates anything. Don't put text fields or focusable views in the panel.
