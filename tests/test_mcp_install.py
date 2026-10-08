@@ -211,6 +211,21 @@ class InstallMcp(CliCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.json(".gemini/settings.json"), {"theme": "dark"})
 
+    def test_hooks_and_mcp_in_one_file_come_out_in_one_run(self):
+        # Gemini CLI keeps its hooks and its MCP servers in the same settings.json: one
+        # uninstall rewrites it twice within a second, and the second backup's name must not
+        # collide with the first (it did: the MCP server stayed, and the run exited 1).
+        r = subprocess.run(["bash", os.path.join(ROOT, "integrations", "gemini", "install-gemini-hooks.sh")],
+                           env={"HOME": self.home, "PATH": "/usr/bin:/bin"}, capture_output=True, text=True,
+                           timeout=60, cwd=self.tmp)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.run_cli("install-mcp", "gemini").returncode, 0)
+        r = self.run_cli("uninstall-hooks")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        text = self.text(".gemini/settings.json")
+        self.assertNotIn("needs-you", text)
+        self.assertEqual(len(self.backups(".gemini/settings.json")), 3)  # install-mcp, then one per rewrite
+
     def test_a_symlink_or_broken_config_skips_that_agent_only(self):
         real = self.write("dotfiles/settings.json", "{}")
         os.makedirs(self.p(".gemini"))

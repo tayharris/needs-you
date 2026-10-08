@@ -408,7 +408,7 @@ def _strip_hook_file(path: str, follow: bool, dry_run: bool, say: Any) -> Option
     it removed (or would remove) some, False when there were none, None when it couldn't.
     follow: write through a symlink (only the user's own ~/.claude settings)."""
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8", newline="") as fh:  # the backup: byte for byte
             text = fh.read()
         settings = json.loads(text)
         if not isinstance(settings, dict):
@@ -425,10 +425,7 @@ def _strip_hook_file(path: str, follow: bool, dry_run: bool, say: Any) -> Option
     try:
         target = os.path.realpath(path) if follow else path
         mode = os.stat(target).st_mode & 0o777
-        bak = "%s.bak-%s-%d" % (target, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
-        fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        _write_backup(target, text)
         _write_atomic(target, (json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), mode)
     except OSError as e:
         warn("%s: couldn't write it (%s)" % (_tilde(path), e))
@@ -478,10 +475,7 @@ def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
         return True
     try:
         mode = os.stat(path).st_mode & 0o777
-        bak = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
-        fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(text)
+        _write_backup(path, text)
         _write_atomic(path, "".join(kept).encode("utf-8"), mode)
     except OSError as e:
         warn("%s: couldn't write it (%s)" % (_tilde(path), e))
@@ -2495,6 +2489,26 @@ def _valid_cli(data: bytes) -> bool:
         return False
 
 
+def _write_backup(path: str, text: str) -> None:
+    """Keep the file's old text next to it as <path>.bak-<time>-<pid>, 0600. O_EXCL: a name
+    that exists (or is a planted symlink) is never written; a second backup of the same file
+    within the second (an uninstall rewrites Gemini's settings.json for the hooks, then for the
+    MCP server) gets .1, .2, ... instead of failing."""
+    base = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
+    n = 0
+    while True:
+        name = base if not n else "%s.%d" % (base, n)
+        try:
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            break
+        except FileExistsError:
+            n += 1
+            if n > 100:
+                raise
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+
+
 def _write_atomic(path: str, data: bytes, mode: int) -> None:
     real = os.path.realpath(path)
     d = os.path.dirname(real)
@@ -4501,10 +4515,7 @@ def _write_config(path: str, old: Optional[str], new: str) -> None:
     mode = 0o600
     if old is not None:
         mode = os.stat(path).st_mode & 0o777
-        bak = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
-        fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(old)
+        _write_backup(path, old)
     else:
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     _write_atomic(path, new.encode("utf-8"), mode)
