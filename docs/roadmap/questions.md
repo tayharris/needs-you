@@ -1,6 +1,6 @@
 # Questions and choices: what each agent's hooks carry
 
-Status: research, 2026-10-08. Phase A of [ADR 0009](../adr/0009-questions-on-cards.md) is built from it (the question, its choices as read-only steps and a plan's first lines on the card, for Claude Code, Codex, Gemini CLI, opencode, Kimi Code and Copilot's MCP elicitations). Phase B1 (the `question` field, option rows on the Mac) and B2 (answers from the card, for opencode and any sender using `needs-you answer-wait`) are built; B3 (Claude Code) waits on a live check.
+Status: research, 2026-10-08. Phase A of [ADR 0009](../adr/0009-questions-on-cards.md) is built from it (the question, its choices as read-only steps and a plan's first lines on the card, for Claude Code, Codex, Gemini CLI, opencode, Kimi Code and Copilot's MCP elicitations). Phase B1 (the `question` field, option rows on the Mac), B2 (answers from the card, for opencode and any sender using `needs-you answer-wait`) and B3 (Claude Code, through `PermissionRequest`, after the live check below) are built.
 
 When an agent asks the person something, what does a hook see, and can a hook answer? Every claim is tagged with its source and a confidence:
 
@@ -15,7 +15,7 @@ Confidence is high, medium or low. Captured payloads are in [`tests/fixtures/que
 
 | Agent | Question tool | Hook that carries the question | Text? | Choices? | Can a hook answer? |
 |---|---|---|---|---|---|
-| Claude Code 2.1.293 | `AskUserQuestion` (1–4 questions, 2–4 options) | `PreToolUse` and `PermissionRequest` (`tool_input.questions`); we use `PermissionRequest` | yes | yes, with descriptions, `multiSelect` | **yes**: `PreToolUse` `allow` + `updatedInput.answers` (live) |
+| Claude Code 2.1.293 | `AskUserQuestion` (1–4 questions, 2–4 options) | `PreToolUse` and `PermissionRequest` (`tool_input.questions`); we use `PermissionRequest` | yes | yes, with descriptions, `multiSelect` | **yes**: `PermissionRequest` `allow` + `updatedInput.answers`, the dialog still shown (live, 2.1.294; built, B3) |
 | Claude Code, plan approval | `ExitPlanMode` | `PermissionRequest` (`tool_input.plan`, `planFilePath`) | the plan | no | yes, the same way; never done for plans |
 | Claude Code, MCP elicitation | MCP `elicitation/create` | `Notification` `elicitation_dialog` (`message`); the `Elicitation` event has `requested_schema` | message only | in the schema (not installed) | yes, `Elicitation` hook `action` + `content` |
 | Codex CLI 0.161.0 | `request_user_input` (Plan mode only; 1–3 questions, 2–3 options) | `PreToolUse` (no `PermissionRequest`) | yes | yes, with descriptions, single choice | no |
@@ -53,7 +53,7 @@ Version 2.1.293 ([docs](https://code.claude.com/docs/en/hooks), binary `~/.local
 **Events, in order** [live, high]:
 
 1. `PreToolUse` with `tool_input` and `tool_use_id`.
-2. `PermissionRequest` with the same `tool_input` (no `tool_use_id`) and `permission_mode`. **It fires for `AskUserQuestion` and `ExitPlanMode`**, so the installed `PermissionRequest` hook already sees the questions: no new registration.
+2. `PermissionRequest` with the same `tool_input` (no `tool_use_id`) and `permission_mode`. **It fires for `AskUserQuestion` and `ExitPlanMode`**, so the installed `PermissionRequest` hook already sees the questions: no new registration (B3 later gave `AskUserQuestion` a synchronous entry of its own, to answer it).
 3. About 6 s later, `Notification` `permission_prompt` with `"message": "Claude needs your permission"` (for a plan: "Claude Code needs your approval for the plan"). No question text. The hook keeps the more specific `PermissionRequest` card.
 
 After a person answers, `PostToolUse` has `tool_input.answers` and `tool_response` [live, high].
@@ -77,12 +77,21 @@ skips the dialog; the transcript shows "User answered Claude's questions", and n
 - `allow` alone isn't enough: for `AskUserQuestion` and `ExitPlanMode` the dialog still shows unless `updatedInput` comes with it [docs + bin, high].
 - `updatedInput` replaces the whole input, so `questions` must be echoed back. Answers are validated: keys must be the question text, labels the option labels (multi-select capped at the option count + 1) [bin, medium].
 - Deny and ask rules still win over a hook's allow [bin, high].
-- `PermissionRequest` can return `decision: {behavior: "allow", updatedInput}`; for these tools `allow` without `updatedInput` falls through to the dialog. Answering through it is untested [bin, medium].
+- `PermissionRequest` can return `decision: {behavior: "allow", updatedInput}`; for these tools `allow` without `updatedInput` falls through to the dialog [bin, medium]. Answering through it works [live, high]: see **Answering through `PermissionRequest`** below.
 - `Elicitation` hooks answer an MCP elicitation with `{action: "accept" | "decline" | "cancel", content}` [docs + bin, high].
 
-**Timing** [live, high]: the dialog **waits for `PreToolUse`**: with a 6 s sleep the screen showed "running PreToolUse hook" and no dialog. A hook cut off by its `timeout` (default 600 s for command hooks [docs]) has its output discarded and the normal dialog appears. So a hook that holds `PreToolUse` open to wait for a remote answer freezes the terminal: the person can't answer there meanwhile. Whether `PermissionRequest` also holds the dialog back is not settled [live, medium]: that is the question phase B has to answer first.
+**Timing** [live, high]: the dialog **waits for `PreToolUse`**: with a 6 s sleep the screen showed "running PreToolUse hook" and no dialog. A hook cut off by its `timeout` (default 600 s for command hooks [docs]) has its output discarded and the normal dialog appears. So a hook that holds `PreToolUse` open to wait for a remote answer freezes the terminal: the person can't answer there meanwhile. `PermissionRequest` doesn't (next section).
 
-**Safe:** posting the card from `PermissionRequest` (async, prints nothing). **Unsafe:** a long synchronous `PreToolUse` wait; auto-approving `ExitPlanMode` (it also changes the permission mode).
+**Answering through `PermissionRequest`** (Claude Code 2.1.294, fake model server, temp HOME, a synchronous `PermissionRequest` hook):
+
+- The dialog **doesn't wait** for it [live, high]: with the hook sleeping 10 s, the question dialog was on screen at 3 s, usable as always.
+- When the hook then prints `{"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow", "updatedInput": {"questions": [...unchanged...], "answers": {"<question text>": "<label>"}}}}}`, Claude takes it as the answer [live, high]: the TUI shows "User answered Claude's questions: … Allowed by PermissionRequest hook" and the model gets "Your questions have been answered: …". `PostToolUse` and `Stop` follow as after a terminal answer.
+- A multi-select answer is the labels joined with ", " ("Auth, Export") [live, high], as the TUI writes it.
+- When the person answers in the terminal first, Claude goes on at once (`PostToolUse`, `Stop` within a second) and **doesn't kill the hook**: it ran to its end 20 s later and its output was ignored; the model got only the terminal's answer [live, high]. So the hook must stop waiting by itself: the `resolve` on `PostToolUse` closes the card, which ends `needs-you answer-wait` (exit 4).
+- The `Notification` `permission_prompt` about 6 s later still comes [live, high]; the `ask` card's marker (kind `permission`) keeps it from replacing the card.
+- Built as the hook's `ask` mode (B3). End to end with the installed hooks, a real hub and the reader token's `POST /v1/items/{id}/answer` [live, high]: the card was answerable 0.9 s after the prompt, the click reached Claude ("Postgres", "Auth, Search"), and the card was resolved by the `PostToolUse` that followed; with an answer in the terminal instead, the wait ended in the same second.
+
+**Safe:** posting the card from `PermissionRequest` (async, prints nothing); waiting in a synchronous `PermissionRequest` hook for an answer from the card (the dialog stays usable; the first answer wins). **Unsafe:** a long synchronous `PreToolUse` wait; auto-approving `ExitPlanMode` (it also changes the permission mode).
 
 ## Codex CLI
 
@@ -218,7 +227,7 @@ Source `aider/io.py` [src, high]: `confirm_ask(question, default, subject, expli
 | Agent | Path | Blocks the terminal while waiting? | Safe for phase B? |
 |---|---|---|---|
 | Claude Code | `PreToolUse` `allow` + `updatedInput.answers` | **yes**: the dialog waits for the hook | only with a short `timeout`, and the person can't answer locally meanwhile |
-| Claude Code | `PermissionRequest` `decision.behavior: allow` + `updatedInput.answers` | unknown (untested) | the candidate: test first |
+| Claude Code | `PermissionRequest` `decision.behavior: allow` + `updatedInput.answers` | no: the dialog shows while the hook waits, and a terminal answer wins (live, 2.1.294) | **yes**: built (B3) |
 | Claude Code | `Elicitation` `action` + `content` (MCP) | the dialog waits | same trade-off as `PreToolUse` |
 | opencode | plugin `POST /question/{id}/reply` | no: the plugin answers out of band, the TUI shows the question meanwhile | **yes**: the best fit |
 | Everyone else | none (deny-with-reason only) | | no |

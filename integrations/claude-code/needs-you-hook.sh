@@ -10,6 +10,10 @@
 #   needs-you-hook.sh start     SessionStart: after /clear, compact or /resume,
 #                               resolve this process's earlier cards
 #   needs-you-hook.sh end       SessionEnd: resolve the session's cards
+#   needs-you-hook.sh ask       PermissionRequest for AskUserQuestion (a synchronous entry):
+#                               the question card; when the card can answer it, wait for the
+#                               click and print Claude's decision (ADR 0009 B3; off with
+#                               NEEDS_YOU_ANSWER_TIMEOUT=0)
 #
 # A second argument names the agent. Default: claude.
 #   codex    OpenAI Codex CLI (integrations/codex/, ~/.codex/hooks.json):
@@ -62,7 +66,8 @@
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
 # it can (VS Code folder, Remote-SSH window, the VS Code Claude tab, the Orca
 # terminal, the Mac terminal tab: below). Always exits 0 and never prints to stdout, so it can't block or
-# steer Claude. Installed by install-hooks.sh.
+# steer Claude, with one exception: `ask` prints the answer the person clicked on the card, as
+# Claude's decision for that question. Installed by install-hooks.sh.
 #
 # Off unless one of these is true (so ordinary interactive use stays quiet):
 #   NEEDS_YOU_AGENT_ALERTS=1          opt in for this shell/VM
@@ -427,6 +432,16 @@ resolve_marker() {
   log "resolve $k -> $?"
 }
 
+# How long to wait for an answer from the card, in seconds: NEEDS_YOU_ANSWER_TIMEOUT (default
+# 600), within 30..3600 (the python side gives the question the same expiry).
+answer_timeout() {
+  local t=${NEEDS_YOU_ANSWER_TIMEOUT:-600}
+  case "$t" in ''|*[!0-9]*) t=600 ;; esac
+  [ "$t" -lt 30 ] && t=30
+  [ "$t" -gt 3600 ] && t=3600
+  printf '%s' "$t"
+}
+
 # The card builder and the context check share one python program (below). The program comes
 # on stdin; the hook input goes on fd 3 as a here-string, not in the environment, where one
 # variable is capped at about 128 KB (a big plan would post no card). Bash backs a here-string
@@ -697,12 +712,16 @@ def base_args(key, title, body, priority):
     return args
 
 
+QUESTION_POSTED = [None]  # the `question` field the last post carried (None: the steps form)
+
+
 def post(args, links, steps=None, asked=None, steps_body=None):
     """Post the card. With `asked` (a question card): with its `question` field, and if the
     CLI or hub refuses that (an older one), again with the choices as steps and `steps_body`."""
     if asked is not None and asked.question:
         rc = post(args + ["--question-json=" + json.dumps(asked.question, ensure_ascii=False)], links)
         if rc != 2:
+            QUESTION_POSTED[0] = asked.question if rc == 0 else None
             return rc
         args = [("--body=" + (steps_body or "")[:MAX_BODY]) if a.startswith("--body=") else a for a in args]
         steps = asked.steps
@@ -1307,6 +1326,18 @@ def aider_card():
 
 
 def notify():
+    rc, kind = notify_card()
+    if rc == 0:
+        sys.stdout.write(kind)
+    return rc
+
+
+# Set by ask(): the id and answerability of the AskUserQuestion card it posts.
+ASK = {"qid": "", "answerable": False}
+
+
+def notify_card():
+    """(rc, kind): post the card for this hook event (rc 3: no card for it)."""
     priority = agent_priority()
     kind = "notify"
     steps = []
@@ -1316,21 +1347,22 @@ def notify():
                 "copilot": copilot_card, "grok": grok_card, "kimi": kimi_card, "cursor": cursor_card,
                 "cline": cline_card, "aider": aider_card}[AGENT]()
         if card is None:
-            return 3
+            return 3, kind
         kind, what, msg = card[:3]
         steps = card[3] if len(card) > 3 else []
         if isinstance(steps, Asked):
             asked, steps = steps, []
     elif event == "PermissionRequest":
         if data.get("requires_user_approval") is False:
-            return 3
+            return 3, kind
         kind = "permission"
         tool = field("tool_name")
         ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
         if tool == "ExitPlanMode":
             what, msg = plan_card("Claude", ti.get("plan"))
         elif tool == "AskUserQuestion":
-            card = question_card("Claude", questions_from(ti.get("questions"))) if questions_on() else None
+            card = (question_card("Claude", questions_from(ti.get("questions")), ASK["qid"], ASK["answerable"])
+                    if questions_on() else None)
             what, msg, asked = card or ("Claude asked you a question", "Claude is waiting for your answer.", None)
         elif tool in ("Bash", "PowerShell"):
             word = command_word(ti.get("command"))
@@ -1363,7 +1395,7 @@ def notify():
         # A PermissionRequest card is more specific than the generic prompt notifications
         # that follow it; keep it.
         if prior == "permission" and ntype in ("permission_prompt", "idle_prompt"):
-            return 3
+            return 3, kind
         what = {
             "permission_prompt": "Claude needs permission",
             "idle_prompt": "Claude is waiting for you",
@@ -1379,9 +1411,99 @@ def notify():
     body = "\n\n".join(([msg] if msg else []) + where_lines())
     steps_body = "\n\n".join(([asked.steps_msg] if asked else []) + where_lines())
     rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links(), steps, asked, steps_body)
-    if rc == 0:
-        sys.stdout.write(kind)
-    return rc
+    return rc, kind
+
+
+# ---------------------------------------------------------------- answers (Claude Code)
+# ADR 0009 B3. Claude Code runs the `ask` entry (PermissionRequest, matcher AskUserQuestion)
+# synchronously and reads its stdout as a decision, while its own question dialog shows: an
+# `allow` with `updatedInput` (the tool input, plus `answers`: question text -> label, a
+# multi-select's labels joined with ", ") answers the question. Measured on Claude Code
+# 2.1.294: the dialog doesn't wait for this hook, and when the person answers there first,
+# Claude goes on and ignores what the hook prints later.
+
+
+def answers_on():
+    """Answering from the card: off with NEEDS_YOU_ANSWER_TIMEOUT=0 (or off) and with
+    NEEDS_YOU_AGENT_QUESTIONS=0 (no question on the card at all)."""
+    v = (os.environ.get("NEEDS_YOU_ANSWER_TIMEOUT") or "").strip().lower()
+    return questions_on() and v not in ("0", "off", "no", "false")
+
+
+def claude_answerable(raw):
+    """Can an answer from the card be handed to Claude exactly? Claude's own shape only: 1-4
+    questions, each with its text (the answer's key: no two the same) and options with
+    distinct labels; a multi-select's labels free of ", " (Claude joins them with it). The
+    card must also show every question and label as written (question_field checks that)."""
+    if not isinstance(raw, list) or not 0 < len(raw) <= MAX_QUESTIONS:
+        return False
+    texts = []
+    for q in raw:
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"].strip():
+            return False
+        opts = q.get("options")
+        if not isinstance(opts, list) or not 0 < len(opts) <= MAX_OPTIONS:
+            return False
+        labels = [o.get("label") if isinstance(o, dict) else None for o in opts]
+        if any(not isinstance(l, str) or not l.strip() for l in labels) or len(set(labels)) != len(labels):
+            return False
+        if q.get("multiSelect") is True and any(", " in l for l in labels):
+            return False
+        texts.append(q["question"])
+    return len(set(texts)) == len(texts)
+
+
+def ask():
+    """Claude's AskUserQuestion: post its card, answerable when it can be answered exactly.
+    Prints "answerable <question id>" when the card waits for the click, else "permission"."""
+    if AGENT != "claude" or event != "PermissionRequest" or field("tool_name") != "AskUserQuestion":
+        return 3
+    ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    ASK["qid"] = "claude-" + os.urandom(12).hex()
+    ASK["answerable"] = answers_on() and claude_answerable(ti.get("questions"))
+    rc, kind = notify_card()
+    if rc != 0:
+        return rc
+    # Only a card posted answerable waits (question_field also refuses labels it had to cut or
+    # redact; an older CLI or hub gets the steps form, which can't be answered).
+    waits = (QUESTION_POSTED[0] or {}).get("answerable") is True
+    sys.stdout.write("answerable %s" % ASK["qid"] if waits else kind)
+    return 0
+
+
+def reply():
+    """Claude's decision for the answer `needs-you answer-wait` printed (NY_ANSWER) to the
+    question NY_QID, or nothing when it doesn't fit that question exactly: the same question,
+    one entry per question, only offered labels, no repeats, one for a single choice."""
+    ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    raw = ti.get("questions")
+    if field("tool_name") != "AskUserQuestion" or not claude_answerable(raw):
+        return 0
+    try:
+        got = json.loads(os.environ.get("NY_ANSWER") or "")
+    except ValueError:
+        return 0
+    qid = os.environ.get("NY_QID") or ""
+    if not isinstance(got, dict) or not qid or got.get("question_id") != qid:
+        return 0
+    sel = got.get("answers")
+    if not isinstance(sel, list) or len(sel) != len(raw):
+        return 0
+    answers = {}
+    for q, s in zip(raw, sel):
+        picked = s.get("selected") if isinstance(s, dict) else None
+        labels = [o["label"] for o in q["options"]]
+        if (not isinstance(picked, list) or not picked
+                or any(not isinstance(p, str) or p not in labels for p in picked)
+                or len(set(picked)) != len(picked) or (q.get("multiSelect") is not True and len(picked) != 1)):
+            return 0
+        answers[q["question"]] = ", ".join(l for l in labels if l in picked)
+    updated = dict(ti)
+    updated["answers"] = answers
+    sys.stdout.write(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {"behavior": "allow", "updatedInput": updated}}}, ensure_ascii=False) + "\n")
+    return 0
 
 
 # ---------------------------------------------------------------- context
@@ -1521,7 +1643,7 @@ def context():
 
 
 try:
-    rc = notify() if mode == "notify" else context() if mode == "context" else 0
+    rc = {"notify": notify, "context": context, "ask": ask, "reply": reply}.get(mode, lambda: 0)()
 except Exception:
     rc = 1
 raise SystemExit(rc)
@@ -1607,12 +1729,32 @@ case "$mode" in
     # click on the card and print the answer (the CLI's JSON) for the plugin to hand to
     # opencode. Nothing on a timeout, an error or a card closed without an answer: the plugin
     # then answers nothing. Never picks or invents an answer.
-    t=${NEEDS_YOU_ANSWER_TIMEOUT:-600}
-    case "$t" in ''|*[!0-9]*) t=600 ;; esac
-    [ "$t" -lt 30 ] && t=30
-    [ "$t" -gt 3600 ] && t=3600
-    "$cli" answer-wait --key "$key" --timeout "$t" </dev/null 2>/dev/null
+    "$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null
     log "answer-wait $key -> $?"
+    ;;
+
+  ask)
+    # Claude Code's AskUserQuestion, from a synchronous PermissionRequest entry of its own
+    # (ADR 0009 B3). Post the question card, and when the card can answer it exactly, wait for
+    # the person's click and print Claude's decision with the answer: the only thing this hook
+    # ever prints. Claude shows its own dialog meanwhile, and the first answer wins: one given
+    # in the terminal resolves the card (PostToolUse, else Stop), which ends the wait. Nothing
+    # is printed on a timeout, an error or an answer that doesn't fit the question.
+    [ "$agent" = claude ] || exit 0
+    lease
+    posted=$(run_py ask)
+    rc=$?
+    log "ask $key -> $rc ${posted%% *}"
+    [ "$rc" -eq 0 ] || exit 0
+    write_marker "$marker" "$key" "kind=permission"
+    case "$posted" in "answerable "?*) ;; *) exit 0 ;; esac
+    NY_QID=${posted#answerable }
+    NY_ANSWER=$("$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null)
+    rc=$?
+    log "ask answer-wait $key -> $rc"
+    [ "$rc" -eq 0 ] && [ -n "$NY_ANSWER" ] || exit 0
+    export NY_QID NY_ANSWER
+    run_py reply
     ;;
 
   notify)

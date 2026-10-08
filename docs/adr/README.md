@@ -12,7 +12,7 @@ Short records of decisions that shape the code: Context, Decision, Consequences,
 | [0006](0006-security-tightening-2026-10.md) | Tighten link validation and add a Host check in `/v1` (audit #14, #16) | Accepted |
 | [0007](0007-founding-design.md) | Founding design: one inbox, senders post, the Mac pulls | Accepted |
 | [0008](0008-mcp-server.md) | A one-file stdlib MCP server that wraps the CLI (`add`, `resolve`, `doctor`; no "list mine") | Accepted |
-| [0009](0009-questions-on-cards.md) | Questions and choices on cards: read-only now (body and steps), a `question` field and answers by click later | Accepted |
+| [0009](0009-questions-on-cards.md) | Questions and choices on cards: the question and its choices on the card, a `question` field, and answers by click (opencode, Claude Code, `needs-you answer-wait`) | Accepted |
 
 Template:
 

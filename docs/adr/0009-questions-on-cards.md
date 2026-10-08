@@ -1,6 +1,6 @@
 # 0009. Questions and choices on cards
 
-- Status: Accepted (2026-10-08): phases A and B1–B2 (built); B3 (Claude Code) still waits on a live check
+- Status: Accepted (2026-10-08): phases A, B1, B2 and B3 (Claude Code, after the live check) built
 - Date: 2026-10-08
 
 ## Context
@@ -122,7 +122,7 @@ field.
      dialog back (measured), so it can't be used. The candidate is the `PermissionRequest`
      hook returning `decision: {behavior: "allow", updatedInput: {questions, answers}}`; it
      ships only if a live capture shows the dialog stays usable while that hook waits. If
-     not, Claude Code stays phase A.
+     not, Claude Code stays phase A. (The live check passed: B3 below.)
    - Codex, Gemini, Kimi, Copilot, Cline, Grok, Cursor and Aider have no answer path: phase A.
    The wait ends at the first of: an answer, the agent's own answer or rejection event, the
    item resolved, or the timeout (no answer is sent then).
@@ -155,8 +155,20 @@ field.
   through its own SDK client (in-process when opencode runs without a port). Not yet run
   against a live opencode.
 - **B3:** Claude Code through `PermissionRequest`, only after a live capture shows its dialog
-  stays usable while the hook waits. **Pending:** that live check hasn't been done; Claude Code
-  question cards stay read-only.
+  stays usable while the hook waits. **Built** on `tay/claude-answers` after the live check
+  (Claude Code 2.1.294, fake model server, temp HOME; [roadmap/questions.md](../roadmap/questions.md#claude-code)):
+  the dialog is on screen while a synchronous `PermissionRequest` hook waits; an `allow` with
+  `updatedInput: {<the tool input>, answers: {"<question>": "<label>"}}` (a multi-select's
+  labels joined with ", ") is taken as the person's answer; and an answer in the terminal
+  first wins, with the hook left running and its later output ignored. As built: a second
+  `PermissionRequest` entry, matcher `AskUserQuestion`, synchronous, runs the hook's `ask` mode
+  (post the card, `needs-you answer-wait`, print the decision); the `notify` entry's matcher
+  `^(?!AskUserQuestion$)` keeps it from posting a second card for the same question (Claude
+  Code tests a matcher that isn't a plain list of names as a JavaScript RegExp, checked in
+  2.1.294). The terminal's answer resolves the card (`PostToolUse`), which ends the wait
+  (`answer-wait` exits 4). A card is answerable only when it shows every question and label
+  exactly and the answer can be keyed back unambiguously (no two questions alike, no ", " in a
+  multi-select label); the hook checks the click against the question again before printing.
 
 ## Consequences
 
