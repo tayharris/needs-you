@@ -163,6 +163,11 @@ CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
 CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
+# The end of every sender invite's agent prompt: verify, and what to do when something failed.
+# The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.
+AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
+                      "step printed under it, or tell me if it needs me. If the installer says the link is "
+                      "unknown, expired or used up, ask me for a new one.")
 
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
@@ -1998,9 +2003,9 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
-                               "add %s; Gemini CLI, add %s; opencode, add %s."
+                               "add %s; Gemini CLI, add %s; opencode, add %s. %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
-                                  OPENCODE_INSTALL_FLAG))
+                                  OPENCODE_INSTALL_FLAG, AGENT_PROMPT_CHECK))
     return out
 
 
@@ -3167,8 +3172,10 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 
 - The PATH change reaches new shells only: in the shell you ran it from, call
   `~/.local/bin/needs-you` by its full path. With `--no-path`, tell the user the line it printed.
-- Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule)
-  and report any `WARN` or `FAIL` lines with their fixes. `--json` gives the same as data.
+- Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule).
+  Each `WARN` or `FAIL` line has one next step under it (after `->`): run it if it's a command
+  for this machine, otherwise tell the user exactly what it asks for. `--json` gives the same
+  as data (`hint`).
 - If you added `--codex-hooks user`, tell the user to start Codex, open `/hooks` and trust the
   needs-you entries once: Codex skips hooks nobody has trusted.
 - If you added `--claude-hooks` without `--alerts`, tell the user the hooks stay quiet until
