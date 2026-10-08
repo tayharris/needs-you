@@ -352,7 +352,7 @@ class LastWriterWins(HubTestCase):
                                content_updated_at="2026-10-06T10:00:02.000Z"))
         self.assertEqual(hubmod.item_wire(st.get_item(iid))["steps"], [])
 
-    QUESTION = {"id": "toolu_1", "items": [{"header": "DB", "text": "Which?", "multi_select": False,
+    QUESTION = {"id": "toolu_1", "answerable": False, "items": [{"header": "DB", "text": "Which?", "multi_select": False,
                                             "options": [{"label": "A", "description": "a"}]}]}
 
     def test_question_round_trip_and_old_peers(self):
