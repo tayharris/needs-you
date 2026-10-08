@@ -26,6 +26,9 @@
   needs-you health                                   check each configured hub and the token
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
+  needs-you orca [--environment NAME]... [--all] [--archived] [--limit N] [--json]
+                                                     Orca's worktrees: host, name, status, live
+                                                     terminals (read-only; runs orca worktree ps)
   needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--copilot]
                             [--cursor] [--cline] [--aider] [--kimi] [--grok] [--mcp] [--instructions]
                             [--dry-run]              remove the agent hooks: by default Claude
@@ -1718,6 +1721,18 @@ def _main(argv: Optional[List[str]] = None) -> int:
     dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
     dp.add_argument("--json", dest="doctor_json", action="store_true",
                     help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
+    op = sub.add_parser("orca", help="Orca's worktrees on this machine (and paired environments): host, name, "
+                        "status, live terminals (read-only; runs `orca worktree ps`)")
+    op.add_argument("--environment", dest="orca_envs", action="append", default=[], metavar="NAME",
+                    help="a paired Orca environment instead of this machine (repeatable)")
+    op.add_argument("--all", dest="orca_all", action="store_true",
+                    help="this machine and every paired environment (`orca environment list`, at most %d)"
+                    % ORCA_MAX_ENVIRONMENTS)
+    op.add_argument("--archived", dest="orca_archived", action="store_true", help="include archived worktrees")
+    op.add_argument("--limit", dest="orca_limit", type=int, default=0, metavar="N",
+                    help="at most N rows per environment (Orca's own default otherwise)")
+    op.add_argument("--json", dest="orca_json", action="store_true",
+                    help="machine-readable: {ok, worktrees: [...], scopes: {...}, errors: [...]}")
 
     args = p.parse_args(argv)
     if args.cmd == "post":  # the docs say "post an item"; agents guess it
@@ -1742,6 +1757,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return install_instructions(args.agents, args.source, args.dry_run, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
+    if args.cmd == "orca":  # read-only, local: no hub, no outbox
+        if args.orca_limit < 0:
+            warn("--limit must be 0 or more")
+            return 2
+        return orca_summary(args.orca_envs, args.orca_all, args.orca_archived, args.orca_limit,
+                            args.json or args.orca_json)
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
         return run_command(cfg, args)
 
@@ -4716,6 +4737,162 @@ def doctor(cfg: Config, as_json: bool) -> int:
         else:
             print("ok")
     return 0 if ok else 1
+
+
+# ---------------------------------------------------------------------------
+# orca: a read-only summary of Orca's worktrees, for agents
+# ---------------------------------------------------------------------------
+
+ORCA_MAX_ENVIRONMENTS = 8  # as the Mac app's Terminal button: at most this many paired environments
+ORCA_ENV_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$")
+_ORCA_STRIP = re.compile("[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
+
+
+def orca_text(value: Any, limit: int = 60) -> str:
+    """Orca's names and statuses are untrusted text (a branch or a worktree name can hold
+    anything): one line, no control, bidi or zero-width characters, clamped."""
+    if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+        return ""
+    s = " ".join(_ORCA_STRIP.sub(" ", str(value)).split())
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def orca_run(orca: str, args: List[str]) -> Tuple[Optional[Dict[str, Any]], str]:
+    """(the `result` object, "") or (None, why). No shell; 20 s at most."""
+    import subprocess
+    try:
+        r = subprocess.run([orca] + args + ["--json"], stdin=subprocess.DEVNULL, capture_output=True,
+                           text=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        return None, "orca %s timed out" % " ".join(args[:2])
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, "cannot run orca: %s" % type(e).__name__
+    try:
+        d = json.loads(r.stdout or "")
+    except ValueError:
+        first = (r.stderr or r.stdout or "").strip().splitlines()
+        return None, "orca %s exited %d%s" % (" ".join(args[:2]), r.returncode,
+                                              ": " + orca_text(first[0], 160) if first else "")
+    if not isinstance(d, dict) or d.get("ok") is False or not isinstance(d.get("result"), dict):
+        err = d.get("error") if isinstance(d, dict) else None
+        msg = err.get("message") if isinstance(err, dict) else err
+        return None, "orca %s failed%s" % (" ".join(args[:2]), ": " + orca_text(msg, 160) if msg else "")
+    return d["result"], ""
+
+
+def orca_environments(orca: str) -> Tuple[List[str], str]:
+    result, err = orca_run(orca, ["environment", "list"])
+    if result is None:
+        return [], err
+    names = []
+    for e in result.get("environments") or []:
+        name = e if isinstance(e, str) else (e.get("name") or e.get("id")) if isinstance(e, dict) else None
+        if isinstance(name, str) and ORCA_ENV_NAME.match(name) and name not in names:
+            names.append(name)
+    return names[:ORCA_MAX_ENVIRONMENTS], ""
+
+
+def orca_row(w: Dict[str, Any], environment: str) -> Dict[str, Any]:
+    """The fields an agent orients by, cleaned. Never the terminal `preview`, a comment,
+    a path or a URL: those are free text from terminals and trackers."""
+    row: Dict[str, Any] = {
+        "environment": environment,
+        "host": orca_text(w.get("hostId"), 40),
+        "name": orca_text(w.get("displayName") or w.get("branch"), 60),
+        "branch": orca_text(w.get("branch"), 80),
+        "repo": orca_text(w.get("repo"), 60),
+        "workspace_status": orca_text(w.get("workspaceStatus"), 30),
+        "status": orca_text(w.get("status"), 30),
+    }
+    n = w.get("liveTerminalCount")
+    row["live_terminals"] = n if isinstance(n, int) and not isinstance(n, bool) and n >= 0 else 0
+    row["unread"] = w.get("unread") is True
+    agents = w.get("agents")
+    row["agents"] = len(agents) if isinstance(agents, list) else 0
+    pr = w.get("linkedPR")
+    num = pr.get("number") if isinstance(pr, dict) else pr
+    row["pr"] = num if isinstance(num, int) and not isinstance(num, bool) and num > 0 else None
+    t = w.get("lastActivityAt")
+    if isinstance(t, (int, float)) and not isinstance(t, bool) and t > 0:
+        secs = t / 1000.0 if t > 1e11 else float(t)  # Orca uses epoch milliseconds
+        row["last_activity"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(secs))
+    else:
+        row["last_activity"] = None
+    return row
+
+
+def orca_summary(environments: List[str], all_envs: bool, include_archived: bool, limit: int,
+                 as_json: bool) -> int:
+    import shutil
+    orca = shutil.which("orca")
+    if not orca:
+        msg = "orca is not on PATH (this command reads Orca's worktrees; it needs the Orca CLI)"
+        if as_json:
+            print(json.dumps({"ok": False, "error": msg}))
+        else:
+            warn(msg)
+        return 1
+    for e in environments:
+        if not ORCA_ENV_NAME.match(e):
+            warn("--environment must be an Orca environment name (letters, digits, spaces, . _ -)")
+            return 2
+    errors: List[str] = []
+    targets = list(environments) if environments else [""]  # "": this machine's Orca
+    if all_envs:
+        names, err = orca_environments(orca)
+        if err:
+            errors.append(err)
+        targets = [""] + [n for n in list(environments) + names if n][:ORCA_MAX_ENVIRONMENTS]
+        targets = [t for i, t in enumerate(targets) if t not in targets[:i]]
+    rows: List[Dict[str, Any]] = []
+    scopes: Dict[str, Any] = {}
+    for env in targets:
+        args = ["worktree", "ps"] + (["--limit", str(limit)] if limit else []) + (["--environment", env] if env else [])
+        result, err = orca_run(orca, args)
+        if result is None:
+            errors.append(("%s: " % env if env else "") + err)
+            continue
+        scope = result.get("hostScope") if isinstance(result.get("hostScope"), dict) else {}
+        scopes[env or "local"] = {
+            "hosts": [orca_text(h, 40) for h in scope.get("hostIds") or [] if orca_text(h, 40)],
+            "not_covered": [orca_text(h, 40) for h in scope.get("omittedHostIds") or [] if orca_text(h, 40)],
+            "truncated": result.get("truncated") is True}
+        for w in result.get("worktrees") or []:
+            if not isinstance(w, dict) or (w.get("isArchived") is True and not include_archived):
+                continue
+            rows.append(orca_row(w, env))
+    ok = bool(scopes)
+    if as_json:
+        print(json.dumps({"ok": ok, "worktrees": rows, "scopes": scopes, "errors": errors}, indent=1,
+                         ensure_ascii=False))
+        return 0 if ok else 1
+    for e in errors:
+        warn(e)
+    if not ok:
+        return 1
+    if not rows:
+        print("no worktrees")
+    for r in rows:
+        bits = [r["workspace_status"] or "-", r["status"] or "-", "%d terminal%s" % (
+            r["live_terminals"], "" if r["live_terminals"] == 1 else "s")]
+        if r["agents"]:
+            bits.append("%d agent%s" % (r["agents"], "" if r["agents"] == 1 else "s"))
+        if r["unread"]:
+            bits.append("unread")
+        if r["pr"]:
+            bits.append("PR #%d" % r["pr"])
+        where = (r["environment"] + "/" if r["environment"] else "") + (r["host"] or "?")
+        print("%s  %s%s  %s" % (where, r["name"] or "?",
+                                " (%s)" % r["branch"] if r["branch"] and r["branch"] != r["name"] else "",
+                                " · ".join(bits)))
+    for env, s in scopes.items():
+        line = "scope %s: %s" % (env, ", ".join(s["hosts"]) or "-")
+        if s["not_covered"]:
+            line += "; not covered: %s" % ", ".join(s["not_covered"])
+        if s["truncated"]:
+            line += "; more rows than shown (--limit)"
+        print(line)
+    return 0
 
 
 if __name__ == "__main__":

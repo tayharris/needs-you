@@ -211,6 +211,8 @@ orca worktree set --worktree active --workspace-status in-review --comment "Bloc
 ```
 
 
+`needs-you orca` prints the same board as one line per worktree, read-only (see [the Orca guide](../../docs/guides/orca.md#whats-running-needs-you-orca)).
+
 ## Test it
 
 From an Orca terminal on the same machine:

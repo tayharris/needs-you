@@ -155,6 +155,18 @@ The card disappears from every Mac reading the hub; the `done` note shows as an 
 
 **The same hand-off in one live session.** An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click **Terminal**, Orca switches to the agent's terminal, you type the answer, and the agent runs the `resolve` before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal ([one card for one wait](claude-code.md#one-card-for-one-wait)). Once the agent resolves its item, an idle session gets the hooks' card again.
 
+## What's running: `needs-you orca`
+
+An agent (or you) can see Orca's worktrees on this machine in one read-only call, without opening Orca:
+
+```bash
+needs-you orca            # one line per worktree: host, name (branch), status, live terminals, unread, PR
+needs-you orca --all      # also every paired environment (`orca environment list`, at most 8)
+needs-you orca --environment "My Devbox" --json
+```
+
+It runs `orca worktree ps --json` (no shell, 20 s at most) and prints only the host, name, branch, repo, workspace status, live terminal and agent counts, unread flag, linked PR number and last activity, each cleaned to one short line. It never prints a terminal's `preview`, a worktree's comment, its path or any URL: those are free text from terminals and trackers. Archived worktrees are left out (`--archived` adds them). It never posts, queues or reaches a hub, and it exits 1 when `orca` isn't on `PATH` or can't answer. `--json` gives `{ok, worktrees: [...], scopes: {...}, errors: [...]}`.
+
 ## Check it works
 
 From an Orca terminal:
