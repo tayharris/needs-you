@@ -2964,12 +2964,15 @@ class Doctor:
             if status == "OK":
                 status, hint = "WARN", ("unset NEEDS_YOU_ENV_FILE (and remove it from your shell profile) so "
                                         "the hooks read %s like the CLI" % shown)
-        urls, where = self.setting("NEEDS_YOU_URLS")
-        if not urls:
-            urls, where = self.setting("NEEDS_YOU_URL")
-            name = "NEEDS_YOU_URL"
-        else:
-            name = "NEEDS_YOU_URLS"
+        # The CLI's precedence (Config): either name in the environment beats the env file.
+        name, where = "NEEDS_YOU_URLS", ""
+        for cand, src, val in (("NEEDS_YOU_URLS", "env", os.environ.get("NEEDS_YOU_URLS")),
+                               ("NEEDS_YOU_URL", "env", os.environ.get("NEEDS_YOU_URL")),
+                               ("NEEDS_YOU_URLS", "env file", self.file.get("NEEDS_YOU_URLS")),
+                               ("NEEDS_YOU_URL", "env file", self.file.get("NEEDS_YOU_URL"))):
+            if val:
+                name, where = cand, src
+                break
         if self.cfg.urls:
             parts.append("%s: %d hub URL%s (%s)" % (name, len(self.cfg.urls),
                                                     "" if len(self.cfg.urls) == 1 else "s", where))
@@ -3048,7 +3051,9 @@ class Doctor:
             hub_v = clean(body.get("version") or "?")
             base = "%s hub=%s version %s" % (url, clean(body.get("hub_id", "?")), hub_v)
             vhint = ""
-            if hub_v not in ("?", VERSION):
+            hub_t, cli_t = _vtuple(hub_v), _vtuple(VERSION)
+            if hub_v not in ("?", VERSION) and (hub_t is None or cli_t is None or hub_t > cli_t):
+                # (update never downgrades: against an older hub it would change nothing)
                 vhint = "CLI is %s; to match the hub, run: needs-you update" % VERSION
             tok = body.get("token")
             if body.get("token_error") or not isinstance(tok, dict):

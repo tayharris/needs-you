@@ -331,6 +331,33 @@ class NextSteps(DoctorTestCase):
         self.assertIn("curl -sS https://hub.example.com/v1/health", d.unreachable_hint("https://hub.example.com"))
 
 
+class Verdicts(DoctorTestCase):
+    def test_an_older_hub_isnt_matched_by_updating(self):
+        # `needs-you update` never downgrades: against an older hub it would do nothing.
+        from support import hubmod
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        old = hubmod.VERSION
+        hubmod.VERSION = "0.1.0"
+        try:
+            _, _, checks = self.doctor_json()
+        finally:
+            hubmod.VERSION = old
+        self.assertIn("version 0.1.0", checks["hub 1"]["detail"])
+        self.assertNotIn("needs-you update", checks["hub 1"]["hint"] or "")
+        hubmod.VERSION = "99.0.0"
+        try:
+            _, _, checks = self.doctor_json()
+        finally:
+            hubmod.VERSION = old
+        self.assertIn("needs-you update", checks["hub 1"]["hint"])
+
+    def test_url_source_follows_the_cli_precedence(self):
+        # The CLI takes NEEDS_YOU_URL from the environment over NEEDS_YOU_URLS in the env file.
+        self.write_env(["NEEDS_YOU_URLS=http://127.0.0.1:9", "NEEDS_YOU_TOKEN=%s" % self.sender])
+        _, _, checks = self.doctor_json(extra_env={"NEEDS_YOU_URL": self.hub.url})
+        self.assertIn("NEEDS_YOU_URL: 1 hub URL (env)", checks["config"]["detail"])
+
+
 class HostileValues(DoctorTestCase):
     """Hints are commands an agent runs as is: a hub URL or a path from the config must never
     turn into a second command."""
