@@ -721,6 +721,13 @@ final class AppModel: ObservableObject {
         return ui.arrivalPlan(for: request.priority, basePulses: request.times, reduceMotion: reduceMotion)
     }
 
+    /// Settings → Alerts → Preview: plays the chosen arrival on the pill without posting
+    /// anything. Only changes what's drawn; never shows, orders front or focuses the panel.
+    func previewArrival(_ priority: ItemPriority) {
+        guard isPanelVisible else { return }
+        pulse = PulseRequest(times: priority == .urgent ? 2 : 1, priority: priority)
+    }
+
     /// Settings → Alerts → Remind about unseen urgent items: plays urgent's arrival again
     /// every N minutes while an urgent item that came in since the panel was last open waits
     /// (UrgentReminder decides). Called from the 15 s tick.

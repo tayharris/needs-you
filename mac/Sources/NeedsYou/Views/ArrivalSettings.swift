@@ -2,8 +2,8 @@ import NeedsYouCore
 import SwiftUI
 
 /// Settings → Alerts → Arrivals: the arrival animation (urgent and the rest), its timing,
-/// how long the new-item preview (and the Later summary peek) stays out and the repeat
-/// reminder for unseen urgent items.
+/// how long the new-item preview (and the Later summary peek) stays out, the repeat
+/// reminder for unseen urgent items, and a Preview that plays it on the pill.
 struct ArrivalSettingsSection: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
@@ -41,6 +41,15 @@ struct ArrivalSettingsSection: View {
                 LabelWithDetail("Remind about unseen urgent items",
                                 "Plays urgent's arrival again until you open the panel. Not while snoozed, hidden or in a focus that holds urgent.")
             }
+            HStack {
+                LabelWithDetail("Preview on the pill", model.isPanelVisible
+                                ? "Plays your choice on the floating pill. Nothing is posted."
+                                : "Show the floating panel to preview it.")
+                Spacer()
+                Button("Urgent") { model.previewArrival(.urgent) }
+                Button("Normal") { model.previewArrival(.normal) }
+            }
+            .disabled(!model.isPanelVisible)
         } header: {
             Text("Arrivals")
         } footer: {
