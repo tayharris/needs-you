@@ -197,7 +197,8 @@ struct IdlePill: View {
     }
 }
 
-/// Phase 3: the springy new-item preview (title and source). With an allowed link, a
+/// Phase 3: the springy new-item preview (title and source, and an agent's question with
+/// its first choices). With an allowed link, a
 /// button opens it and marks the item done; clicking elsewhere opens the panel at the card.
 /// The title (two lines at most) and the meta line take the full width; the button sits
 /// on its own row below them (PreviewLayout, which also sizes the panel).
@@ -225,6 +226,23 @@ struct PreviewPill: View {
                  + Text(" · " + Format.meta(item, now: now)).foregroundStyle(Theme.muted))
                     .font(Theme.meta(metrics))
                     .lineLimit(1)
+                if let question = item.question, let text = QuestionDisplay.previewQuestion(question) {
+                    // What it asks and the first choices (QuestionDisplay.previewRows sizes these).
+                    Text(text)
+                        .font(Theme.meta(metrics))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.top, PreviewLayout.questionRowGap - PreviewLayout.metaGap)
+                    if let choices = QuestionDisplay.previewChoices(question) {
+                        Text(choices)
+                            .font(Theme.meta(metrics).weight(.medium))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.top, PreviewLayout.questionRowGap - PreviewLayout.metaGap)
+                    }
+                }
                 if let link {
                     linkButton(link)
                         .padding(.top, PreviewLayout.linkRowGap - PreviewLayout.metaGap)

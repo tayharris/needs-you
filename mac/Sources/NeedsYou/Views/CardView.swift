@@ -34,7 +34,9 @@ struct CardView: View {
 
                 let mode = model.settings.ui.cardBodies
                 let expanded = model.expandedCards.contains(item.id)
-                if let body = item.body, !body.isEmpty, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body).
+                let body = QuestionDisplay.body(item)
+                if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
                     Text(LimitedMarkdown.render(body))
                         .font(Theme.body(model.bodyFont))
                         .foregroundStyle(.white.opacity(0.85))
@@ -60,8 +62,28 @@ struct CardView: View {
                     }
                 }
 
-                if StepsPolicy.canExpand(item, mode: mode),
-                   expanded || CardBodyPolicy.canExpand(body: item.body, mode: mode) {
+                if let question = item.question {
+                    if QuestionDisplay.showsAll(mode, expanded: expanded) {
+                        QuestionList(item: item, question: question, model: model)
+                            .padding(.top, 1)
+                    } else {
+                        Button { model.toggleCardExpanded(item) } label: {
+                            Label(QuestionDisplay.summary(question), systemImage: "questionmark.bubble")
+                                .font(Theme.meta(m))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show the question and its choices")
+                    }
+                }
+
+                if StepsPolicy.canExpand(item, mode: mode) || QuestionDisplay.canExpand(item, mode: mode)
+                    || CardBodyPolicy.canExpand(body: body, mode: mode),
+                   expanded || CardBodyPolicy.canExpand(body: body, mode: mode) {
                     Button(CardBodyPolicy.toggleTitle(mode, expanded: expanded)) { model.toggleCardExpanded(item) }
                         .buttonStyle(.plain)
                         .font(Theme.meta(m))
@@ -207,6 +229,69 @@ struct StepList: View {
                 .padding(.top, 2)
             }
         }
+    }
+}
+
+/// An agent's question (`question`, ADR 0009): each question under its header with "choose
+/// one" or "choose any", then its options as rows, the label and a fainter description.
+/// Read-only, with no tick boxes: the person answers in the agent. Nothing here is
+/// focusable (the panel never becomes key).
+struct QuestionList: View {
+    let item: Item
+    let question: ItemQuestion
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let font = model.bodyFont
+        let items = QuestionDisplay.visible(question)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, q in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(QuestionDisplay.heading(q, index: index, count: items.count))
+                        .font(.system(size: model.metrics.metaFont, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                    Text(LimitedMarkdown.render(q.text))
+                        .font(Theme.body(font).weight(.medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .tint(Theme.normal)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !q.options.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(Array(q.options.enumerated()), id: \.offset) { _, option in
+                                OptionRow(option: option, font: font)
+                            }
+                        }
+                        .padding(.top, 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One choice: its label, and its description in a fainter colour below it.
+struct OptionRow: View {
+    let option: ItemQuestionOption
+    let font: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(option.label)
+                .font(Theme.body(font).weight(.semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            if !option.detail.isEmpty {
+                Text(option.detail)
+                    .font(Theme.body(max(9, font - 1)))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
     }
 }
 
