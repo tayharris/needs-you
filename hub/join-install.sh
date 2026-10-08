@@ -870,11 +870,20 @@ if [ "$USAGE" -eq 1 ]; then
   usage_helper || skipped "the Claude usage helper" "--usage"
 fi
 
-if [ "$ORCA" -eq 1 ]; then
-  fetch orca-snippet.md "$TMP/orca-snippet.md" || die "could not download the Orca snippet"
+orca_snippet() {
+  fetch orca-snippet.md "$TMP/orca-snippet.md" || { warn "could not download the Orca snippet"; return 1; }
   chmod 644 "$TMP/orca-snippet.md"
-  mv -f "$TMP/orca-snippet.md" "$CONF_DIR/orca-snippet.md"
+  mv -f "$TMP/orca-snippet.md" "$CONF_DIR/orca-snippet.md" || return 1
   chmod 644 "$CONF_DIR/orca-snippet.md"
+}
+# The CLI and its token are in place by now: a missing snippet skips only this part (exit 3
+# when nothing else asked for was set up), never "nothing was installed" (exit 1).
+ORCA_OK=0
+if [ "$ORCA" -eq 1 ]; then
+  ASKED=$((ASKED + 1))
+  if orca_snippet; then ORCA_OK=1; else skipped "Orca snippet" "--orca"; fi
+fi
+if [ "$ORCA_OK" -eq 1 ]; then
   say ""
   say "Orca: wrote $CONF_DIR/orca-snippet.md (needs-you update keeps it current)."
   say "Paste this block into each automation prompt (or the template they are rendered from):"

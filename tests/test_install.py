@@ -202,6 +202,25 @@ class InstallScript(HubTestCase):
         self.assertIn("no uses left", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
 
+    def test_a_missing_orca_snippet_skips_only_that(self):
+        # A hub that doesn't serve orca-snippet.md (an install-hub.sh from before 0.2.2): --orca
+        # died with exit 1 ("nothing was installed") after the CLI, token and flush were set up.
+        inst = os.path.join(self.tmp, "inst")
+        for name, (rel, _) in hubmod.DOWNLOADS.items():
+            if name != "orca-snippet.md":
+                os.makedirs(os.path.dirname(os.path.join(inst, rel)), exist_ok=True)
+                shutil.copy(os.path.join(ROOT, rel), os.path.join(inst, rel))
+        self.hub = self.make_hub("hub-o", peers=[], install_dir=inst)
+        self.hub.store.ensure_token("this-mac", "owner", OWNER)
+        inv = self.invite()
+        r = self.install(inv, "--yes", "--host", "o1", "--orca", "--skill", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # the skill went on: not exit 3
+        self.assertIn("Not set up: Orca snippet", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
+        self.assertIn("needs-you is set up", json.dumps(request("GET", self.hub.url + "/v1/items", OWNER)[1]))
+        r = self.install(inv, "--yes", "--host", "o1", "--orca", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)  # the only thing asked for
+
     def test_uninstall_leaves_no_empty_directories(self):
         # Everything the installer can set up, on a machine with none of the agents' directories:
         # the uninstall takes the directories it made and emptied back out (they used to stay:
