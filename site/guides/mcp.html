@@ -42,15 +42,27 @@
       </ul>
     </nav>
 <p>For agents that speak MCP but have no shell, or whose shell you'd rather not hand over: chat apps, IDE assistants, sandboxed agents. The needs-you MCP server gives them three tools: <code>needs_you_add</code> posts a card (or updates the one with the same key), <code>needs_you_resolve</code> closes it, and <code>needs_you_doctor</code> checks the setup. Agents with a shell don't need it; the <code>needs-you</code> CLI and the <a href="claude-code.html">Claude Code skill</a> do the same.</p>
-<p>The server is one Python file (standard library only) that runs the <code>needs-you</code> CLI for each call, so posts get the same failover, offline queue and rules. Its tool descriptions tell the model when to post and when not to (<a href="agent-guide.html">the agent guide</a>). Reference: <a data-repo="/blob/main/integrations/mcp/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/mcp/README.md">integrations/mcp/README.md</a>. Design: <a data-repo="/blob/main/docs/adr/0008-mcp-server.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0008-mcp-server.md">ADR 0008</a>. The installer doesn't set it up yet.</p>
+<p>The server is one Python file (standard library only) that runs the <code>needs-you</code> CLI for each call, so posts get the same failover, offline queue and rules. Its tool descriptions tell the model when to post and when not to (<a href="agent-guide.html">the agent guide</a>). Reference: <a data-repo="/blob/main/integrations/mcp/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/mcp/README.md">integrations/mcp/README.md</a>. Design: <a data-repo="/blob/main/docs/adr/0008-mcp-server.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0008-mcp-server.md">ADR 0008</a>. The invite installer sets it up with <code>--mcp</code>.</p>
 <h2 id="install">Install <a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
-<p>Prerequisite: the machine is a sender, so <code>needs-you</code> works in a shell there (an invite link's one-liner, see <a href="add-a-sender.html">Add a sender</a>). The agent's MCP client runs on that machine.</p>
-<p>Copy the server next to the CLI, from a checkout of this repo or the release's server tarball:</p>
-<div class="code" data-copy><pre><code class="language-bash">install -m 755 integrations/mcp/needs_you_mcp.py ~/.local/bin/needs-you-mcp</code></pre></div>
-<p>Then register it with the client.</p>
-<p><strong>Claude Code</strong>, for every project:</p>
-<div class="code" data-copy><pre><code class="language-bash">claude mcp add --scope user needs-you -- python3 "$HOME/.local/bin/needs-you-mcp"</code></pre></div>
-<p><strong>Clients with a JSON config</strong> (an <code>mcpServers</code> block): use the absolute path, since these don't expand <code>~</code>.</p>
+<p>Prerequisite: the agent's MCP client runs on a machine you set up (or are setting up) with an invite link: <a href="add-a-sender.html">Add a sender</a>. Add <code>--mcp</code> and the agents to register it with to the invite's one line:</p>
+<div class="code"><pre><code class="language-bash">curl -fsSL &lt;invite link&gt;/install.sh | bash -s -- --yes --mcp claude,codex</code></pre></div>
+<p><code>--mcp</code> takes a comma-separated list of <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>opencode</code> and <code>copilot</code>. The installer downloads the server from the hub (checked against the sha256 on the invite page), installs it as <code>~/.local/bin/needs-you-mcp</code> next to the CLI, and registers it under the name <code>needs-you</code> in each agent's user-level config:</p>
+<div class="table-wrap"><table class="doc-table">
+<thead><tr><th>Agent</th><th>Where</th><th>Entry</th></tr></thead>
+<tbody>
+<tr><td>Claude Code</td><td><code>~/.claude.json</code>, through <code>claude mcp add-json --scope user</code></td><td><code>{"type": "stdio", "command": "&lt;python3&gt;", "args": ["&lt;server&gt;"]}</code></td></tr>
+<tr><td>OpenAI Codex CLI</td><td><code>~/.codex/config.toml</code> (or <code>$CODEX_HOME</code>), a marked block</td><td><code>[mcp_servers.needs-you]</code> with <code>command</code> and <code>args</code></td></tr>
+<tr><td>Gemini CLI</td><td><code>~/.gemini/settings.json</code></td><td><code>mcpServers.needs-you</code>: <code>command</code>, <code>args</code></td></tr>
+<tr><td>opencode</td><td><code>~/.config/opencode/opencode.json</code></td><td><code>mcp.needs-you</code>: <code>{"type": "local", "command": ["&lt;python3&gt;", "&lt;server&gt;"], "enabled": true}</code></td></tr>
+<tr><td>GitHub Copilot CLI</td><td><code>~/.copilot/mcp-config.json</code> (or <code>$COPILOT_HOME</code>)</td><td><code>mcpServers.needs-you</code>: <code>type</code> <code>local</code>, <code>command</code>, <code>args</code>, <code>tools: ["*"]</code></td></tr>
+</tbody>
+</table></div>
+<p>As with the hooks: a config file is backed up (<code>&lt;file&gt;.bak-&lt;time&gt;</code>) before it changes, nothing changes when the entry is already right, a symlinked config or one that isn't valid JSON is left alone with a warning (that agent is listed under "Not set up:" and the rest still installs), and a <code>needs-you</code> server that isn't this one is never replaced. Claude Code is registered only through its own <code>claude</code> command; without it on PATH, the installer prints the command to run. opencode's <code>opencode.jsonc</code> isn't edited: the installer prints the entry to add.</p>
+<p>Restart open agent sessions to load the server. <code>needs-you update</code> keeps <code>needs-you-mcp</code> current (the registrations point at that path, so they don't change), and <code>needs-you doctor</code> has an <code>mcp server</code> line.</p>
+<p>By hand, for another client or a machine without the installer: put <code>integrations/mcp/needs_you_mcp.py</code> (from a checkout or the release's server tarball) next to the CLI and register it with the client.</p>
+<div class="code" data-copy><pre><code class="language-bash">install -m 755 integrations/mcp/needs_you_mcp.py ~/.local/bin/needs-you-mcp
+needs-you install-mcp claude,gemini          # the same registration the installer does</code></pre></div>
+<p><strong>Clients with a JSON config</strong> (an <code>mcpServers</code> block): use absolute paths, since these don't expand <code>~</code>.</p>
 <div class="code"><pre><code class="language-json">{
   "mcpServers": {
     "needs-you": {
@@ -75,8 +87,8 @@
 </ul>
 <p><strong>One card per wait:</strong> when the client starts the server with the Claude Code session's environment (<code>CLAUDECODE</code>, <code>CLAUDE_CODE_SESSION_ID</code>) or inside an Orca terminal, the hooks skip their generic "Claude is waiting" card while the agent's own card is open, as they do for the CLI. Other clients don't pass a session, so if their agent also has needs-you hooks you may see both cards.</p>
 <h2 id="remove-it">Remove it <a class="anchor" href="#remove-it" aria-label="Link to this section">#</a></h2>
-<div class="code" data-copy><pre><code class="language-bash">claude mcp remove --scope user needs-you     # or delete the block from the client's config
-rm ~/.local/bin/needs-you-mcp</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">needs-you uninstall-hooks --mcp      # every registration needs-you added, and ~/.local/bin/needs-you-mcp</code></pre></div>
+<p>It removes only entries that run <code>needs-you-mcp</code>, restores each config file as it was otherwise (with a backup) and deletes a config file the installer created that is empty again. Claude Code's entry goes through <code>claude mcp remove needs-you --scope user</code>. A plain <code>needs-you uninstall-hooks</code>, or the installer's <code>--uninstall</code>, includes it.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/mcp.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/mcp.md">docs/guides/mcp.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

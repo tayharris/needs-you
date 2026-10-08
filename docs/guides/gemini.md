@@ -45,6 +45,16 @@ One card per session, updated in place. No command lines, diffs, URLs, prompts o
 
 If you **deny** an approval (Esc, or "No, suggest changes"), Gemini runs no hook, so that card stays until your next prompt or the end of the session.
 
+## Tell Gemini CLI when to post (optional)
+
+The hooks cover "Gemini CLI is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add `--agent-instructions gemini` to the invite's one line.
+
+```bash
+curl -fsSL <join_url>/install.sh | bash -s -- --yes --agent-instructions gemini
+```
+
+It appends a marked block (`<!-- needs-you:begin ... -->` to `<!-- needs-you:end -->`) to `~/.gemini/GEMINI.md` (Gemini CLI's global context file; if you renamed it with `context.fileName`, copy the block there). The file is created if it's missing, backed up before it changes, and never written through a symlink. The text is generated from the skill, so the two say the same. `needs-you update` keeps the block current, and `needs-you uninstall-hooks --instructions` takes exactly the block out again (and deletes the file if nothing else is in it). To give Gemini CLI the needs-you tools over MCP as well, see [MCP server](mcp.md).
+
 ## Check it works
 
 ```bash

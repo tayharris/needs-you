@@ -41,6 +41,8 @@ SSH_ALIAS=""
 CONTEXT_ALERT=""
 SET_PATH=1
 AUTO_UPDATE=""
+MCP="-"            # --mcp AGENTS: register the MCP server with these ("-": not asked for)
+INSTRUCTIONS="-"   # --agent-instructions AGENTS: the rules in their instruction files
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'needs-you install: %s\n' "$*" >&2; }
@@ -95,6 +97,12 @@ Options:
                                 (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
                                 without it they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
+  --agent-instructions AGENTS   the skill's rules for other agents (comma-separated: codex,
+                                gemini, opencode) as a marked block in ~/.codex/AGENTS.md,
+                                ~/.gemini/GEMINI.md or ~/.config/opencode/AGENTS.md
+  --mcp AGENTS                  install the MCP server as ~/.local/bin/needs-you-mcp and
+                                register it with these agents (comma-separated: claude,
+                                codex, gemini, opencode, copilot)
   --auto-update                 let `needs-you flush` run `needs-you update` once a day
                                 (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
   --context-alert PCT           card suggesting /compact or /clear once a session's
@@ -114,7 +122,8 @@ Options:
   --no-path                     don't add ~/.local/bin to PATH in your shell profile
                                 (prints the line to add instead)
   --force                       redeem again and replace an existing token
-  --uninstall                   remove the CLI, config, flush schedule, skill and hooks
+  --uninstall                   remove the CLI, config, flush schedule, skill, hooks, MCP
+                                server and instruction blocks
   -h, --help                    this help
 
 Needs bash, curl and python3 3.9+. Writes only under $HOME (plus your crontab on
@@ -147,6 +156,10 @@ while [ $# -gt 0 ]; do
     --cline-hooks=*) CLINE_HOOKS=${1#*=}; shift ;;
     --aider) AIDER=1; shift ;;
     --skill) SKILL=1; shift ;;
+    --mcp) MCP=${2-}; shift 2 || die "--mcp needs agents: claude,codex,gemini,opencode,copilot" ;;
+    --mcp=*) MCP=${1#*=}; shift ;;
+    --agent-instructions) INSTRUCTIONS=${2-}; shift 2 || die "--agent-instructions needs agents: codex,gemini,opencode" ;;
+    --agent-instructions=*) INSTRUCTIONS=${1#*=}; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
     --context=*) CONTEXT=${1#*=}; shift ;;
@@ -179,6 +192,21 @@ case "$COPILOT_HOOKS" in user|none) ;; *) die "--copilot-hooks must be user or n
 case "$CURSOR_HOOKS" in user|none) ;; *) die "--cursor-hooks must be user or none" ;; esac
 case "$CLINE_HOOKS" in user|none) ;; *) die "--cline-hooks must be user or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
+# check_agents FLAG VALUE KNOWN...: VALUE is "-" (not asked for) or a comma-separated list
+# of KNOWN agents.
+check_agents() {
+  local flag=$1 value=$2 a k ok
+  shift 2
+  [ "$value" = "-" ] && return 0
+  case "$value" in ""|,*|*,|*,,*|*[!a-z,]*) die "$flag needs agents, comma-separated from: $*" ;; esac
+  for a in ${value//,/ }; do
+    ok=0
+    for k in "$@"; do [ "$a" = "$k" ] && ok=1; done
+    [ "$ok" -eq 1 ] || die "$flag: unknown agent '$a' (pick from: $*)"
+  done
+}
+check_agents --mcp "$MCP" claude codex gemini opencode copilot
+check_agents --agent-instructions "$INSTRUCTIONS" codex gemini opencode
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
   # It is saved to the (sourceable) env file, so no shell syntax: scheme://host:port[/path].
@@ -384,6 +412,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
     rmdir "$CP_DIR/hooks" 2>/dev/null || true
   fi
   rm -rf "$SKILL_DIR"
+  rm -f "$BIN_DIR/needs-you-mcp"  # uninstall-hooks took it out of the agents' configs
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
   rmdir "$CONF_DIR" 2>/dev/null || true
@@ -427,6 +456,8 @@ say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && pr
 [ "$CLINE_HOOKS" != none ] && say "  hooks   -> Cline (~/Documents/Cline/Hooks; finished tasks only)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$AIDER" -eq 1 ] && say "  notify  -> Aider (~/.aider.conf.yml)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
+[ "$INSTRUCTIONS" != "-" ] && say "  rules   -> a needs-you block in the instructions of: ${INSTRUCTIONS//,/, }"
+[ "$MCP" != "-" ] && say "  mcp     -> $BIN_DIR/needs-you-mcp, registered with: ${MCP//,/, }"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
   if [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then
@@ -691,6 +722,53 @@ if [ "$SKILL" -eq 1 ]; then
     say "installed the needs-you skill in $SKILL_DIR"
   else
     skipped "needs-you skill" "--skill"
+  fi
+fi
+
+# The skill's rules for Codex, Gemini CLI and opencode, one agent at a time (the CLI keeps
+# the marked block, backs up the file and never writes through a symlink).
+if [ "$INSTRUCTIONS" != "-" ]; then
+  if fetch agent-instructions.md "$TMP/agent-instructions.md"; then
+    for a in ${INSTRUCTIONS//,/ }; do
+      ASKED=$((ASKED + 1))
+      "$CLI" install-instructions --from "$TMP/agent-instructions.md" "$a" ||
+        skipped "needs-you instructions for $a" "--agent-instructions $a"
+    done
+  else
+    warn "could not download the agent instructions (agent-instructions.md)"
+    for a in ${INSTRUCTIONS//,/ }; do
+      ASKED=$((ASKED + 1))
+      skipped "needs-you instructions for $a" "--agent-instructions $a"
+    done
+  fi
+fi
+
+# The MCP server next to the CLI, registered with each agent picked (one at a time, so one
+# agent's broken config skips only that agent).
+mcp_server() {
+  fetch needs_you_mcp.py "$TMP/needs_you_mcp.py" || { warn "could not download the MCP server (needs_you_mcp.py)"; return 1; }
+  python3 - "$TMP/needs_you_mcp.py" <<'PY' || { warn "the downloaded MCP server looks wrong; not installing it"; return 1; }
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+assert src.startswith("#!") and "needs-you" in src
+compile(src, "needs_you_mcp.py", "exec")
+PY
+  cp "$TMP/needs_you_mcp.py" "$BIN_DIR/.needs-you-mcp.new" &&
+    chmod 755 "$BIN_DIR/.needs-you-mcp.new" &&
+    mv -f "$BIN_DIR/.needs-you-mcp.new" "$BIN_DIR/needs-you-mcp" || return 1
+  say "installed $BIN_DIR/needs-you-mcp"
+}
+if [ "$MCP" != "-" ]; then
+  if mcp_server; then
+    for a in ${MCP//,/ }; do
+      ASKED=$((ASKED + 1))
+      "$CLI" install-mcp "$a" || skipped "MCP server for $a" "--mcp $a"
+    done
+  else
+    for a in ${MCP//,/ }; do
+      ASKED=$((ASKED + 1))
+      skipped "MCP server for $a" "--mcp $a"
+    done
   fi
 fi
 

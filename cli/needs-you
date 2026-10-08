@@ -20,12 +20,18 @@
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
   needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--copilot]
-                            [--cursor] [--cline] [--aider]
-                            [--dry-run]              remove the agent hooks: by default Claude
+                            [--cursor] [--cline] [--aider] [--mcp] [--instructions] [--dry-run]
+                                                     remove the agent hooks: by default Claude
                                                      Code's user level, this directory's project,
                                                      every recorded project install, and the Codex,
                                                      Gemini CLI, opencode, Copilot CLI, Cursor,
-                                                     Cline and Aider installs; offline
+                                                     Cline and Aider installs, the MCP server and
+                                                     the instruction blocks; offline
+  needs-you install-mcp AGENTS [--dry-run]           register needs-you-mcp (next to this CLI)
+                                                     with claude,codex,gemini,opencode,copilot
+  needs-you install-instructions --from FILE AGENTS  the needs-you rules as a marked block in
+                                                     codex,gemini,opencode's instruction files
+                                                     (the invite installer runs these two)
 
 Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
   NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
@@ -88,7 +94,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -237,6 +243,8 @@ def installed_paths() -> Dict[str, str]:
         # Copilot CLI's hooks file is ours alone, copied verbatim (its commands find the hook
         # through $COPILOT_HOME), so it is updated like any other file.
         "copilot-hooks.json": os.path.join(copilot_home(), "hooks", "needs-you.json"),
+        # the MCP server, next to this CLI (--mcp)
+        MCP_DL: mcp_server_path(),
     }
 
 
@@ -528,6 +536,11 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
                     removed += 1
                 _delete_files([hook], dry_run, say)
                 _rmdir_quiet(aider_home(), dry_run)
+    # The MCP server and the instruction blocks (--mcp, --instructions).
+    if everything or "mcp" in agents or "instructions" in agents:
+        n, bad = uninstall_extras(everything or "mcp" in agents, everything or "instructions" in agents, dry_run, say)
+        removed += n if not dry_run else 0
+        failed = failed or bad
     if not dry_run:
         projects = claude_projects()
         left = {k: v for k, v in projects.items() if k not in forget}
@@ -659,7 +672,7 @@ def _stamp(path: str) -> Optional[str]:
             head = fh.read(4096).decode("utf-8", "replace")
     except OSError:
         return None
-    m = re.search(r'needs[-_]you[-_]version"?\s*:\s*"?(\d+\.\d+\.\d+)', head)
+    m = re.search(r'(?:needs[-_]you[-_]version"?\s*:\s*"?|^VERSION = ")(\d+\.\d+\.\d+)', head, re.M)
     return m.group(1) if m else "unknown"
 
 
@@ -1453,6 +1466,20 @@ def _main(argv: Optional[List[str]] = None) -> int:
                     help="the Claude Code project covering DIR (default: the current directory)")
     for a in UNINSTALL_AGENTS:
         uh.add_argument("--" + a, dest="un_" + a, action="store_true", help="the %s install" % a)
+    uh.add_argument("--mcp", dest="un_mcp", action="store_true",
+                    help="the needs-you MCP server: its registration with every agent, and needs-you-mcp")
+    uh.add_argument("--instructions", dest="un_instructions", action="store_true",
+                    help="the needs-you block in Codex, Gemini CLI and opencode's instruction files")
+    im = sub.add_parser("install-mcp", help="register the needs-you-mcp next to this CLI with these agents "
+                        "(the invite installer's --mcp runs this)")
+    im.add_argument("agents", metavar="AGENTS", help="comma-separated: " + ",".join(MCP_AGENTS))
+    im.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
+    ii = sub.add_parser("install-instructions", help="add the needs-you rules as a marked block to these agents' "
+                        "instruction files (the invite installer's --agent-instructions runs this)")
+    ii.add_argument("agents", metavar="AGENTS", help="comma-separated: " + ",".join(INSTR_AGENTS))
+    ii.add_argument("--from", dest="source", required=True, metavar="FILE",
+                    help="the text: the hub's /dl/%s" % INSTR_DL)
+    ii.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
     uh.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
     dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
     dp.add_argument("--json", dest="doctor_json", action="store_true",
@@ -1472,8 +1499,13 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return update(cfg, check=args.check, auto=args.auto, quiet=args.quiet or args.auto, as_json=args.json,
                       allow_downgrade=args.allow_downgrade)
     if args.cmd == "uninstall-hooks":  # local files only: no hub, no outbox
-        return uninstall_hooks(args.user, args.project, [a for a in UNINSTALL_AGENTS if getattr(args, "un_" + a)],
+        return uninstall_hooks(args.user, args.project, [a for a in UNINSTALL_AGENTS + ("mcp", "instructions")
+                                                         if getattr(args, "un_" + a)],
                                args.dry_run, args.quiet)
+    if args.cmd == "install-mcp":  # local files only
+        return install_mcp(args.agents, args.dry_run, args.quiet)
+    if args.cmd == "install-instructions":
+        return install_instructions(args.agents, args.source, args.dry_run, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
@@ -1738,6 +1770,8 @@ RELEASE_PATHS = {
     "cursor-hooks.json": "integrations/cursor/cursor-hooks.json",
     "install-cline-hooks.sh": "integrations/cline/install-cline-hooks.sh",
     "install-aider-notifications.sh": "integrations/aider/install-aider-notifications.sh",
+    "needs_you_mcp.py": "integrations/mcp/needs_you_mcp.py",
+    "agent-instructions.md": "integrations/agent-instructions/needs-you.md",
 }
 
 
@@ -2070,6 +2104,7 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
             if _read_state().get("%s_hooks_json_sha256" % agent) != sj.get("sha256"):
                 changes.append({"file": snippet, "path": conf, "sha256": str(sj.get("sha256") or ""),
                                 "size": sj.get("size"), "from": "?", "to": sj.get("version") or "?"})
+    _plan_extras(files, changes, notes)
     return changes, notes
 
 
@@ -2390,7 +2425,11 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
         _write_state(**{"%s_hooks_json_sha256" % agent: change["sha256"]})
         return "re-merged the hook entries in %s (it keeps a .bak)" % _tilde(change["path"])
     data = _download_verified(hub, name, manifest, timeout)
+    if name == INSTR_DL:
+        return _apply_instructions(data, change)
     path = change["path"]
+    if name == MCP_DL and not _valid_cli(data):
+        raise ValueError("the hub's %s isn't a working MCP server" % MCP_DL)
     if name == "needs-you":
         if not _valid_cli(data):
             raise ValueError("the hub's needs-you isn't a working CLI")
@@ -2739,7 +2778,7 @@ class Doctor:
         for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
                      self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.copilot_hooks,
                      self.cursor_hooks, self.cline_hooks, self.aider_notifications, self.skill,
-                     self.orca, self.schedule, self.update):
+                     self.agent_instructions, self.mcp, self.orca, self.schedule, self.update):
             try:
                 step()
             except Exception as e:  # a broken check must not hide the others
@@ -3562,6 +3601,663 @@ def _doctor_update(self: "Doctor") -> None:
 
 
 Doctor.update = _doctor_update  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# The MCP server and the agent instructions (the invite installer's --mcp and
+# --agent-instructions). Same rules as the hooks: never write through a symlink, back up a
+# file before changing it, change nothing when it is already right, skip one agent with a
+# warning and go on, and `uninstall-hooks` takes out exactly what was put in.
+# ---------------------------------------------------------------------------
+
+MCP_NAME = "needs-you"      # the server's name in every client's config (Gemini: no "_" in it)
+MCP_FILE = "needs-you-mcp"  # /dl/needs_you_mcp.py, installed next to the CLI
+MCP_DL = "needs_you_mcp.py"
+MCP_AGENTS = ("claude", "codex", "gemini", "opencode", "copilot")
+AGENT_LABELS = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "opencode",
+                "copilot": "Copilot CLI"}
+CODEX_MCP_BEGIN = "# >>> needs-you MCP server"
+CODEX_MCP_END = "# <<< needs-you MCP server"
+INSTR_DL = "agent-instructions.md"
+INSTR_AGENTS = ("codex", "gemini", "opencode")
+INSTR_BEGIN = "<!-- needs-you:begin"
+INSTR_END = "<!-- needs-you:end"
+
+
+def mcp_server_path() -> str:
+    return os.path.join(os.path.dirname(cli_path()), MCP_FILE)
+
+
+def mcp_config_path(agent: str) -> str:
+    """Where each agent keeps its user-level MCP servers (Claude Code's is written only by
+    `claude mcp`; the rest are edited here)."""
+    return {"claude": _home(".claude.json"),
+            "codex": os.path.join(codex_home(), "config.toml"),
+            "gemini": os.path.join(gemini_home(), "settings.json"),
+            "opencode": os.path.join(opencode_dir(), "opencode.json"),
+            "copilot": os.path.join(copilot_home(), "mcp-config.json")}[agent]
+
+
+def instructions_path(agent: str) -> str:
+    """Each agent's user-level instructions file (Codex: $CODEX_HOME/AGENTS.md)."""
+    return {"codex": os.path.join(codex_home(), "AGENTS.md"),
+            "gemini": os.path.join(gemini_home(), "GEMINI.md"),
+            "opencode": os.path.join(opencode_dir(), "AGENTS.md")}[agent]
+
+
+def _mcp_python() -> str:
+    import shutil
+    return shutil.which("python3") or sys.executable
+
+
+def mcp_entry(agent: str, server: str) -> Dict[str, Any]:
+    py = _mcp_python()
+    if agent == "claude":
+        return {"type": "stdio", "command": py, "args": [server]}
+    if agent == "opencode":
+        return {"type": "local", "command": [py, server], "enabled": True}
+    if agent == "copilot":
+        return {"type": "local", "command": py, "args": [server], "tools": ["*"]}
+    return {"command": py, "args": [server]}
+
+
+def _mcp_key(agent: str) -> str:
+    return "mcp" if agent == "opencode" else "mcpServers"
+
+
+def _ours(entry: Any) -> bool:
+    """A server entry needs-you added: it runs the installed needs-you-mcp."""
+    return MCP_FILE in json.dumps(entry)
+
+
+def _agent_list(raw: str, allowed: Sequence[str]) -> List[str]:
+    names = [a.strip() for a in raw.split(",") if a.strip()]
+    bad = [a for a in names if a not in allowed]
+    if not names or bad:
+        raise ValueError("pick from %s (comma-separated)%s" % (",".join(allowed),
+                                                              "; not %s" % ",".join(bad) if bad else ""))
+    return list(dict.fromkeys(names))
+
+
+def _created_files() -> List[str]:
+    return [p for p in _read_state().get("created_files") or [] if isinstance(p, str)]
+
+
+def _note_created(path: str, created: bool) -> None:
+    files = [p for p in _created_files() if p != path] + ([path] if created else [])
+    _write_state(created_files=files)
+
+
+def _read_text(path: str) -> Optional[str]:
+    """The file's text, None when it doesn't exist. OSError/ValueError when it can't be read."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return None
+
+
+def _links_in(paths: Sequence[str]) -> Optional[str]:
+    for p in paths:
+        if os.path.islink(p):
+            return p
+    return None
+
+
+def _write_config(path: str, old: Optional[str], new: str) -> None:
+    """Back up the file as it was (when there was one) and write the new text atomically,
+    keeping its mode (a new file: 0600). Callers have refused symlinks already."""
+    mode = 0o600
+    if old is not None:
+        mode = os.stat(path).st_mode & 0o777
+        bak = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
+        fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(old)
+    else:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    _write_atomic(path, new.encode("utf-8"), mode)
+
+
+def _split_block(text: str, begin: str, end: str) -> Optional[Tuple[str, str, str]]:
+    """(before, block, after) around the one marked block, None when there's none.
+    ValueError for a begin without an end, or two blocks: a file someone edited by hand."""
+    lines = text.splitlines(True)
+    starts = [i for i, line in enumerate(lines) if line.startswith(begin)]
+    if not starts:
+        if any(line.startswith(end) for line in lines):
+            raise ValueError("an end marker with no start")
+        return None
+    if len(starts) > 1:
+        raise ValueError("more than one needs-you block")
+    s = starts[0]
+    for e in range(s + 1, len(lines)):
+        if lines[e].startswith(end):
+            return "".join(lines[:s]), "".join(lines[s:e + 1]), "".join(lines[e + 1:])
+        if lines[e].startswith(begin):
+            break
+    raise ValueError("a needs-you block with no end marker")
+
+
+def _with_block(text: Optional[str], block: str, begin: str, end: str) -> str:
+    """text with the marked block replaced, or appended after a blank line."""
+    if not text:
+        return block
+    parts = _split_block(text, begin, end)
+    if parts:
+        return parts[0] + block + parts[2]
+    return text + ("\n" if text.endswith("\n") else "\n\n") + block
+
+
+def _without_block(text: str, begin: str, end: str) -> Optional[str]:
+    """text with the marked block (and the blank line put before it) taken out; None if none."""
+    parts = _split_block(text, begin, end)
+    if not parts:
+        return None
+    before, _, after = parts
+    if before.endswith("\n\n"):
+        before = before[:-1]
+    return before + after
+
+
+def _codex_block(server: str) -> str:
+    # json.dumps of a str is a valid TOML basic string (escapes included).
+    return "\n".join([
+        CODEX_MCP_BEGIN + " (added by the needs-you installer; `needs-you uninstall-hooks --mcp` removes it)",
+        "[mcp_servers.%s]" % MCP_NAME,
+        "command = %s" % json.dumps(_mcp_python()),
+        "args = [%s]" % json.dumps(server),
+        CODEX_MCP_END,
+    ]) + "\n"
+
+
+_CODEX_OTHER_RE = re.compile(r'^\s*(?:\[\s*mcp_servers\s*\.\s*"?%s"?\s*[\].]|mcp_servers\s*=|mcp_servers\s*\.\s*"?%s"?)'
+                             % (re.escape(MCP_NAME), re.escape(MCP_NAME)), re.M)
+
+
+def _mcp_status(agent: str) -> Tuple[str, Any]:
+    """("ours", entry) / ("absent", None) / ("other", entry) / ("unreadable", why)."""
+    path = mcp_config_path(agent)
+    try:
+        text = _read_text(path)
+    except (OSError, ValueError) as e:
+        return "unreadable", str(e)
+    if text is None:
+        return "absent", None
+    if agent == "codex":
+        try:
+            parts = _split_block(text, CODEX_MCP_BEGIN, CODEX_MCP_END)
+        except ValueError as e:
+            return "unreadable", str(e)
+        if parts:
+            return "ours", parts[1]
+        return ("other", None) if _CODEX_OTHER_RE.search(text) else ("absent", None)
+    try:
+        data = json.loads(text) if text.strip() else {}
+        if not isinstance(data, dict):
+            raise ValueError("not a JSON object")
+    except ValueError as e:
+        return "unreadable", str(e)
+    servers = data.get(_mcp_key(agent))
+    entry = servers.get(MCP_NAME) if isinstance(servers, dict) else None
+    if entry is None:
+        return "absent", None
+    return ("ours" if _ours(entry) else "other"), entry
+
+
+def _mcp_install_one(agent: str, server: str, dry_run: bool, say: Any) -> Optional[bool]:
+    """True when registered now, False when it already was, None when skipped (warned)."""
+    import shutil
+    import subprocess
+    label = AGENT_LABELS[agent]
+    path = mcp_config_path(agent)
+    want = mcp_entry(agent, server)
+    if agent == "claude":
+        add = ["mcp", "add-json", "--scope", "user", MCP_NAME, json.dumps(want)]
+        state, have = _mcp_status("claude")
+        if state == "unreadable":
+            warn("~/.claude.json: can't read it (%s); fix it first, nothing was changed" % clean(have))
+            return None
+        if state == "ours" and have == want:
+            say("the needs-you MCP server is already registered with Claude Code")
+            return False
+        if state == "other":
+            warn("Claude Code already has a user MCP server named %s that isn't needs-you's; left it alone" % MCP_NAME)
+            return None
+        claude = shutil.which("claude")
+        if not claude:
+            warn("`claude` isn't on PATH, so the MCP server wasn't registered with Claude Code; run: claude %s"
+                 % " ".join(shlex.quote(a) for a in add))
+            return None
+        if dry_run:
+            say("would register the needs-you MCP server with Claude Code (claude mcp add-json --scope user)")
+            return True
+        try:
+            if state == "ours":
+                subprocess.run([claude, "mcp", "remove", MCP_NAME, "--scope", "user"], stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, timeout=60)
+            r = subprocess.run([claude] + add, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as e:
+            warn("claude mcp add-json failed (%s)" % type(e).__name__)
+            return None
+        if r.returncode != 0:
+            warn("claude mcp add-json failed: %s" % clean((r.stderr or r.stdout).strip()[-200:]))
+            return None
+        say("registered the needs-you MCP server with Claude Code (claude mcp add-json --scope user)")
+        return True
+    link = _links_in([path, os.path.dirname(path)])
+    if link:
+        warn("%s is a symlink; not touching the %s MCP config (add the server by hand)" % (_tilde(link), label))
+        return None
+    if agent == "opencode" and not os.path.lexists(path) and os.path.lexists(path + "c"):
+        warn("%s exists and needs-you doesn't edit JSONC; add this under \"mcp\" there by hand: \"%s\": %s"
+             % (_tilde(path + "c"), MCP_NAME, json.dumps(want)))
+        return None
+    try:
+        text = _read_text(path)
+    except (OSError, ValueError) as e:
+        warn("%s: can't read it (%s); fix it first, nothing was changed" % (_tilde(path), e))
+        return None
+    if agent == "codex":
+        block = _codex_block(server)
+        try:
+            parts = _split_block(text or "", CODEX_MCP_BEGIN, CODEX_MCP_END)
+        except ValueError as e:
+            warn("%s: %s; fix it first, nothing was changed" % (_tilde(path), e))
+            return None
+        if parts and parts[1] == block:
+            say("the needs-you MCP server is already registered with Codex")
+            return False
+        if not parts and _CODEX_OTHER_RE.search(text or ""):
+            warn("%s already has an MCP server named %s (or an inline mcp_servers table); left it alone"
+                 % (_tilde(path), MCP_NAME))
+            return None
+        new = _with_block(text, block, CODEX_MCP_BEGIN, CODEX_MCP_END)
+    else:
+        try:
+            data = json.loads(text) if text and text.strip() else {}
+            if not isinstance(data, dict):
+                raise ValueError("not a JSON object")
+        except ValueError as e:
+            warn("%s: can't read it (%s); fix it first, nothing was changed" % (_tilde(path), e))
+            return None
+        key = _mcp_key(agent)
+        servers = data.get(key, {})
+        if not isinstance(servers, dict):
+            warn("%s: \"%s\" isn't an object; fix it first, nothing was changed" % (_tilde(path), key))
+            return None
+        have = servers.get(MCP_NAME)
+        if have == want:
+            say("the needs-you MCP server is already registered with %s" % label)
+            return False
+        if have is not None and not _ours(have):
+            warn("%s already has an MCP server named %s that isn't needs-you's; left it alone" % (_tilde(path), MCP_NAME))
+            return None
+        data = dict(data)
+        data[key] = dict(servers, **{MCP_NAME: want})
+        new = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if dry_run:
+        say("would register the needs-you MCP server in %s" % _tilde(path))
+        return True
+    try:
+        _write_config(path, text, new)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    if text is None:
+        _note_created(path, True)
+    say("registered the needs-you MCP server in %s%s" % (_tilde(path), " (backup: %s.bak-*)" % _tilde(path)
+                                                          if text is not None else ""))
+    return True
+
+
+def _mcp_remove_one(agent: str, dry_run: bool, say: Any) -> Optional[bool]:
+    """Take needs-you's server out of one agent's config: True removed, False none, None couldn't."""
+    import shutil
+    import subprocess
+    label = AGENT_LABELS[agent]
+    path = mcp_config_path(agent)
+    state, have = _mcp_status(agent)
+    if state != "ours":
+        return False
+    if agent == "claude":
+        claude = shutil.which("claude")
+        if not claude:
+            warn("`claude` isn't on PATH, so the needs-you MCP server is still registered with Claude Code; "
+                 "run: claude mcp remove %s --scope user" % MCP_NAME)
+            return None
+        if dry_run:
+            say("would remove the needs-you MCP server from Claude Code (claude mcp remove --scope user)")
+            return True
+        try:
+            r = subprocess.run([claude, "mcp", "remove", MCP_NAME, "--scope", "user"], stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as e:
+            r = None
+            why = type(e).__name__
+        if r is None or r.returncode != 0:
+            warn("claude mcp remove failed: %s" % (why if r is None else clean((r.stderr or r.stdout).strip()[-200:])))
+            return None
+        say("removed the needs-you MCP server from Claude Code")
+        return True
+    link = _links_in([path, os.path.dirname(path)])
+    if link:
+        warn("%s is a symlink; not touching the %s MCP config (remove the server by hand)" % (_tilde(link), label))
+        return None
+    try:
+        text = _read_text(path) or ""
+    except (OSError, ValueError) as e:
+        warn("%s: can't read it (%s); nothing was changed" % (_tilde(path), e))
+        return None
+    if agent == "codex":
+        stripped = _without_block(text, CODEX_MCP_BEGIN, CODEX_MCP_END)
+        if stripped is None:
+            return False
+        new, empty = stripped, not stripped.strip()
+    else:
+        data = json.loads(text)
+        key = _mcp_key(agent)
+        servers = {k: v for k, v in data[key].items() if k != MCP_NAME}
+        data = dict(data)
+        if servers:
+            data[key] = servers
+        else:
+            del data[key]
+        new = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        empty = not data
+    if dry_run:
+        say("would remove the needs-you MCP server from %s" % _tilde(path))
+        return True
+    try:
+        if empty and path in _created_files():
+            os.remove(path)  # needs-you made this file and nothing else is in it
+            _note_created(path, False)
+            say("deleted %s (needs-you created it)" % _tilde(path))
+            return True
+        _write_config(path, text, new)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    say("removed the needs-you MCP server from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
+    return True
+
+
+def install_mcp(raw_agents: str, dry_run: bool, quiet: bool) -> int:
+    """`needs-you install-mcp AGENTS`: register the needs-you-mcp next to this CLI with each
+    agent. Exit 0 when every one is registered, 1 when one was skipped, 2 for a bad name."""
+    say = (lambda msg: None) if quiet else print  # noqa: E731
+    try:
+        agents = _agent_list(raw_agents, MCP_AGENTS)
+    except ValueError as e:
+        warn("install-mcp: %s" % e)
+        return 2
+    server = mcp_server_path()
+    if not os.path.isfile(server):
+        warn("install-mcp: the MCP server isn't installed at %s (the invite installer's --mcp puts it there)"
+             % _tilde(server))
+        return 1
+    failed = False
+    for agent in agents:
+        if _mcp_install_one(agent, server, dry_run, say) is None:
+            failed = True
+    if not failed and not dry_run:
+        say("Restart open agent sessions to load the needs-you MCP server.")
+    return 1 if failed else 0
+
+
+def _instr_block(content: str) -> str:
+    return ("%s (added by the needs-you installer; `needs-you uninstall-hooks --instructions` removes this "
+            "block) -->\n%s\n%s -->\n" % (INSTR_BEGIN, content.rstrip("\n"), INSTR_END))
+
+
+def _block_body(block: str) -> str:
+    return "".join(block.splitlines(True)[1:-1])
+
+
+def _valid_instructions(data: bytes) -> Optional[str]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if not text.startswith("<!-- needs-you-version:") or INSTR_BEGIN in text or INSTR_END in text:
+        return None
+    return text
+
+
+def _instructions_one(agent: str, content: str, dry_run: bool, say: Any) -> Optional[bool]:
+    path = instructions_path(agent)
+    link = _links_in([path, os.path.dirname(path)])
+    if link:
+        warn("%s is a symlink; not touching it (add the needs-you instructions by hand)" % _tilde(link))
+        return None
+    try:
+        text = _read_text(path)
+        new = _with_block(text, _instr_block(content), INSTR_BEGIN, INSTR_END)
+    except (OSError, ValueError) as e:
+        warn("%s: %s; fix it first, nothing was changed" % (_tilde(path), e))
+        return None
+    if new == text:
+        say("the needs-you instructions in %s are current" % _tilde(path))
+        return False
+    if dry_run:
+        say("would add the needs-you instructions to %s" % _tilde(path))
+        return True
+    try:
+        _write_config(path, text, new)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    say("added the needs-you instructions to %s%s" % (_tilde(path), " (backup: %s.bak-*)" % _tilde(path)
+                                                      if text is not None else ""))
+    return True
+
+
+def install_instructions(raw_agents: str, source: str, dry_run: bool, quiet: bool) -> int:
+    """`needs-you install-instructions --from FILE AGENTS`: FILE (the hub's
+    /dl/agent-instructions.md) as a marked block in each agent's user instructions file."""
+    say = (lambda msg: None) if quiet else print  # noqa: E731
+    try:
+        agents = _agent_list(raw_agents, INSTR_AGENTS)
+    except ValueError as e:
+        warn("install-instructions: %s" % e)
+        return 2
+    try:
+        with open(source, "rb") as fh:
+            content = _valid_instructions(fh.read())
+    except OSError as e:
+        warn("install-instructions: can't read %s (%s)" % (source, e))
+        return 1
+    if content is None:
+        warn("install-instructions: %s isn't the needs-you agent instructions (/dl/%s)" % (source, INSTR_DL))
+        return 1
+    failed = False
+    for agent in agents:
+        if _instructions_one(agent, content, dry_run, say) is None:
+            failed = True
+    return 1 if failed else 0
+
+
+def _instructions_remove_one(agent: str, dry_run: bool, say: Any) -> Optional[bool]:
+    path = instructions_path(agent)
+    try:
+        text = _read_text(path)
+    except (OSError, ValueError):
+        text = None
+    if not text or INSTR_BEGIN not in text:
+        return False
+    link = _links_in([path, os.path.dirname(path)])
+    if link:
+        warn("%s is a symlink; not touching it (remove the needs-you block by hand)" % _tilde(link))
+        return None
+    try:
+        new = _without_block(text, INSTR_BEGIN, INSTR_END)
+    except ValueError as e:
+        warn("%s: %s; remove the needs-you block by hand" % (_tilde(path), e))
+        return None
+    if new is None:
+        return False
+    if dry_run:
+        say("would remove the needs-you instructions from %s" % _tilde(path))
+        return True
+    try:
+        if not new.strip():
+            os.remove(path)  # only the block was in it: needs-you created it
+            say("deleted %s (it held only the needs-you instructions)" % _tilde(path))
+            return True
+        _write_config(path, text, new)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    say("removed the needs-you instructions from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
+    return True
+
+
+def uninstall_extras(mcp: bool, instructions: bool, dry_run: bool, say: Any) -> Tuple[int, bool]:
+    """For uninstall-hooks: (how many were removed, whether one couldn't be)."""
+    removed, failed = 0, False
+    if mcp:
+        for agent in MCP_AGENTS:
+            done = _mcp_remove_one(agent, dry_run, say)
+            failed = failed or done is None
+            removed += 1 if done else 0
+        server = mcp_server_path()
+        if not failed and os.path.isfile(server) and not os.path.islink(server):
+            if dry_run:
+                say("would delete %s" % _tilde(server))
+            else:
+                try:
+                    os.remove(server)
+                    say("deleted %s" % _tilde(server))
+                    removed += 1
+                except OSError as e:
+                    warn("couldn't delete %s (%s)" % (_tilde(server), e))
+    if instructions:
+        for agent in INSTR_AGENTS:
+            done = _instructions_remove_one(agent, dry_run, say)
+            failed = failed or done is None
+            removed += 1 if done else 0
+    return removed, failed
+
+
+def _plan_extras(files: Dict[str, Any], changes: List[Dict[str, Any]], notes: List[str]) -> None:
+    """plan_update's part for the instruction blocks: each one whose text differs from the
+    hub's /dl/agent-instructions.md (the MCP server is a plain file: installed_paths)."""
+    entry = files.get(INSTR_DL)
+    if not isinstance(entry, dict):
+        return
+    want = str(entry.get("sha256") or "").lower()
+    if len(want) != 64 or any(c not in "0123456789abcdef" for c in want):
+        raise UpdateRefused("the hub's manifest has no valid checksum for %s" % INSTR_DL)
+    for agent in INSTR_AGENTS:
+        path = instructions_path(agent)
+        try:
+            text = _read_text(path)
+            parts = _split_block(text, INSTR_BEGIN, INSTR_END) if text else None
+        except (OSError, ValueError):
+            notes.append("%s has a needs-you block needs-you can't read; not updating it" % _tilde(path))
+            continue
+        if not parts:
+            continue
+        if _links_in([path, os.path.dirname(path)]):
+            notes.append("%s is a symlink; not updating it" % _tilde(path))
+            continue
+        body = _block_body(parts[1])
+        if hashlib.sha256(body.encode("utf-8")).hexdigest() != want:
+            m = re.search(r"needs-you-version:\s*(\d+\.\d+\.\d+)", body)
+            changes.append({"file": INSTR_DL, "label": "agent instructions (%s)" % _tilde(path),
+                            "backup": "%s-instructions.md" % agent, "path": path, "sha256": want,
+                            "size": entry.get("size"), "from": m.group(1) if m else "unknown",
+                            "to": entry.get("version") or "?"})
+
+
+def _apply_instructions(data: bytes, change: Dict[str, Any]) -> str:
+    content = _valid_instructions(data)
+    if content is None:
+        raise ValueError("the hub's %s isn't the needs-you agent instructions" % INSTR_DL)
+    path = change["path"]
+    if _links_in([path, os.path.dirname(path)]):
+        raise ValueError("%s is a symlink; not touching it" % _tilde(path))
+    text = _read_text(path) or ""
+    _backup(change["backup"], path)
+    _write_atomic(path, _with_block(text, _instr_block(content), INSTR_BEGIN, INSTR_END).encode("utf-8"),
+                  os.stat(path).st_mode & 0o777)
+    return "updated the needs-you instructions in %s: %s -> %s" % (_tilde(path), change["from"], change["to"])
+
+
+def _detected(agent: str, home_dir: str) -> bool:
+    import shutil
+    return os.path.isdir(home_dir) or bool(shutil.which(agent))
+
+
+def _doctor_mcp(self: "Doctor") -> None:
+    server = mcp_server_path()
+    registered, problems = [], []
+    for agent in MCP_AGENTS:
+        state, entry = _mcp_status(agent)
+        if state != "ours":
+            continue
+        registered.append(agent)
+        m = re.search(r'"([^"]*%s)"' % re.escape(MCP_FILE), entry if isinstance(entry, str) else json.dumps(entry))
+        target = m.group(1) if m else ""
+        if target and not os.path.isfile(target):
+            problems.append("%s runs %s, which doesn't exist" % (AGENT_LABELS[agent], _tilde(target)))
+    if not registered:
+        homes = {"claude": _home(".claude"), "codex": codex_home(), "gemini": gemini_home(),
+                 "opencode": opencode_dir(), "copilot": copilot_home()}
+        here = [a for a in MCP_AGENTS if _detected(a, homes[a])]
+        if here:
+            self.add("mcp server", "INFO", "not registered (optional: agents post through MCP tools, no shell needed)",
+                     "to install: " + _installer("--mcp " + ",".join(here)))
+        return
+    rerun = _rerun("--mcp " + ",".join(registered))
+    if not os.path.isfile(server):
+        problems.insert(0, "%s is missing" % _tilde(server))
+    if problems:
+        self.add("mcp server", "WARN", "; ".join(problems), rerun)
+        return
+    self.add("mcp server", "OK", "%s (%s), registered with %s" % (
+        _tilde(server), _stamp(server) or "?", ", ".join(AGENT_LABELS[a] for a in registered)))
+
+
+def _doctor_instructions(self: "Doctor") -> None:
+    found, problems = [], []
+    for agent in INSTR_AGENTS:
+        path = instructions_path(agent)
+        try:
+            text = _read_text(path)
+            parts = _split_block(text, INSTR_BEGIN, INSTR_END) if text else None
+        except (OSError, ValueError) as e:
+            problems.append("%s: %s" % (_tilde(path), e))
+            continue
+        if not parts:
+            continue
+        found.append(agent)
+        override = os.path.join(codex_home(), "AGENTS.override.md")
+        if agent == "codex":
+            try:
+                if (_read_text(override) or "").strip():
+                    problems.append("Codex reads %s instead of %s, so the needs-you block there is ignored"
+                                    % (_tilde(override), _tilde(path)))
+            except (OSError, ValueError):
+                pass
+    if problems:
+        self.add("agent instructions", "WARN", "; ".join(problems),
+                 "tell the person: %s (copy the needs-you block there by hand, or fix the file)" % problems[0])
+        return
+    if found:
+        self.add("agent instructions", "OK", "needs-you block in " + ", ".join(
+            _tilde(instructions_path(a)) for a in found))
+        return
+    homes = {"codex": codex_home(), "gemini": gemini_home(), "opencode": opencode_dir()}
+    here = [a for a in INSTR_AGENTS if _detected(a, homes[a])]
+    if here:
+        self.add("agent instructions", "INFO", "not installed (optional: the posting rules in %s's own instructions)"
+                 % ", ".join(AGENT_LABELS[a] for a in here),
+                 "to install: " + _installer("--agent-instructions " + ",".join(here)))
+
+
+Doctor.mcp = _doctor_mcp  # type: ignore[attr-defined]
+Doctor.agent_instructions = _doctor_instructions  # type: ignore[attr-defined]
 
 
 def doctor(cfg: Config, as_json: bool) -> int:

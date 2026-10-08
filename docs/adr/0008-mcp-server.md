@@ -58,6 +58,9 @@ server with three tools.
 6. **Installed by hand for now:** `claude mcp add needs-you -- python3 <path>/needs_you_mcp.py`
    or the client's MCP config. Serving it from `/dl` and an installer flag is a separate
    change (it touches the `/dl` allow-list in API.md and the invite installer).
+   *Done (2026-10-08):* the hub serves `/dl/needs_you_mcp.py`, and the installer's
+   `--mcp <agents>` installs it as `~/.local/bin/needs-you-mcp` and registers it with Claude
+   Code, Codex, Gemini CLI, opencode and Copilot CLI ([guides/mcp.md](../guides/mcp.md)).
 
 ## Consequences
 
@@ -70,5 +73,5 @@ server with three tools.
 - "One card per wait" works only when the client starts the server with the session's
   environment (`CLAUDECODE` and `CLAUDE_CODE_SESSION_ID`, or `ORCA_TERMINAL_HANDLE`); without
   it, the hooks' generic waiting card may show next to the agent's own.
-- Open: a sender-scoped `GET` for the caller's own open items (point 3); serving the server
-  from `/dl` with an installer flag (point 6); exposing AGENT-GUIDE.md as an MCP resource.
+- Open: a sender-scoped `GET` for the caller's own open items (point 3); exposing
+  AGENT-GUIDE.md as an MCP resource.

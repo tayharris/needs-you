@@ -38,6 +38,7 @@
         <li><a href="#manual-install">Manual install</a></li>
         <li><a href="#opt-in">Opt in</a></li>
         <li><a href="#what-youll-see">What you'll see</a></li>
+        <li><a href="#tell-codex-when-to-post-optional">Tell Codex when to post (optional)</a></li>
         <li><a href="#check-it-works">Check it works</a></li>
         <li><a href="#remove-it">Remove it</a></li>
       </ul>
@@ -70,6 +71,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <p>Cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders (<a href="claude-code-everywhere.html#buttons">details</a>).</p>
 <p>Only want approval prompts, not a card at the end of every turn?</p>
 <div class="code" data-copy><pre><code class="language-bash">echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' &gt;&gt; ~/.config/needs-you/env</code></pre></div>
+<h2 id="tell-codex-when-to-post-optional">Tell Codex when to post (optional) <a class="anchor" href="#tell-codex-when-to-post-optional" aria-label="Link to this section">#</a></h2>
+<p>The hooks cover "Codex is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add <code>--agent-instructions codex</code> to the invite's one line.</p>
+<div class="code"><pre><code class="language-bash">curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --agent-instructions codex</code></pre></div>
+<p>It appends a marked block (<code>&lt;!-- needs-you:begin ... --&gt;</code> to <code>&lt;!-- needs-you:end --&gt;</code>) to <code>~/.codex/AGENTS.md</code> (or <code>$CODEX_HOME/AGENTS.md</code>). Codex reads <code>AGENTS.override.md</code> instead when that file has text in it, and then ignores the block; <code>needs-you doctor</code> warns about that. The file is created if it's missing, backed up before it changes, and never written through a symlink. The text is generated from the skill, so the two say the same. <code>needs-you update</code> keeps the block current, and <code>needs-you uninstall-hooks --instructions</code> takes exactly the block out again (and deletes the file if nothing else is in it). To give Codex the needs-you tools over MCP as well, see <a href="mcp.html">MCP server</a>.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "codex hooks" line should be OK
 echo '{"hook_event_name":"Stop","session_id":"test-1","cwd":"'"$PWD"'"}' |

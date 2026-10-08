@@ -38,6 +38,7 @@
         <li><a href="#manual-install">Manual install</a></li>
         <li><a href="#opt-in">Opt in</a></li>
         <li><a href="#what-youll-see">What you'll see</a></li>
+        <li><a href="#tell-gemini-cli-when-to-post-optional">Tell Gemini CLI when to post (optional)</a></li>
         <li><a href="#check-it-works">Check it works</a></li>
       </ul>
     </nav>
@@ -67,6 +68,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <p>One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval cards.</p>
 <p><strong>Trusted folders only.</strong> Gemini CLI runs no hooks at all, the needs-you ones included, in a folder you haven't trusted (folder trust is on by default). Trust a project when Gemini asks, or turn folder trust off with <code>"security": {"folderTrust": {"enabled": false}}</code> in <code>~/.gemini/settings.json</code>.</p>
 <p>If you <strong>deny</strong> an approval (Esc, or "No, suggest changes"), Gemini runs no hook, so that card stays until your next prompt or the end of the session.</p>
+<h2 id="tell-gemini-cli-when-to-post-optional">Tell Gemini CLI when to post (optional) <a class="anchor" href="#tell-gemini-cli-when-to-post-optional" aria-label="Link to this section">#</a></h2>
+<p>The hooks cover "Gemini CLI is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add <code>--agent-instructions gemini</code> to the invite's one line.</p>
+<div class="code"><pre><code class="language-bash">curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --agent-instructions gemini</code></pre></div>
+<p>It appends a marked block (<code>&lt;!-- needs-you:begin ... --&gt;</code> to <code>&lt;!-- needs-you:end --&gt;</code>) to <code>~/.gemini/GEMINI.md</code> (Gemini CLI's global context file; if you renamed it with <code>context.fileName</code>, copy the block there). The file is created if it's missing, backed up before it changes, and never written through a symlink. The text is generated from the skill, so the two say the same. <code>needs-you update</code> keeps the block current, and <code>needs-you uninstall-hooks --instructions</code> takes exactly the block out again (and deletes the file if nothing else is in it). To give Gemini CLI the needs-you tools over MCP as well, see <a href="mcp.html">MCP server</a>.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "gemini hooks" line should be OK
 echo '{"hook_event_name":"AfterAgent","session_id":"test-1","cwd":"'"$PWD"'"}' |

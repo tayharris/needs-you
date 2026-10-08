@@ -230,6 +230,11 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     public static let cursorFlag = "--cursor-hooks user"
     public static let clineFlag = "--cline-hooks user"
     public static let aiderFlag = "--aider"
+    /// Opt-in extras the agent adds only when the person asks: the MCP server and the skill's
+    /// rules in other agents' instruction files. Same text as the hub's.
+    public static let optionalFlags = "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
+        + "(claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds "
+        + "the posting rules to their instruction files (codex, gemini, opencode)."
 
     /// The end of the agent prompt: check the setup, and what to do when something failed
     /// (doctor prints one next step under each WARN or FAIL). Same text as the hub's.
@@ -248,7 +253,7 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
             + "If it runs OpenAI Codex CLI, add \(Self.codexFlag); Gemini CLI, add \(Self.geminiFlag); "
             + "opencode, add \(Self.opencodeFlag); GitHub Copilot CLI, add \(Self.copilotFlag); "
             + "Cursor, add \(Self.cursorFlag); Cline, add \(Self.clineFlag); Aider, add \(Self.aiderFlag). "
-            + Self.agentPromptCheck
+            + Self.optionalFlags + " " + Self.agentPromptCheck
     }
     /// What to run on the new machine: the full Claude Code setup.
     public var shellOneLiner: String {

@@ -46,17 +46,20 @@
       <p class="hero-sub">Your Mac is the hub: the app holds the alerts itself. No server, no account, no cloud.</p>
     </section>
 
-    <!-- The live demo: the pill, drawn in HTML and CSS, looping through example alerts
-         (site.js). On wide screens it stays in the top-right corner as you scroll; on a
-         phone it sits here, under the intro. Without JS, or with reduced motion, it shows
-         the first alert, still. -->
+    <!-- The live demo: the pill, drawn in HTML and CSS (site.js). Example alerts arrive on
+         their own, and visitors can click it: the link button, the card (opens the panel),
+         the pill, and "Send a test alert". On wide screens it stays in the top-right corner
+         as you scroll; on a phone it sits here, under the intro. Without JS it shows the
+         first alert, still (the screen is inert until site.js wakes it). -->
     <aside class="demo" id="demo" aria-label="Demo of the pill">
-      <p class="sr-only">An animation of the needs-you pill at the top right of a Mac screen. Alerts arrive one at a time: Claude needs permission in acme-api on devbox, a review request, a deploy waiting for approval and a failed nightly job. Each springs out of the pill with a button for its link, a pointer clicks the button, the card is marked done and the pill settles back.</p>
-      <div class="demo-screen" aria-hidden="true">
-        <div class="demo-menubar"><span class="demo-mb-pill"></span><span class="demo-clock">Thu 9:41</span></div>
+      <p class="sr-only">A working model of the needs-you pill at the top right of a Mac screen. Example alerts arrive one at a time: Claude needs permission in acme-api on devbox, a review request, a deploy waiting for approval and a failed nightly job. Each springs out of the pill with a button for its link. Press the link button to open it and mark the card done, press the card to open the panel at it, or press Send a test alert for another.</p>
+      <div class="demo-screen" inert>
+        <div class="demo-menubar" aria-hidden="true"><span class="demo-mb-pill"></span><span class="demo-clock">Thu 9:41</span></div>
         <div class="demo-slot">
           <div class="pv pv-urgent" data-state="open">
-            <span class="pv-idle"><span class="pv-dot pv-dot-ok"></span>Nothing needs you</span>
+            <button class="pv-hit" type="button" aria-label="Claude needs permission: acme-api, needs you, devbox, claude-code. Open the panel at this card"></button>
+            <span class="pv-idle" aria-hidden="true"><span class="pv-dot pv-dot-ok"></span>Nothing needs you</span>
+            <span class="pv-count" aria-hidden="true" data-demo="count">1</span>
             <div class="pv-body">
               <div class="pv-head">
                 <span class="pv-dot"></span>
@@ -66,17 +69,32 @@
                 </div>
               </div>
               <div class="pv-actions">
-                <span class="pv-link"><span data-demo="label">VS Code</span> <span class="pv-dest" data-demo="dest">vscode</span><svg class="pv-arrow" viewBox="0 0 8 8" focusable="false"><path d="M1.5 6.5 6.5 1.5M2.5 1.5h4v4"/></svg></span>
-                <span class="pv-done"><svg viewBox="0 0 10 10" focusable="false"><path d="M1.5 5.5 4 8l4.5-6"/></svg>Opened, marked done</span>
+                <button class="pv-link" type="button"><span data-demo="label">VS Code</span> <span class="pv-dest" data-demo="dest">vscode</span><svg class="pv-arrow" viewBox="0 0 8 8" focusable="false" aria-hidden="true"><path d="M1.5 6.5 6.5 1.5M2.5 1.5h4v4"/></svg></button>
+                <span class="pv-done"><svg viewBox="0 0 10 10" focusable="false" aria-hidden="true"><path d="M1.5 5.5 4 8l4.5-6"/></svg><span data-demo="done">Opened VS Code &middot; marked done</span></span>
               </div>
             </div>
           </div>
+          <div class="pp" role="region" aria-label="The panel" hidden>
+            <div class="pp-head">
+              <span class="pp-name">needs you</span>
+              <span class="pp-tab">Work <span class="pp-n" data-demo="n">0</span></span>
+              <button class="pp-close" type="button" aria-label="Close the panel"><svg viewBox="0 0 10 10" focusable="false" aria-hidden="true"><path d="M2 2l6 6M8 2 2 8"/></svg></button>
+            </div>
+            <div class="pp-list" data-demo="list"></div>
+          </div>
         </div>
-        <svg class="demo-cursor" viewBox="0 0 16 22" focusable="false"><path d="M1.5 1.5v16.2l4.1-3.9 2.7 6.2 2.7-1.2-2.6-6h5.7z"/></svg>
-        <span class="demo-ripple"></span>
+        <svg class="demo-cursor" viewBox="0 0 16 22" focusable="false" aria-hidden="true"><path d="M1.5 1.5v16.2l4.1-3.9 2.7 6.2 2.7-1.2-2.6-6h5.7z"/></svg>
+        <span class="demo-ripple" aria-hidden="true"></span>
       </div>
-      <p class="demo-caption" data-demo="caption">Claude Code on devbox stops to ask before it runs a migration in acme-api.</p>
-      <button class="demo-toggle" type="button" hidden>Pause</button>
+      <p class="demo-caption" data-demo="caption" aria-live="off">Claude Code on devbox stops to ask before it runs a migration in acme-api.</p>
+      <div class="demo-controls" hidden>
+        <button class="demo-send" type="button">Send a test alert</button>
+        <button class="demo-toggle" type="button" hidden>Pause</button>
+      </div>
+      <div class="demo-cmd" hidden>
+        <p>What posted it:</p>
+        <pre tabindex="0"><code data-demo="cmd"></code></pre>
+      </div>
     </aside>
 
     <section id="how" aria-labelledby="how-title">
