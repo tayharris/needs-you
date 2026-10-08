@@ -1947,9 +1947,10 @@ case "$mode" in
     posted=$(run_py ask)
     rc=$?
     log "ask $key -> $rc ${posted%% *}"
-    [ "$rc" -eq 0 ] || exit 0
+    case "$rc" in 0|1) ;; *) exit 0 ;; esac  # 1: maybe posted (see notify)
     write_marker "$marker" "$key" "kind=permission"
     end_post && exit 0  # answered in the terminal meanwhile: nothing to wait for
+    [ "$rc" -eq 0 ] || exit 0
     case "$posted" in "answerable "?*) ;; *) exit 0 ;; esac
     NY_QID=${posted#answerable }
     NY_ANSWER=$("$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null)
@@ -2034,9 +2035,13 @@ case "$mode" in
     rc=$?
     log "notify $key -> $rc"
     # The CLI queues offline and exits 0, so a down hub still leaves a marker
-    # and the later resolve is queued behind the add.
-    [ "$rc" -eq 0 ] && write_marker "$marker" "$key" "kind=${kind:-notify}"
-    [ "$rc" -eq 0 ] && end_post
+    # and the later resolve is queued behind the add. A post that didn't finish (1: the CLI
+    # cut off at the hook's limit, its request maybe on the hub already or still in the
+    # outbox, to go out with the next run) leaves one too: resolving a card that never came
+    # costs a request, a card nobody resolves stays for days.
+    case "$rc" in
+      0|1) write_marker "$marker" "$key" "kind=${kind:-notify}"; end_post ;;
+    esac
     ;;
 esac
 

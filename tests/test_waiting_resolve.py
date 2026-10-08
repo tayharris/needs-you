@@ -8,7 +8,9 @@ turn-end card) used to find no marker: the card arrived after the reply and stay
 with Claude Code 2.1.294 and a hub that answered after 3 s: idle_prompt at .242, the reply's
 UserPromptSubmit at .352 and its Stop at .410, the card posted 3 s later and left open.
 
-Temp HOME, fake CLI: nothing real is touched.
+Also here: a post the CLI didn't finish (killed at the hook's 15 s limit, its request left in
+the outbox) still leaves a marker, so the reply resolves it. Temp HOME, fake CLI: nothing
+real is touched.
 """
 from __future__ import annotations
 
@@ -214,6 +216,25 @@ class WaitingResolve(unittest.TestCase):
         self.finish(p)
         self.assertTrue(wait_until(lambda: len(self.calls()) >= 2, timeout=10), self.calls())
         self.assert_resolved_after_add()
+
+    # ---------------------------------------------------------------- a post that didn't finish
+
+    def test_post_cut_short_still_leaves_a_marker_for_the_reply(self):
+        # The CLI killed at the hook's limit (its request may already be on the hub or in the
+        # outbox, to go out later): the reply must still resolve the key.
+        p = self.start(["notify"], {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                       FAKE_ADD_RC="1")
+        self.finish(p)
+        self.assertTrue(os.path.exists(self.marker()))
+        self.run_hook(["resolve"], {"hook_event_name": "UserPromptSubmit", "prompt": "go on"})
+        self.assertEqual([c[0] for c in self.calls()], ["add", "resolve"])
+
+    def test_a_card_with_nothing_to_post_leaves_no_marker(self):
+        p = self.start(["notify"], {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                    "requires_user_approval": False})
+        self.finish(p)
+        self.assertEqual(self.calls(), [])
+        self.assertFalse(os.path.exists(self.marker()))
 
 
 if __name__ == "__main__":
