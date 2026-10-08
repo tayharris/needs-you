@@ -1686,7 +1686,10 @@ def _main(argv: Optional[List[str]] = None) -> int:
     if args.cmd == "health":
         return health(cfg, remaining)
     if args.cmd == "resolve":
-        body = {"key": args.key} if args.key else {"id": args.id}
+        if not (args.key if args.key is not None else args.id).strip():
+            warn("resolve: --key/--id must not be empty")
+            return 2
+        body = {"key": args.key} if args.key is not None else {"id": args.id}
         rc = deliver(cfg, "POST", "/v1/items/resolve", body, args.quiet, args.json)
         if rc == 0 and args.key:
             note_session_item(args.key, open_=False)

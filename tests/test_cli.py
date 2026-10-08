@@ -571,6 +571,14 @@ class UsageErrors(CliTestCase):
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertNotIn("Traceback", r.stderr)
 
+    def test_blank_resolve_target_is_not_queued(self):
+        # The hub refuses it, so queued offline it would only sit in the outbox until dropped.
+        for flag, value in (("--id", ""), ("--key", ""), ("--id", "  ")):
+            r = self.run_cli("resolve", flag, value, urls=[self.dead])
+            self.assertEqual(r.returncode, 2, (flag, value, r.stderr))
+            self.assertNotIn("Traceback", r.stderr)
+            self.assertEqual(self.queued(), [])
+
 
 class NoConfigNoOutbox(CliTestCase):
     def test_says_so_and_exits_0(self):
