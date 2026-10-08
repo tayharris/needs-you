@@ -93,7 +93,7 @@ if os.path.islink(path):
 text = ""
 if os.path.exists(path):
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8", newline="") as fh:  # CRLF stays CRLF
             text = fh.read()
     except (OSError, UnicodeDecodeError):
         by_hand("it can't be read as UTF-8 text")
@@ -101,7 +101,7 @@ lines = text.splitlines(keepends=True)
 # Our block, start to end, wherever it is.
 out, inside, found = [], False, False
 for line in lines:
-    s = line.rstrip("\n")
+    s = line.rstrip("\r\n")
     if s == BEGIN:
         inside, found = True, True
         continue
@@ -141,7 +141,7 @@ if text:
             break
         except FileExistsError:
             n += 1
-    with os.fdopen(bfd, "w", encoding="utf-8") as fh:
+    with os.fdopen(bfd, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
     mode = os.stat(path).st_mode & 0o777
 else:
@@ -151,7 +151,7 @@ if action == "uninstall" and not new.strip():
     print("aider.conf.yml: removed (it held only the needs-you block)")
     sys.exit(0)
 fd, tmp = tempfile.mkstemp(dir=d, prefix=".aider.conf.", suffix=".yml")
-with os.fdopen(fd, "w", encoding="utf-8") as fh:
+with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
     fh.write(new)
 os.chmod(tmp, mode)
 os.replace(tmp, path)

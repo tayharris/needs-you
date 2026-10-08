@@ -712,7 +712,7 @@ def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
     """Take the needs-you block out of an Aider config file. True when it removed (or would
     remove) it, False when there was none, None when it couldn't."""
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8", newline="") as fh:  # CRLF stays CRLF
             text = fh.read()
     except FileNotFoundError:
         return False
@@ -721,7 +721,7 @@ def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
         return None
     out, inside, found = [], False, False
     for line in text.splitlines(keepends=True):
-        s = line.rstrip("\n")
+        s = line.rstrip("\r\n")
         if s == AIDER_BEGIN:
             inside = found = True
         elif inside:
