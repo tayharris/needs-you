@@ -42,6 +42,7 @@ Sessions in an Orca terminal are on automatically; `NEEDS_YOU_AGENT_ALERTS=0` tu
 | Approval prompt for an MCP tool | **Codex needs permission for linear create_issue: my-repo** |
 | A question in Plan mode (`request_user_input`) | **Codex asks “Which database should the service use?”: my-repo**, its choices listed |
 | Turn finished, waiting for you | **Codex is waiting for you: my-repo** |
+| Your Codex plan's 5-hour or weekly limit past a threshold you set (optional, below) | **Codex weekly limit 85% used: resets Thu 09:00**, low, never counted |
 
 One card per session (key `agent:<host>:<session>`), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), or the end of the session. After `/clear`, or when a Codex window is closed or killed, Codex ends that session within about a minute (its background app-server unloads it), and the card clears then. If Codex itself dies, the 5-minute `needs-you flush` cleans up; any card expires 48 hours after its last post.
 
@@ -52,6 +53,14 @@ Only want approval prompts, not a card at the end of every turn?
 ```bash
 echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' >> ~/.config/needs-you/env
 ```
+
+Want a heads-up before Codex's usage limit runs out? Set a threshold, the same one Claude's [usage-limit card](../../integrations/claude-code/README.md#usage-limit-card-optional) uses:
+
+```bash
+echo 'NEEDS_YOU_USAGE_ALERT_PCT=85' >> ~/.config/needs-you/env   # NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT for a separate weekly one
+```
+
+At the end of each turn the hook reads the limit numbers Codex writes into its own session file (ChatGPT logins only; never a credential), posts one low card when a window passes the threshold, and clears it after the reset. Details in [integrations/codex](../../integrations/codex/README.md).
 
 ## Tell Codex when to post (optional)
 

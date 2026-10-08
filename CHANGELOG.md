@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **A card when Codex's usage limit runs high (optional).** The Codex hooks now post the same low `info` card as Claude's usage helper, such as "Codex weekly limit 85% used: resets Thu 09:00", when `NEEDS_YOU_USAGE_ALERT_PCT` (and optionally `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT`) is set. At the end of each turn the hook reads the newest limit numbers Codex wrote to its session file (ChatGPT logins only), never a credential or the conversation. The card expires at the reset and clears when usage is back under the line. Off by default; run `needs-you update` to get the new hook ([Codex guide](docs/guides/codex.md#what-youll-see)).
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).

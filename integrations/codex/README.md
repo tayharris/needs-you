@@ -41,7 +41,7 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 |---|---|---|
 | `PermissionRequest` | `notify codex` | `needs-you add`: **Codex wants to run make**, **Codex wants to edit config.py** (`apply_patch`; "2 files" for more), **Codex needs permission for linear create_issue** (MCP) |
 | `PreToolUse`, matcher `request_user_input` | `notify codex` | `needs-you add`: **Codex asks “<question>”**, the questions and their choices in the body and as the item's `question` (Plan mode; this tool has no `PermissionRequest`) |
-| `Stop` | `notify codex` | resolves a question card first (outside Plan mode Codex refuses the question after `PreToolUse` ran), then `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval and question cards |
+| `Stop` | `notify codex` | resolves a question card first (outside Plan mode Codex refuses the question after `PreToolUse` ran), then `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval and question cards. Also the usage-limit card, when it's on (below) |
 | `UserPromptSubmit`, `PostToolUse`, `Interrupt` | `resolve codex` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before. Codex 0.159+ runs every session's hooks from one shared app-server daemon, so there it resolves only this session's card; after `/clear` the old session's card clears with its `SessionEnd`, which the daemon sends when it unloads the thread (about a minute later) |
 | `SessionEnd` | `end codex` | resolves the session's card |
@@ -52,6 +52,8 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 - The `PermissionRequest`, `Stop`, `UserPromptSubmit`, `PostToolUse` and `SessionStart` entries are `"async": true`, so Codex never waits on the network and the hook can't approve or deny anything. `SessionEnd` and `Interrupt` always run synchronously in Codex with a 1-3 s limit: the hook drops its marker and starts the resolve in the background, then exits.
 - Every mode exits 0 and prints nothing (Codex would add plain stdout to the model's context).
 - Markers live in `~/.local/state/needs-you/claude-hooks/` (shared with the Claude hook), carrying the lease that the 5-minute `needs-you flush` uses to resolve the card of a Codex process that died. Cards also expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`).
+
+**Usage-limit card (optional).** With `NEEDS_YOU_USAGE_ALERT_PCT` set (the same settings as Claude's [`needs-you-usage`](../claude-code/README.md#usage-limit-card-optional)), each `Stop` reads the newest `token_count` event's `rate_limits` from the tail of the session file Codex names in `transcript_path` (`~/.codex/sessions/.../rollout-*.jsonl`; 256 KB, then up to 2 MB, never the whole file; only Codex's own `limit_id`), and posts one low `info` card, **Codex weekly limit 85% used: resets Thu 09:00**, keyed `agent:<host>:codex-usage[:<account>]:5h` or `:7d`. It expires at the reset, is re-posted only when the percentage moved 5 points, and is resolved once usage is back under the line or the window reset. Only the numbers are read: no credentials, no conversation. Codex writes them only for ChatGPT logins, and not in every session; with none in the tail, nothing changes. State is in `~/.local/state/needs-you/usage/codex.json`.
 
 Not covered: Codex's context usage (no `/compact` card), API errors (Codex has no `StopFailure` hook), and sessions running only in the Codex IDE extension or cloud.
 
@@ -66,6 +68,9 @@ All the [Claude Code hook settings](../claude-code/README.md#settings) apply (`N
 | Variable | Default | Meaning |
 |---|---|---|
 | `NEEDS_YOU_AGENT_TURN_CARDS` | on | `0`: no card when a turn ends, only approval prompts |
+| `NEEDS_YOU_USAGE_ALERT_PCT` | unset (off) | The usage-limit card's 5-hour threshold in percent (shared with Claude's `needs-you-usage`) |
+| `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
+| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label for a machine with more than one Codex login (e.g. per `CODEX_HOME`); in the key and the title |
 | `CODEX_HOME` | `~/.codex` | Where the installer, `needs-you doctor` and `needs-you update` look |
 
 ## Check and test
