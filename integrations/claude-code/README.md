@@ -18,6 +18,7 @@ integrations/claude-code/
 ├── hooks.json            the hook config (user-level paths), for reference or hand-merging
 ├── needs-you-hook.sh     the hook itself: bash + python3, always exits 0
 ├── install-hooks.sh      merges hooks.json into a settings.json (python3, with a backup)
+├── needs-you-usage       optional status line helper: a card when the 5-hour or weekly limit runs high
 └── skill/needs-you/SKILL.md
 ```
 
@@ -175,6 +176,34 @@ echo '{"session_id":"test-1"}' |
 ```
 
 If nothing shows up, see [troubleshooting](../../docs/guides/troubleshooting.md#claude-code-hooks).
+
+## Usage-limit card (optional)
+
+`needs-you-usage` posts one low `info` card when your Claude subscription's 5-hour or weekly limit passes a threshold you set, for example **Claude weekly limit 85% used: resets Thu 09:00**. It is off until you set `NEEDS_YOU_USAGE_ALERT_PCT`.
+
+Its only source is Claude Code's status line input: for claude.ai Pro and Max subscribers, after the session's first response, Claude Code passes `rate_limits.five_hour` and `rate_limits.seven_day` (`used_percentage`, `resets_at`) to the status line command ([status line docs](https://code.claude.com/docs/en/statusline)). The helper reads those numbers and nothing else: no credentials, no transcript, no network of its own. With an API key there is no `rate_limits`, and it does nothing.
+
+Install it as your status line, wrapping the one you already have (its output passes through unchanged and its exit status is kept):
+
+```bash
+cp integrations/claude-code/needs-you-usage ~/.local/bin/ && chmod +x ~/.local/bin/needs-you-usage
+```
+
+```json
+"statusLine": {"type": "command", "command": "~/.local/bin/needs-you-usage -- ~/.claude/statusline.sh"}
+```
+
+With no status line of your own, `~/.local/bin/needs-you-usage --print` shows `5h 23% · 7d 41%`.
+
+Then in `~/.config/needs-you/env`:
+
+| Variable | Default | What |
+|---|---|---|
+| `NEEDS_YOU_USAGE_ALERT_PCT` | unset (off) | 5-hour threshold in percent |
+| `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
+| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label (letters, digits, `.` `_` `-`) for a machine with more than one Claude login, e.g. per `CLAUDE_CONFIG_DIR`; it goes in the key and the title |
+
+The card is keyed `agent:<host>:claude-usage[:<account>]:5h` (or `:7d`), so every session on the machine updates the same one. It expires when the window resets, is re-posted only when the percentage moved 5 points, and is resolved when usage is back under the threshold. The post runs detached, so the status line never waits on the hub. State is in `~/.local/state/needs-you/usage/`.
 
 ## Skill
 
