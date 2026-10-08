@@ -58,8 +58,9 @@ class ClineHook(HookCase):
 
     def test_prompt_cancel_and_shutdown_resolve(self):
         for event, mode in (("UserPromptSubmit", "resolve"), ("TaskCancel", "resolve"), ("SessionShutdown", "end")):
+            before = len(self.calls())
             self.complete()
-            n = len(self.wait_calls(1))
+            n = len(self.wait_calls(before + 1))  # this pass's add, not the last pass's calls
             key = opt(self.calls()[-1], "--key")
             self.wait_marker(TASK)
             r = self.run_hook([mode, "cline", event], self.payload(event, userPromptSubmit={"prompt": SECRET}),
