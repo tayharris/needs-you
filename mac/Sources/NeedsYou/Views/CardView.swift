@@ -34,7 +34,9 @@ struct CardView: View {
 
                 let mode = model.settings.ui.cardBodies
                 let expanded = model.expandedCards.contains(item.id)
-                if let body = item.body, !body.isEmpty, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body).
+                let body = QuestionDisplay.body(item)
+                if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
                     Text(LimitedMarkdown.render(body))
                         .font(Theme.body(model.bodyFont))
                         .foregroundStyle(Theme.text.opacity(0.85))
@@ -60,8 +62,28 @@ struct CardView: View {
                     }
                 }
 
-                if StepsPolicy.canExpand(item, mode: mode),
-                   expanded || CardBodyPolicy.canExpand(body: item.body, mode: mode) {
+                if let question = item.question {
+                    if QuestionDisplay.showsAll(mode, expanded: expanded) {
+                        QuestionList(item: item, question: question, model: model)
+                            .padding(.top, 1)
+                    } else {
+                        Button { model.toggleCardExpanded(item) } label: {
+                            Label(QuestionDisplay.summary(question), systemImage: "questionmark.bubble")
+                                .font(Theme.meta(m))
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show the question and its choices")
+                    }
+                }
+
+                if StepsPolicy.canExpand(item, mode: mode) || QuestionDisplay.canExpand(item, mode: mode)
+                    || CardBodyPolicy.canExpand(body: body, mode: mode),
+                   expanded || CardBodyPolicy.canExpand(body: body, mode: mode) {
                     Button(CardBodyPolicy.toggleTitle(mode, expanded: expanded)) { model.toggleCardExpanded(item) }
                         .buttonStyle(.plain)
                         .font(Theme.meta(m))
@@ -207,6 +229,175 @@ struct StepList: View {
                 .padding(.top, 2)
             }
         }
+    }
+}
+
+/// An agent's question (`question`, ADR 0009): each question under its header with "choose
+/// one" or "choose any", then its options as rows, the label and a fainter description. No
+/// tick boxes. When the sender waits for an answer (`answerable`, AnswerPolicy.canAnswer) the
+/// rows are buttons: for one single-choice question a click sends that answer; otherwise
+/// clicks toggle and Send sends. "Answer in the terminal" opens the card's terminal link.
+/// Every control is a plain button: the panel never becomes key and the app never activates.
+struct QuestionList: View {
+    let item: Item
+    let question: ItemQuestion
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let font = model.bodyFont
+        let items = QuestionDisplay.visible(question)
+        let answering = AnswerPolicy.canAnswer(item, now: model.now)
+        let state = model.answerStates[item.id]
+        let selection = model.answerSelections[item.id] ?? AnswerSelection()
+        let locked = state == .sending || state == .sent
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, q in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(QuestionDisplay.heading(q, index: index, count: items.count))
+                        .font(.system(size: model.metrics.metaFont, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                    Text(LimitedMarkdown.render(q.text))
+                        .font(Theme.body(font).weight(.medium))
+                        .foregroundStyle(Theme.text.opacity(0.92))
+                        .tint(Theme.normal)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !q.options.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(Array(q.options.enumerated()), id: \.offset) { _, option in
+                                let chosen = selection.isPicked(index, option.label)
+                                    || (item.answer?.indices.contains(index) == true
+                                        && item.answer![index].selected.contains(option.label))
+                                if answering && !locked {
+                                    Button { model.pickOption(item, question: index, label: option.label) } label: {
+                                        OptionRow(option: option, font: font, chosen: chosen, clickable: true,
+                                                  multiSelect: q.multiSelect && !AnswerPolicy.sendsOnClick(question))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(AnswerPolicy.sendsOnClick(question)
+                                          ? "Answer \u{201C}\(option.label)\u{201D}"
+                                          : (chosen ? "Unselect" : "Select"))
+                                } else {
+                                    OptionRow(option: option, font: font, chosen: chosen, clickable: false,
+                                              multiSelect: false)
+                                }
+                            }
+                        }
+                        .padding(.top, 1)
+                    }
+                }
+            }
+            AnswerFooter(item: item, question: question, model: model, answering: answering,
+                         state: state, selection: selection)
+        }
+    }
+}
+
+/// Below the options: Send (several questions or multi-select), "Answer in the terminal",
+/// and where the answer stands.
+private struct AnswerFooter: View {
+    let item: Item
+    let question: ItemQuestion
+    @ObservedObject var model: AppModel
+    let answering: Bool
+    let state: AnswerState?
+    let selection: AnswerSelection
+
+    var body: some View {
+        let m = model.metrics
+        let terminal = AnswerPolicy.terminalLink(item)
+        VStack(alignment: .leading, spacing: 4) {
+            if let answered = AnswerPolicy.answeredText(item) {
+                Label(answered, systemImage: "checkmark.circle.fill")
+                    .font(.system(size: m.metaFont, weight: .medium))
+                    .foregroundStyle(Theme.normal.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let state {
+                switch state {
+                case .sending:
+                    Label("Sending…", systemImage: "paperplane")
+                        .font(.system(size: m.metaFont)).foregroundStyle(Theme.muted)
+                case .sent:
+                    Label("Sent to the agent", systemImage: "checkmark.circle")
+                        .font(.system(size: m.metaFont, weight: .medium)).foregroundStyle(Theme.normal.opacity(0.9))
+                case .failed(let why):
+                    Label(why, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: m.metaFont))
+                        .foregroundStyle(Theme.urgent.opacity(0.9))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if answering || terminal != nil {
+                HStack(spacing: 12) {
+                    if answering, !AnswerPolicy.sendsOnClick(question), state != .sending, state != .sent {
+                        let ready = selection.isComplete(for: question)
+                        Button { model.sendPickedAnswer(item) } label: {
+                            Label("Send", systemImage: "paperplane.fill")
+                                .font(.system(size: m.actionFont, weight: .semibold))
+                                .foregroundStyle(ready ? Theme.normal : Theme.faint)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!ready)
+                        .help(ready ? "Send these choices to the agent" : "Choose an option for every question first")
+                    }
+                    if let terminal, item.answer == nil, state != .sent {
+                        Button { model.open(terminal.url, from: item) } label: {
+                            Label("Answer in the terminal", systemImage: "terminal")
+                                .font(.system(size: m.actionFont))
+                                .foregroundStyle(Theme.muted)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Bring the agent's terminal forward (for an answer the card can't give, such as your own words)")
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+}
+
+/// One choice: its label, and its description in a fainter colour below it. Clickable rows
+/// get a stronger outline; a chosen one (picked, or the answer given) is tinted.
+struct OptionRow: View {
+    let option: ItemQuestionOption
+    let font: CGFloat
+    var chosen = false
+    var clickable = false
+    var multiSelect = false
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(option.label)
+                    .font(Theme.body(font).weight(.semibold))
+                    .foregroundStyle(Theme.text.opacity(0.92))
+                    .fixedSize(horizontal: false, vertical: true)
+                if !option.detail.isEmpty {
+                    Text(option.detail)
+                        .font(Theme.body(max(9, font - 1)))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+            if chosen {
+                Image(systemName: "checkmark")
+                    .font(.system(size: max(9, font - 2), weight: .bold))
+                    .foregroundStyle(Theme.normal)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(chosen ? Theme.normal.opacity(0.16) : Theme.text.opacity(clickable ? (hovering ? 0.16 : 0.1) : 0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .strokeBorder(chosen ? Theme.normal.opacity(0.6) : (clickable ? Theme.linkStroke : Theme.hairline),
+                          lineWidth: chosen || clickable ? 1 : 0.5))
+        .contentShape(Rectangle())
+        .onHover { hovering = clickable && $0 }
     }
 }
 

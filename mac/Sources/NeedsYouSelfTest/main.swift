@@ -38,6 +38,8 @@ let entries =
     + testEntries(CardAgeTests.self, CardAgeTests.allTests)
     + testEntries(SecurityAuditTests.self, SecurityAuditTests.allTests)
     + testEntries(StepsTests.self, StepsTests.allTests)
+    + testEntries(QuestionDisplayTests.self, QuestionDisplayTests.allTests)
+    + testEntries(AnswerPolicyTests.self, AnswerPolicyTests.allTests, async: AnswerPolicyTests.asyncTests)
     + testEntries(DeliveryPolicyTests.self, DeliveryPolicyTests.allTests)
     + testEntries(FocusStateTests.self, FocusStateTests.allTests)
     + testEntries(BypassRuleTests.self, BypassRuleTests.allTests)

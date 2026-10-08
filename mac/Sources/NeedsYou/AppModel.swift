@@ -85,6 +85,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var expandedCards: Set<String> = []
     /// Steps ticked on this Mac (local only, never sent to the hub; kept while the item is).
     @Published private(set) var stepTicks = StepTicks()
+    /// Options clicked on an answerable question's card (multi-select or several questions),
+    /// before Send. Local; dropped once the answer is sent or the item leaves.
+    @Published private(set) var answerSelections: [String: AnswerSelection] = [:]
+    /// Where each card's answer stands (sending, sent, failed and why).
+    @Published private(set) var answerStates: [String: AnswerState] = [:]
     /// The card the open panel scrolls to (ExpandFocus); the list clears it once scrolled.
     @Published var scrollTarget: String?
     /// The card drawn highlighted for a moment after the panel opened at it.
@@ -512,6 +517,13 @@ final class AppModel: ObservableObject {
                 ticks.retain(itemIDs: Set(updated.items.keys))
                 if ticks != stepTicks { stepTicks = ticks }
             }
+            let ids = Set(updated.items.keys)
+            if answerSelections.keys.contains(where: { !ids.contains($0) }) {
+                answerSelections = answerSelections.filter { ids.contains($0.key) }
+            }
+            if answerStates.keys.contains(where: { !ids.contains($0) }) {
+                answerStates = answerStates.filter { ids.contains($0.key) }
+            }
             lastCheck = Date()
             lastError = nil
             if hasSynced {
@@ -824,6 +836,59 @@ final class AppModel: ObservableObject {
 
     func toggleStep(_ item: Item, _ index: Int) {
         stepTicks.toggle(item, index)
+    }
+
+    // MARK: Answers (ADR 0009 B2)
+
+    /// A click on an option of an answerable question. For one single-choice question the
+    /// click is the answer and is sent at once; otherwise it toggles the option and Send
+    /// sends. Nothing here activates the app or makes the panel key: these are plain
+    /// buttons in the non-activating panel, and the answer is one network request.
+    func pickOption(_ item: Item, question: Int, label: String) {
+        guard AnswerPolicy.canAnswer(item, now: Date()), let q = item.question,
+              q.items.indices.contains(question), answerStates[item.id] != .sending,
+              answerStates[item.id] != .sent else { return }
+        if AnswerPolicy.sendsOnClick(q) {
+            if let request = AnswerPolicy.clickRequest(item, question: question, label: label) {
+                sendAnswer(item, request)
+            }
+            return
+        }
+        var selection = answerSelections[item.id] ?? AnswerSelection()
+        selection.toggle(question, label, multiSelect: q.items[question].multiSelect)
+        answerSelections[item.id] = selection
+        if case .failed = answerStates[item.id] { answerStates[item.id] = nil }
+    }
+
+    /// Send: the clicked options, once every question has one.
+    func sendPickedAnswer(_ item: Item) {
+        guard AnswerPolicy.canAnswer(item, now: Date()),
+              let request = AnswerPolicy.request(item, answerSelections[item.id] ?? AnswerSelection()) else { return }
+        sendAnswer(item, request)
+    }
+
+    private func sendAnswer(_ item: Item, _ request: AnswerRequest) {
+        guard let feed else { return }
+        answerStates[item.id] = .sending
+        let id = item.id
+        let generation = feedGeneration
+        Task {
+            let state: AnswerState
+            do {
+                switch try await feed.answer(id: id, request) {
+                case .taken: state = .sent
+                case .refused(let code): state = .failed(AnswerPolicy.failureText(code: code))
+                }
+            } catch {
+                state = .failed(AnswerPolicy.failureText(code: nil))
+            }
+            guard generation == feedGeneration else { return }
+            answerStates[id] = state
+            if state == .sent {
+                answerSelections[id] = nil
+                pollNow()  // the item's answer comes back from the hub
+            }
+        }
     }
 
     func setContext(_ context: ItemContext) {

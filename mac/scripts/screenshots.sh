@@ -5,7 +5,8 @@
 #
 # Builds a throwaway copy and runs it three times with the snapshot tour (NEEDS_YOU_SNAPSHOT_DIR,
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
-# example items below, and once with one agent card (preview-agent.png). Every PNG is drawn with cacheDisplay, so no Screen Recording
+# example items below (among them an agent's question: 6e-6g), and once with one agent card
+# (preview-agent.png). Every PNG is drawn with cacheDisplay, so no Screen Recording
 # permission is needed. Isolated the way scripts/upgrade-test.sh is:
 #
 #   - bundle id app.needsyou.mac.screenshots, no needsyou:// scheme, built into a temp dir
@@ -88,6 +89,40 @@ items = [
          body="Auto-renew is off for this one.",
          links=[{"label": "Registrar", "url": "https://registrar.example.com/domains"}],
          source={"host": "home-server", "agent": "cron:domains"}),
+    item(7, 3, key="claude-code:devbox:acme-api",
+         title="Claude asks \u201cWhich database should the service use?\u201d and 1 more: acme-api",
+         body="**Database** \u00b7 choose one\nWhich database should the service use?\n"
+              "- Postgres (Recommended) \u2014 Mature, already used by the team.\n- SQLite \u2014 Zero ops, single file.\n\n"
+              "**Extras** \u00b7 choose any\nWhich extras should it ship with?\n- Metrics\n- Tracing \u2014 OpenTelemetry\n\n"
+              "Answer in Claude.",
+         question={"id": "toolu_01SHOT", "items": [
+             {"header": "Database", "text": "Which database should the service use?", "multi_select": False,
+              "options": [{"label": "Postgres (Recommended)", "description": "Mature, already used by the team."},
+                          {"label": "SQLite", "description": "Zero ops, single file."},
+                          {"label": "DynamoDB", "description": "Managed, but a new dependency."}]},
+             {"header": "Extras", "text": "Which extras should it ship with?", "multi_select": True,
+              "options": [{"label": "Metrics", "description": ""},
+                          {"label": "Tracing", "description": "OpenTelemetry"}]}]},
+         links=[{"label": "VS Code", "url": "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"}],
+         source={"host": "devbox", "agent": "claude-code", "project": "acme-api"}),
+    # opencode waits for the card's answer (ADR 0009 B2): its options are buttons (6h, 6i).
+    item(8, 2, key="agent:devbox:ses_shot",
+         title="opencode asks “Which branch should the release come from?” and 1 more: acme-web",
+         body="**Branch** · choose one\nWhich branch should the release come from?\n"
+              "- main — Everything merged today\n- release/1.4 — Only the fixes\n\n"
+              "**Platforms** · choose any\nWhich platforms?\n- macOS\n- Linux\n- Windows\n\n"
+              "Pick here or answer in opencode.",
+         question={"id": "que_01SHOT", "answerable": True, "items": [
+             {"header": "Branch", "text": "Which branch should the release come from?", "multi_select": False,
+              "options": [{"label": "main", "description": "Everything merged today"},
+                          {"label": "release/1.4", "description": "Only the fixes"}]},
+             {"header": "Platforms", "text": "Which platforms?", "multi_select": True,
+              "options": [{"label": "macOS", "description": "arm64 and x64"},
+                          {"label": "Linux", "description": "x64"},
+                          {"label": "Windows", "description": "x64"}]}]},
+         content_updated_at=ago(2),
+         links=[{"label": "Terminal", "url": "needsyou://terminal/focus?app=wezterm&pane=1"}],
+         source={"host": "devbox", "agent": "opencode", "project": "acme-web"}),
     item(6, 25, key="ci:nightly", kind="done", title="Nightly e2e: 214 passed, 0 failed",
          source={"host": "ci", "agent": "github-actions"},
          expires_at=(now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")),

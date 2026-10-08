@@ -163,7 +163,7 @@ class Upsert(ApiTestCase):
             {"text": "Which extras?", "multi_select": True, "options": [{"label": "Metrics"}]}]}
         s1, a = self.post({"key": "q", "title": "Claude asks", "question": question})
         self.assertEqual(s1, 201)
-        want = {"id": "toolu_01", "items": [
+        want = {"id": "toolu_01", "answerable": False, "items": [
             {"header": "Database", "text": "Which database?", "multi_select": False,
              "options": [{"label": "Postgres", "description": "Durable"}, {"label": "SQLite", "description": ""}]},
             {"header": "", "text": "Which extras?", "multi_select": True,

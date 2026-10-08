@@ -165,6 +165,8 @@ public enum PreviewLayout {
     public static let linkRowGap: CGFloat = 6
     /// The link button's vertical padding inside its capsule.
     public static let linkChipVertical: CGFloat = 3
+    /// Above each question row (QuestionDisplay.previewRows: the question, its first options).
+    public static let questionRowGap: CGFloat = 3
 
     /// How wide the title, meta line and link row can be.
     public static func textWidth(_ m: PanelMetrics) -> CGFloat {
@@ -189,10 +191,17 @@ public enum PreviewLayout {
         lineHeight(m.linkFont) + linkChipVertical * 2
     }
 
-    /// The preview's height (the visible shape, without the glow padding).
-    public static func height(_ m: PanelMetrics, titleLines: Int, hasLink: Bool) -> CGFloat {
+    /// One question row: a line at the meta size.
+    public static func questionRowHeight(_ m: PanelMetrics) -> CGFloat {
+        lineHeight(m.metaFont)
+    }
+
+    /// The preview's height (the visible shape, without the glow padding). `questionRows`
+    /// (0-2) are the question and its first options, between the meta line and the link.
+    public static func height(_ m: PanelMetrics, titleLines: Int, hasLink: Bool, questionRows: Int = 0) -> CGFloat {
         let extraLines = min(maxTitleLines, max(1, titleLines)) - 1
         var height = m.previewHeight + CGFloat(extraLines) * lineHeight(m.titleFont)
+        height += CGFloat(min(2, max(0, questionRows))) * (questionRowGap + questionRowHeight(m))
         if hasLink { height += linkRowGap + linkRowHeight(m) }
         return height
     }

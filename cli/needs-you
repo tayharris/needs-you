@@ -10,6 +10,12 @@
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
   needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
   needs-you resolve (--key KEY | --id ID)
+  needs-you answer-wait --key KEY [--timeout SECONDS]
+                                                     wait for the person's answer to the
+                                                     answerable question posted under KEY and
+                                                     print it as JSON (exit 0); exit 3 when
+                                                     the time runs out, 4 when no answer will
+                                                     come (closed, expired, not answerable)
   needs-you run [--key KEY] [--title TITLE] [--done-after SECONDS] [--no-output] [...] -- CMD [ARGS...]
                                                      run CMD with its output and exit code passed
                                                      through; on failure post a card (exit code and
@@ -79,9 +85,14 @@ A question is what an agent asked the person and the choices it offered, shown r
 (the person answers in the agent): `--question-json '{"id": "...", "items": [{"header":
 "...", "text": "...", "options": [{"label": "...", "description": "..."}], "multi_select":
 false}]}'` (1-4 items, at most 8 options each; docs/API.md), inline or from a file (@PATH).
+Add `"answerable": true` (and `"expires_at"`) when you wait for the answer with
+`needs-you answer-wait`: the person's Mac then shows the options as buttons, and their click
+is the answer (labels from the options only, never free text).
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
+`answer-wait`: 0 an answer (printed), 3 no answer before --timeout, 4 none will come, 2
+usage, config or a refused token.
 
 Python 3.9+ standard library only.
 """
@@ -99,6 +110,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -1465,6 +1477,63 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     return 0
 
 
+ANSWER_EXIT_TIMEOUT = 3
+ANSWER_EXIT_NONE = 4
+ANSWER_POLL_SECONDS = 25  # the hub holds a GET /v1/items/answer at most this long
+
+
+def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
+    """Long-poll GET /v1/items/answer?key= until the person answers (print the answer as
+    JSON, exit 0), the time runs out (3) or no answer will come (4: the item closed, its
+    question expired or isn't answerable). A hub that can't be reached, or doesn't know the
+    item yet (a post still queued or replicating), is asked again until the time runs out.
+    Never answers anything itself."""
+    if not cfg.ok:
+        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s)" % config_path())
+        return 2
+    key = key.strip()
+    deadline = time.monotonic() + max(0.0, timeout)
+    last_note = ""
+    while True:
+        left = deadline - time.monotonic()
+        wait = int(max(0, min(ANSWER_POLL_SECONDS, left)))
+        path = "/v1/items/answer?" + urllib.parse.urlencode({"key": key, "wait": wait})
+        got: Optional[Tuple[int, Dict[str, Any]]] = None
+        for url in cfg.urls:
+            try:
+                status, body = _call(url, cfg.token, "GET", path, None, wait + cfg.timeout)
+            except (OSError, ValueError) as e:
+                last_note = "%s: %s" % (url, getattr(e, "reason", e))
+                continue
+            if status == 421 or status >= 500:
+                last_note = "%s: HTTP %d" % (url, status)
+                continue
+            got = (status, body)
+            if status != 404:
+                break
+        if got is not None:
+            status, body = got
+            if status == 200 and isinstance(body.get("answers"), list):
+                print(json.dumps(body, sort_keys=True))
+                return 0
+            if status == 409:
+                if not quiet:
+                    warn("no answer will come: %s" % clean(body.get("message") or body.get("error") or ""))
+                return ANSWER_EXIT_NONE
+            if status in (400, 401, 403):
+                warn("hub refused: HTTP %d %s" % (status, clean(body.get("message") or body.get("error") or "")))
+                return 2
+            if status == 404:
+                last_note = "no item %r from this token yet" % key
+        left = deadline - time.monotonic()
+        if left <= 0:
+            if not quiet:
+                warn("no answer within %gs%s" % (timeout, " (%s)" % clean(last_note) if last_note else ""))
+            return ANSWER_EXIT_TIMEOUT
+        if got is None or got[0] != 204:
+            time.sleep(min(2.0, left))  # unreachable, or not there yet: don't spin
+
+
 def hours_arg(raw: str) -> float:
     """--expires-in: hours, a finite number within a century (the hub takes dates to 9999)."""
     try:
@@ -1606,6 +1675,11 @@ def _main(argv: Optional[List[str]] = None) -> int:
     g = rp.add_mutually_exclusive_group(required=True)
     g.add_argument("--key")
     g.add_argument("--id")
+    ap = sub.add_parser("answer-wait", help="wait for the person's answer to the answerable question "
+                        "posted under KEY; print it as JSON (exit 3: timed out, 4: none will come)")
+    ap.add_argument("--key", required=True)
+    ap.add_argument("--timeout", type=float, default=600.0, metavar="SECONDS",
+                    help="give up after this long (default 600)")
     add_run_parser(sub)
     sub.add_parser("flush", help="send queued items now")
     sub.add_parser("health", help="check hubs and token")
@@ -1685,6 +1759,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return 0
     if args.cmd == "health":
         return health(cfg, remaining)
+    if args.cmd == "answer-wait":
+        if args.timeout != args.timeout or args.timeout < 0:
+            warn("--timeout must be a number of seconds")
+            return 2
+        flush(cfg)  # a queued post of this item goes out first
+        return answer_wait(cfg, args.key, args.timeout, args.quiet)
     if args.cmd == "resolve":
         if not (args.key if args.key is not None else args.id).strip():
             warn("resolve: --key/--id must not be empty")

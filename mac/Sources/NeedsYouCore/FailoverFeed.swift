@@ -75,6 +75,23 @@ public actor FailoverFeed: ItemFeed {
         try await fetchPage(since: since).items
     }
 
+    /// Like patch: the hub that last answered first, the others on transport errors and 421.
+    public func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome {
+        guard !hubs.isEmpty else { throw HubError.notConfigured }
+        let first = current ?? order().first ?? 0
+        let attempts = [first] + order().filter { $0 != first }
+        var lastError: Error = HubError.notConfigured
+        for index in attempts {
+            do {
+                return try await hubs[index].feed.answer(id: id, answer)
+            } catch {
+                lastError = error
+                if let e = error as? HubError, e != .invalidResponse, e != .misdirected { throw error }
+            }
+        }
+        throw lastError
+    }
+
     public func patch(id: String, _ patch: ItemPatch) async throws {
         guard !hubs.isEmpty else { throw HubError.notConfigured }
         let first = current ?? order().first ?? 0

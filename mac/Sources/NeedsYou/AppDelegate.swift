@@ -143,7 +143,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     title: "feature/old-search has 2 unpushed commits",
                     source: ItemSource(host: "devbox", agent: "cron:cleanup"), createdAt: Date())
             }),
+            ("6e-preview-question", { model in
+                // An agent's question arriving: the question and its first choices.
+                model.previewItem = model.needsItems.first { $0.question != nil }
+            }),
+            ("6f-question-compact", { model in
+                // Card text "First lines": the question card says "Asks: … · N choices".
+                model.previewItem = nil
+                model.settings.ui.cardBodies = .preview
+                model.expand(byUser: true, focusing: model.needsItems.first { $0.question != nil }?.id)
+            }),
+            ("6g-question-all", { model in
+                // Clicking the summary shows every question and choice.
+                if let item = model.needsItems.first(where: { $0.question != nil }) { model.toggleCardExpanded(item) }
+            }),
+            ("6h-question-picked", { model in
+                // An answerable question: options are buttons; picks wait for Send.
+                guard let item = model.needsItems.first(where: { $0.question?.answerable == true }),
+                      let q = item.question else { return }
+                model.settings.ui.cardBodies = .full  // every option shown, as by default
+                model.scrollTarget = item.id  // the whole card, Send included, in view
+                for (i, qi) in q.items.enumerated() {
+                    if let label = qi.options.first?.label { model.pickOption(item, question: i, label: label) }
+                    if qi.multiSelect, qi.options.count > 1 { model.pickOption(item, question: i, label: qi.options[1].label) }
+                }
+            }),
+            ("6i-question-answered", { model in
+                // Send: the demo feed takes it like a hub, and the card shows the answer.
+                if let item = model.needsItems.first(where: { $0.question?.answerable == true }) {
+                    model.sendPickedAnswer(item)
+                    model.scrollTarget = item.id
+                }
+            }),
             ("7-summary", { [weak self] model in
+                model.settings.ui.cardBodies = .full
                 model.collapse()
                 model.previewItem = nil
                 self?.phase3?.showSummaryNow()

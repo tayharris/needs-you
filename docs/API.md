@@ -59,10 +59,11 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 403 | `forbidden` | Valid token, wrong role for the endpoint |
   | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
   | 409 | `self` | A hub tried to replicate to itself (replication only) |
+  | 409 | `not_open`, `not_answerable`, `question_expired`, `question_changed`, `already_answered` | An answer that can't be taken ([answers](#post-v1itemsidanswer-reader)) |
   | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
-  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default) |
+  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), or too many answers from one token (30 a minute by default) |
   | 500 | `internal` | Bug; details are in the hub's log |
 
 - Unknown JSON fields in requests are ignored, so newer clients can send extra fields.
@@ -86,6 +87,9 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
     {"text": "Re-run the push", "done": false}
   ],
   "question": null,                          // what an agent asked and the choices it offered; null when none
+  "answer": null,                            // the person's answer to `question`: [{"selected": ["Postgres"]}], or null
+  "answered_at": null,                       // when it was answered
+  "answered_by": null,                       // the name of the token that answered (a person's Mac)
   "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
@@ -249,7 +253,10 @@ the Mac app keeps the person's ticks locally (it offers Done once every step is 
 
 **Question** ([ADR 0009](adr/0009-questions-on-cards.md)) is what an agent asked the person
 and the choices it offered, so a client can show them as choices rather than as a checklist.
-It is read-only: the person answers in the agent (an answer path is planned, not built).
+By default it is read-only: the person answers in the agent. With `"answerable": true` the
+sender is waiting for an answer from a client too: the person's Mac posts the options they
+click ([`POST /v1/items/{id}/answer`](#post-v1itemsidanswer-reader)) and the sender reads them
+back ([`GET /v1/items/answer`](#get-v1itemsanswerkeykey-sender)).
 
 ```jsonc
 "question": {
@@ -261,7 +268,9 @@ It is read-only: the person answers in the agent (an answer path is planned, not
       {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
     ],
     "multi_select": false         // true: the agent takes several options
-  }]
+  }],
+  "answerable": false,            // optional: true when the sender waits for an answer (every item needs options)
+  "expires_at": "2026-10-08T17:04:05.000Z"  // optional: the sender stops waiting then; no answer is taken after it
 }
 ```
 
@@ -269,8 +278,13 @@ Text follows the same rules as every field (trimmed, no control or bidi characte
 `text` may hold newlines). Unknown fields are ignored. Errors name the part, for example
 `question.items[1].options[0].label`. The hub returns it normalised: `header` and
 `description` as `""` when left out, `options` as `[]`, `multi_select` as a boolean, `id` only
-when given; an item without one has `"question": null`. Senders keep the question's text in
-`body` as well, for clients and views that don't show the field.
+when given, `answerable` as a boolean, `expires_at` only when given (in the hub's timestamp
+form); an item without one has `"question": null`. An answerable question with an item that has
+no options is refused (`400`, `question.answerable`): only offered labels can be answered.
+Senders keep the question's text in `body` as well, for clients and views that don't show the
+field. A re-post that changes the question (any part of it), or a re-post by a different
+token, clears the item's `answer`: an answer is only ever read back by the token that asked.
+An unchanged re-post by the same token keeps it.
 
 Semantics:
 
@@ -321,6 +335,63 @@ Body: any of
 
 At least one is required. Moves `updated_at`, never `content_updated_at`. Returns `200` with
 the item, or `404` for an unknown id. Patching an already-closed item is allowed.
+
+### `POST /v1/items/{id}/answer` (reader)
+
+The person's answer to the item's `question`, from an explicit click on one of its options
+(reader or owner token; sender tokens get `403`, so one agent machine can't answer another
+agent's question).
+
+```json
+{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
+ "answers": [{"selected": ["Postgres"]}, {"selected": ["Auth", "Export"]}]}
+```
+
+- `question_id`: the question's `id` as the client saw it (`null` or absent when it has none).
+- `content_updated_at`: the item's `content_updated_at` as the client saw it.
+- `answers`: one entry per question item, in order. `selected` holds labels from that item's
+  `options`, exactly as given, no repeats: exactly one for a single-choice item, at least one
+  for `multi_select`. There is no free text.
+
+A `question_id` that isn't a string or `null`, or a `content_updated_at` that isn't a
+timestamp, is `400 invalid`. Then the hub takes the answer only if, in this order: the item exists (`404 not_found`), is open
+and unexpired (`409 not_open`), has a question with `answerable: true` (`409 not_answerable`)
+whose `expires_at` hasn't passed (`409 question_expired`), `question_id` and
+`content_updated_at` match the item's (`409 question_changed`: the question changed under the
+person), and it has no answer yet (`409 already_answered`: the first answer wins). Then
+`answers` is checked (`400 invalid`, with `field` such as `answers[0].selected[1]`). A token
+may send at most 30 answer requests a minute (`answer_rate_limit` per
+`answer_rate_window_seconds`, see [HUB.md](HUB.md)); past that, `429 rate_limited`.
+
+On success the item's `answer`, `answered_at` and `answered_by` (the token's name) are set,
+`updated_at` moves (`content_updated_at` doesn't) and the item replicates like any write. The
+item stays open: the sender resolves it once it has acted on the answer. Returns `200` with the
+item.
+
+### `GET /v1/items/answer?key=<key>` (sender)
+
+How a sender reads back the answer to its own question: only the token that posted the item
+(its last re-post) may read it; for any other token, or no item with that key, the hub says
+`404 not_found`. A sender still can't read anything else of the inbox. The item is the open
+item with that key, else the last one updated.
+
+- `wait`: seconds to hold the request while there is no answer (a long poll), `0` to `25`,
+  default `25`.
+
+A token may read at most 120 times a minute (`answer_read_rate_limit`) and hold at most 4
+long polls at once (`answer_waits_per_token`); past either, `429 rate_limited` at once. A
+waiting request is not kept when the hub runs out of connections (it gives way like any
+request older than `request_read_seconds`), so long polls can't starve the hub.
+
+| Status | Body | When |
+|---|---|---|
+| `200` | `{"id", "key", "status", "question_id", "answers", "answered_at", "answered_by"}` | The item has an answer (also after it was resolved) |
+| `204` | none | No answer yet when `wait` ran out: ask again |
+| `404` | `not_found` | No such item for this token (yet: a post still in the sender's outbox) |
+| `409` | `not_open`, `not_answerable`, `question_expired` | No answer will come: the item closed, has no answerable question, or the question expired |
+
+`answers` has the shape posted to `POST /v1/items/{id}/answer`. `needs-you answer-wait` wraps
+this (see the [agent guide](AGENT-GUIDE.md)).
 
 ### `GET /v1/items` (reader)
 
@@ -651,7 +722,12 @@ from a hub that predates steps: the receiver keeps its own steps for that id whe
 hub), and otherwise stores none. An empty array clears them. Older hubs ignore the field, so
 their own copies have no steps. `question` works the same way: carried as the object (or
 `null`), kept when a record without the key has the receiver's `content_updated_at`. A
-replicated question this hub would refuse on POST is dropped (the item stays). Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
+replicated question this hub would refuse on POST is dropped (the item stays). `answer`,
+`answered_at` and `answered_by` work the same way (a record without an `answer` key keeps the
+receiver's answer when `content_updated_at` matches). A replicated answer is kept only if
+this hub would have taken it: the record's question is answerable and the answer names
+offered labels, one entry per question, one label for a single choice. Otherwise it is
+dropped with its `answered_at` and `answered_by` (the item stays). Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
 token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ### Push: `POST /v1/replicate`
@@ -729,7 +805,7 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
    - the **lowest id wins** (ULIDs start with the creation time, so the earliest-minted item
      survives);
    - the winner takes the **freshest content**: the `title`, `body`, `priority`, `context`,
-     `kind`, `links`, `steps`, `question`, `source`, `expires_at` and `content_updated_at` of whichever record has the
+     `kind`, `links`, `steps`, `question` (with its `answer`, `answered_at` and `answered_by`), `source`, `expires_at` and `content_updated_at` of whichever record has the
      greatest `(content_updated_at, updated_at, updated_by)`; `created_at` becomes the earliest,
      `seen_at` the latest;
    - every loser becomes `status: "resolved"` with `superseded_by: <winner id>`;
@@ -753,6 +829,9 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
   resolve land on the same hub.
 - A resolve on one hub concurrent with a re-post on another is decided by LWW: the later write
   wins.
+- First answer wins on each hub. Two clicks on different hubs within the replication delay can
+  both be taken; LWW then keeps the later one on every hub, and a sender that read the earlier
+  one has already acted on it.
 - Closed items are purged after `retention_days`. A hub that was offline for longer than that
   can still hold (and push) open versions of items the others resolved and purged; wipe such a
   hub's database before bringing it back (see HUB.md).

@@ -116,6 +116,8 @@ MAX_QUESTION_OPTIONS = 8
 MAX_OPTION_LABEL = 80
 MAX_OPTION_DESCRIPTION = 200
 MAX_SOURCE_FIELD = 100
+# GET /v1/items/answer holds a request at most this long while there is no answer.
+ANSWER_WAIT_MAX_SECONDS = 25.0
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
 PUSH_MAX_BYTES = MAX_REPLICATE_BYTES // 2  # a push batch stays well under the peer's limit
@@ -555,6 +557,68 @@ def validate_question(question: Any) -> Optional[Dict[str, Any]]:
             raise _invalid(path + ".multi_select", "%s.multi_select must be true or false" % path)
         rec["multi_select"] = multi
         out["items"].append(rec)
+    answerable = question.get("answerable")
+    if answerable is None:
+        answerable = False
+    elif not isinstance(answerable, bool):
+        raise _invalid("question.answerable", "question.answerable must be true or false")
+    if answerable and any(not it["options"] for it in out["items"]):
+        raise _invalid("question.answerable",
+                       "an answerable question needs options for every item (no free-text answers)")
+    out["answerable"] = answerable
+    if question.get("expires_at") is not None:
+        try:
+            out["expires_at"] = fmt_ts(parse_ts(question["expires_at"]))
+        except ValueError:
+            raise _invalid("question.expires_at", "question.expires_at must be an ISO 8601 timestamp")
+    return out
+
+
+def validate_answers(data: Any, question: Dict[str, Any]) -> List[Dict[str, List[str]]]:
+    """The `answers` of POST /v1/items/{id}/answer against the item's question: one
+    {"selected": [labels]} per question item, labels among its options, exactly one for a
+    single-choice item, at least one (no repeats) for multi_select. No free text."""
+    items = question.get("items") or []
+    if not isinstance(data, list) or len(data) != len(items):
+        raise _invalid("answers", "answers must be a list with one entry per question (%d)" % len(items))
+    out = []
+    for i, (ans, item) in enumerate(zip(data, items)):
+        path = "answers[%d]" % i
+        if not isinstance(ans, dict) or not isinstance(ans.get("selected"), list):
+            raise _invalid(path, '%s must be {"selected": [labels]}' % path)
+        sel = ans["selected"]
+        labels = [o["label"] for o in item.get("options") or []]
+        if not sel:
+            raise _invalid(path + ".selected", "%s.selected must name at least one option" % path)
+        if not item.get("multi_select") and len(sel) != 1:
+            raise _invalid(path + ".selected", "%s.selected must name exactly one option" % path)
+        seen: List[str] = []
+        for j, label in enumerate(sel):
+            where = "%s.selected[%d]" % (path, j)
+            if not isinstance(label, str) or label not in labels:
+                raise _invalid(where, "%s is not one of the options" % where)
+            if label in seen:
+                raise _invalid(where, "%s is repeated" % where)
+            seen.append(label)
+        out.append({"selected": seen})
+    return out
+
+
+def _peer_answer(raw: Any) -> Optional[List[Dict[str, List[str]]]]:
+    """A replicated `answer` (its shape and sizes; it was checked against the question where
+    it was taken), or None for anything else."""
+    if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_QUESTION_ITEMS:
+        return None
+    out = []
+    for ans in raw:
+        sel = ans.get("selected") if isinstance(ans, dict) else None
+        if not isinstance(sel, list) or not 1 <= len(sel) <= MAX_QUESTION_OPTIONS:
+            return None
+        for x in sel:
+            if (not isinstance(x, str) or not 0 < len(x) <= MAX_OPTION_LABEL
+                    or re.search(r"[\x00-\x1f\x7f]", x) or _SPOOF_RE.search(x)):
+                return None
+        out.append({"selected": list(sel)})
     return out
 
 
@@ -631,6 +695,10 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     cfg.setdefault("vacuum_hours", 24.0)
     cfg.setdefault("redeem_fail_limit", 10)
     cfg.setdefault("redeem_fail_window_seconds", 600.0)
+    cfg.setdefault("answer_rate_limit", 30)
+    cfg.setdefault("answer_rate_window_seconds", 60.0)
+    cfg.setdefault("answer_read_rate_limit", 120)
+    cfg.setdefault("answer_waits_per_token", 4)
     cfg.setdefault("owner_token_file", None)
     cfg.setdefault("owner_token_name", DEFAULT_OWNER_TOKEN_NAME)
     cfg.setdefault("parent_pid", None)
@@ -882,11 +950,18 @@ CREATE TABLE IF NOT EXISTS quarantine (
     """
 ALTER TABLE items ADD COLUMN question TEXT;
 """,
+    # 8: the person's answer to it (ADR 0009 B2): JSON, when, and the answering token's name
+    """
+ALTER TABLE items ADD COLUMN answer TEXT;
+ALTER TABLE items ADD COLUMN answered_at INTEGER;
+ALTER TABLE items ADD COLUMN answered_by TEXT;
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
 
-ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "steps", "question", "source",
+ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "steps", "question",
+             "answer", "answered_at", "answered_by", "source",
              "status", "created_at", "updated_at", "content_updated_at", "seen_at", "expires_at",
              "token_id", "origin_hub", "updated_by", "superseded_by", "seq", "local_at")
 TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked_at",
@@ -1137,6 +1212,7 @@ class Store:
                            or cur["priority"] != fields["priority"]
                            or _json_val(cur.get("steps"), []) != fields["steps"]
                            or _json_val(cur.get("question"), None) != fields["question"])
+                question_changed = _json_val(cur.get("question"), None) != fields["question"]
                 updated = self.bump(cur["updated_at"])
                 rec = dict(cur)
                 rec.update({
@@ -1149,6 +1225,11 @@ class Store:
                 })
                 if changed:
                     rec["content_updated_at"] = updated
+                # An answer belongs to the question it answered, and to the token that asked
+                # it: only that token reads it back (GET /v1/items/answer), so a re-post by any
+                # other token (which becomes the item's token) never inherits it.
+                if question_changed or (token is not None and token["id"] != cur["token_id"]):
+                    rec.update({"answer": None, "answered_at": None, "answered_by": None})
                 self._write_item(rec)
                 self.enqueue("item", rec["id"])
                 return rec, False, changed
@@ -1210,6 +1291,50 @@ class Store:
             self._write_item(rec)
             self.enqueue("item", rec["id"])
             return rec
+
+    def answer(self, item_id: str, question_id: Any, content_updated_at: int, answers: Any,
+               token_name: str) -> Dict[str, Any]:
+        """POST /v1/items/{id}/answer: take the person's answer, if the item can take one
+        (docs/API.md: 404, then each 409 in order, then the labels). First answer wins."""
+        with self.tx():
+            row = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+            if not row:
+                raise ApiError(404, "not_found", "no item with that id")
+            rec = dict(row)
+            now = self.now_ms()
+            if rec["status"] != "open" or (rec["expires_at"] is not None and rec["expires_at"] <= now):
+                raise ApiError(409, "not_open", "the item is closed")
+            question = _json_val(rec.get("question"), None)
+            if not question or question.get("answerable") is not True:
+                raise ApiError(409, "not_answerable", "the item has no question waiting for an answer")
+            if question.get("expires_at") and parse_ts(question["expires_at"]) <= now:
+                raise ApiError(409, "question_expired", "the sender stopped waiting for an answer")
+            if ((question.get("id") or "") != (question_id or "")
+                    or rec["content_updated_at"] != content_updated_at):
+                raise ApiError(409, "question_changed", "the question changed since it was shown")
+            if rec.get("answer"):
+                raise ApiError(409, "already_answered", "the question was already answered")
+            checked = validate_answers(answers, question)
+            stamp = self.bump(rec["updated_at"])
+            rec.update({"answer": json.dumps(checked), "answered_at": now, "answered_by": token_name,
+                        "updated_at": stamp, "updated_by": self.hub_id})
+            self._write_item(rec)
+            self.enqueue("item", rec["id"])
+            return rec
+
+    def answer_for(self, key: str, token_id: str) -> Optional[Dict[str, Any]]:
+        """GET /v1/items/answer: the open item with this key, else the last one updated, when
+        `token_id` posted it (its last re-post); None otherwise."""
+        with self.lock:
+            now = self.now_ms()
+            rows = self._effective_open(key, now)
+            if not rows:
+                row = self.conn.execute("SELECT * FROM items WHERE key = ? ORDER BY updated_at DESC, id DESC "
+                                        "LIMIT 1", (key,)).fetchone()
+                rows = [dict(row)] if row else []
+        if not rows or not token_id or rows[0].get("token_id") != token_id:
+            return None
+        return rows[0]
 
     def list_items(self, status: str, since: Optional[int], limit: int,
                    cursor: Optional["ListCursor"] = None
@@ -1326,6 +1451,7 @@ class Store:
         """Last-writer-wins apply of a replicated item record. Returns True if it changed local state."""
         knows_steps = isinstance(rec, dict) and "steps" in rec
         knows_question = isinstance(rec, dict) and "question" in rec
+        knows_answer = isinstance(rec, dict) and "answer" in rec
         rec = normalise_item_record(rec)
         if self.past_retention(rec):
             return False  # we purge these; applying would resurrect a purged item
@@ -1342,6 +1468,10 @@ class Store:
             if (not knows_question and row is not None
                     and row["content_updated_at"] == rec["content_updated_at"]):
                 rec["question"] = row["question"]  # the same, from a hub older than `question`
+            if (not knows_answer and row is not None
+                    and row["content_updated_at"] == rec["content_updated_at"]):
+                for c in ("answer", "answered_at", "answered_by"):  # from a hub older than answers
+                    rec[c] = row[c]
             self._write_item(rec)
             now = self.now_ms()
             if rec["status"] == "open" and (rec["expires_at"] is None or rec["expires_at"] > now):
@@ -1352,7 +1482,8 @@ class Store:
             self._settle_content(rec["superseded_by"] or rec["id"])
             return True
 
-    CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "question", "source",
+    CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "question",
+                    "answer", "answered_at", "answered_by", "source",
                     "expires_at",
                     "token_id", "content_updated_at")
 
@@ -2133,6 +2264,23 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
             out["question"] = _question_col(validate_question(rec.get("question")))
         except ApiError:
             out["question"] = None
+        # The answer goes with its question: only to an answerable question, and only one this
+        # hub would have taken (offered labels, one per question); else none.
+        answer = _peer_answer(rec.get("answer")) if out["question"] else None
+        if answer is not None:
+            q = json.loads(out["question"])
+            try:
+                answer = validate_answers(answer, q) if q.get("answerable") is True else None
+            except ApiError:
+                answer = None
+        out["answer"] = json.dumps(answer) if answer else None
+        try:
+            out["answered_at"] = parse_ts(rec["answered_at"]) if answer and rec.get("answered_at") is not None else None
+        except ValueError:
+            out["answered_at"] = None
+        by = rec.get("answered_by")
+        out["answered_by"] = (by if answer and isinstance(by, str) and 0 < len(by) <= MAX_SOURCE_FIELD
+                              and not re.search(r"[\x00-\x1f\x7f]", by) and not _SPOOF_RE.search(by) else None)
         source = rec.get("source") or {}
         if not isinstance(source, dict):
             raise ValueError("source")
@@ -2249,6 +2397,9 @@ def item_public(rec: Dict[str, Any], now_ms: int) -> Dict[str, Any]:
         "links": json.loads(links) if isinstance(links, str) else links,
         "steps": _json_val(rec.get("steps"), []),
         "question": _json_val(rec.get("question"), None),
+        "answer": _json_val(rec.get("answer"), None),
+        "answered_at": fmt_ts(rec.get("answered_at")),
+        "answered_by": rec.get("answered_by"),
         "source": json.loads(source) if isinstance(source, str) else source,
         "status": status,
         "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"]),
@@ -2653,6 +2804,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._list(query)
             if path == "/v1/items/resolve" and method == "POST":
                 return self._resolve()
+            if path == "/v1/items/answer" and method == "GET":
+                return self._read_answer(query)
+            if path.startswith("/v1/items/") and path.endswith("/answer") and method == "POST":
+                item_id = urllib.parse.unquote(path[len("/v1/items/"):-len("/answer")])
+                if "/" not in item_id and item_id:
+                    return self._answer(item_id)
             if path.startswith("/v1/items/") and method in ("PATCH", "GET"):
                 item_id = urllib.parse.unquote(path[len("/v1/items/"):])
                 if "/" not in item_id and item_id:
@@ -2943,6 +3100,78 @@ class Handler(BaseHTTPRequestHandler):
         self.hub.notify()
         self._send(200, item_public(rec, self.hub.store.now_ms()))
 
+    def _answer(self, item_id: str) -> None:
+        tok = self._auth("reader")
+        if self.hub.answer_limiter.blocked(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many answers from this token; try again in a minute")
+        self.hub.answer_limiter.fail(tok["id"])
+        data = self._body()
+        if not isinstance(data, dict):
+            raise ApiError(400, "invalid", "body must be a JSON object")
+        qid = data.get("question_id")
+        if qid is not None and not isinstance(qid, str):
+            raise _invalid("question_id", "question_id must be a string or null")
+        try:
+            seen = parse_ts(data.get("content_updated_at"))
+        except ValueError:
+            raise _invalid("content_updated_at", "content_updated_at must be the item's timestamp as shown")
+        rec = self.hub.store.answer(item_id, qid, seen, data.get("answers"), tok["name"])
+        self.hub.notify()
+        self._send(200, item_public(rec, self.hub.store.now_ms()))
+
+    def _read_answer(self, query: Dict[str, List[str]]) -> None:
+        tok = self._auth("sender")
+        if self.hub.answer_read_limiter.blocked(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many answer reads from this token; try again in a minute")
+        self.hub.answer_read_limiter.fail(tok["id"])
+        key = ((query.get("key") or [""])[0] or "").strip()
+        if not key:
+            raise _invalid("key", "key is required")
+        try:
+            wait = float((query.get("wait") or ["25"])[0] or 25)
+            if wait != wait:
+                raise ValueError(wait)
+        except ValueError:
+            raise _invalid("wait", "wait must be a number of seconds")
+        deadline = time.monotonic() + max(0.0, min(ANSWER_WAIT_MAX_SECONDS, wait))
+        # A long poll holds a thread and a connection slot: at most `answer_waits_per_token`
+        # at once per token (a waiting connection still gives way when the hub is full).
+        if not self.hub.answer_waits.enter(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many answer waits open for this token")
+        try:
+            self._answer_loop(key, tok, deadline)
+        finally:
+            self.hub.answer_waits.leave(tok["id"])
+
+    def _answer_loop(self, key: str, tok: Dict[str, Any], deadline: float) -> None:
+        while True:
+            rec = self.hub.store.answer_for(key, tok["id"])
+            if rec is None:
+                raise ApiError(404, "not_found", "no item with that key from this token")
+            now = self.hub.store.now_ms()
+            if rec.get("answer"):
+                question = _json_val(rec.get("question"), None) or {}
+                return self._send(200, {
+                    "id": rec["id"], "key": rec["key"], "status": item_public(rec, now)["status"],
+                    "question_id": question.get("id"), "answers": _json_val(rec["answer"], []),
+                    "answered_at": fmt_ts(rec.get("answered_at")), "answered_by": rec.get("answered_by")})
+            question = _json_val(rec.get("question"), None)
+            if rec["status"] != "open" or (rec["expires_at"] is not None and rec["expires_at"] <= now):
+                raise ApiError(409, "not_open", "the item closed without an answer")
+            if not question or question.get("answerable") is not True:
+                raise ApiError(409, "not_answerable", "the item has no question waiting for an answer")
+            if question.get("expires_at") and parse_ts(question["expires_at"]) <= now:
+                raise ApiError(409, "question_expired", "the question expired without an answer")
+            left = deadline - time.monotonic()
+            if left <= 0 or self.hub.stopping.is_set():
+                self.send_response(204)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            with self.hub.changed:
+                self.hub.changed.wait(min(left, 5.0))
+
     def _get_one(self, item_id: str) -> None:
         self._auth("reader")
         rec = self.hub.store.get_item(item_id)
@@ -3166,7 +3395,8 @@ class _Server(ThreadingHTTPServer):
 
 
 class RateLimiter:
-    """Failed invite attempts per client IP in a sliding window (in memory)."""
+    """Attempts per client (failed invite redeems per IP, answers per token) in a sliding
+    window (in memory)."""
 
     def __init__(self, limit: int, window: float) -> None:
         self.limit = int(limit)
@@ -3197,6 +3427,30 @@ class RateLimiter:
                     del self.fails[k]
 
 
+class WaitCounter:
+    """Long polls open at once, per token (GET /v1/items/answer)."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = max(1, int(limit))
+        self.open: Dict[str, int] = {}
+        self.lock = threading.Lock()
+
+    def enter(self, key: str) -> bool:
+        with self.lock:
+            if self.open.get(key, 0) >= self.limit:
+                return False
+            self.open[key] = self.open.get(key, 0) + 1
+            return True
+
+    def leave(self, key: str) -> None:
+        with self.lock:
+            n = self.open.get(key, 0) - 1
+            if n > 0:
+                self.open[key] = n
+            else:
+                self.open.pop(key, None)
+
+
 class Hub:
     def __init__(self, cfg: Dict[str, Any], clock: Callable[[], float] = time.time) -> None:
         check_bind(cfg)
@@ -3209,6 +3463,12 @@ class Hub:
         self.changed = threading.Condition()
         self.workers: Dict[str, PeerWorker] = {}
         self.limiter = RateLimiter(int(cfg["redeem_fail_limit"]), float(cfg["redeem_fail_window_seconds"]))
+        # Answers per token (POST /v1/items/{id}/answer), every attempt counted; the same
+        # for reads of an answer (GET /v1/items/answer), and their long polls open at once.
+        self.answer_limiter = RateLimiter(int(cfg["answer_rate_limit"]), float(cfg["answer_rate_window_seconds"]))
+        self.answer_read_limiter = RateLimiter(int(cfg["answer_read_rate_limit"]),
+                                               float(cfg["answer_rate_window_seconds"]))
+        self.answer_waits = WaitCounter(int(cfg["answer_waits_per_token"]))
         self._drop_stale_outbox()
         if cfg.get("owner_token_file"):
             self._provision_owner_token(str(cfg["owner_token_file"]))

@@ -242,7 +242,7 @@ final class DemoFeedTests: XCTestCase {
         var store = ItemStore()
         let all = try await feed.fetchOpen(since: nil)
         store.merge(all, isFullSnapshot: true, now: now)
-        XCTAssertEqual(store.needsCount(in: .work, now: now), 3)
+        XCTAssertEqual(store.needsCount(in: .work, now: now), 5)
         XCTAssertEqual(store.needsCount(in: .personal, now: now), 1)
 
         let injected = await feed.injectNext(now: now.addingTimeInterval(1))

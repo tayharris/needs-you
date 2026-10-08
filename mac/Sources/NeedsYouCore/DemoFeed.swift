@@ -32,6 +32,28 @@ public actor DemoFeed: ItemFeed {
         items[id] = item
     }
 
+    /// The hub's answer rules (docs/API.md), so the demo's question cards can be answered.
+    public func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome {
+        guard var item = items[id] else { return .refused(code: "not_found") }
+        guard item.status == .open else { return .refused(code: "not_open") }
+        guard let q = item.question, q.answerable else { return .refused(code: "not_answerable") }
+        if let exp = q.expiresAt, exp <= Date() { return .refused(code: "question_expired") }
+        guard q.id == answer.questionID else { return .refused(code: "question_changed") }
+        guard item.answer == nil else { return .refused(code: "already_answered") }
+        guard answer.answers.count == q.items.count else { return .refused(code: "invalid") }
+        for (a, qi) in zip(answer.answers, q.items) {
+            let labels = Set(qi.options.map(\.label))
+            guard !a.selected.isEmpty, a.selected.allSatisfy(labels.contains),
+                  qi.multiSelect || a.selected.count == 1 else { return .refused(code: "invalid") }
+        }
+        item.answer = answer.answers
+        item.answeredAt = Date()
+        item.answeredBy = "demo"
+        item.updatedAt = Date()
+        items[id] = item
+        return .taken
+    }
+
     /// Simulate a sender: mostly new items, sometimes an upsert on an existing key, and
     /// every so often an urgent one (to exercise snooze breakthrough).
     @discardableResult
@@ -108,7 +130,8 @@ public actor DemoFeed: ItemFeed {
     ]
 
     /// The seed set. Covers every kind, priority and context, an allowed and a disallowed
-    /// link, and a body using the full limited-markdown feature set.
+    /// link, a body using the full limited-markdown feature set, steps, and an agent's
+    /// question with its choices.
     public static func fixture(now: Date = Date()) -> [Item] {
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
         return [
@@ -162,6 +185,42 @@ public actor DemoFeed: ItemFeed {
                 ],
                 source: ItemSource(host: "photos", agent: "cron:backup"),
                 createdAt: ago(300)
+            ),
+            Item(
+                id: "01DEMO00000000000000000007", key: "claude-code:devbox:acme-web", context: .work,
+                kind: .needs, priority: .normal,
+                title: "Claude asks \u{201C}Which database should the service use?\u{201D} and 1 more: acme-web",
+                body: "**Database** · choose one\nWhich database should the service use?\n- Postgres — Mature, already used by the team.\n- SQLite — Zero ops, single file.\n\n"
+                    + "**Extras** · choose any\nWhich extras should it ship with?\n- Metrics\n- Tracing — OpenTelemetry\n\nAnswer in Claude.\n\nFolder: `~/src/acme-web`",
+                links: [ItemLink(label: "VS Code", url: "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-web")],
+                question: ItemQuestion(id: "toolu_demo", items: [
+                    ItemQuestionItem(header: "Database", text: "Which database should the service use?", options: [
+                        ItemQuestionOption(label: "Postgres (Recommended)", detail: "Mature, already used by the team."),
+                        ItemQuestionOption(label: "SQLite", detail: "Zero ops, single file."),
+                        ItemQuestionOption(label: "DynamoDB", detail: "Managed, but a new dependency."),
+                    ]),
+                    ItemQuestionItem(header: "Extras", text: "Which extras should it ship with?", options: [
+                        ItemQuestionOption(label: "Metrics"),
+                        ItemQuestionOption(label: "Tracing", detail: "OpenTelemetry"),
+                    ], multiSelect: true),
+                ]),
+                source: ItemSource(host: "devbox", agent: "claude-code", project: "acme-web"),
+                createdAt: ago(3)
+            ),
+            // opencode waits for an answer from the card (ADR 0009 B2): its options are buttons.
+            Item(
+                id: "01DEMO00000000000000000008", key: "agent:devbox:ses_demo", context: .work,
+                kind: .needs, priority: .normal,
+                title: "opencode asks \u{201C}Which branch should the release come from?\u{201D}: acme-api",
+                body: "**Branch** · choose one\nWhich branch should the release come from?\n- main — Everything merged today\n- release/1.4 — Only the fixes\n\nPick here or answer in opencode.",
+                question: ItemQuestion(id: "que_demo", items: [
+                    ItemQuestionItem(header: "Branch", text: "Which branch should the release come from?", options: [
+                        ItemQuestionOption(label: "main", detail: "Everything merged today"),
+                        ItemQuestionOption(label: "release/1.4", detail: "Only the fixes"),
+                    ]),
+                ], answerable: true),
+                source: ItemSource(host: "devbox", agent: "opencode", project: "acme-api"),
+                createdAt: ago(2), contentUpdatedAtRaw: HubJSON.formatDate(ago(2))
             ),
             Item(
                 id: "01DEMO00000000000000000005", key: "acme:redo-fixer:run", context: .work,

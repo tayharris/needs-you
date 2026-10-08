@@ -315,7 +315,8 @@ final class PanelController {
             let lines = PreviewLayout.titleLines(wrappedHeight: wrapped,
                                                  lineHeight: NSLayoutManager().defaultLineHeight(for: font))
             return CGSize(width: m.previewWidth,
-                          height: PreviewLayout.height(m, titleLines: lines, hasLink: PreviewLink.primary(item) != nil))
+                          height: PreviewLayout.height(m, titleLines: lines, hasLink: PreviewLink.primary(item) != nil,
+                                                      questionRows: QuestionDisplay.previewRows(item)))
         case .digest:
             return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:

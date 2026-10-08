@@ -1,6 +1,6 @@
 # 0009. Questions and choices on cards
 
-- Status: Accepted (2026-10-08): phases A and B1–B2; B3 after a live check
+- Status: Accepted (2026-10-08): phases A and B1–B2 (built); B3 (Claude Code) still waits on a live check
 - Date: 2026-10-08
 
 ## Context
@@ -146,9 +146,17 @@ field.
 - **B2:** `POST /v1/items/{id}/answer`, `GET /v1/items/answer` (poster only, long-poll), CLI
   `needs-you answer-wait`, option buttons on the Mac, and the opencode plugin answering
   through `POST /question/{id}/reply`. opencode is the only agent where an answer from the card
-  never competes with a blocked terminal.
+  never competes with a blocked terminal. Built on `tay/question-answers`. As built: PATCH has
+  no rate limit to copy, so answers have their own (30 a minute per token), and reads of an
+  answer too (120 a minute, at most 4 long polls open per token). A re-post by another token
+  clears the answer, so only the token that asked reads it. The opencode reply was checked
+  against opencode 1.18.35's source (the `question` HttpApi group: `POST
+  /question/:requestID/reply` with `{"answers": [[label, ...], ...]}`); the plugin sends it
+  through its own SDK client (in-process when opencode runs without a port). Not yet run
+  against a live opencode.
 - **B3:** Claude Code through `PermissionRequest`, only after a live capture shows its dialog
-  stays usable while the hook waits.
+  stays usable while the hook waits. **Pending:** that live check hasn't been done; Claude Code
+  question cards stay read-only.
 
 ## Consequences
 
