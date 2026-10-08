@@ -53,6 +53,30 @@ class HostCheck(HubTestCase):
                 st, body = self.get(host)
                 self.assertEqual(st, 200, body)
 
+    def test_a_rename_is_picked_up_on_a_miss(self):
+        # A Mac waking on another network renames itself (<name>.local changes) while the hub
+        # runs; it read its names once at start and answered the new name 421 until a restart.
+        calls = []
+
+        def renamed():
+            calls.append(1)
+            return "Renamed-Mac.example.lan"
+
+        with mock.patch.object(hubmod.socket, "gethostname", renamed):
+            st, _ = self.get("renamed-mac.local")
+            self.assertEqual(st, 421)  # just read at start: not again yet (rate-limited)
+            self.assertEqual(calls, [])
+            self.hub._host_names_read -= hubmod.HOST_NAMES_REREAD_SECONDS + 1
+            for host in ("renamed-mac.local", "renamed-mac", "Renamed-Mac.example.lan:8765"):
+                with self.subTest(host):
+                    st, body = self.get(host)
+                    self.assertEqual(st, 200, body)
+            self.assertEqual(len(calls), 1)
+            # a name that still isn't ours: 421, and no re-read for every such request
+            for _ in range(5):
+                self.assertEqual(self.get("evil.example")[0], 421)
+            self.assertEqual(len(calls), 1)
+
     def test_missing_host_passes(self):
         # HTTP/1.0 clients may leave it out; a browser always sends one.
         st, body = self.get(None)

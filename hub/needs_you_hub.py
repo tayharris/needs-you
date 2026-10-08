@@ -805,6 +805,10 @@ def _is_ip(name: str) -> bool:
         return False
 
 
+# How often a Host that isn't one of ours may make the hub read its own names again.
+HOST_NAMES_REREAD_SECONDS = 10.0
+
+
 def known_host_names(cfg: Dict[str, Any]) -> Tuple[set, set]:
     """(names, magic_labels): the DNS names this hub answers to, and the first labels for
     which any `<label>.<tailnet>.ts.net` MagicDNS name is accepted. IP literals are always
@@ -3918,6 +3922,8 @@ class Hub:
         self.server = self.servers[0]
         self.port = port
         self.host_names, self.magic_labels = known_host_names(cfg)
+        self._host_names_read = time.monotonic()
+        self._host_names_lock = threading.Lock()
         self.host_check = "*" not in (cfg.get("allowed_hosts") or [])
         self.threads: List[threading.Thread] = []
         self.thread: Optional[threading.Thread] = None
@@ -3966,6 +3972,19 @@ class Hub:
         name = host_header_name(value)
         if name is None:
             return None
+        if self._names_match(name):
+            return True
+        # This machine may have been renamed since the names were read (a Mac on another
+        # network gets another <name>.local): read them again, at most every few seconds.
+        with self._host_names_lock:
+            now = time.monotonic()
+            if now - self._host_names_read < HOST_NAMES_REREAD_SECONDS:
+                return False
+            self._host_names_read = now
+            self.host_names, self.magic_labels = known_host_names(self.cfg)
+        return self._names_match(name)
+
+    def _names_match(self, name: str) -> bool:
         if _is_ip(name) or name in self.host_names:
             return True
         return name.endswith(".ts.net") and name.split(".")[0] in self.magic_labels
