@@ -76,6 +76,8 @@ path, cmd, action, dry_run = sys.argv[1:5]
 dry_run = dry_run == "1"
 BEGIN = "# needs-you (managed by install-aider-notifications.sh; do not edit between these markers)"
 END = "# end needs-you"
+# In the block when the file's last line had no newline: the uninstall takes out the one added.
+NO_EOL = "# (the file had no newline at its end)"
 block = "%s\nnotifications: true\nnotifications-command: '%s'\n%s\n" % (BEGIN, cmd.replace("'", "''"), END)
 
 
@@ -99,19 +101,22 @@ if os.path.exists(path):
         by_hand("it can't be read as UTF-8 text")
 lines = text.splitlines(keepends=True)
 # Our block, start to end, wherever it is.
-out, inside, found = [], False, False
+out, inside, found, no_eol, at = [], False, False, False, 0
 for line in lines:
     s = line.rstrip("\r\n")
     if s == BEGIN:
-        inside, found = True, True
+        inside, found, at = True, True, len(out)
         continue
     if inside:
         if s == END:
             inside = False
+        no_eol = no_eol or s == NO_EOL
         continue
     out.append(line)
 if inside:
     by_hand("it has the needs-you start marker but no end marker")
+if no_eol and at == len(out) and out and out[-1].endswith("\n"):
+    out[-1] = out[-1][:-1]  # the newline the install added to the last line
 rest = "".join(out)
 if action == "install":
     meaningful = [l for l in rest.splitlines() if l.strip() and not l.lstrip().startswith("#")]
@@ -122,7 +127,10 @@ if action == "install":
         m = re.match(r"^(notifications|notifications-command)\s*:", l)
         if m:
             by_hand("it already sets %s" % m.group(1))
-    new = rest + ("" if not rest or rest.endswith("\n") else "\n") + block
+    if not rest or rest.endswith("\n"):
+        new = rest + block
+    else:
+        new = rest + "\n" + block.replace("\n", "\n" + NO_EOL + "\n", 1)
 else:
     new = rest
 if new == text or (action == "uninstall" and not found):

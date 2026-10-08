@@ -438,6 +438,7 @@ def _strip_hook_file(path: str, follow: bool, dry_run: bool, say: Any) -> Option
 # (integrations/kimi/install-kimi-hooks.sh, which edits it as text: no TOML parser in 3.9).
 KIMI_BLOCK_START = "# needs-you (managed by install-kimi-hooks.sh"
 KIMI_BLOCK_END = "# end needs-you"
+KIMI_NO_EOL = "# (the file had no newline at its end)"  # the install ended the last line
 
 
 def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
@@ -464,6 +465,9 @@ def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
                 return None
             if kept and kept[-1].strip() == "":
                 kept.pop()
+            if (j + 1 == len(lines) and kept and kept[-1].endswith("\n")
+                    and any(x.rstrip("\r\n") == KIMI_NO_EOL for x in lines[i:j])):
+                kept[-1] = kept[-1][:-1]
             found, i = True, j + 1
             continue
         kept.append(lines[i])
@@ -713,6 +717,7 @@ CLINE_EVENTS = ("TaskComplete", "TaskError", "UserPromptSubmit", "TaskCancel", "
                 "SessionShutdown")
 AIDER_BEGIN = "# needs-you (managed by install-aider-notifications.sh; do not edit between these markers)"
 AIDER_END = "# end needs-you"
+AIDER_NO_EOL = "# (the file had no newline at its end)"  # the install ended the last line
 
 
 def _cline_stub(path: str) -> bool:
@@ -744,13 +749,15 @@ def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
     except (OSError, UnicodeDecodeError) as e:
         warn("%s: can't read it (%s); nothing was changed" % (_tilde(path), e))
         return None
-    out, inside, found = [], False, False
+    out, inside, found, no_eol, at = [], False, False, False, 0
     for line in text.splitlines(keepends=True):
         s = line.rstrip("\r\n")
         if s == AIDER_BEGIN:
             inside = found = True
+            at = len(out)
         elif inside:
             inside = s != AIDER_END
+            no_eol = no_eol or s == AIDER_NO_EOL
         else:
             out.append(line)
     if not found:
@@ -758,6 +765,8 @@ def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
     if inside:
         warn("%s: the needs-you block has no end marker; remove it by hand" % _tilde(path))
         return None
+    if no_eol and at == len(out) and out and out[-1].endswith("\n"):
+        out[-1] = out[-1][:-1]  # the newline the install added to the last line
     if dry_run:
         say("would remove the needs-you lines from %s" % _tilde(path))
         return True

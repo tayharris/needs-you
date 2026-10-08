@@ -80,6 +80,7 @@ BLOCK = ("# needs-you (managed by install-aider-notifications.sh; do not edit be
          "notifications: true\n"
          "notifications-command: '\"$HOME/.config/needs-you/aider/hooks/needs-you-hook.sh\" notify aider'\n"
          "# end needs-you\n")
+NO_EOL = "# (the file had no newline at its end)"
 
 
 class Installer(unittest.TestCase):
@@ -115,11 +116,26 @@ class Installer(unittest.TestCase):
         mine = "# my settings\nmodel: gpt-4o\nauto-commits: false"  # no final newline
         with open(self.conf, "w") as fh:
             fh.write(mine)
-        r = self.run_installer()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.conf_text(), mine + "\n" + BLOCK)
+        flagged = BLOCK.replace("\n", "\n" + NO_EOL + "\n", 1)
+        for uninstall in ([BASH, INSTALLER, "--uninstall"], [sys.executable, CLI, "uninstall-hooks", "--aider"]):
+            with self.subTest(uninstall[1]):
+                with open(self.conf, "w") as fh:
+                    fh.write(mine)
+                r = self.run_installer()
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(self.conf_text(), mine + "\n" + flagged)
+                self.assertIn("already up to date", self.run_installer().stdout)
+                self.assertEqual(self.conf_text(), mine + "\n" + flagged)
+                r = subprocess.run(uninstall, env={"HOME": self.home, "PATH": os.environ["PATH"]},
+                                   capture_output=True, text=True, timeout=60, cwd=self.home)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.conf_text(), mine)  # no newline added for good
+        # something added after the block: its line break stays
+        self.run_installer()
+        with open(self.conf, "a") as fh:
+            fh.write("dark-mode: true\n")
         self.run_installer("--uninstall")
-        self.assertEqual(self.conf_text(), mine + "\n")
+        self.assertEqual(self.conf_text(), mine + "\ndark-mode: true\n")
 
     def test_an_empty_config_keeps_its_mode(self):
         open(self.conf, "w").close()

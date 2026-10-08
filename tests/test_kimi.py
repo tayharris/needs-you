@@ -409,10 +409,17 @@ class Installer(unittest.TestCase):
         self.assertEqual(self.text(), text)
         r = self.run_installer("--uninstall")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.text(), USER_CONFIG.rstrip("\n") + "\n")
+        self.assertEqual(self.text(), USER_CONFIG.rstrip("\n"))  # no newline added for good
         self.assertFalse(os.path.exists(self.hook))
         r = self.run_installer("--uninstall")
         self.assertIn("no needs-you block", r.stdout)
+        # the CLI's offline uninstall gives it back the same way
+        self.assertEqual(self.run_installer().returncode, 0)
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks", "--kimi"],
+                           env={"HOME": self.home, "PATH": os.environ["PATH"]},
+                           capture_output=True, text=True, timeout=60, cwd=self.home)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.text(), USER_CONFIG.rstrip("\n"))
 
     def test_fresh_home_and_kimi_code_home(self):
         r = self.run_installer()

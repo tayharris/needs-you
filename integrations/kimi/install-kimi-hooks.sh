@@ -98,6 +98,8 @@ action, conf, snippet, default_prefix, prefix, dry_run = sys.argv[1:7]
 dry_run = dry_run == "1"
 START = "# needs-you (managed by install-kimi-hooks.sh"
 END = "# end needs-you"
+# In the block when the file's last line had no newline: the uninstall takes out the one added.
+NO_EOL = "# (the file had no newline at its end)"
 
 
 def die(msg):
@@ -126,6 +128,9 @@ while i < len(lines):
                 "nothing was changed" % (conf, END))
         if kept and kept[-1].strip() == "":
             kept.pop()  # the blank line the installer put before the block
+        if (j + 1 == len(lines) and kept and kept[-1].endswith("\n")
+                and any(x.rstrip("\r\n") == NO_EOL for x in lines[i:j])):
+            kept[-1] = kept[-1][:-1]  # and the newline it added to the last line
         found, i = True, j + 1
         continue
     kept.append(lines[i])
@@ -167,6 +172,7 @@ else:
     new = rest
     if new and not new.endswith("\n"):
         new += "\n"
+        block = block.replace("\n", "\n" + NO_EOL + "\n", 1)
     new += ("\n" if new.strip() else "") + block
     if not new.strip():
         new = block
