@@ -125,6 +125,22 @@ public enum AppMovePlan {
         location == .translocated
     }
 
+    /// The NEEDS_YOU_* settings the relaunched copy gets (`open --env K=V`, visible in `ps`).
+    /// Only a test build (`testOverride`) forwards any, never a name that looks secret
+    /// (TOKEN, SECRET, CODE, KEY), and never the one-shot move trigger. Sorted by name.
+    public static func relaunchEnvironment(_ environment: [String: String], testOverride: Bool) -> [(String, String)] {
+        guard testOverride else { return [] }
+        let secretish = ["TOKEN", "SECRET", "CODE", "KEY"]
+        return environment
+            .filter { k, _ in
+                let upper = k.uppercased()
+                return k.hasPrefix("NEEDS_YOU_") && k != "NEEDS_YOU_MOVE_NOW"
+                    && !secretish.contains(where: { upper.contains($0) })
+            }
+            .sorted { $0.key < $1.key }
+            .map { ($0.key, $0.value) }
+    }
+
     /// The staging name next to the destination, so the final step is a rename on one volume.
     public static func stagingName(pid: Int32) -> String { ".\(appName).moving.\(pid)" }
 

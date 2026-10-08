@@ -15,7 +15,8 @@ final class AppLocationTests: XCTestCase {
         ("testExplanations", testExplanations),
         ("testDestination", testDestination),
         ("testOverrideOnlyForTestBuilds", testOverrideOnlyForTestBuilds),
-        ("testQuarantineKeptExceptWhenTranslocated", testQuarantineKeptExceptWhenTranslocated),
+        ("testRelaunchEnvironmentFilter", testRelaunchEnvironmentFilter),
+        ("testQuarantineKeptExceptWhenTranslocated",testQuarantineKeptExceptWhenTranslocated),
         ("testLoginItemLaunchAction", testLoginItemLaunchAction),
         ("testCopyKeepsQuarantineAndContents", testCopyKeepsQuarantineAndContents),
         ("testCopyClearsQuarantineWhenAsked", testCopyClearsQuarantineWhenAsked),
@@ -94,6 +95,20 @@ final class AppLocationTests: XCTestCase {
         XCTAssertEqual(AppMovePlan.destinationOverride(environment: env, bundleID: "app.needsyou.mac.movetest"), "/tmp/t/Apps")
         XCTAssertNil(AppMovePlan.destinationOverride(environment: ["NEEDS_YOU_MOVE_DEST": "relative"], bundleID: "x"))
         XCTAssertNil(AppMovePlan.destinationOverride(environment: [:], bundleID: "x"))
+    }
+
+    func testRelaunchEnvironmentFilter() {
+        let env = [
+            "NEEDS_YOU_SUPPORT_DIR": "/tmp/s", "NEEDS_YOU_HUB_PORT": "25000", "NEEDS_YOU_MOVE_DEST": "/tmp/a",
+            "NEEDS_YOU_MOVE_NOW": "1", "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_PEER_SECRET": "s",
+            "NEEDS_YOU_INVITE_CODE": "c", "NEEDS_YOU_API_KEY": "k", "NEEDS_YOU_owner_token": "t2",
+            "HOME": "/Users/sam", "GITHUB_TOKEN": "g",
+        ]
+        // The real app forwards nothing.
+        XCTAssertTrue(AppMovePlan.relaunchEnvironment(env, testOverride: false).isEmpty)
+        let forwarded = AppMovePlan.relaunchEnvironment(env, testOverride: true)
+        XCTAssertEqual(forwarded.map { $0.0 }, ["NEEDS_YOU_HUB_PORT", "NEEDS_YOU_MOVE_DEST", "NEEDS_YOU_SUPPORT_DIR"])
+        XCTAssertEqual(forwarded.map { $0.1 }, ["25000", "/tmp/a", "/tmp/s"])
     }
 
     func testQuarantineKeptExceptWhenTranslocated() {

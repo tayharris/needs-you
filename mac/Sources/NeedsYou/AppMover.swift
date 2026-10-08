@@ -100,11 +100,12 @@ final class AppMover: ObservableObject {
 
     /// Opens the new copy once this one has quit (so it isn't handed back to this running
     /// instance, and the hub's port is free), in the background like install.sh does, then
-    /// quits. A test copy's NEEDS_YOU_* settings go along, except the one-shot move trigger.
+    /// quits. The real app forwards no environment; a test copy forwards its non-secret
+    /// NEEDS_YOU_* settings (AppMovePlan.relaunchEnvironment: they're visible in `ps`).
     private func relaunch(_ app: URL) {
         var args = ["-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.2; done; shift; exec /usr/bin/open -g \"$@\"",
                     "needs-you-move", String(ProcessInfo.processInfo.processIdentifier)]
-        for (k, v) in environment where k.hasPrefix("NEEDS_YOU_") && k != "NEEDS_YOU_MOVE_NOW" {
+        for (k, v) in AppMovePlan.relaunchEnvironment(environment, testOverride: testOverride) {
             args += ["--env", "\(k)=\(v)"]
         }
         args.append(app.path)
