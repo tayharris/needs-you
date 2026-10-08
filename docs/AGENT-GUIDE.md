@@ -29,7 +29,8 @@ or `needs-you-admin invite create` on a server hub). It looks like
    Claude Code (add `--ssh-alias <name>` if the person reaches it from the Mac over SSH, with
    the name their `~/.ssh/config` uses), `--codex-hooks user` (plus `--alerts`) if it runs
    OpenAI Codex CLI, `--gemini-hooks user` (plus `--alerts`) if it runs Gemini CLI, `--opencode-plugin` (plus
-   `--alerts`) if it runs opencode, `--orca` if it runs Orca automations, `--context
+   `--alerts`) if it runs opencode, `--copilot-hooks user` (plus `--alerts`) if it runs GitHub
+   Copilot CLI, `--orca` if it runs Orca automations, `--context
    personal` if its items are personal rather than work.
 3. Run it:
 
@@ -253,7 +254,7 @@ Code session, the CLI notes the key for that session (in
 `~/.local/state/needs-you/session-items/`, by `$ORCA_TERMINAL_HANDLE`, else
 `$CLAUDE_CODE_SESSION_ID`), and while it is open the hooks skip their generic "Claude is
 waiting for you" card for that session (in Orca, also the "turn ended" card of Codex, Gemini
-CLI and opencode; outside Orca those agents have no session id to match). Permission prompts, questions and errors still post.
+CLI, opencode and Copilot CLI; outside Orca those agents have no session id to match). Permission prompts, questions and errors still post.
 `needs-you resolve --key` (from any session or run) or a `done`/`info` with the same key ends
 it; so do the item's `--expires-in` (at most 48 hours) and the session ending. So resolve what
 you post: until you do, the person gets no "waiting" card from that session. Details:
@@ -269,7 +270,9 @@ the user trusts it once in `/hooks`. Same opt-in as the Claude hooks. Details:
 [integrations/codex](../integrations/codex/README.md). Gemini CLI works the same way
 (`--gemini-hooks user`, hooks in `~/.gemini/settings.json`, no trust step):
 [integrations/gemini](../integrations/gemini/README.md). opencode gets a plugin that starts the
-same hook (`--opencode-plugin`): [integrations/opencode](../integrations/opencode/README.md).
+same hook (`--opencode-plugin`): [integrations/opencode](../integrations/opencode/README.md). GitHub
+Copilot CLI gets its own hooks file in `~/.copilot/hooks/` (`--copilot-hooks user`, no trust
+step): [integrations/copilot](../integrations/copilot/README.md).
 
 ## Networking
 

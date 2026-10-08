@@ -71,7 +71,8 @@ or <code>needs-you-admin invite create</code> on a server hub). It looks like
 Claude Code (add <code>--ssh-alias &lt;name&gt;</code> if the person reaches it from the Mac over SSH, with
 the name their <code>~/.ssh/config</code> uses), <code>--codex-hooks user</code> (plus <code>--alerts</code>) if it runs
 OpenAI Codex CLI, <code>--gemini-hooks user</code> (plus <code>--alerts</code>) if it runs Gemini CLI, <code>--opencode-plugin</code> (plus
-<code>--alerts</code>) if it runs opencode, <code>--orca</code> if it runs Orca automations, <code>--context personal</code> if its items are personal rather than work.</p></li>
+<code>--alerts</code>) if it runs opencode, <code>--copilot-hooks user</code> (plus <code>--alerts</code>) if it runs GitHub
+Copilot CLI, <code>--orca</code> if it runs Orca automations, <code>--context personal</code> if its items are personal rather than work.</p></li>
 <li><p>Run it:</p>
 <div class="code"><pre><code class="language-bash">curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes [options]</code></pre></div></li>
 <li><p>Report the health check output (a line like
@@ -251,7 +252,7 @@ Code session, the CLI notes the key for that session (in
 <code>~/.local/state/needs-you/session-items/</code>, by <code>$ORCA_TERMINAL_HANDLE</code>, else
 <code>$CLAUDE_CODE_SESSION_ID</code>), and while it is open the hooks skip their generic "Claude is
 waiting for you" card for that session (in Orca, also the "turn ended" card of Codex, Gemini
-CLI and opencode; outside Orca those agents have no session id to match). Permission prompts, questions and errors still post.
+CLI, opencode and Copilot CLI; outside Orca those agents have no session id to match). Permission prompts, questions and errors still post.
 <code>needs-you resolve --key</code> (from any session or run) or a <code>done</code>/<code>info</code> with the same key ends
 it; so do the item's <code>--expires-in</code> (at most 48 hours) and the session ending. So resolve what
 you post: until you do, the person gets no "waiting" card from that session. Details:
@@ -265,7 +266,9 @@ the user trusts it once in <code>/hooks</code>. Same opt-in as the Claude hooks.
 <a data-repo="/blob/main/integrations/codex/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/codex/README.md">integrations/codex</a>. Gemini CLI works the same way
 (<code>--gemini-hooks user</code>, hooks in <code>~/.gemini/settings.json</code>, no trust step):
 <a data-repo="/blob/main/integrations/gemini/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/gemini/README.md">integrations/gemini</a>. opencode gets a plugin that starts the
-same hook (<code>--opencode-plugin</code>): <a data-repo="/blob/main/integrations/opencode/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/opencode/README.md">integrations/opencode</a>.</p>
+same hook (<code>--opencode-plugin</code>): <a data-repo="/blob/main/integrations/opencode/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/opencode/README.md">integrations/opencode</a>. GitHub
+Copilot CLI gets its own hooks file in <code>~/.copilot/hooks/</code> (<code>--copilot-hooks user</code>, no trust
+step): <a data-repo="/blob/main/integrations/copilot/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/copilot/README.md">integrations/copilot</a>.</p>
 <h2 id="networking">Networking <a class="anchor" href="#networking" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>Hubs listen on loopback and their tailnet IP, never on 0.0.0.0. On the Mac, local agents can

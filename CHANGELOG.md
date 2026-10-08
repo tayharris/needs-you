@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Copilot CLI.** The same "agent is waiting" and permission cards as the other agents: `--copilot-hooks user` on the invite's shell one-liner (the agent prompt says so) writes `~/.copilot/hooks/needs-you.json` (or `$COPILOT_HOME/hooks/`) next to a copy of the hook. A card when Copilot asks for permission or a question, or finishes its turn; it clears when you answer, the next tool finishes, you send your next prompt or the session ends. `needs-you doctor` has a `copilot hooks` line, `needs-you update` keeps the file and hook current, and `needs-you uninstall-hooks --copilot` removes them. Guide: [GitHub Copilot CLI](docs/guides/copilot.md).
+
 ### Fixed
 
 - Codex CLI hooks: **`/clear` in one Codex session no longer clears the cards of your other Codex sessions.** Codex 0.159+ runs the hooks of all its sessions from one shared background app-server, so the hook now resolves only the clearing session's own card; the old conversation's card clears when Codex ends it, about a minute later. Found by driving a real Codex TUI.
