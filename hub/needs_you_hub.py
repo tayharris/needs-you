@@ -2832,8 +2832,12 @@ class Handler(BaseHTTPRequestHandler):
                 cursor = ListCursor.decode(raw_cursor)
             except ValueError:
                 cursor = None
-            if cursor is not None and cursor.epoch != self.hub.store.epoch():
-                cursor = None  # from a replaced database: its seqs mean nothing here
+            if cursor is not None and (cursor.epoch != self.hub.store.epoch()
+                                       or cursor.seq > self.hub.store.max_seq()):
+                # From a replaced database: its seqs mean nothing here. A restored backup keeps
+                # the epoch, but this hub never reached the cursor's seq (new writes would hide
+                # below it), so that is a replaced database too.
+                cursor = None
             if cursor is None and since is None:
                 raise ApiError(400, "invalid", "cursor is not one this hub issued; poll without it",
                                "cursor")

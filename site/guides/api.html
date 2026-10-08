@@ -355,7 +355,8 @@ issued the cursor (failover), discard them and go back to step 1.</li>
 <p><code>next</code> (hubs after 0.1.2) is <code>&lt;database epoch&gt;.&lt;seq&gt;.&lt;expiry position&gt;</code>: the hub's per-write
 sequence number, so a page always moves past what it returned and never holds more than
 <code>limit</code> items, however many writes share a millisecond. Clients must not parse it. A hub
-answers a <code>cursor</code> from another database (it was replaced) or one it can't read by serving
+answers a <code>cursor</code> from another database (it was replaced, or restored from a backup older
+than the cursor) or one it can't read by serving
 <code>since</code> instead when that was sent, and with <code>400 invalid</code> (<code>"field": "cursor"</code>) when it
 wasn't; drop the cursor and do a full poll then. Sending both is also what keeps an older hub,
 which ignores <code>cursor</code>, working. <code>next</code> is in every response except a <code>since</code>-only page with
