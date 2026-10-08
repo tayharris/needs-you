@@ -10,6 +10,7 @@ import os
 import shutil
 import stat
 import subprocess
+import time
 import unittest
 
 from support import ROOT, HubTestCase, free_port, request
@@ -268,6 +269,36 @@ class InstallScript(HubTestCase):
             self.assertEqual(fh.read().strip(), "alias ll='ls -l'")
         with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
             self.assertEqual(fh.read().strip(), "")
+
+    def test_flush_schedule_finds_xdg_config_and_state(self):
+        # cron and launchd run the flush without the shell's XDG_CONFIG_HOME / XDG_STATE_HOME:
+        # it found no config and silently sent nothing, every 5 minutes.
+        inv = self.invite(uses=2)
+        xdg = {"XDG_CONFIG_HOME": os.path.join(self.home, "xdg config"),
+               "XDG_STATE_HOME": os.path.join(self.home, "xdg-state")}
+        r = self.install(inv, "--yes", "--host", "box9", STUB_UNAME="Linux", **xdg)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.cron) as fh:
+            line = [l for l in fh.read().splitlines() if "needs-you-flush" in l][0]
+        command = line.split(None, 5)[5]
+        outbox = os.path.join(xdg["XDG_STATE_HOME"], "needs-you", "outbox")
+        os.makedirs(outbox, exist_ok=True)
+        with open(os.path.join(outbox, "%020d-00001.json" % time.time_ns()), "w") as fh:
+            json.dump({"method": "POST", "path": "/v1/items", "queued_at": "2026-10-07T00:00:00Z",
+                       "body": {"key": "work:cron:x", "title": "queued", "source": {"host": "box9"}}}, fh)
+        # as cron runs it: sh, HOME and a bare PATH, nothing else
+        subprocess.run(["/bin/sh", "-c", command], env={"HOME": self.home, "PATH": "/usr/bin:/bin"},
+                       timeout=60)
+        self.assertEqual(os.listdir(outbox), [".lock"] if os.path.exists(os.path.join(outbox, ".lock")) else [])
+        s, items = request("GET", self.hub.url + "/v1/items?status=open",
+                           self.hub.store.add_token("reader-x", "reader")[0])
+        self.assertIn("work:cron:x", [i["key"] for i in items["items"]])
+        # the LaunchAgent gets them as EnvironmentVariables
+        r = self.install(inv, "--yes", "--host", "box9", **xdg)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        import plistlib
+        with open(os.path.join(self.home, "Library", "LaunchAgents", "io.needs-you.flush.plist"), "rb") as fh:
+            self.assertEqual(plistlib.load(fh)["EnvironmentVariables"], xdg)
 
     def test_codex_hooks(self):
         inv = self.invite(uses=1)

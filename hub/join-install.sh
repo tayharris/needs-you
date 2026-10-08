@@ -188,6 +188,34 @@ PATH_TAG="# added by needs-you"
 OS=$(uname -s)
 
 # ---------------------------------------------------------------- schedule
+# cron and launchd start the flush without the login shell's environment: where this
+# machine keeps needs-you's files, when that isn't the default, is passed on explicitly
+# (else the flush finds no config or outbox and sends nothing, every 5 minutes, quietly).
+SCHED_VARS="XDG_CONFIG_HOME XDG_STATE_HOME NEEDS_YOU_CONFIG NEEDS_YOU_OUTBOX CODEX_HOME"
+sched_cron_env() {  # "NAME='value' " for each one set
+  local v val out=""
+  for v in $SCHED_VARS; do
+    val=${!v:-}
+    [ -n "$val" ] || continue
+    case "$val" in
+      *"'"*|*%*|*"
+"*) warn "$v has a ' or % in it; the flush schedule can't pass it on (set it in ~/.profile)" ; continue ;;
+    esac
+    out="$out$v='$val' "
+  done
+  printf '%s' "$out"
+}
+sched_plist_env() {  # an EnvironmentVariables entry, or nothing
+  local v val out=""
+  for v in $SCHED_VARS; do
+    val=${!v:-}
+    [ -n "$val" ] || continue
+    val=$(printf '%s' "$val" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+    out="$out<key>$v</key><string>$val</string>"
+  done
+  [ -z "$out" ] || printf '  <key>EnvironmentVariables</key><dict>%s</dict>\n' "$out"
+}
+
 schedule_install() {
   if [ "$OS" = "Darwin" ]; then
     mkdir -p "$(dirname "$PLIST")"
@@ -199,6 +227,7 @@ schedule_install() {
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
   <array><string>$CLI</string><string>-q</string><string>flush</string></array>
+$(sched_plist_env)
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
@@ -215,7 +244,7 @@ EOF
       warn "could not load $PLIST; it loads at next login"
     fi
   elif command -v crontab >/dev/null 2>&1; then
-    line="*/5 * * * * \"$CLI\" -q flush >/dev/null 2>&1 $CRON_TAG"
+    line="*/5 * * * * $(sched_cron_env)\"$CLI\" -q flush >/dev/null 2>&1 $CRON_TAG"
     current=$(crontab -l 2>/dev/null || true)
     if printf '%s\n' "$current" | grep -qxF "$line"; then
       say "flush: crontab entry already present"
