@@ -70,7 +70,7 @@ class Create(InviteCase):
                          "Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; "
                          "Cline, add --cline-hooks user; Aider, add --aider. "
                          "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
-                         "(claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds "
+                         "(claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds "
                          "the posting rules to their instruction files (codex, gemini, opencode). "
                          "Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
                          "step printed under it, or tell me if it needs me. If the installer says the link is "

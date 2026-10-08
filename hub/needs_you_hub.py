@@ -206,7 +206,7 @@ KIMI_INSTALL_FLAG = "--kimi-hooks user"
 GROK_INSTALL_FLAG = "--grok-hooks user"
 # Opt-in, only when the person asks: the MCP server and the skill's text for other agents.
 OPTIONAL_INSTALL_FLAGS = ("Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
-                          "(claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds "
+                          "(claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds "
                           "the posting rules to their instruction files (codex, gemini, opencode).")
 # The end of every sender invite's agent prompt: verify, and what to do when something failed.
 # The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.

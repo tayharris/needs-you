@@ -237,7 +237,7 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     /// Opt-in extras the agent adds only when the person asks: the MCP server and the skill's
     /// rules in other agents' instruction files. Same text as the hub's.
     public static let optionalFlags = "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
-        + "(claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds "
+        + "(claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds "
         + "the posting rules to their instruction files (codex, gemini, opencode)."
 
     /// The end of the agent prompt: check the setup, and what to do when something failed
