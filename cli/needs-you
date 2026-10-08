@@ -101,8 +101,9 @@ is the answer (labels from the options only, never free text).
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
-`answer-wait`: 0 an answer (printed), 3 no answer before --timeout, 4 none will come, 2
-usage, config or a refused token.
+`answer-wait`: 0 an answer (printed), 3 no answer before --timeout, 4 none will come (or
+the process in NEEDS_YOU_WATCH_PID is gone: the hook that started it), 2 usage, config or a
+refused token.
 
 Python 3.9+ standard library only.
 """
@@ -1629,6 +1630,38 @@ ANSWER_EXIT_NONE = 4
 ANSWER_POLL_SECONDS = 25  # the hub holds a GET /v1/items/answer at most this long
 
 
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # EPERM: there, someone else's
+    return True
+
+
+def watch_waiter(raw: str) -> None:
+    """NEEDS_YOU_WATCH_PID=<pid> (the hook sets its own): end answer-wait (exit 4, nothing
+    printed) once that process is gone, or once this one is orphaned. Claude Code kills a
+    hook it no longer waits on, and the CLI it started used to long-poll on until its
+    timeout. An environment variable, not a flag: an older CLI ignores it."""
+    import threading
+    try:
+        pid = int(raw)
+    except ValueError:
+        return
+    if pid <= 1:
+        return
+    parent = os.getppid()
+
+    def watch() -> None:
+        while _alive(pid) and os.getppid() == parent:
+            time.sleep(0.5)
+        os._exit(ANSWER_EXIT_NONE)
+
+    threading.Thread(target=watch, name="watch-pid", daemon=True).start()
+
+
 def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool,
                 question_id: Optional[str] = None) -> int:
     """Long-poll GET /v1/items/answer?key= until the person answers (print the answer as
@@ -1953,6 +1986,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         if args.timeout != args.timeout or args.timeout < 0:
             warn("--timeout must be a number of seconds")
             return 2
+        watch_waiter(os.environ.get("NEEDS_YOU_WATCH_PID", ""))
         flush(cfg)  # a queued post of this item goes out first
         return answer_wait(cfg, args.key, args.timeout, args.quiet, args.question_id)
     if args.cmd == "resolve":

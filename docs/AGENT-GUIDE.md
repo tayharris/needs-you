@@ -203,7 +203,9 @@ needs-you resolve --key "work:deploy:api-v2.14"   # once you've acted on it
   [labels]}], "answered_at", "answered_by"}` and exits 0. It exits 3 when `--timeout`
   runs out and 4 when no answer will come (the card was resolved or dismissed, the question
   expired, or it isn't answerable). Treat anything but 0 as "no answer": never pick a
-  default for the person.
+  default for the person. With `NEEDS_YOU_WATCH_PID=<pid>` in its environment it also
+  stops (exit 4) once that process is gone: a hook passes its own `$$`, so the wait ends
+  when the agent kills the hook.
 - Give each ask a new question `id` and pass it to `--question-id`. Once nothing is open
   under the key, the hub reads back the last item with it, so without the id an earlier
   run's answer (its card already resolved) could come back while this run's post is still

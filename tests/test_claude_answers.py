@@ -388,6 +388,26 @@ class EndToEnd(HubTestCase):
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"],
                          {"Which database should we use?": "Postgres", "Which features?": "Auth, Search"})
 
+    def waiters(self, pgid):
+        """The `needs-you answer-wait` processes still in the hook's process group."""
+        out = subprocess.run(["ps", "-eo", "pid=,pgid=,args="], capture_output=True, text=True).stdout
+        found = []
+        for line in out.splitlines():
+            parts = line.split(None, 2)
+            if len(parts) == 3 and parts[1] == str(pgid) and "answer-wait" in parts[2]:
+                found.append(int(parts[0]))
+        return found
+
+    def test_killing_the_hook_ends_its_wait(self):
+        # Claude kills the hook (the session quits, or it stops waiting): the CLI waiting for
+        # the click used to live on until SessionEnd or its timeout (an hour), long-polling.
+        proc = self.start_ask()
+        self.assertTrue(wait_until(self.waiting, timeout=15))
+        self.assertTrue(wait_until(lambda: self.waiters(proc.pid), timeout=15))
+        os.kill(proc.pid, signal.SIGKILL)  # the hook only, as Claude does
+        proc.wait(timeout=30)
+        self.assertTrue(wait_until(lambda: not self.waiters(proc.pid), timeout=15), self.waiters(proc.pid))
+
     def test_an_answer_in_the_terminal_ends_the_wait(self):
         proc = self.start_ask()
         self.assertTrue(wait_until(self.waiting, timeout=15))

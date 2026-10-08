@@ -213,7 +213,9 @@ an answerable question that repeats one (<code>400</code>).</li>
 <li><code>answer-wait</code> prints <code>{"id", "key", "status", "question_id", "answers": [{"selected": [labels]}], "answered_at", "answered_by"}</code> and exits 0. It exits 3 when <code>--timeout</code>
 runs out and 4 when no answer will come (the card was resolved or dismissed, the question
 expired, or it isn't answerable). Treat anything but 0 as "no answer": never pick a
-default for the person.</li>
+default for the person. With <code>NEEDS_YOU_WATCH_PID=&lt;pid&gt;</code> in its environment it also
+stops (exit 4) once that process is gone: a hook passes its own <code>$$</code>, so the wait ends
+when the agent kills the hook.</li>
 <li>Give each ask a new question <code>id</code> and pass it to <code>--question-id</code>. Once nothing is open
 under the key, the hub reads back the last item with it, so without the id an earlier
 run's answer (its card already resolved) could come back while this run's post is still

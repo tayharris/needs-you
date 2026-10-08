@@ -2427,7 +2427,7 @@ case "$mode" in
     # click on the card and print the answer (the CLI's JSON) for the plugin to hand to
     # opencode. Nothing on a timeout, an error or a card closed without an answer: the plugin
     # then answers nothing. Never picks or invents an answer.
-    "$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null
+    NEEDS_YOU_WATCH_PID=$$ "$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null
     log "answer-wait $key -> $?"
     ;;
 
@@ -2450,7 +2450,10 @@ case "$mode" in
     [ "$rc" -eq 0 ] || exit 0
     case "$posted" in "answerable "?*) ;; *) exit 0 ;; esac
     NY_QID=${posted#answerable }
-    NY_ANSWER=$("$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null)
+    # NEEDS_YOU_WATCH_PID: the CLI stops waiting once this hook is gone (Claude kills it when
+    # the session quits or it stops waiting), not an hour later.
+    NY_ANSWER=$(NEEDS_YOU_WATCH_PID=$$ "$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" \
+      </dev/null 2>/dev/null)
     rc=$?
     log "ask answer-wait $key -> $rc"
     [ "$rc" -eq 0 ] && [ -n "$NY_ANSWER" ] || exit 0
