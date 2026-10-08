@@ -177,6 +177,39 @@ class NestedKeyTests(HookHarness):
                 self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
 
 
+class OddNameTests(HookHarness):
+    """Scan 2026-10-08: names the hub refuses lost the card (the CLI exits 2 and the hook's
+    retries fail the same way), and a session id of '..' named a directory as the marker."""
+
+    def test_long_or_control_character_folder_still_posts(self):
+        for name in ("p" * 150, "a\x1bb\x07c"):
+            with self.subTest(name=name[:10]):
+                d = os.path.join(self.home, "src", name)
+                os.makedirs(d, exist_ok=True)
+                n = len(self.calls())
+                self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                         "cwd": d})
+                self.assertEqual(len(self.calls()), n + 1)
+                argv = self.last()
+                project = self.opt(argv, "--project")
+                self.assertLessEqual(len(project), 100)
+                for field in (project, self.opt(argv, "--title"), self.opt(argv, "--body")):
+                    self.assertFalse(any(ord(c) < 32 and c not in "\n\t" for c in field), repr(field))
+                # what the hub would say about it
+                hubmod.validate_item_input({"title": self.opt(argv, "--title"), "body": self.opt(argv, "--body"),
+                                            "source": {"project": project}})
+                self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
+
+    def test_dot_session_ids_are_not_paths(self):
+        for sid in ("..", "."):
+            with self.subTest(sid):
+                self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                         "session_id": sid})
+                key = self.opt(self.last(), "--key")
+                self.assertFalse(key.endswith(":" + sid), key)
+                self.assertEqual([n for n in os.listdir(os.path.dirname(self.state)) if n.startswith(".")], [])
+
+
 class FailureTests(HookHarness):
     def test_free_text_on_cards_is_redacted(self):
         # Scan 2026-10-08: error_message and a notification's message are free text from the

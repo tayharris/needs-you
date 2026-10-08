@@ -277,7 +277,8 @@ log() {
   printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*" >>"$NEEDS_YOU_HOOK_LOG" 2>/dev/null
 }
 
-sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
+# A name for a file (markers, the card key): never "." or "..", so a leading dot becomes _.
+sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80 | sed 's/^\./_/'; }
 
 session_id=$(json_str session_id)
 [ -n "$session_id" ] || session_id=$(json_str sessionId)  # Copilot CLI
@@ -479,7 +480,10 @@ event = field("hook_event_name")
 ntype = field("notification_type") or field("notificationType")  # Grok: camelCase only
 cwd = field("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
-project = os.path.basename(project_dir.rstrip("/")) or "claude"
+# Text the hub refuses (control and bidi characters, a source field over 100 characters)
+# would lose the card: a folder name can hold anything.
+_UNPRINTABLE_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+project = _UNPRINTABLE_RE.sub("", os.path.basename(project_dir.rstrip("/")))[:100].strip() or "claude"
 session = field("session_id")
 handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
 # <repoId>::<path>; the path is the readable part.
@@ -505,6 +509,7 @@ def where_lines():
     """Where the session runs, so a card from a tmux pane on a VM says which one."""
     home = os.path.expanduser("~")
     short_cwd = "~" + cwd[len(home):] if cwd.startswith(home + "/") or cwd == home else cwd
+    short_cwd = _UNPRINTABLE_RE.sub("", short_cwd.replace("\t", " "))
     lines, where = [], []
     pane = os.environ.get("TMUX_PANE", "")
     tmux_target = ""
