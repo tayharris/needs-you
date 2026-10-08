@@ -23,7 +23,6 @@ Open at login only works from Applications (macOS ties the login item to where t
 - **"A temporary copy macOS made":** macOS runs a quarantined app that wasn't moved with Finder from a hidden, read-only folder (App Translocation). Moving it fixes that; the moved copy drops the quarantine flag so it isn't translocated again (it's the copy that's already running, and its signature is checked after the copy).
 - **Moved it by hand, or from an older build?** If Open at login was on for a copy somewhere else, the copy in Applications takes the login item over at launch. A copy outside Applications never touches it.
 
-## Its own hub
 ## Its built-in hub
 
 The app has a hub built in and runs it itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; **Settings… → Built-in hub** shows the URL servers use, next to the `127.0.0.1` one). It provisions its own `owner` token, so there's nothing to configure. The built-in hub is optional: turn off **Run hub on this Mac** and the app shows alerts from a server hub instead ([the three setups](concepts.md#where-the-hub-runs-three-setups)). The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
