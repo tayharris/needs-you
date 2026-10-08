@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Themes for the Mac app.** **Settings → Appearance** has eight: Default (the original dark glass, unchanged), Match system (dark or light with macOS), Graphite, Midnight, Paper (light), High contrast (dark or light with macOS), Ocean and Sunset, plus an accent colour (a preset or any colour) for ticked steps, links in card text and small badges. Urgent stays red and readable in every theme; each theme's text and priority colours are checked for contrast. [Themes](docs/guides/mac-app.md#themes).
+- **Arrival animations and timing.** **Settings → Alerts → Arrivals** picks how a new item arrives on the pill, separately for urgent and for everything else: Glow pulse (the original), Bounce, Shake, Slide in, Ripple, or None (not for urgent). Also how many times it plays, how fast, and an optional reminder that plays urgent's arrival again every 2 to 60 minutes until you open the panel (off by default). **Preview on the pill** plays it without posting anything. With Reduce Motion on, each animation is a gentle fade. [Arrival animations](docs/guides/mac-app.md#arrival-animations).
+
 ## [0.1.5] - 2026-10-08
 
 ### Added
