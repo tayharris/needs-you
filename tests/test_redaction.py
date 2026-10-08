@@ -73,6 +73,9 @@ class Catches(unittest.TestCase):
         for name in ("pwd", "pw", "auth", "credentials", "PWD", "db_pw", "x-auth", "credential"):
             with self.subTest(name):
                 self.check("%s=kz62rr ok" % name, "kz62rr", keep=(name, "ok"))
+        # pwd and cwd as words in a sentence stay
+        self.check("Run `pwd` and check the cwd: /home/me/src, then pwd again; cwd=/tmp",
+                   keep=("Run `pwd` and check the cwd: /home/me/src, then pwd again; cwd=/tmp",))
         # not a keyword at a word's end
         self.check("bypass=yes maxtoken=12 author: Jo", keep=("bypass=yes", "maxtoken=12", "author: Jo"))
 
