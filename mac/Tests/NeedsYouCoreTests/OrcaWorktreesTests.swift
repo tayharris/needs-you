@@ -48,7 +48,9 @@ final class OrcaWorktreesTests: XCTestCase {
         XCTAssertEqual(b.name, "feature-x")  // no display name: the branch
         XCTAssertEqual(b.detail, "in-review · 2 terminals · unread · Work Sandbox")
         XCTAssertNotEqual(a.id, b.id)
-        let text = "\(rows!)"
+        // What the view shows (the id, Orca's worktree id, is identity only and never drawn).
+        let text = rows!.map { [$0.name, $0.branch, $0.detail, $0.host, $0.status].joined(separator: "|") }
+            .joined(separator: "\n")
         for never in ["TOKEN", "secret plan", "/Users/u"] { XCTAssertFalse(text.contains(never), never) }
     }
 
