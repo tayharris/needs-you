@@ -31,6 +31,11 @@
 #            notificationType) and StopFailure call `notify`, Stop resolves (no
 #            context check: Grok's transcript isn't Claude's). Grok waits for its
 #            hooks, so like Gemini the work goes to a background copy.
+#   kimi     Kimi Code CLI (integrations/kimi/, [[hooks]] in ~/.kimi-code/config.toml):
+#            PermissionRequest, PreToolUse for AskUserQuestion, Stop (the turn
+#            ended) and StopFailure call `notify`. Kimi awaits most hooks and kills
+#            a hook's process group when it runs past its timeout, so the work goes
+#            to a background copy in a session of its own.
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -81,7 +86,7 @@
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
-#   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode, Copilot: 0 = no card when a turn ends,
+#   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode, Copilot, Grok, Kimi: 0 = no card when a turn ends,
 #                             just approval prompts (default: on)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
@@ -97,6 +102,7 @@ case "${2:-}" in
   opencode) agent=opencode ;;
   grok) agent=grok ;;
   copilot) agent=copilot ;;
+  kimi) agent=kimi ;;
   *) agent=claude ;;
 esac
 # Grok Build runs the Claude hooks as they are: it names itself only in the environment.
@@ -124,11 +130,31 @@ esac
 
 input=$(cat 2>/dev/null)
 
-# Gemini CLI, Copilot CLI and Grok wait for each hook (and Gemini and Copilot read its
+# Gemini CLI, Copilot CLI, Grok and Kimi wait for each hook (and Gemini and Copilot read its
 # stdout as JSON): hand the work to a background copy with no stdio and return at once.
-# The copy starts the lease search from this hook's parent.
-if { [ "$agent" = gemini ] || [ "$agent" = copilot ] || [ "$agent" = grok ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
-  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=${NY_HOOK_PPID:-$PPID} bash "$0" "$mode" "$agent" >/dev/null 2>&1 &
+# The copy starts the lease search from this hook's parent. Grok and Kimi start a hook as
+# `sh -c '<command>'` in a process group of its own, which is gone by the time the copy
+# looks, so name the shell's parent (the agent) instead; and they kill that whole group when
+# a hook runs past its timeout, so the copy starts a session of its own (setsid; macOS has
+# no setsid binary, perl does it there).
+if { [ "$agent" = gemini ] || [ "$agent" = copilot ] || [ "$agent" = grok ] || [ "$agent" = kimi ]; } &&
+   [ -z "${NY_HOOK_BG:-}" ]; then
+  parent=${NY_HOOK_PPID:-$PPID}
+  if [ -z "${NY_HOOK_PPID:-}" ]; then
+    pcomm=$(ps -o comm= -p "$parent" 2>/dev/null)
+    case "${pcomm##*/}" in
+      sh|-sh|bash|-bash|dash|zsh|-zsh) parent=$(ps -o ppid= -p "$parent" 2>/dev/null | tr -d ' ') ;;
+    esac
+  fi
+  if command -v setsid >/dev/null 2>&1; then
+    detach=(setsid)
+  elif command -v perl >/dev/null 2>&1; then
+    detach=(perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV')
+  else
+    detach=()
+  fi
+  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=${parent:-$PPID} "${detach[@]}" bash "$0" "$mode" "$agent" \
+    >/dev/null 2>&1 &
   exit 0
 fi
 
@@ -303,10 +329,10 @@ import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENTS = ("codex", "gemini", "opencode", "copilot", "grok")
+AGENTS = ("codex", "gemini", "opencode", "copilot", "grok", "kimi")
 AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in AGENTS else "claude"
 AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
-            "copilot": "copilot-cli", "grok": "grok"}.get(AGENT, "claude-code")
+            "copilot": "copilot-cli", "grok": "grok", "kimi": "kimi-code"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -719,6 +745,45 @@ def grok_card():
     return None
 
 
+def kimi_card():
+    """(kind, what, msg) for a Kimi Code hook event, or None. A PermissionRequest carries the
+    tool, its input and Kimi's display of it (display.command is the whole command line; the
+    action text and the session title can hold anything): the card takes at most the program
+    or a file's basename."""
+    tool = field("tool_name")
+    ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    if event == "PermissionRequest":
+        d = data.get("display") if isinstance(data.get("display"), dict) else {}
+        if tool in ("Bash", "Shell") or (isinstance(d.get("command"), str) and not tool):
+            cmd = d.get("command") if isinstance(d.get("command"), str) else ti.get("command")
+            word = command_word(cmd)
+            what = "Kimi wants to run %s" % word if word else "Kimi wants to run a command"
+        elif tool in ("Write", "Edit", "StrReplaceFile", "WriteFile", "MultiEdit"):
+            name = file_name(ti.get("path") or ti.get("file_path"))
+            what = "Kimi wants to edit %s" % name if name else "Kimi wants to edit a file"
+        elif tool in ("FetchURL", "WebFetch"):
+            what = "Kimi wants to fetch a page"
+        elif tool == "ExitPlanMode":
+            return "permission", "Approve Kimi's plan", "Kimi has a plan ready and is waiting for your approval."
+        else:
+            what = "Kimi needs permission for %s" % tool_label(tool)
+        return "permission", what, "Kimi is waiting for you to approve or reject it."
+    if event == "PreToolUse":
+        # Kimi approves AskUserQuestion by itself, so there is no PermissionRequest for it.
+        if tool == "AskUserQuestion":
+            return "notify", "Kimi asked you a question", "Kimi is waiting for your answer."
+        return None
+    if event == "Stop":
+        if not turn_cards():
+            return None
+        return "notify", "Kimi is waiting for you", "Kimi finished its turn and is waiting for your next message."
+    if event == "StopFailure":
+        err = oneline(field("error_message"), 300)
+        return "failure", "Kimi stopped on an error", ((err + "\n\n") if err else "") + \
+            "The turn ended and won't continue on its own; send a message to retry."
+    return None
+
+
 def copilot_card():
     """(kind, what, msg) for a Copilot CLI hook event, or None. A notification's message
     can hold the whole command line or URL ("Run command: <cmd>", "Fetch URL: <url>"): the
@@ -745,9 +810,9 @@ def copilot_card():
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT in ("codex", "gemini", "opencode", "copilot", "grok"):
+    if AGENT in ("codex", "gemini", "opencode", "copilot", "grok", "kimi"):
         card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
-                "copilot": copilot_card, "grok": grok_card}[AGENT]()
+                "copilot": copilot_card, "grok": grok_card, "kimi": kimi_card}[AGENT]()
         if card is None:
             return 3
         kind, what, msg = card
@@ -1033,12 +1098,12 @@ case "$mode" in
     # questions and errors still post: they are a different thing to act on.
     # The same wait in each agent: Claude's idle / needs-input notifications, and the "turn
     # ended" card of Codex (Stop), Gemini (AfterAgent), opencode (Stop: session idle),
-    # Copilot (agentStop: no event name or notification type) and Grok (idle_prompt, sent
-    # as notificationType).
+    # Copilot (agentStop: no event name or notification type), Grok (idle_prompt, sent
+    # as notificationType) and Kimi (Stop).
     ntype=$(json_str notification_type)
     [ -n "$ntype" ] || ntype=$(json_str notificationType)
     case "$agent:$ntype:$(json_str hook_event_name)" in
-      claude:idle_prompt:*|claude:agent_needs_input:*|grok:idle_prompt:*|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
+      claude:idle_prompt:*|claude:agent_needs_input:*|grok:idle_prompt:*|kimi::Stop|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
         if own_item_open; then
           log "notify $key -> skipped: the agent's own item for this session is open"
           exit 0
@@ -1050,11 +1115,15 @@ case "$mode" in
     if [ "$agent" = copilot ] && [ -z "$(json_str notification_type)" ]; then
       sleep "${NY_COPILOT_TURN_WAIT:-2}"
     fi
+    # The same for `kimi -p`, which exits a moment after its Stop hook.
+    if [ "$agent" = kimi ] && [ "$(json_str hook_event_name)" = Stop ]; then
+      sleep "${NY_KIMI_TURN_WAIT:-2}"
+    fi
     # Take the lease now, before the post (run_py runs in a subshell, and the agent may exit
     # while the CLI posts). `opencode run` goes idle and exits at once: with the agent
     # already gone nobody is waiting, and a card without a lease would stay for 48 hours.
     lease
-    if { [ "$agent" = opencode ] || [ "$agent" = copilot ]; } && [ -z "$lease_pid" ]; then
+    if { [ "$agent" = opencode ] || [ "$agent" = copilot ] || [ "$agent" = kimi ]; } && [ -z "$lease_pid" ]; then
       log "notify $key -> skipped: $agent has exited"
       exit 0
     fi
