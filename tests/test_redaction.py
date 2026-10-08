@@ -16,7 +16,8 @@ from support import ROOT
 
 BEGIN = "# --- needs-you redaction (begin) ---\n"
 END = "# --- needs-you redaction (end) ---\n"
-COPIES = ("integrations/claude-code/needs-you-hook.sh",)
+COPIES = ("integrations/claude-code/needs-you-hook.sh", "cli/needs-you",
+          "integrations/mcp/needs_you_mcp.py", "integrations/github/needs-you-github")
 
 
 def block(rel):
@@ -82,6 +83,22 @@ class Catches(unittest.TestCase):
         self.check("ghp_abcdefghijklmnopqrstuvwxyz0123 and eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.sig-x",
                    "ghp_abcdef", "eyJhbGciOiJIUzI1")
         self.check("Authorization: Bearer abcdefgh12345678", "abcdefgh12345678")
+
+
+class Callers(unittest.TestCase):
+    def test_github_titles_are_redacted(self):
+        # PR and notification titles are untrusted text from GitHub that reach a card.
+        import importlib.machinery
+        import importlib.util
+        path = os.path.join(ROOT, "integrations", "github", "needs-you-github")
+        loader = importlib.machinery.SourceFileLoader("ny_github_for_test", path)
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        out = mod.safe_text("Rotate ghp_abcdefghijklmnopqrstuvwxyz0123 and DB_PASS=wc48rr", 200)
+        self.assertNotIn("abcdefghij", out)
+        self.assertNotIn("wc48rr", out)
+        self.assertTrue(out.startswith("Rotate [redacted]"), out)
 
 
 class LinearTime(unittest.TestCase):
