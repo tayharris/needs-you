@@ -211,6 +211,26 @@ class InstallMcp(CliCase):
         r = self.run_cli("uninstall-hooks", "--mcp")
         self.assertEqual(self.json(".gemini/settings.json")["mcpServers"]["needs-you"], {"command": "/opt/other"})
 
+    def test_codex_server_in_any_toml_spelling_is_left_alone(self):
+        # Each of these already defines mcp_servers.needs-you: adding our table would declare it
+        # twice, which is a TOML error, and Codex would refuse the whole file.
+        for text in ('[mcp_servers]\nneeds-you = { command = "mine" }\n',
+                     '[mcp_servers]\n"needs-you".command = "mine"\n',
+                     "[mcp_servers.'needs-you']\ncommand = \"mine\"\n",
+                     '[ mcp_servers . "needs-you" . env ]\nA = "1"\n',
+                     'mcp_servers.needs-you.command = "mine"\n'):
+            with self.subTest(text=text):
+                self.write(".codex/config.toml", text)
+                r = self.run_cli("install-mcp", "codex")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("left it alone", r.stderr)
+                self.assertEqual(self.text(".codex/config.toml"), text)
+        # A server whose name only starts the same is someone else's business.
+        self.write(".codex/config.toml", '[mcp_servers]\nneeds-you-old = { command = "x" }\n')
+        r = self.run_cli("install-mcp", "codex")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[mcp_servers.needs-you]", self.text(".codex/config.toml"))
+
     def test_opencode_jsonc_and_missing_claude_say_what_to_do(self):
         self.write(".config/opencode/opencode.jsonc", "// mine\n{}\n")
         r = self.run_cli("install-mcp", "opencode,claude", path="/usr/bin:/bin")  # no `claude` on PATH

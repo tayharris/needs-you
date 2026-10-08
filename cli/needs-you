@@ -3991,8 +3991,30 @@ def _codex_block(server: str) -> str:
     ]) + "\n"
 
 
-_CODEX_OTHER_RE = re.compile(r'^\s*(?:\[\s*mcp_servers\s*\.\s*"?%s"?\s*[\].]|mcp_servers\s*=|mcp_servers\s*\.\s*"?%s"?)'
-                             % (re.escape(MCP_NAME), re.escape(MCP_NAME)), re.M)
+_TOML_NAME = r'''(?:"%s"|'%s'|%s)''' % ((re.escape(MCP_NAME),) * 3)
+_CODEX_HEADER_RE = re.compile(r"^\s*\[(?!\[)\s*([^\]]*?)\s*\]")
+_CODEX_OURS_TABLE_RE = re.compile(r"^mcp_servers\s*\.\s*%s\s*(?:\.|$)" % _TOML_NAME)
+_CODEX_ROOT_RE = re.compile(r"^\s*mcp_servers\s*(?:=|\.\s*%s\s*[.=])" % _TOML_NAME)
+_CODEX_IN_TABLE_RE = re.compile(r"^\s*%s\s*[.=]" % _TOML_NAME)
+
+
+def _codex_other(text: str) -> bool:
+    """Whether config.toml already defines mcp_servers.needs-you in any TOML spelling (a table
+    header, quoted or not; a dotted key at the root; a key inside [mcp_servers]), or an inline
+    mcp_servers table: adding ours would declare it twice, and Codex refuses the whole file."""
+    table = None  # None: the root table
+    for line in text.splitlines():
+        m = _CODEX_HEADER_RE.match(line)
+        if m:
+            table = re.sub(r"\s*\.\s*", ".", m.group(1))
+            if _CODEX_OURS_TABLE_RE.match(table):
+                return True
+            continue
+        if table is None and _CODEX_ROOT_RE.match(line):
+            return True
+        if table == "mcp_servers" and _CODEX_IN_TABLE_RE.match(line):
+            return True
+    return False
 
 
 def _mcp_status(agent: str) -> Tuple[str, Any]:
@@ -4011,7 +4033,7 @@ def _mcp_status(agent: str) -> Tuple[str, Any]:
             return "unreadable", str(e)
         if parts:
             return "ours", parts[1]
-        return ("other", None) if _CODEX_OTHER_RE.search(text) else ("absent", None)
+        return ("other", None) if _codex_other(text) else ("absent", None)
     try:
         data = json.loads(text) if text.strip() else {}
         if not isinstance(data, dict):
@@ -4088,7 +4110,7 @@ def _mcp_install_one(agent: str, server: str, dry_run: bool, say: Any) -> Option
         if parts and parts[1] == block:
             say("the needs-you MCP server is already registered with Codex")
             return False
-        if not parts and _CODEX_OTHER_RE.search(text or ""):
+        if not parts and _codex_other(text or ""):
             warn("%s already has an MCP server named %s (or an inline mcp_servers table); left it alone"
                  % (_tilde(path), MCP_NAME))
             return None
