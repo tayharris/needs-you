@@ -15,6 +15,7 @@ final class AnswerPolicyTests: XCTestCase {
         ("testRequestBody", testRequestBody),
         ("testSelection", testSelection),
         ("testCanAnswer", testCanAnswer),
+        ("testRepeatedLabelsAreReadOnly", testRepeatedLabelsAreReadOnly),
         ("testClickSendsOnlyForOneSingleChoiceQuestion", testClickSendsOnlyForOneSingleChoiceQuestion),
         ("testTexts", testTexts),
         ("testTerminalLink", testTerminalLink),
@@ -120,6 +121,19 @@ final class AnswerPolicyTests: XCTestCase {
         var noVersion = item(q)
         noVersion.contentUpdatedAtRaw = nil
         XCTAssertFalse(AnswerPolicy.canAnswer(noVersion, now: now))
+    }
+
+    /// An answer is labels only: two options with one label in a question can't be told apart,
+    /// so the card stays read-only (hubs refuse such a question; an older hub may still serve one).
+    func testRepeatedLabelsAreReadOnly() {
+        let now = Date(timeIntervalSince1970: 1000)
+        let twins = ItemQuestionItem(text: "Clean up?", options: [
+            ItemQuestionOption(label: "Yes", detail: "Delete the old data"),
+            ItemQuestionOption(label: "Yes", detail: "Keep it")])
+        XCTAssertFalse(AnswerPolicy.canAnswer(item(ItemQuestion(id: "t", items: [twins], answerable: true)), now: now))
+        XCTAssertFalse(AnswerPolicy.canAnswer(item(ItemQuestion(id: "t", items: [db, twins], answerable: true)), now: now))
+        // The same labels in two questions are fine.
+        XCTAssertTrue(AnswerPolicy.canAnswer(item(ItemQuestion(id: "t", items: [db, db], answerable: true)), now: now))
     }
 
     func testClickSendsOnlyForOneSingleChoiceQuestion() {
