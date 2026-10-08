@@ -39,7 +39,7 @@
         <li><a href="#1-get-the-app">1. Get the app</a></li>
         <li><a href="#2-download-and-check">2. Download and check</a></li>
         <li><a href="#3-install-and-first-launch">3. Install and first launch</a></li>
-        <li><a href="#4-check-the-hub-on-this-mac-your-inbox">4. Check the hub on this Mac (Your inbox)</a></li>
+        <li><a href="#4-check-the-built-in-hub">4. Check the built-in hub</a></li>
         <li><a href="#5-tailscale-or-not">5. Tailscale, or not?</a></li>
         <li><a href="#6-connect-a-machine-an-invite-link-and-the-one-line-setup">6. Connect a machine: an invite link and the one-line setup</a></li>
         <li><a href="#7-what-to-try">7. What to try</a></li>
@@ -53,14 +53,15 @@
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Word</th><th>Means</th></tr></thead>
 <tbody>
-<tr><td><strong>Pill</strong></td><td>The small floating panel the app shows at the top right of the screen. It never takes keyboard focus.</td></tr>
-<tr><td><strong>Hub</strong></td><td>The little service that stores items (Python + SQLite). The Mac app runs one for you; nothing to install.</td></tr>
+<tr><td><strong>The app</strong></td><td>NeedsYou.app on your Mac. It shows your alerts; it never takes keyboard focus.</td></tr>
+<tr><td><strong>Pill</strong></td><td>The small floating panel the app shows at the top right of the screen.</td></tr>
+<tr><td><strong>Hub</strong></td><td>The little service that stores items (Python + SQLite). The app has one built in; nothing to install.</td></tr>
 <tr><td><strong>Sender</strong></td><td>Any machine or agent that posts items, with the <code>needs-you</code> command-line tool (the CLI). It doesn't need the Mac app.</td></tr>
 <tr><td><strong>Invite link</strong></td><td>A link the app makes (Settings → <strong>Connect a machine</strong>) that sets up one or more senders. Each machine gets its own revocable token.</td></tr>
 <tr><td><strong>Tailnet</strong></td><td>Your private <a href="https://tailscale.com">Tailscale</a> network. Only needed if machines other than the Mac should post.</td></tr>
 </tbody>
 </table></div>
-<p>The rest (reader, owner, server hub): <a href="concepts.html">Words</a>.</p>
+<p>The rest (reader, owner, server hub): <a href="concepts.html">App, hubs and senders</a>.</p>
 <h2 id="what-you-need">What you need <a class="anchor" href="#what-you-need" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>A Mac with <strong>macOS 14 or later</strong> (Apple silicon or Intel).</li>
@@ -93,25 +94,25 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <div class="stage"><img src="../img/pill-idle.png" width="147" height="34" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you." loading="lazy" decoding="async"></div>
 </figure>
 <p>It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by <strong>right-clicking the pill</strong>: Settings…, About Needs You, Quit Needs You.</p>
-<h2 id="4-check-the-hub-on-this-mac-your-inbox">4. Check the hub on this Mac (Your inbox) <a class="anchor" href="#4-check-the-hub-on-this-mac-your-inbox" aria-label="Link to this section">#</a></h2>
+<h2 id="4-check-the-built-in-hub">4. Check the built-in hub <a class="anchor" href="#4-check-the-built-in-hub" aria-label="Link to this section">#</a></h2>
 <p>The hub starts by itself (<strong>Run hub on this Mac</strong> is on by default). Check it:</p>
 <ol>
-<li>Right-click the pill → <strong>Settings…</strong>. Settings is a sidebar of pages: <strong>General</strong>; under <strong>Inbox and machines</strong>: <strong>Your inbox</strong>, <strong>Connect a machine</strong>, <strong>Machines</strong>, <strong>Other hubs (advanced)</strong>; then <strong>Panel</strong>, <strong>Alerts</strong>, <strong>Integrations</strong>, <strong>Updates</strong>, <strong>Advanced</strong>.</li>
-<li>Open <strong>Your inbox</strong>. It starts with how it works: your machines send alerts, this Mac holds them (it's the hub), the pill shows them. <strong>Run hub on this Mac</strong> is on and says <strong>Running</strong>. Below it are two addresses: <strong>On this Mac</strong> (<code>http://127.0.0.1:8765</code>, for agents on this Mac) and, if Tailscale is up, <strong>From your other machines (Tailscale)</strong> (<code>http://&lt;your-mac&gt;.&lt;tailnet&gt;.ts.net:8765</code>).</li>
+<li>Right-click the pill → <strong>Settings…</strong>. Settings is a sidebar of pages: <strong>General</strong>; under <strong>Hubs and machines</strong>: <strong>Built-in hub</strong>, <strong>Connect a machine</strong>, <strong>Machines</strong>, <strong>Other hubs (advanced)</strong>; then <strong>Panel</strong>, <strong>Alerts</strong>, <strong>Integrations</strong>, <strong>Updates</strong>, <strong>Advanced</strong>.</li>
+<li>Open <strong>Built-in hub</strong>. It starts with how it works: senders post alerts, a hub stores them (this app has one built in), the pill shows them. <strong>Run hub on this Mac</strong> is on and says <strong>Running</strong>. Below it are two addresses: <strong>On this Mac</strong> (<code>http://127.0.0.1:8765</code>, for agents on this Mac) and, if Tailscale is up, <strong>From your other machines (Tailscale)</strong> (<code>http://&lt;your-mac&gt;.&lt;tailnet&gt;.ts.net:8765</code>).</li>
 <li>Optional: <strong>General → Open at login</strong>.</li>
 </ol>
 <figure class="doc-fig">
-<div class="stage"><img src="../img/settings-inbox.png" width="560" height="404" alt="Settings, Your inbox page: How it works in three lines (your machines and agents send alerts; this Mac holds them, it&#x27;s the hub; the pill shows them until they&#x27;re handled), then Run hub on this Mac, on and Running." loading="lazy" decoding="async"></div>
+<div class="stage"><img src="../img/settings-inbox.png" width="560" height="404" alt="Settings, Built-in hub page: How it works in three lines (senders post alerts; a hub stores them, and this app has one built in; this app shows them in the pill until they&#x27;re handled), then Run hub on this Mac, on and Running." loading="lazy" decoding="async"></div>
 </figure>
 <p>If the pill says <strong>Hub can't start</strong> (click it to open Settings):</p>
 <div class="table-wrap"><table class="doc-table">
-<thead><tr><th>Your inbox says</th><th>Fix</th></tr></thead>
+<thead><tr><th>Built-in hub says</th><th>Fix</th></tr></thead>
 <tbody>
 <tr><td><em>Python 3 isn't available on this Mac</em></td><td>Run <code>xcode-select --install</code> in Terminal and let it finish (a few minutes). Then right-click the pill → <strong>Quit Needs You</strong> and open the app again.</td></tr>
 <tr><td><em>Port 8765 is already in use by another program</em></td><td>Another copy of Needs You (in another user account, or one you built) or another program holds port 8765. Quit it, then quit and reopen this one.</td></tr>
 </tbody>
 </table></div>
-<p>If it says <strong>Hub not answering</strong>, the hub started but hasn't answered for 30 seconds. Click the pill: the card there has <strong>Restart hub</strong> (so does <strong>Your inbox</strong>, with the hub's last output). If it keeps happening, quit and reopen the app, and send the output of <code>log show --last 10m --predicate 'subsystem == "app.needsyou.mac"'</code> with your report.</p>
+<p>If it says <strong>Hub not answering</strong>, the hub started but hasn't answered for 30 seconds. Click the pill: the card there has <strong>Restart hub</strong> (so does <strong>Built-in hub</strong>, with the hub's last output). If it keeps happening, quit and reopen the app, and send the output of <code>log show --last 10m --predicate 'subsystem == "app.needsyou.mac"'</code> with your report.</p>
 <p>Only want to look around? <strong>General → Demo mode</strong> shows sample items without a hub. Turn it off again before section 6.</p>
 <h2 id="5-tailscale-or-not">5. Tailscale, or not? <a class="anchor" href="#5-tailscale-or-not" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">
@@ -127,7 +128,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <h2 id="6-connect-a-machine-an-invite-link-and-the-one-line-setup">6. Connect a machine: an invite link and the one-line setup <a class="anchor" href="#6-connect-a-machine-an-invite-link-and-the-one-line-setup" aria-label="Link to this section">#</a></h2>
 <p>Do this for the Mac itself first (so Claude Code on the Mac can post), then for each other machine.</p>
 <ol>
-<li><p>Right-click the pill → <strong>Settings…</strong> → <strong>Connect a machine</strong> (under <strong>Inbox and machines</strong>).</p></li>
+<li><p>Right-click the pill → <strong>Settings…</strong> → <strong>Connect a machine</strong> (under <strong>Hubs and machines</strong>).</p></li>
 <li><p><strong>What is it?</strong> <em>A server or agent that sends alerts</em>. <strong>Machine name:</strong> anything, e.g. <code>laptop</code> or <code>devbox</code>. <strong>Uses:</strong> how many machines this link should set up. <strong>Expires after:</strong> keep the default.</p>
 <figure class="doc-fig">
 <div class="stage"><img src="../img/settings-connect.png" width="560" height="404" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite." loading="lazy" decoding="async"></div>

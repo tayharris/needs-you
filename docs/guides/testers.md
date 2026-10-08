@@ -8,13 +8,14 @@ Words used on this page:
 
 | Word | Means |
 |---|---|
-| **Pill** | The small floating panel the app shows at the top right of the screen. It never takes keyboard focus. |
-| **Hub** | The little service that stores items (Python + SQLite). The Mac app runs one for you; nothing to install. |
+| **The app** | NeedsYou.app on your Mac. It shows your alerts; it never takes keyboard focus. |
+| **Pill** | The small floating panel the app shows at the top right of the screen. |
+| **Hub** | The little service that stores items (Python + SQLite). The app has one built in; nothing to install. |
 | **Sender** | Any machine or agent that posts items, with the `needs-you` command-line tool (the CLI). It doesn't need the Mac app. |
 | **Invite link** | A link the app makes (Settings → **Connect a machine**) that sets up one or more senders. Each machine gets its own revocable token. |
 | **Tailnet** | Your private [Tailscale](https://tailscale.com) network. Only needed if machines other than the Mac should post. |
 
-The rest (reader, owner, server hub): [Words](concepts.md).
+The rest (reader, owner, server hub): [App, hubs and senders](concepts.md).
 
 ## What you need
 
@@ -59,24 +60,24 @@ What you should see: **no Dock icon and no window.** A faint pill appears at the
 
 It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by **right-clicking the pill**: Settings…, About Needs You, Quit Needs You.
 
-## 4. Check the hub on this Mac (Your inbox)
+## 4. Check the built-in hub
 
 The hub starts by itself (**Run hub on this Mac** is on by default). Check it:
 
-1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Inbox and machines**: **Your inbox**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
-2. Open **Your inbox**. It starts with how it works: your machines send alerts, this Mac holds them (it's the hub), the pill shows them. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
+1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Hubs and machines**: **Built-in hub**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
+2. Open **Built-in hub**. It starts with how it works: senders post alerts, a hub stores them (this app has one built in), the pill shows them. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
 3. Optional: **General → Open at login**.
 
-<img src="../../site/img/settings-inbox.png" width="560" alt="Settings, Your inbox page: How it works in three lines (your machines and agents send alerts; this Mac holds them, it's the hub; the pill shows them until they're handled), then Run hub on this Mac, on and Running.">
+<img src="../../site/img/settings-inbox.png" width="560" alt="Settings, Built-in hub page: How it works in three lines (senders post alerts; a hub stores them, and this app has one built in; this app shows them in the pill until they're handled), then Run hub on this Mac, on and Running.">
 
 If the pill says **Hub can't start** (click it to open Settings):
 
-| Your inbox says | Fix |
+| Built-in hub says | Fix |
 |---|---|
 | *Python 3 isn't available on this Mac* | Run `xcode-select --install` in Terminal and let it finish (a few minutes). Then right-click the pill → **Quit Needs You** and open the app again. |
 | *Port 8765 is already in use by another program* | Another copy of Needs You (in another user account, or one you built) or another program holds port 8765. Quit it, then quit and reopen this one. |
 
-If it says **Hub not answering**, the hub started but hasn't answered for 30 seconds. Click the pill: the card there has **Restart hub** (so does **Your inbox**, with the hub's last output). If it keeps happening, quit and reopen the app, and send the output of `log show --last 10m --predicate 'subsystem == "app.needsyou.mac"'` with your report.
+If it says **Hub not answering**, the hub started but hasn't answered for 30 seconds. Click the pill: the card there has **Restart hub** (so does **Built-in hub**, with the hub's last output). If it keeps happening, quit and reopen the app, and send the output of `log show --last 10m --predicate 'subsystem == "app.needsyou.mac"'` with your report.
 
 Only want to look around? **General → Demo mode** shows sample items without a hub. Turn it off again before section 6.
 
@@ -96,7 +97,7 @@ The first time another machine connects, macOS may ask whether **`python3`** may
 
 Do this for the Mac itself first (so Claude Code on the Mac can post), then for each other machine.
 
-1. Right-click the pill → **Settings…** → **Connect a machine** (under **Inbox and machines**).
+1. Right-click the pill → **Settings…** → **Connect a machine** (under **Hubs and machines**).
 2. **What is it?** *A server or agent that sends alerts*. **Machine name:** anything, e.g. `laptop` or `devbox`. **Uses:** how many machines this link should set up. **Expires after:** keep the default.
 
    <img src="../../site/img/settings-connect.png" width="560" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite.">

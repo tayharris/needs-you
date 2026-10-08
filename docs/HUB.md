@@ -1,13 +1,16 @@
 # Server hubs (optional)
 
-The Mac app runs its own hub, which is all most setups need. Add always-on server hubs when:
+needs-you has three parts: **the Needs You app** on your Mac shows alerts, **a hub** stores
+them, and **senders** post them ([App, hubs and senders](guides/concepts.md)). The app has a hub
+built in, which is all most setups need. This page is about the other place a hub can run: a
+**server hub**, the same hub, always on, on a Linux server you run. Add one when:
 
 - you want items to land somewhere while the Mac sleeps (otherwise they wait in each sender's outbox until it wakes), or
 - you run many servers, or senders that can't wait (CI with short-lived runners).
 
 A hub is one Python file (`hub/needs_you_hub.py`, standard library and SQLite only) on stock
 `python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Server hubs replicate every write to each other
-(not yet with the Mac's own hub, [below](#with-the-macs-own-hub)), so a sender, the Mac or an
+(not yet with the app's built-in hub, [below](#with-the-apps-built-in-hub)), so a sender, the Mac or an
 invite link can use any of them. The wire contract is in
 [API.md](API.md).
 
@@ -71,9 +74,9 @@ means a **token or invite** record (a revocation, say) one side can't read: thos
 skipped, so replication in that direction waits for it (the log says `BLOCKED`). Upgrade the
 older hub; replication then resumes by itself.
 
-### With the Mac's own hub
+### With the app's built-in hub
 
-Today the Mac's own hub doesn't replicate with server hubs: the app starts it without peers,
+Today the app's built-in hub doesn't replicate with server hubs: the app starts it without peers,
 so server hubs replicate only with each other. Invites made on the Mac list only the Mac's URL,
 so the senders they set up post only to the Mac. To use server hubs:
 
@@ -81,7 +84,7 @@ so the senders they set up post only to the Mac. To use server hubs:
   so senders get every server hub's URL and fail over between them.
 - Connect the Mac to a server hub with an owner invite from it (**Settings → Other hubs (advanced)**).
   The app reads one hub at a time, this Mac's first, so items posted to the server hubs show
-  while the Mac's own hub is down. To read the server hubs all the time, turn off **Run hub on
+  while the built-in hub is down. To read the server hubs all the time, turn off **Run hub on
   this Mac**.
 
 Peering the Mac's hub with server hubs is planned ([ADR 0004](adr/0004-always-on-hub.md),

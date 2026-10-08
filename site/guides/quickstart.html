@@ -35,27 +35,27 @@
     <nav class="toc" aria-label="On this page">
       <p>On this page</p>
       <ul>
-        <li><a href="#1-install-the-mac-app-it-runs-its-own-hub">1. Install the Mac app (it runs its own hub)</a></li>
-        <li><a href="#2-local-claude-code-2-minutes">2. Local Claude Code (2 minutes)</a></li>
-        <li><a href="#3-servers-over-tailscale-2-minutes-each">3. Servers over Tailscale (2 minutes each)</a></li>
-        <li><a href="#4-optional-always-on-server-hubs">4. Optional: always-on server hubs</a></li>
+        <li><a href="#1-install-the-mac-app-its-hub-is-built-in">1. Install the Mac app (its hub is built in)</a></li>
+        <li><a href="#2-local-claude-code-as-a-sender-2-minutes">2. Local Claude Code as a sender (2 minutes)</a></li>
+        <li><a href="#3-servers-as-senders-over-tailscale-2-minutes-each">3. Servers as senders, over Tailscale (2 minutes each)</a></li>
+        <li><a href="#4-optional-a-server-hub">4. Optional: a server hub</a></li>
         <li><a href="#done">Done</a></li>
         <li><a href="#words">Words</a></li>
       </ul>
     </nav>
-<p>Your Mac is the hub: machines and agents send alerts to it, and the pill shows them. Senders don't need the app, only the <code>needs-you</code> command, which an invite link installs. The words are explained under <a href="#words">Words</a> at the end.</p>
+<p>Three parts: <strong>the Needs You app</strong> on your Mac shows alerts in the pill; <strong>a hub</strong> stores them (the app has one built in, so there's nothing else to run); <strong>senders</strong>, the <code>needs-you</code> command and the agent hooks built on it, post them from any machine where agents or jobs run. Senders don't need the app; an invite link installs them. The words are explained under <a href="#words">Words</a> at the end.</p>
 <p>Four steps; only the first is required. Every step can be re-run safely until the invite link expires, even after its uses are spent (a machine that's already set up doesn't spend another).</p>
 <div class="code"><pre><code> Claude Code / Orca on the Mac ──► 127.0.0.1 ──┐
-                                               ├──► NeedsYou.app (panel + its own hub)
+                                               ├──► NeedsYou.app (pill + built-in hub)
  servers, VMs, CI ──── Tailscale ──────────────┘          ▲
                                                            │ optional: the app reads them
                                          always-on server hubs (HUB.md)</code></pre></div>
-<h2 id="1-install-the-mac-app-it-runs-its-own-hub">1. Install the Mac app (it runs its own hub) <a class="anchor" href="#1-install-the-mac-app-it-runs-its-own-hub" aria-label="Link to this section">#</a></h2>
+<h2 id="1-install-the-mac-app-its-hub-is-built-in">1. Install the Mac app (its hub is built in) <a class="anchor" href="#1-install-the-mac-app-its-hub-is-built-in" aria-label="Link to this section">#</a></h2>
 <p>Download <code>NeedsYou-X.Y.Z.dmg</code> (or <code>NeedsYou-X.Y.Z-macos.zip</code>) from the repository's <strong>Releases</strong> page, drag <code>NeedsYou.app</code> to <code>/Applications</code> and open it. The app is ad-hoc signed, so macOS blocks the first launch: right-click → <strong>Open</strong> on macOS 14 and earlier, or <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> on macOS 15 and later (<a href="mac-app.html">Mac app</a>). To build it yourself: <a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a>.</p>
-<p>The app starts its own hub as a child process (<strong>Settings… → Your inbox → Run hub on this Mac</strong>, on by default): SQLite in <code>~/Library/Application Support/NeedsYou/hub.db</code>, listening on <code>127.0.0.1:8765</code> (and on your Mac's tailnet address if Tailscale is running). There are no tokens to mint and no config files to edit. The hub runs on <code>/usr/bin/python3</code>; if Settings says <em>Python 3 isn't available on this Mac</em>, run <code>xcode-select --install</code>, then quit and reopen the app.</p>
+<p>The app starts its built-in hub as a child process (<strong>Settings… → Built-in hub → Run hub on this Mac</strong>, on by default): SQLite in <code>~/Library/Application Support/NeedsYou/hub.db</code>, listening on <code>127.0.0.1:8765</code> (and on your Mac's tailnet address if Tailscale is running). There are no tokens to mint and no config files to edit. The hub runs on <code>/usr/bin/python3</code>; if Settings says <em>Python 3 isn't available on this Mac</em>, run <code>xcode-select --install</code>, then quit and reopen the app.</p>
 <p>A faint pill appears in a corner of the screen. That's the idle state. Until something posts, it reads <code>Nothing needs you · 1 setup tip</code>: click it for a <strong>Connect your first agent or machine</strong> card whose <strong>Copy agent prompt</strong> button does step 2 in one click (it makes a one-use invite and copies the prompt). Later tips cover Tailscale and the Claude Code hooks; each goes away once it's done, or when you dismiss it (<a href="mac-app.html#setup-tips">setup tips</a>).</p>
-<h2 id="2-local-claude-code-2-minutes">2. Local Claude Code (2 minutes) <a class="anchor" href="#2-local-claude-code-2-minutes" aria-label="Link to this section">#</a></h2>
-<p>Make an invite: right-click the pill → <strong>Settings…</strong>, then on the <strong>Connect a machine</strong> page (under <strong>Inbox and machines</strong> in the sidebar; the menu bar menu's <strong>Connect a Machine…</strong> opens it too) keep <em>A server or agent that sends alerts</em>, enter a machine name, set <strong>Uses</strong> and <strong>Expires after</strong>, and click <strong>Create invite</strong>. The app shows the join link and two copy buttons, <strong>Agent prompt</strong> and <strong>Shell one-liner</strong>. The agent prompt reads:</p>
+<h2 id="2-local-claude-code-as-a-sender-2-minutes">2. Local Claude Code as a sender (2 minutes) <a class="anchor" href="#2-local-claude-code-as-a-sender-2-minutes" aria-label="Link to this section">#</a></h2>
+<p>Make an invite: right-click the pill → <strong>Settings…</strong>, then on the <strong>Connect a machine</strong> page (under <strong>Hubs and machines</strong> in the sidebar; the menu bar menu's <strong>Connect a Machine…</strong> opens it too) keep <em>A server or agent that sends alerts</em>, enter a machine name, set <strong>Uses</strong> and <strong>Expires after</strong>, and click <strong>Create invite</strong>. The app shows the join link and two copy buttons, <strong>Agent prompt</strong> and <strong>Shell one-liner</strong>. The agent prompt reads:</p>
 <div class="code"><pre><code>Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. [...] Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one.</code></pre></div>
 <p>The link uses the Mac's MagicDNS name while Tailscale is running, and <code>http://127.0.0.1:8765</code> when it isn't. Either works for an agent on the Mac itself.</p>
 <p>Paste that into Claude Code on the Mac. The agent reads the page, picks the options that fit (Claude Code hooks, the skill, Orca snippets), and runs the one-line installer. It installs the <code>needs-you</code> CLI in <code>~/.local/bin</code>, saves a token of its own in <code>~/.config/needs-you/env</code>, and posts a test <code>info</code> card (<code>setup:&lt;host&gt;:test</code>), which shows under <strong>Recent</strong> in the panel.</p>
@@ -67,17 +67,17 @@
 needs-you resolve --key "personal:test:hello"</code></pre></div>
 <p><code>--alerts</code> turns the hooks on for every Claude Code session on this machine; without it they stay quiet (except in sessions Orca starts). Restart open Claude Code sessions to pick up the hooks. More, including SSH, tmux and VS Code Remote-SSH: <a href="claude-code-everywhere.html">Claude Code everywhere</a>.</p>
 <p><strong>On the Mac itself,</strong> the installer lists <code>http://127.0.0.1:8765</code> first in <code>~/.config/needs-you/env</code> (the hub sees the redeem come from its own machine), then the MagicDNS name, so local agents keep posting while Tailscale is down. Check with <code>grep NEEDS_YOU_URLS ~/.config/needs-you/env</code>.</p>
-<h2 id="3-servers-over-tailscale-2-minutes-each">3. Servers over Tailscale (2 minutes each) <a class="anchor" href="#3-servers-over-tailscale-2-minutes-each" aria-label="Link to this section">#</a></h2>
-<p>Install <a href="https://tailscale.com">Tailscale</a> on the Mac and the servers, with MagicDNS on (<a href="tailscale.html">Tailscale</a> walks through it). There's no switch in the app: while Tailscale is up, its hub also listens on the Mac's tailnet address, and <strong>Settings… → Your inbox</strong> shows the URL servers use. Create an invite with <strong>Uses</strong> set to the number of servers. The link uses the Mac's MagicDNS name, for example <code>http://my-mac.example.ts.net:8765/join/nyi_...</code>.</p>
+<h2 id="3-servers-as-senders-over-tailscale-2-minutes-each">3. Servers as senders, over Tailscale (2 minutes each) <a class="anchor" href="#3-servers-as-senders-over-tailscale-2-minutes-each" aria-label="Link to this section">#</a></h2>
+<p>Install <a href="https://tailscale.com">Tailscale</a> on the Mac and the servers, with MagicDNS on (<a href="tailscale.html">Tailscale</a> walks through it). There's no switch in the app: while Tailscale is up, the built-in hub also listens on the Mac's tailnet address, and <strong>Settings… → Built-in hub</strong> shows the URL servers use. Create an invite with <strong>Uses</strong> set to the number of servers. The link uses the Mac's MagicDNS name, for example <code>http://my-mac.example.ts.net:8765/join/nyi_...</code>.</p>
 <p>On each server, paste the agent prompt into its agent, or run:</p>
 <div class="code"><pre><code class="language-bash">curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes</code></pre></div>
 <p>Each server gets its own token (named <code>&lt;invite name&gt;-&lt;hostname&gt;</code>), so you can revoke one without touching the others: <strong>Settings… → Machines</strong> in the app (<a href="add-a-sender.html#removing-a-sender">Add a sender → Removing a sender</a>).</p>
 <blockquote>
-<p><strong>macOS firewall:</strong> the first time a server connects, macOS may ask whether <code>python3</code> may accept incoming connections. Allow it; that's the app's hub.</p>
+<p><strong>macOS firewall:</strong> the first time a server connects, macOS may ask whether <code>python3</code> may accept incoming connections. Allow it; that's the app's built-in hub.</p>
 </blockquote>
 <p><strong>While the Mac sleeps</strong>, servers can't reach it. Their CLI queues items locally (it still exits 0, so jobs never fail), and the installer adds a 5-minute <code>needs-you flush</code> (cron on Linux, a LaunchAgent on macOS). Items arrive within about 5 minutes of the Mac waking.</p>
-<h2 id="4-optional-always-on-server-hubs">4. Optional: always-on server hubs <a class="anchor" href="#4-optional-always-on-server-hubs" aria-label="Link to this section">#</a></h2>
-<p>If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: <a href="hub.html">Server hubs</a>. They're set up on a server from the command line (<code>scripts/install-hub.sh</code>); there's no app screen for them. The Mac joins one with a link in <strong>Settings… → Other hubs (advanced)</strong>. Today server hubs replicate only with each other, not with the Mac's own hub, and invites made on the Mac list only the Mac's URL, so senders that should fail over to a server hub need an invite made on it (<a href="hub.html#with-the-macs-own-hub">Server hubs</a>).</p>
+<h2 id="4-optional-a-server-hub">4. Optional: a server hub <a class="anchor" href="#4-optional-a-server-hub" aria-label="Link to this section">#</a></h2>
+<p>If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: <a href="hub.html">Server hubs</a>. They're set up on a server from the command line (<code>scripts/install-hub.sh</code>); there's no app screen for them. The Mac joins one with a link in <strong>Settings… → Other hubs (advanced)</strong>. Today server hubs replicate only with each other, not with the built-in hub (that's being built), and invites made on the Mac list only the Mac's URL, so senders that should fail over to a server hub need an invite made on it (<a href="hub.html#with-the-apps-built-in-hub">Server hubs</a>). To use only a server hub, turn off <strong>Run hub on this Mac</strong>: the app then shows the server hub's alerts (<a href="concepts.html#where-the-hub-runs-three-setups">the three setups</a>).</p>
 <h2 id="done">Done <a class="anchor" href="#done" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>Something didn't show up? <a href="troubleshooting.html">Troubleshooting</a>.</li>
@@ -87,15 +87,15 @@ needs-you resolve --key "personal:test:hello"</code></pre></div>
 </ul>
 <h2 id="words">Words <a class="anchor" href="#words" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><strong>Hub:</strong> the small service that holds your alerts. The Mac app runs one; that's <strong>Settings → Your inbox</strong>.</li>
-<li><strong>Sender:</strong> a server, CI job, script or agent that sends alerts with the <code>needs-you</code> command. No app needed.</li>
+<li><strong>The Needs You app:</strong> shows your alerts on the Mac (the pill and the panel).</li>
+<li><strong>Hub:</strong> stores your alerts and hands them to the app. The app has one built in: <strong>Settings → Built-in hub</strong>. A <strong>server hub</strong> is the same hub, always on, on a server you run; optional (<a href="hub.html">Server hubs</a>).</li>
+<li><strong>Sender:</strong> a server, CI job, script or agent that posts alerts with the <code>needs-you</code> command (agent hooks and the MCP server use it too). No app needed.</li>
 <li><strong>Reader (another Mac):</strong> a second Mac with the app that shows the same alerts.</li>
-<li><strong>Owner:</strong> a Mac that can also connect and revoke machines. Yours is the owner of its hub.</li>
+<li><strong>Owner:</strong> a Mac that can also connect and revoke machines. Yours is the owner of its built-in hub.</li>
 <li><strong>Invite link / connect link:</strong> sets up machines; made in <strong>Connect a machine</strong>, listed and revoked in <strong>Machines</strong>.</li>
-<li><strong>Server hub:</strong> optional, an always-on copy of the hub on a server, set up from the command line (<a href="hub.html">Server hubs</a>).</li>
 <li><strong>Tailnet:</strong> your private <a href="tailscale.html">Tailscale</a> network, so servers can reach the Mac.</li>
 </ul>
-<p>The full table, with where each lives in Settings: <a href="concepts.html">Words</a>.</p>
+<p>The full table, with where each lives in Settings: <a href="concepts.html">App, hubs and senders</a>.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/quickstart.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/quickstart.md">docs/guides/quickstart.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

@@ -2,7 +2,23 @@
 
 One inbox for "you have to do something". AI agents, servers and CI post an item when they're blocked on you; your Mac shows it in a small floating pill, with a link to where you act, and it disappears once it's handled.
 
-**Your Mac is the hub.** A hub is a small SQLite database behind a tiny web server: one Python file that needs only the standard library. The Mac app runs one, so there's nothing else to install: no server, no account, no cloud. **Senders** (servers, CI, agents) post with the `needs-you` command, also one Python file: it tries each hub in turn, and if none answers (the Mac is asleep, say) it keeps the alert in a local outbox and sends it later. **Server hubs** are optional: the same hub, always on, on a Linux server, for redundancy, so alerts land while the Mac sleeps. Most people don't need one. It's light: the idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](docs/HUB.md#resource-use)). More in [Words](docs/guides/concepts.md).
+needs-you has three parts:
+
+| Part | What it does | Where it runs |
+|---|---|---|
+| **The Needs You app** | Shows your alerts: the pill and the panel | Your Mac |
+| **A hub** | Stores alerts and hands them to the app. One Python file, SQLite, standard library only | Built into the app, on by default. Optionally also on a server you run, always on |
+| **Senders** | Post alerts when something needs you, and clear them when it's handled: the `needs-you` command, agent hooks, the MCP server, CI and cron jobs, the GitHub poller | Any machine where agents or jobs run, the Mac included |
+
+```
+ senders (any machine)              your Mac
+ needs-you CLI, agent hooks,  ───►  the Needs You app
+ MCP server, CI, GitHub poller       ├─ built-in hub: stores alerts
+          │                          └─ pill and panel: show them
+          └──► optional: a server hub, always on (HUB.md)
+```
+
+With the built-in hub there's nothing else to run: no server, no account, no cloud. Senders don't need the app, only the `needs-you` command (one Python file), which an invite link installs; if no hub answers (the Mac is asleep, say) it keeps the alert in a local outbox and sends it later. A server hub is optional, so alerts land while the Mac sleeps; most people don't need one. It's light: the idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](docs/HUB.md#resource-use)). More, with the three ways to place the hub: [App, hubs and senders](docs/guides/concepts.md).
 
 <p>
 <img src="site/img/preview-agent.png" width="330" alt="A new card springing out of the pill: Claude needs permission: acme-api, from devbox, with a VS Code button.">
@@ -38,11 +54,11 @@ Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
 Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page. Every guide is also on the site, in reading order: **[needsyou.app/guides](https://needsyou.app/guides/)**.
 
-Words used below: the **hub** holds your alerts (the Mac app runs one, so your Mac is the hub); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
+Words used below: **the app** shows your alerts on the Mac; the **hub** stores them (the app has one built in); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [App, hubs and senders](docs/guides/concepts.md).
 
 1. **Download** the latest release from the repository's [Releases page](https://github.com/tayharris/needs-you/releases) (macOS 14 or later): `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
 2. **First launch.** The app is ad-hoc signed, not notarized, so macOS blocks it once. On macOS 14 and earlier: right-click `NeedsYou.app` → **Open** → **Open**. On macOS 15 and later: double-click it, then **System Settings → Privacy & Security → Open Anyway**. The release notes have the full steps (firewall prompt, managed Macs). The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools; if Settings says Python 3 isn't available, run `xcode-select --install` and reopen the app.
-3. **Connect a machine.** Right-click the pill (the small, faint shape at the top right of the screen) → **Settings…** → **Connect a machine** (under **Inbox and machines** in the sidebar) → **Create invite**, then click **Agent prompt** and paste it into Claude Code (on this Mac or any server on your tailnet), or click **Shell one-liner** and run it there. The machine installs the `needs-you` CLI and posts a test card.
+3. **Connect a machine.** Right-click the pill (the small, faint shape at the top right of the screen) → **Settings…** → **Connect a machine** (under **Hubs and machines** in the sidebar) → **Create invite**, then click **Agent prompt** and paste it into Claude Code (on this Mac or any server on your tailnet), or click **Shell one-liner** and run it there. The machine installs the `needs-you` CLI and posts a test card.
 
 Next:
 
@@ -62,19 +78,19 @@ Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/
 
 ## How it works, in three steps
 
-1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting, and it runs its own hub (a small SQLite database behind a tiny web server). Nothing else to set up.
+1. **Install the Mac app.** `NeedsYou.app` is a small floating panel that all but disappears when nothing is waiting. It has a hub built in (a small SQLite database behind a tiny web server) that stores your alerts, so there's nothing else to set up.
 2. **Connect Claude Code on the Mac.** Right-click the pill → **Settings…** → **Connect a machine** → **Create invite**, copy the **Agent prompt**, and paste it into Claude Code: *"Set up needs-you alerts on this machine: read &lt;link&gt; and follow it."* The agent reads the link, installs the `needs-you` CLI, and from then on posts when it's blocked on you.
-3. **Connect servers over Tailscale.** Same thing on any VM, devbox or CI runner: paste the prompt into its agent, or run the one-liner the link gives you. One link can set up several machines; each gets its own revocable token.
+3. **Connect servers over Tailscale.** Each one becomes a sender. Same thing on any VM, devbox or CI runner: paste the prompt into its agent, or run the one-liner the link gives you. One link can set up several machines; each gets its own revocable token.
 
 ```
  agents, CI, cron          needs-you CLI                 your Mac
  on servers or the Mac ──► (fails over, queues  ──────►  NeedsYou.app
-                            while the Mac sleeps)        └─ its own hub (SQLite + tiny web server)
+                            while the Mac sleeps)        └─ built-in hub (SQLite + tiny web server)
                                                              ▲
                          optional: always-on server hubs ────┘ (the app can read from them)
 ```
 
-Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md). Today they replicate only with each other, not with the Mac's own hub, and invites made on the Mac list only the Mac's URL; [HUB.md](docs/HUB.md#with-the-macs-own-hub) says how to set it up.
+Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md). Today they replicate only with each other, not with the app's built-in hub, and invites made on the Mac list only the Mac's URL; [HUB.md](docs/HUB.md#with-the-apps-built-in-hub) says how to set it up.
 
 **[Quickstart](docs/guides/quickstart.md)** walks through all of it.
 
@@ -98,7 +114,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 |---|---|
 | [Testers](docs/guides/testers.md) | Invited testers: access, install, first run, reporting problems |
 | [Quickstart](docs/guides/quickstart.md) | The Mac app, local Claude Code, servers |
-| [Words](docs/guides/concepts.md) | Hub, sender, reader, owner, invite link, server hub, tailnet, and the Settings page for each |
+| [App, hubs and senders](docs/guides/concepts.md) | The three parts and where each runs, roles, invite links, tailnet, and the Settings page for each |
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
 | [MCP server](docs/guides/mcp.md) | Agents with MCP but no shell: post, resolve and check the setup as tool calls |
@@ -119,7 +135,7 @@ Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md]
 ## Config
 
 - **Hubs** are configured by a JSON text file (Python's standard library reads it; no YAML dependency) or entirely by command-line flags, plus the admin CLI `needs_you_admin.py` for tokens and invites.
-- **The Mac app** holds its own list of hubs and runs its own hub; you never edit a file on the Mac.
+- **The Mac app** holds its own list of hubs and runs its built-in hub; you never edit a file on the Mac.
 - **Senders** keep `~/.config/needs-you/env` (hub URLs and a token), written for them by the invite installer.
 - **No hub web UI, by design.** The `/join/<code>` pages (Markdown for agents, plus an install script) are the only browser-friendly surface.
 - **Network:** Tailscale is recommended (hubs listen on loopback and the tailnet IP, never on all interfaces), but any `https` URL works. Plain `http` is only for tailnet names and local addresses.
