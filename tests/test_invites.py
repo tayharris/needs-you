@@ -87,7 +87,9 @@ class Create(InviteCase):
 
     def test_validation(self):
         for body in ({"name": "bad name"}, {"role": "admin"}, {"uses": 0}, {"uses": 101},
-                     {"uses": "3"}, {"ttl_hours": 0}, {"ttl_hours": 99999}):
+                     {"uses": "3"}, {"ttl_hours": 0}, {"ttl_hours": 99999},
+                     {"name": "srv\n"},  # $ matched before a final newline: a token "srv\n-box"
+                     {"ttl_hours": 1e-9}):  # under a millisecond: dead on arrival
             with self.subTest(body):
                 self.assertEqual(self.invite(**body)[0], 400)
 
@@ -293,6 +295,12 @@ class Revoke(InviteCase):
         status, body = request("DELETE", self.hub.url + "/v1/tokens/this-mac", OWNER)
         self.assertEqual(status, 400)
         self.assertEqual(request("GET", self.hub.url + "/v1/items", OWNER)[0], 200)
+
+    def test_a_token_named_like_the_update_path_revokes_by_name(self):
+        self.hub.store.add_token("request-update", "sender")
+        status, body = request("DELETE", self.hub.url + "/v1/tokens/request-update", OWNER)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["revoked"][0]["name"], "request-update")
 
     def test_owner_revokes_invites(self):
         _, inv = self.invite(uses=3)

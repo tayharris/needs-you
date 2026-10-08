@@ -166,7 +166,7 @@ def ours(hook):
 original_text = None
 settings = {}
 if os.path.exists(settings_path):
-    with open(settings_path, encoding="utf-8") as f:
+    with open(settings_path, encoding="utf-8", newline="") as f:  # the backup keeps it exactly
         original_text = f.read()
     if original_text.strip():
         try:
@@ -189,23 +189,26 @@ if not isinstance(hooks, dict):
 
 # 1. Remove every existing needs-you hook, from every event, leaving other
 #    hooks (and their groups) exactly as they were.
+removed = False  # did we take anything out (only then may an event or "hooks" go)
 for event in list(hooks):
     groups = hooks[event]
     if not isinstance(groups, list):
         continue
-    new_groups = []
+    new_groups, touched = [], False
     for group in groups:
         if isinstance(group, dict) and isinstance(group.get("hooks"), list):
             kept = [h for h in group["hooks"] if not ours(h)]
             if len(kept) != len(group["hooks"]):
+                touched = True
                 if not kept:
                     continue  # the group only held our hook
                 group = dict(group, hooks=kept)
         new_groups.append(group)
-    if new_groups:
+    removed = removed or touched
+    if new_groups or not touched:
         hooks[event] = new_groups
     else:
-        del hooks[event]
+        del hooks[event]  # it held only ours
 
 # 2. Add ours back (install only).
 if action == "install":
@@ -216,7 +219,7 @@ if action == "install":
                 h["command"] = h["command"].replace(USER_SNIPPET_PREFIX, cmd_prefix)
             hooks.setdefault(event, []).append(group)
 
-if hooks:
+if hooks or (not removed and "hooks" in settings):  # (an empty one of the person's own stays)
     settings["hooks"] = hooks
 else:
     settings.pop("hooks", None)
@@ -248,8 +251,9 @@ if dry_run:
 real = os.path.realpath(settings_path)
 os.makedirs(os.path.dirname(real), exist_ok=True)
 if original_text is not None:
-    # 0600 (settings can hold API keys in "env"), and O_EXCL: a backup name that already
-    # exists (or is a symlink a repo planted) is never written.
+    # 0600 (settings can hold API keys in "env"), and O_EXCL: a backup from earlier in the same
+    # second (an install then an uninstall) is never overwritten, and a backup name that already
+    # exists or is a symlink a repo planted is never written.
     backup = "%s.bak-%s" % (real, time.strftime("%Y%m%d-%H%M%S"))
     n = 0
     while True:
@@ -261,7 +265,7 @@ if original_text is not None:
             n += 1
     if n:
         backup = "%s.%d" % (backup, n)
-    with os.fdopen(bfd, "w", encoding="utf-8") as f:
+    with os.fdopen(bfd, "w", encoding="utf-8", newline="") as f:
         f.write(original_text)
     print("settings: backed up to %s" % backup)
     mode = os.stat(real).st_mode & 0o777

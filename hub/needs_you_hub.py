@@ -127,8 +127,8 @@ INVITE_GRACE_MS = 24 * 3600 * 1000  # keep revoked invites this long so the revo
 INVITE_MAX_USES = 100
 INVITE_MAX_TTL_HOURS = 24 * 90
 DEFAULT_OWNER_TOKEN_NAME = "this-mac"
-NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$")
-INVITE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}$")
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}\Z")
+INVITE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}\Z")
 HUB_DIR = os.path.dirname(os.path.abspath(__file__))
 # GET /dl/<name> serves only these, relative to the hub's install directory (the repo layout).
 DOWNLOADS = {
@@ -178,7 +178,7 @@ FILE_VERSION_RE = re.compile(r'(?:needs[-_]you[-_]version"?\s*:\s*"?|^VERSION = 
 # X-Needs-You-Client: "cli=0.1.1; hook=0.1.1; skill=none; orca=none". Unknown names are ignored.
 CLIENT_HEADER = "X-Needs-You-Client"
 CLIENT_NAMES = ("cli", "hook", "skill", "orca")
-CLIENT_VALUE_RE = re.compile(r"^(\d{1,6}\.\d{1,6}\.\d{1,6}|none|unknown)$")
+CLIENT_VALUE_RE = re.compile(r"^(\d{1,6}\.\d{1,6}\.\d{1,6}|none|unknown)\Z")
 CLIENT_HEADER_MAX = 200
 CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
 
@@ -324,7 +324,7 @@ def sanitize_host(host: Any) -> str:
 # Validation
 # ---------------------------------------------------------------------------
 
-KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+$")
+KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+$")  # (keys are stripped first: no final newline)
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # Bidi embedding/override/isolate controls (and the C1 range): they can make a label or title
 # read differently from what it is (e.g. reverse "moc.live" into "evil.com"). Ordinary RTL text
@@ -1015,7 +1015,9 @@ class Store:
         """A new updated_at that is strictly after prev (so LWW always moves forward)."""
         now = self.now_ms()
         if prev is not None and now <= prev:
-            return prev + 1
+            # Never past the last printable timestamp (a peer may send one at the limit):
+            # fmt_ts would fail on every read of the record after that.
+            return min(prev + 1, MAX_TS_MS)
         return now
 
     @staticmethod
@@ -1296,8 +1298,11 @@ class Store:
             "SELECT * FROM items WHERE superseded_by = ?", (winner_id,))]
         if not losers:
             return
-        best = max([winner] + losers, key=self._content_rank)
-        if best is winner or self._content_rank(best) <= self._content_rank(winner):
+        best = max(losers, key=self._content_rank)
+        # Only content that is really newer (API.md): a tie on content_updated_at broken by
+        # updated_at would let a loser's later non-content write (its own hub's merge result)
+        # copy its stale links, kind or expiry back over a re-post on the winner.
+        if best["content_updated_at"] <= winner["content_updated_at"]:
             return
         for col in self.CONTENT_COLS:
             winner[col] = best[col]
@@ -1404,7 +1409,8 @@ class Store:
         if isinstance(uses, bool) or not isinstance(uses, int) or not 1 <= uses <= INVITE_MAX_USES:
             raise _invalid("uses", "uses must be an integer from 1 to %d" % INVITE_MAX_USES)
         if (isinstance(ttl_hours, bool) or not isinstance(ttl_hours, (int, float))
-                or not 0 < float(ttl_hours) <= INVITE_MAX_TTL_HOURS):
+                or not 1 <= float(ttl_hours) * 3600 * 1000
+                or not float(ttl_hours) <= INVITE_MAX_TTL_HOURS):  # at least 1 ms: alive when made
             raise _invalid("ttl_hours", "ttl_hours must be a number from 0 to %d" % INVITE_MAX_TTL_HOURS)
         code = mint_invite_code()
         with self.tx():
@@ -2583,7 +2589,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._revoke_invite(urllib.parse.unquote(path[len("/v1/invites/"):]))
             if path == "/v1/tokens" and method == "GET":
                 return self._list_tokens()
-            if path.startswith("/v1/tokens/") and path.endswith("/request-update") and method in ("POST", "DELETE"):
+            if (path.startswith("/v1/tokens/") and path[len("/v1/tokens/"):].endswith("/request-update")
+                    and method in ("POST", "DELETE")):  # (a token may be named request-update)
                 return self._request_update(urllib.parse.unquote(path[len("/v1/tokens/"):-len("/request-update")]),
                                             method == "POST")
             if path.startswith("/v1/tokens/") and method == "DELETE":
@@ -2882,8 +2889,12 @@ class Handler(BaseHTTPRequestHandler):
                 cursor = ListCursor.decode(raw_cursor)
             except ValueError:
                 cursor = None
-            if cursor is not None and cursor.epoch != self.hub.store.epoch():
-                cursor = None  # from a replaced database: its seqs mean nothing here
+            if cursor is not None and (cursor.epoch != self.hub.store.epoch()
+                                       or cursor.seq > self.hub.store.max_seq()):
+                # From a replaced database: its seqs mean nothing here. A restored backup keeps
+                # the epoch, but this hub never reached the cursor's seq (new writes would hide
+                # below it), so that is a replaced database too.
+                cursor = None
             if cursor is None and since is None:
                 raise ApiError(400, "invalid", "cursor is not one this hub issued; poll without it",
                                "cursor")
@@ -3388,7 +3399,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok, Cursor, Cline and Aider session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--agent-instructions AGENTS` | The skill's rules for other agents, comma-separated from `codex`, `gemini`, `opencode`: a marked block appended to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing; the file keeps a backup). Only when the user asks for it. |
-| `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
+| `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot`, `cursor` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
 | `--ssh-alias NAME` | This machine is reached from the Mac over SSH: NAME is its host alias in the Mac's `~/.ssh/config` (VS Code Remote-SSH), so cards get a link that opens the session's folder there. |

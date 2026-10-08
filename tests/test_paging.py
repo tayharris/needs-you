@@ -142,6 +142,22 @@ class NextCursor(PagingCase):
                 self.assertEqual(s, 400)
                 self.assertEqual(body.get("field"), "cursor")
 
+    def test_cursor_from_before_a_backup_restore_falls_back_to_since(self):
+        # A restored backup keeps the epoch but its seq is behind the cursor's: the new
+        # writes get seqs the cursor claims were delivered. Treat it as a foreign cursor.
+        for i in range(5):
+            self.post({"key": "old%d" % i, "title": "t"})
+        self.clock.advance(5)
+        q = self.first_cursor()
+        store = self.hub.store
+        with store.tx():
+            store.conn.execute("UPDATE meta SET v = '1' WHERE k = 'seq'")  # the restored database
+        self.clock.advance(1)
+        new = [self.post({"key": "new%d" % i, "title": "t"})["id"] for i in range(3)]
+        s, body = self.list(**q)
+        self.assertEqual(s, 200, body)
+        self.assertEqual(sorted(i["id"] for i in body["items"]), sorted(new))
+
     def test_truncated_full_poll_continues_by_next(self):
         """A full poll cut short by `limit` (`more`): its `next` delivers the rest, then the
         changes after it, as the polling loop says."""

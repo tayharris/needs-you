@@ -121,6 +121,35 @@ class Installer(unittest.TestCase):
         self.run_installer("--uninstall")
         self.assertEqual(self.conf_text(), mine + "\n")
 
+    def test_an_empty_config_keeps_its_mode(self):
+        open(self.conf, "w").close()
+        os.chmod(self.conf, 0o600)
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.stat(self.conf).st_mode & 0o777, 0o600)
+
+    def test_crlf_file_comes_back_byte_for_byte(self):
+        mine = b"model: gpt-4o\r\nread: [CONVENTIONS.md]\r\n"
+        for uninstall in ([BASH, INSTALLER, "--uninstall"], [sys.executable, CLI, "uninstall-hooks", "--aider"]):
+            with self.subTest(uninstall[1]):
+                with open(self.conf, "wb") as fh:
+                    fh.write(mine)
+                r = self.run_installer()
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("notifications-command", self.conf_text())
+                r = subprocess.run(uninstall, env={"HOME": self.home, "PATH": os.environ["PATH"]},
+                                   capture_output=True, text=True, timeout=60, cwd=self.home)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                with open(self.conf, "rb") as fh:
+                    self.assertEqual(fh.read(), mine)
+                baks = []
+                for n in os.listdir(self.home):
+                    if n.startswith(".aider.conf.yml.bak-"):
+                        with open(os.path.join(self.home, n), "rb") as fh:
+                            baks.append(fh.read())
+                        os.remove(os.path.join(self.home, n))
+                self.assertIn(mine, baks)
+
     def test_not_safe_to_change(self):
         for mine in ("notifications: false\n", "notifications-command: say hi\n", "- a list\n",
                      "{model: x}\n", "model: x\n---\nother: y\n"):

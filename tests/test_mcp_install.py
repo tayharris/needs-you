@@ -156,6 +156,30 @@ class InstallMcp(CliCase):
         self.assertEqual(len(self.backups(".codex/config.toml")), 1)
         self.assertEqual(self.text("claude-calls.log").count("add-json"), 1)
 
+    def test_cursor_global_mcp_json(self):
+        # Cursor's global config: ~/.cursor/mcp.json, mcpServers, a stdio server (cursor.com docs).
+        mine = json.dumps({"mcpServers": {"docs": {"command": "docs-mcp"}}}, indent=2) + "\n"
+        self.write(".cursor/mcp.json", mine)
+        r = self.run_cli("install-mcp", "cursor")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        got = self.json(".cursor/mcp.json")
+        self.assertEqual(got["mcpServers"]["docs"], {"command": "docs-mcp"})
+        self.assertEqual(got["mcpServers"]["needs-you"],
+                         {"type": "stdio", "command": self.python, "args": [self.server]})
+        self.assertEqual(len(self.backups(".cursor/mcp.json")), 1)
+        r = self.run_cli("doctor")
+        self.assertIn("registered with Cursor", r.stdout)
+        r = self.run_cli("uninstall-hooks", "--mcp")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.json(".cursor/mcp.json"), json.loads(mine))
+        # no Cursor config yet: created, and removed again on uninstall
+        os.remove(self.p(".cursor/mcp.json"))
+        shutil.copy(MCP, self.server)
+        self.assertEqual(self.run_cli("install-mcp", "cursor").returncode, 0)
+        self.assertIn("needs-you", self.json(".cursor/mcp.json")["mcpServers"])
+        self.run_cli("uninstall-hooks", "--mcp")
+        self.assertFalse(os.path.exists(self.p(".cursor/mcp.json")))
+
     def test_uninstall_removes_exactly_what_was_added(self):
         self.seed()
         before = {rel: self.text(rel) for rel in (".claude.json", ".codex/config.toml", ".gemini/settings.json")}
@@ -210,6 +234,26 @@ class InstallMcp(CliCase):
         self.assertEqual(self.text(".codex/config.toml"), '[mcp_servers.needs-you]\ncommand = "/opt/other"\n')
         r = self.run_cli("uninstall-hooks", "--mcp")
         self.assertEqual(self.json(".gemini/settings.json")["mcpServers"]["needs-you"], {"command": "/opt/other"})
+
+    def test_codex_server_in_any_toml_spelling_is_left_alone(self):
+        # Each of these already defines mcp_servers.needs-you: adding our table would declare it
+        # twice, which is a TOML error, and Codex would refuse the whole file.
+        for text in ('[mcp_servers]\nneeds-you = { command = "mine" }\n',
+                     '[mcp_servers]\n"needs-you".command = "mine"\n',
+                     "[mcp_servers.'needs-you']\ncommand = \"mine\"\n",
+                     '[ mcp_servers . "needs-you" . env ]\nA = "1"\n',
+                     'mcp_servers.needs-you.command = "mine"\n'):
+            with self.subTest(text=text):
+                self.write(".codex/config.toml", text)
+                r = self.run_cli("install-mcp", "codex")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("left it alone", r.stderr)
+                self.assertEqual(self.text(".codex/config.toml"), text)
+        # A server whose name only starts the same is someone else's business.
+        self.write(".codex/config.toml", '[mcp_servers]\nneeds-you-old = { command = "x" }\n')
+        r = self.run_cli("install-mcp", "codex")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[mcp_servers.needs-you]", self.text(".codex/config.toml"))
 
     def test_opencode_jsonc_and_missing_claude_say_what_to_do(self):
         self.write(".config/opencode/opencode.jsonc", "// mine\n{}\n")
@@ -281,6 +325,27 @@ class InstallInstructions(CliCase):
         self.assertEqual(self.text(".codex/AGENTS.md"), mine + "\nMore of mine.\n")
         self.assertFalse(os.path.exists(self.p(".gemini/GEMINI.md")))
         self.assertFalse(os.path.exists(self.p(".config/opencode/AGENTS.md")))
+
+    def test_crlf_files_come_back_byte_for_byte(self):
+        # Files edited on Windows or synced through it: install then uninstall keeps every \r.
+        rules = b"# My rules\r\n\r\nAlways run the tests.\r\n"
+        toml = b'model = "o3"\r\n\r\n[mcp_servers.docs]\r\ncommand = "docs-mcp"\r\n'
+        for rel, data in ((".codex/AGENTS.md", rules), (".codex/config.toml", toml)):
+            os.makedirs(os.path.dirname(self.p(rel)), exist_ok=True)
+            with open(self.p(rel), "wb") as fh:
+                fh.write(data)
+        self.assertEqual(self.run_cli("install-instructions", "--from", INSTR, "codex").returncode, 0)
+        self.assertEqual(self.run_cli("install-mcp", "codex").returncode, 0)
+        r = self.run_cli("uninstall-hooks", "--instructions", "--mcp")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for rel, data in ((".codex/AGENTS.md", rules), (".codex/config.toml", toml)):
+            with open(self.p(rel), "rb") as fh:
+                self.assertEqual(fh.read(), data, rel)
+            baks = []
+            for bak in self.backups(rel):
+                with open(os.path.join(os.path.dirname(self.p(rel)), bak), "rb") as fh:
+                    baks.append(fh.read())
+            self.assertIn(data, baks, rel)  # the install's backup is the file as it was
 
     def test_symlinked_file_and_broken_block_are_left_alone(self):
         real = self.write("dotfiles/GEMINI.md", "mine\n")

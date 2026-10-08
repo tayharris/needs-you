@@ -85,6 +85,20 @@ class Receiver(HubTestCase):
             hubmod.STATUSES = orig
         self.assertIsNotNone(hub.store.get_item(bad["id"]))
 
+    def test_a_timestamp_at_the_upper_limit_is_not_a_trap(self):
+        # A peer's record stamped 9999-12-31T23:59:59.999Z is valid; the next local write
+        # bumps updated_at past it, which fmt_ts can't print: every GET was a 500 after that.
+        hub = self.make_hub("hub-b", clock=None)
+        _, reader = self.tokens(hub)
+        rec = item_rec(7, updated_at="9999-12-31T23:59:59.999Z")
+        s, body = request("POST", hub.url + "/v1/replicate", PEER_SECRET, {"from_hub": "hub-z", "items": [rec]})
+        self.assertEqual((s, body["applied"]), (200, 1), body)
+        s, body = request("PATCH", hub.url + "/v1/items/" + rec["id"], reader, {"seen_at": None})
+        self.assertEqual(s, 200, body)
+        s, body = request("GET", hub.url + "/v1/items?status=all", reader)
+        self.assertEqual(s, 200, body)
+        self.assertEqual([i["id"] for i in body["items"]], [rec["id"]])
+
     def test_malformed_field_types_are_skipped_not_a_500(self):
         # Fields stored as given (body, ids, source, steps) used to reach SQLite as a dict or
         # a list and fail the whole batch with 500, retried forever; a huge number timestamp

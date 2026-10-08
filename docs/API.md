@@ -347,7 +347,8 @@ its `updated_at` is older than the cursor.
 `next` (hubs after 0.1.2) is `<database epoch>.<seq>.<expiry position>`: the hub's per-write
 sequence number, so a page always moves past what it returned and never holds more than
 `limit` items, however many writes share a millisecond. Clients must not parse it. A hub
-answers a `cursor` from another database (it was replaced) or one it can't read by serving
+answers a `cursor` from another database (it was replaced, or restored from a backup older
+than the cursor) or one it can't read by serving
 `since` instead when that was sent, and with `400 invalid` (`"field": "cursor"`) when it
 wasn't; drop the cursor and do a full poll then. Sending both is also what keeps an older hub,
 which ignores `cursor`, working. `next` is in every response except a `since`-only page with
