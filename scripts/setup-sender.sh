@@ -47,6 +47,7 @@ CONTEXT_ALERT=""
 SSH_ALIAS=""
 AGENT_LINK=""
 ORCA_ENV=""
+AUTO_UPDATE=""          # "" = 1 unless the env file already has a value; "1" | "0"
 
 usage() {
   cat <<EOF
@@ -76,6 +77,10 @@ Checks:
   --require-health       Exit 3 if no hub answers /v1/health (default: warn only).
   --no-schedule          Don't schedule the 5-minute 'needs-you flush'.
   --no-path              Don't edit your shell profile; print the PATH line instead.
+  --no-auto-update       Don't let the flush run 'needs-you update' once a day. It's on
+                         by default (NEEDS_YOU_AUTO_UPDATE=1): updates come only from the
+                         first hub, checked against the GitHub release.
+  --auto-update          Turn it back on after --no-auto-update.
 
 Claude Code hook settings (written to the env file; see
 integrations/claude-code/README.md):
@@ -123,6 +128,8 @@ while [ $# -gt 0 ]; do
     --require-health) REQUIRE_HEALTH=1; shift ;;
     --no-schedule) SCHEDULE=0; shift ;;
     --no-path) SET_PATH=0; shift ;;
+    --auto-update) AUTO_UPDATE=1; shift ;;
+    --no-auto-update) AUTO_UPDATE=0; shift ;;
     --alerts) ALERTS=1; shift ;;
     --context-alert) [ $# -ge 2 ] || die "--context-alert needs a value"; CONTEXT_ALERT=$2; shift 2 ;;
     --context-alert=*) CONTEXT_ALERT=${1#*=}; shift ;;
@@ -365,6 +372,19 @@ add_setting NEEDS_YOU_CONTEXT_ALERT_PCT "$CONTEXT_ALERT"
 add_setting NEEDS_YOU_SSH_ALIAS "$SSH_ALIAS"
 add_setting NEEDS_YOU_AGENT_LINK "$AGENT_LINK"
 add_setting NEEDS_YOU_ORCA_ENVIRONMENT "$ORCA_ENV"
+# Daily updates: on by default; a value already in the file is kept unless a flag says otherwise.
+if [ -z "$AUTO_UPDATE" ] && ! { [ -f "$ENV_FILE" ] &&
+     grep -Eq '^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_AUTO_UPDATE=' "$ENV_FILE"; }; then
+  AUTO_UPDATE=1
+fi
+add_setting NEEDS_YOU_AUTO_UPDATE "$AUTO_UPDATE"
+case "$AUTO_UPDATE" in
+  1) info "daily updates: on, run by the flush (--no-auto-update turns them off)" ;;
+  0) info "daily updates: off (run 'needs-you update' by hand)" ;;
+esac
+if [ "$SCHEDULE" -eq 0 ] && [ "$AUTO_UPDATE" != 0 ]; then
+  warn "--no-schedule: daily updates run from the 5-minute flush, so they won't run until you schedule 'needs-you flush' yourself"
+fi
 
 TMP_ENV=$(umask 077; mktemp "$CONFIG_DIR/.env.XXXXXX")
 trap 'rm -f "$TMP_ENV"' EXIT
