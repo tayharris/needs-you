@@ -40,11 +40,15 @@ class HostCheck(HubTestCase):
 
     def test_own_names_pass(self):
         port = self.hub.port
+        # The hub read the host name when it started, just now: read it again here, not at
+        # import (a Mac waking on another network renames itself mid-run).
+        me = socket.gethostname().lower().rstrip(".")
+        short = me.split(".")[0]
         for host in ("127.0.0.1:%d" % port, "127.0.0.1", "localhost:%d" % port, "LOCALHOST",
                      "[::1]:%d" % port, "100.101.102.103:8765", "[fd7a:115c:a1e0::1]:8765",
                      "hub-a.example.ts.net:8765", "hub-a.example.ts.net.", "HUB-A.Example.TS.NET",
                      "hub-a", "hub-a.other-tailnet.ts.net", "needs-you.internal.example:443",
-                     ME, SHORT, SHORT + ".local", SHORT + ".tail1234.ts.net"):
+                     me, short, short + ".local", short + ".tail1234.ts.net"):
             with self.subTest(host):
                 st, body = self.get(host)
                 self.assertEqual(st, 200, body)
