@@ -11,6 +11,8 @@ Build, install and signing details live with the code: **[mac/README.md](../../m
 3. The built-in hub needs `/usr/bin/python3` (Apple's Command Line Tools). If **Settings…** says *Python 3 isn't available on this Mac*, run `xcode-select --install`, then quit and reopen the app.
 4. Optional: **Settings… → General → Open at login**.
 
+When you open Needs You yourself, the panel opens once so you can see your items and where the pill is, without taking focus from what you're typing. It closes on its own after about 10 seconds with the pointer away (pointing at it holds it open; it goes 2 seconds after the pointer leaves) or at a click anywhere else. At login, and when an update restarts the app, only the pill shows. Turn this off with **Settings → Panel → Open panel → Open the panel when Needs You starts**.
+
 ### Opened it from Downloads or the disk image?
 
 Open at login only works from Applications (macOS ties the login item to where the app is), so while Needs You runs from anywhere else, the toggle is greyed out and says why: *Needs You is running from Downloads. Move it to Applications to open it at login.* Above it, **Settings → General → Move to Applications** copies the app to `/Applications` (or `~/Applications` if you can't write to `/Applications`), opens it from there in the background and quits the old copy. The menu bar menu has **Move to Applications…** too, which opens that page. Nothing pops up on launch: an alert would take focus from what you're typing.
@@ -64,7 +66,7 @@ The open panel shows one context at a time; the tab in its header switches (here
 - A card waiting 4 hours or more shows its age next to the title (`5 h`, `2 d`; amber after 2 days). Its **…** menu has **Dismiss All from <host>**, which clears every card and Recent row from that machine in this context, for when a machine went away without resolving its cards.
 - **Right-click** the pill (or the button in the expanded header) to snooze everything: 15 min, 30 min, 1 hr, 3 hr, until tomorrow. Urgent items still pulse once through a snooze. What else arrives while snoozed waits under **Later** (below).
 - **Control-Option-Space (⌃⌥Space)** opens the card list, or collapses it when it's open (a hidden panel comes back open). Double-clicking the open panel's header bar also collapses it. Change it in **Settings → Panel → Keyboard**.
-- Drag the pill anywhere; it stays where you drop it (or snaps to a corner with **Snap to corners**) and remembers the spot per display setup. **Reset Position** in the right-click menu puts it back top right.
+- Drag the pill anywhere; it stays where you drop it (or snaps to a corner with **Snap to corners**) and remembers the spot per display setup. **Reset Position** in the right-click menu puts it back top right. If a remembered spot would put the pill off its display (a display was rearranged or changed resolution), it starts in the top right of the main display instead; the next drag saves a new spot.
 
 ### Setup tips
 
@@ -143,6 +145,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | How much of each card's text shows | Panel → Look → **Card text** | Full, First lines (3), Title only (click **Show details**) |
 | Links on one short row | Panel → Look → **Compact links** | Off, On (3 links, `+N` shows the rest) |
 | Cards before the list scrolls | Panel → Look → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
+| Open the panel once when you start the app yourself (never at login or after an update) | Panel → Open panel → **Open the panel when Needs You starts** | On, Off |
 | Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | On, Off |
 | How dark the layer behind the glass is | Panel → Opacity → **Background darkness** | 30% (default), None, 15%, 45%, 60%, 75% |
 | The open panel's list height | Panel → Open panel → **List height** (drag the panel's edge) | Automatic, or the height you dragged |
