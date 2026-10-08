@@ -172,10 +172,10 @@ fi
 # (NEEDS_YOU_CONFIG, else $XDG_CONFIG_HOME/needs-you/env, else ~/.config/...),
 # so `--alerts` on a machine with XDG_CONFIG_HOME set isn't silently ignored.
 env_file="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
-file_val() {
+file_val() {  # as the CLI reads it: spaces around "=", the value trimmed (a CRLF file too)
   [ -r "$env_file" ] || return 0
-  sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$env_file" | tail -n 1 |
-    sed -e "s/^'\(.*\)'\$/\1/" -e 's/^"\(.*\)"$/\1/'
+  sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1[[:space:]]*=[[:space:]]*//p" "$env_file" |
+    tail -n 1 | sed -e 's/[[:space:]]*$//' -e "s/^'\(.*\)'\$/\1/" -e 's/^"\(.*\)"$/\1/'
 }
 [ -n "${NEEDS_YOU_AGENT_ALERTS+x}" ] || NEEDS_YOU_AGENT_ALERTS=$(file_val NEEDS_YOU_AGENT_ALERTS)
 

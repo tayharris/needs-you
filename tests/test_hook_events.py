@@ -560,6 +560,25 @@ class LinkTests(HookHarness):
             fh.write("NEEDS_YOU_SSH_ALIAS=devbox\n")
         self.assertEqual(self.notify_links(), ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
 
+    def test_env_file_is_read_like_the_cli_reads_it(self):
+        # The CLI trims each value and takes spaces around "=": a trailing space, a CRLF line
+        # or "KEY = 1" opted the CLI in but left the hook quietly off (and NEEDS_YOU_SSH_ALIAS
+        # with a trailing space was refused as a bad alias).
+        conf = os.path.join(self.home, ".config", "needs-you")
+        os.makedirs(conf)
+        data = {"hook_event_name": "Notification", "notification_type": "idle_prompt"}
+        for text in ("NEEDS_YOU_AGENT_ALERTS=1 \nNEEDS_YOU_SSH_ALIAS=devbox \n",
+                     "NEEDS_YOU_AGENT_ALERTS=1\r\nNEEDS_YOU_SSH_ALIAS=devbox\r\n",
+                     "NEEDS_YOU_AGENT_ALERTS = 1\nexport NEEDS_YOU_SSH_ALIAS = 'devbox'  \n"):
+            with self.subTest(text):
+                with open(os.path.join(conf, "env"), "w", newline="") as fh:
+                    fh.write(text)
+                n = len(self.calls())
+                self.run_hook("notify", data, NEEDS_YOU_AGENT_ALERTS=None)
+                self.assertEqual(len(self.calls()), n + 1)
+                self.assertEqual(self.links(self.last()),
+                                 ["VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd])
+
     def test_env_file_follows_xdg_config_home_like_the_cli(self):
         # --alerts writes NEEDS_YOU_AGENT_ALERTS=1 where the CLI looks; the hook must look there too.
         xdg = os.path.join(self.home, "xdg")
