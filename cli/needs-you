@@ -1101,7 +1101,12 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     sending the outbox right now (we wait for it up to LOCK_WAIT_SECONDS, then leave ours
     queued behind its entries and exit 0)."""
     if not cfg.ok:
-        f = queue(method, path, body)
+        try:
+            f = queue(method, path, body)
+        except OSError as e:
+            warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s), and the outbox can't be written (%s): dropped"
+                 % (config_path(), e))
+            return 0
         warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); queued %s" % (config_path(), f))
         return 0
     try:

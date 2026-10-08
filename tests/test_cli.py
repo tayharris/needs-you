@@ -460,6 +460,23 @@ class UsageErrors(CliTestCase):
         self.assertNotIn("Traceback", r.stderr)
 
 
+class NoConfigNoOutbox(CliTestCase):
+    def test_says_so_and_exits_0(self):
+        # No config and an outbox that can't be written: the post is lost, but the caller's
+        # job must not fail (it used to be a PermissionError traceback, exit 1).
+        ro = os.path.join(self.tmp, "ro")
+        os.makedirs(ro)
+        os.chmod(ro, 0o500)
+        self.addCleanup(lambda: os.path.isdir(ro) and os.chmod(ro, 0o700))
+        if os.access(ro, os.W_OK):
+            self.skipTest("running as root")
+        r = self.run_cli("add", "--key", "k", "--title", "t", token=None,
+                         extra_env={"NEEDS_YOU_OUTBOX": os.path.join(ro, "outbox")})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("dropped", r.stderr)
+
+
 class SessionItemById(CliTestCase):
     """One card for one wait: the note that keeps a session's "waiting" card off goes away
     when the agent resolves its item by id, as it does when it resolves by key."""
