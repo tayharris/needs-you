@@ -99,7 +99,7 @@ class HookMode(Base):
         argv = self.run_hook("notify", {"hook_event_name": "Question"})[-1]
         self.assertEqual(opt(argv, "--title"), "opencode asked you a question: my-repo")
         argv = self.run_hook("notify", {"hook_event_name": "Stop"})[-1]
-        self.assertEqual(opt(argv, "--title"), "opencode is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "opencode finished: my-repo")
         self.assertEqual(opt(argv, "--agent"), "opencode")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
         n = len(self.calls())
@@ -208,6 +208,42 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
         self.assertEqual(opt(calls[0], "--title"), "opencode wants to run git: my-repo")
         self.assertTrue(opt(calls[0], "--key").endswith(":ses_0123abc"))
         self.assertNotIn(SECRET, json.dumps(calls))
+
+    def test_turn_card_gets_the_title_and_last_text(self):
+        # The plugin remembers the session's title (not the "New session - <date>" placeholder)
+        # and the latest assistant message's text, and hands both to the Stop card.
+        self.install()
+        sid = "ses_turn1"
+        info = {"id": sid, "projectID": "p", "directory": self.cwd, "title": "New session - 2026-10-08T10:00:00Z"}
+        long_head = "x " * 3000 + SECRET + " "
+        self.drive([
+            {"type": "session.created", "properties": {"sessionID": sid, "info": info}},
+            {"type": "session.updated", "properties": {"sessionID": sid, "info": dict(info, title="Refactor auth")}},
+            {"type": "message.updated", "properties": {"sessionID": sid, "info": {"id": "msg_u", "sessionID": sid, "role": "user"}}},
+            {"type": "message.part.updated", "properties": {"sessionID": sid, "part": {
+                "id": "prt_u", "sessionID": sid, "messageID": "msg_u", "type": "text", "text": "Should you?"}}},
+            {"type": "message.updated", "properties": {"sessionID": sid, "info": {"id": "msg_a", "sessionID": sid, "role": "assistant"}}},
+            {"type": "message.part.updated", "properties": {"sessionID": sid, "part": {
+                "id": "prt_a", "sessionID": sid, "messageID": "msg_a", "type": "text", "text": "Done"}}},
+            {"type": "message.part.updated", "properties": {"sessionID": sid, "part": {
+                "id": "prt_a", "sessionID": sid, "messageID": "msg_a", "type": "text",
+                "text": long_head + "Done. Should I push the branch?"}}},
+            {"type": "session.idle", "properties": {"sessionID": sid}},
+        ])
+        self.assertTrue(wait_until(lambda: len(self.calls()) >= 1, timeout=10))
+        argv = self.calls()[-1]
+        self.assertEqual(opt(argv, "--title"), "opencode asks: Should I push the branch? · Refactor auth (my-repo)")
+        self.assertNotIn("SECRET", json.dumps(self.calls()))
+        # A new turn whose text is a statement: finished, still named.
+        self.drive([
+            {"type": "session.updated", "properties": {"sessionID": sid, "info": dict(info, title="Refactor auth")}},
+            {"type": "message.updated", "properties": {"sessionID": sid, "info": {"id": "msg_b", "sessionID": sid, "role": "assistant"}}},
+            {"type": "message.part.updated", "properties": {"sessionID": sid, "part": {
+                "id": "prt_b", "sessionID": sid, "messageID": "msg_b", "type": "text", "text": "Pushed."}}},
+            {"type": "session.idle", "properties": {"sessionID": sid}},
+        ])
+        self.assertTrue(wait_until(lambda: len(self.calls()) >= 2, timeout=10))
+        self.assertEqual(opt(self.calls()[-1], "--title"), "opencode finished: Refactor auth (my-repo)")
 
     def test_idle_twice_posts_once_and_reply_resolves(self):
         self.install()
