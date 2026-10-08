@@ -387,6 +387,49 @@ class ConnectionLimit(HubTestCase):
                 time.sleep(0.1)
         self.assertTrue(ok, "the hub answers again once the idle connections are gone")
 
+    def test_limit_is_shared_by_every_bind(self):
+        # Two binds (loopback and the tailnet IP) must not get the limit each: the descriptors
+        # it protects are the process's.
+        hub = self.make_hub("hub-a", bind="127.0.0.1,127.0.0.2", maintenance_seconds=0,
+                            max_connections=4, request_read_seconds=30)
+        port = hub.port
+        idle = []
+        try:
+            for host in ("127.0.0.1", "127.0.0.1", "127.0.0.2", "127.0.0.2"):
+                s = socket.create_connection((host, port), timeout=5)
+                s.sendall(b"GET /v1/health HTTP/1.0\r\n")
+                idle.append(s)
+            time.sleep(0.3)
+            for host in ("127.0.0.1", "127.0.0.2"):
+                extra = socket.create_connection((host, port), timeout=5)
+                try:
+                    self.assertEqual(extra.recv(100), b"")
+                except ConnectionResetError:
+                    pass
+                finally:
+                    extra.close()
+        finally:
+            for s in idle:
+                s.close()
+
+    def test_slow_requests_give_way_when_the_hub_is_full(self):
+        # Connections that hold a slot without finishing their request (sending a byte now and
+        # then, inside the socket timeout) are closed once they are older than
+        # request_read_seconds and another client needs the slot.
+        hub = self.make_hub("hub-a", maintenance_seconds=0, max_connections=4, request_read_seconds=0.5)
+        host, port = hub.server.server_address[:2]
+        idle = []
+        try:
+            for _ in range(4):
+                s = socket.create_connection((host, port), timeout=5)
+                s.sendall(b"GET /v1/health HTTP/1.0\r\n")
+                idle.append(s)
+            time.sleep(1.0)
+            self.assertEqual(request("GET", hub.url + "/v1/health")[0], 200)
+        finally:
+            for s in idle:
+                s.close()
+
     def test_default_limit_leaves_descriptors_for_the_hub(self):
         limit = hubmod.connection_limit({})
         self.assertGreaterEqual(limit, 8)

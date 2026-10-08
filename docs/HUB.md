@@ -151,7 +151,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `quiet` | `--quiet` | false | No access log. |
 | `access_log` | | true | One stderr line per request. Invite codes in `/join/` paths (and anything shaped like a code or token) are replaced with `<code>`/`<redacted>`, and control characters are escaped. |
 | `max_open_per_token` | | 60 | Volume guard. |
-| `max_connections` | | 128 | Connections served at once (kept 64 under the file descriptor limit); more are closed at once. |
+| `max_connections` / `request_read_seconds` | | 128 / 10 | Connections served at once, across all binds (kept 64 under the file descriptor limit). When full, a connection that hasn't sent its whole request after `request_read_seconds` is closed to make room; otherwise new ones are closed at once. |
 | `default_expiry_hours` | | 24 | Expiry for `done`/`info` items without `expires_at`. |
 | `maintenance_seconds` | | 600 | Purge + WAL checkpoint + incremental vacuum interval. |
 | `vacuum_hours` | | 24 | How often a full `VACUUM` may run (only when over 25% is free). |

@@ -117,6 +117,7 @@ DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
 DEFAULT_MAX_CONNECTIONS = 128  # served at once (connection_limit)
+DEFAULT_REQUEST_READ_SECONDS = 10.0  # when full, slower requests give way (ConnectionSlots)
 LIST_LIMIT_DEFAULT = 500
 LIST_LIMIT_MAX = 2000
 EXPIRY_HUB = "~expiry"  # reserved; never a real hub id
@@ -2432,6 +2433,13 @@ class Handler(BaseHTTPRequestHandler):
     # hub; reset per request (a keep-alive connection reuses the handler).
     _update_requested = False
 
+    def send_response(self, code: int, message: Optional[str] = None) -> None:
+        # The request has been read: this connection no longer gives way to new ones.
+        slots = getattr(self.server, "slots", None)
+        if slots is not None:
+            slots.request_read(self.request)
+        super().send_response(code, message)
+
     def _send(self, status: int, body: Any, headers: Optional[Dict[str, str]] = None) -> None:
         if self._update_requested and 200 <= status < 300 and isinstance(body, dict):
             body = dict(body, update_requested=True)
@@ -2978,36 +2986,72 @@ def connection_limit(cfg: Dict[str, Any]) -> int:
     return max(1, limit)
 
 
+class ConnectionSlots:
+    """The connections the hub serves at once, shared by every bind (the descriptors it
+    protects are the process's). A thread and a descriptor per connection: past the limit a
+    new connection is closed at once, so idle or slow clients can't exhaust descriptors
+    (accept then fails with EMFILE in a busy loop) or threads. When full, connections that
+    still haven't sent their whole request after `read_seconds` are closed to make room, so
+    clients that trickle bytes inside the socket timeout can't hold every slot."""
+
+    def __init__(self, limit: int, read_seconds: float) -> None:
+        self.free = threading.BoundedSemaphore(max(1, int(limit)))
+        self.read_seconds = float(read_seconds)
+        self.lock = threading.Lock()
+        self.reading: Dict[int, Tuple[Any, float]] = {}  # id(socket) -> (socket, accepted at)
+
+    def acquire(self, request: Any) -> bool:
+        if not self.free.acquire(blocking=False):
+            now = time.monotonic()
+            with self.lock:
+                stale = [sock for sock, t0 in self.reading.values() if now - t0 > self.read_seconds]
+            for sock in stale:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)  # its thread fails its read and gives the slot back
+                except OSError:
+                    pass
+            if not stale or not self.free.acquire(timeout=1.0):
+                return False
+        with self.lock:
+            self.reading[id(request)] = (request, time.monotonic())
+        return True
+
+    def request_read(self, request: Any) -> None:
+        with self.lock:
+            self.reading.pop(id(request), None)
+
+    def release(self, request: Any) -> None:
+        self.request_read(request)
+        self.free.release()
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
     def __init__(self, addr: Tuple[str, int], handler: Any, freebind: bool = False,
-                 max_connections: int = DEFAULT_MAX_CONNECTIONS) -> None:
+                 slots: Optional[ConnectionSlots] = None) -> None:
         self._freebind = freebind
-        # A thread and a descriptor per connection: past the limit a new connection is closed
-        # at once, so idle or slow clients can't exhaust descriptors (accept then fails with
-        # EMFILE in a busy loop) or threads.
-        self._slots = threading.BoundedSemaphore(max(1, int(max_connections)))
+        self.slots = slots or ConnectionSlots(DEFAULT_MAX_CONNECTIONS, DEFAULT_REQUEST_READ_SECONDS)
         if ":" in addr[0]:
             self.address_family = socket.AF_INET6
         super().__init__(addr, handler)
 
     def process_request(self, request: Any, client_address: Any) -> None:
-        if not self._slots.acquire(blocking=False):
+        if not self.slots.acquire(request):
             self.shutdown_request(request)
             return
         try:
             super().process_request(request, client_address)
         except BaseException:
-            self._slots.release()
+            self.slots.release(request)
             raise
 
     def process_request_thread(self, request: Any, client_address: Any) -> None:
         try:
             super().process_request_thread(request, client_address)
         finally:
-            self._slots.release()
+            self.slots.release(request)
 
     def server_bind(self) -> None:
         if self._freebind and sys.platform.startswith("linux"):
@@ -3067,11 +3111,12 @@ class Hub:
         handler = type("BoundHandler", (Handler,), {"hub": self})
         self.servers: List[_Server] = []
         port = int(cfg["port"])
-        max_connections = connection_limit(cfg)
+        slots = ConnectionSlots(connection_limit(cfg),
+                                float(cfg.get("request_read_seconds") or DEFAULT_REQUEST_READ_SECONDS))
         for bind in normalise_binds(cfg["bind"]):
             if bind in ANY_INTERFACE:
                 bind = "0.0.0.0"
-            srv = _Server((bind, port), handler, bool(cfg.get("freebind")), max_connections)
+            srv = _Server((bind, port), handler, bool(cfg.get("freebind")), slots)
             port = srv.server_address[1]  # port 0: every address shares the first one's port
             self.servers.append(srv)
         self.server = self.servers[0]
