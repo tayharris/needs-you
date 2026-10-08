@@ -293,6 +293,10 @@ struct SettingsView: View {
             thisMacSection
             if let reach = runningReach {
                 addressesSection(reach)
+                // Talks to the hub on this Mac, so not in a snapshot tour.
+                if showcase == nil, settings.localHubToken != nil {
+                    AlwaysOnHubSection(settings: settings, reach: reach, hubID: localHub.plan?.hubID)
+                }
             }
             extra[.inbox]
         case .connect:
@@ -1063,7 +1067,7 @@ struct SettingsView: View {
     }
 
     private func copyButton(_ title: String, _ text: String) -> some View {
-        CopyButton(title: title, text: text)
+        SettingsCopyButton(title: title, text: text)
     }
 
     private func isWorking(_ status: ConnectController.Status?) -> Bool {
@@ -1309,7 +1313,7 @@ private struct SettingsPageHeader: View {
 }
 
 /// A Copy button that says "Copied" for a moment after a click.
-private struct CopyButton: View {
+struct SettingsCopyButton: View {
     let title: String
     let text: String
     @State private var copied = false
@@ -1342,7 +1346,7 @@ private struct AddressRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            CopyButton(title: "Copy", text: url)
+            SettingsCopyButton(title: "Copy", text: url)
         }
     }
 }
