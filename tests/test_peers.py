@@ -26,6 +26,32 @@ def get_raw(url):
         return e.code, dict(e.headers), e.read().decode("utf-8")
 
 
+def _peer_call(method, h, path, secret, link_id=None, body=None):
+    import urllib.error
+    import urllib.request
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(h.url + path, data=data, method=method)
+    req.add_header("Authorization", "Bearer " + secret)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    if link_id is not None:
+        req.add_header(hubmod.PEER_LINK_HEADER, link_id)
+    try:
+        with OPENER.open(req, timeout=5) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8") or "{}")
+
+
+def peer_get(h, secret, link_id=None):
+    """GET /v1/replicate/changes as a peer: the secret, and the link id for a link's secret."""
+    return _peer_call("GET", h, "/v1/replicate/changes?after=0&limit=5", secret, link_id)
+
+
+def peer_push(h, secret, link_id=None):
+    return _peer_call("POST", h, "/v1/replicate", secret, link_id, {"from_hub": "someone", "items": []})
+
+
 class PeerCase(HubTestCase):
     def hub(self, name, **extra):
         """A hub like the Mac's: no config peers and no mesh secret."""
@@ -237,13 +263,43 @@ class Redeem(PeerCase):
         _, s_inv = self.peer_invite(a, role="sender", name="srv")
         status, red = request("POST", a.url + "/v1/invites/redeem", None, {"code": s_inv["code"], "host": "x"})
         self.assertIn("http://b.example.ts.net:8765", red["hub_urls"])
-        # the secret authenticates replication; nothing lists it
-        self.assertEqual(request("GET", a.url + "/v1/replicate/changes?after=0", body["peer_secret"])[0], 200)
-        self.assertEqual(request("GET", a.url + "/v1/replicate/changes?after=0", "nyp_wrong")[0], 401)
+        # the secret authenticates replication with its link id; nothing lists it
+        self.assertTrue(body["link_id"].startswith("pl_"))
+        self.assertEqual(peer_get(a, body["peer_secret"], body["link_id"])[0], 200)
+        self.assertEqual(peer_get(a, "nyp_wrong", body["link_id"])[0], 401)
         for path in ("/v1/peers", "/v1/health", "/v1/invites", "/v1/tokens"):
             text = json.dumps(request("GET", a.url + path, self.owner(a))[1])
             self.assertNotIn(body["peer_secret"], text, path)
             self.assertNotIn("nyp_", text, path)
+
+    def test_each_secret_works_only_for_its_own_link(self):
+        """One peer can't pose as another (or as a mesh member), and removing a link revokes
+        exactly that peer."""
+        a = self.hub("hub-a", start=False, peer_secret=PEER_SECRET)
+        a.set_peers(["http://hub-m.example.ts.net:8765"])
+        a.start()
+        pairs = []
+        for name in ("hub-b", "hub-c"):
+            _, inv = self.peer_invite(a)
+            status, body = self.redeem(a, inv["code"], {"url": "http://%s.example.ts.net:8765" % name,
+                                                       "hub_id": name, "schema": hubmod.SCHEMA_VERSION})
+            self.assertEqual(status, 200, body)
+            pairs.append(body)
+        b, c = pairs
+        self.assertNotEqual(b["link_id"], c["link_id"])
+        self.assertEqual(peer_get(a, b["peer_secret"], b["link_id"])[0], 200)
+        self.assertEqual(peer_get(a, b["peer_secret"])[0], 401)               # no link id
+        self.assertEqual(peer_get(a, b["peer_secret"], c["link_id"])[0], 401)  # posing as c
+        self.assertEqual(peer_get(a, PEER_SECRET, b["link_id"])[0], 401)       # mesh secret as a link
+        self.assertEqual(peer_get(a, PEER_SECRET)[0], 200)                     # mesh member
+        self.assertEqual(peer_get(a, b["peer_secret"], "pl_nosuchlink")[0], 401)
+        # push too
+        self.assertEqual(peer_push(a, b["peer_secret"], c["link_id"])[0], 401)
+        self.assertEqual(peer_push(a, b["peer_secret"], b["link_id"])[0], 200)
+        # removing b revokes b only
+        self.assertEqual(request("DELETE", a.url + "/v1/peers/hub-b", self.owner(a))[0], 200)
+        self.assertEqual(peer_get(a, b["peer_secret"], b["link_id"])[0], 401)
+        self.assertEqual(peer_get(a, c["peer_secret"], c["link_id"])[0], 200)
 
     def test_rejoin_under_a_new_url_replaces_the_old_link(self):
         a = self.hub("hub-a")
@@ -268,6 +324,7 @@ class Pair(PeerCase):
         self.assertNotIn("nyp_", said)
         self.assertEqual([l["url"] for l in srv.store.peer_links()], [mac.url])
         self.assertEqual(srv.store.peer_links()[0]["secret"], mac.store.peer_links()[0]["secret"])
+        self.assertEqual(srv.store.peer_links()[0]["link_id"], mac.store.peer_links()[0]["link_id"])
         self.assertEqual(mac.peer_urls(), [srv.url])
 
         # a sender set up from the Mac posts to the server; the Mac's hub gets it

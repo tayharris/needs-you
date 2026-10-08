@@ -654,14 +654,17 @@ sent with a `sender`, `reader` or `owner` invite is a `400` (`"field": "peer"`).
 Response `200`:
 
 ```json
-{"role": "peer", "name": "hub-b", "peer_secret": "nyp_...",
+{"role": "peer", "name": "hub-b", "peer_secret": "nyp_...", "link_id": "pl_...",
  "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 9, "version": "0.2.1",
  "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"]}
 ```
 
-`peer_secret` (`nyp_` plus 256 random bits) is this pair's own replication secret. The
-inviting hub stores `peer.url`, `peer.hub_id`, the invite's `name` and the secret, and starts
-replicating with that URL at once; the joining hub stores `hub_url` with the same secret. A
+`peer_secret` (`nyp_` plus 256 random bits) is this pair's own replication secret, and
+`link_id` (`pl_` plus 96 random bits, not a secret) names the pair: every replication request
+over the link sends it in `X-Needs-You-Peer-Link` with the secret ([below](#replication-between-hubs)).
+The inviting hub stores `peer.url`, `peer.hub_id`, the invite's `name`, the link id and the
+secret, and starts replicating with that URL at once; the joining hub stores `hub_url` with the
+same link id and secret. A
 later peer invite redeemed by the same `hub_id` under another URL replaces that link. The
 secret is sent only in this response: never replicated, listed, or logged.
 
@@ -801,9 +804,15 @@ revoked past the 24 h grace period.
 
 Hubs are peers with no leader. Each hub has a `hub_id`, a list of peer URLs and a shared
 `peer_secret`, plus any [peer links](#peers) with their own secrets. Replication endpoints
-authenticate with `Authorization: Bearer <secret>`, the shared `peer_secret` or any link's
-secret (each compared in constant time), and are disabled (`404`) on a hub with neither. A hub
-sends a link peer its link's secret and a config peer the shared one.
+authenticate with `Authorization: Bearer <secret>`, compared in constant time:
+
+- with `X-Needs-You-Peer-Link: <link_id>`, only that link's own secret is accepted;
+- without it, only the shared `peer_secret` (config peers).
+
+Anything else is `401`: a link's secret alone or with another link's id, the shared secret with
+a link id, a removed link. A hub with neither a shared secret nor links answers `404`. A hub
+sends a link peer its link's secret and link id, a config peer the shared secret, and nobody
+else anything.
 
 ### Records
 

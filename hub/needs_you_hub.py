@@ -145,6 +145,8 @@ PEER_INVITE_MAX_TTL_HOURS = 24
 PEER_URL_MAX = 300
 # What a peer invite tells the server to run, from a checkout or the release's server tarball.
 PEER_JOIN_COMMAND = "./scripts/install-hub.sh --user --join %s"
+PEER_LINK_HEADER = "X-Needs-You-Peer-Link"  # which link's secret a replication request carries
+PEER_LINK_ID_RE = re.compile(r"^pl_[A-Za-z0-9_-]{8,40}\Z")
 PEER_SYNC_SECONDS = 5.0  # how often a running hub re-reads peer links (the admin tool writes them)
 WAKE_JUMP_SECONDS = 30.0  # wall clock ahead of the monotonic one by this much: we were asleep
 HUB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
@@ -340,6 +342,12 @@ def mint_peer_secret() -> str:
     """A pairwise replication secret (ADR 0012): 256 random bits. Stored in plaintext in the
     hub's database (it has to be sent), never replicated, logged or listed."""
     return "nyp_" + secrets.token_urlsafe(32)
+
+
+def mint_peer_link_id() -> str:
+    """A link's id (ADR 0012): random, so it doesn't follow a Mac's changing host name. Not a
+    secret: it says which link's secret a request carries."""
+    return "pl_" + secrets.token_urlsafe(12)
 
 
 def mint_invite_code() -> str:
@@ -1006,6 +1014,7 @@ ALTER TABLE items ADD COLUMN answered_by TEXT;
     """
 CREATE TABLE IF NOT EXISTS peer_links (
   url TEXT PRIMARY KEY,
+  link_id TEXT NOT NULL UNIQUE,
   hub_id TEXT NOT NULL DEFAULT '',
   name TEXT NOT NULL DEFAULT '',
   secret TEXT NOT NULL,
@@ -1769,8 +1778,8 @@ class Store:
             want = check(peer)
             self._spend_invite(inv)
             secret = mint_peer_secret()
-            link = {"url": want["url"], "hub_id": want["hub_id"], "name": inv["name"],
-                    "secret": secret, "added_at": now}
+            link = {"url": want["url"], "link_id": mint_peer_link_id(), "hub_id": want["hub_id"],
+                    "name": inv["name"], "secret": secret, "added_at": now}
             self._put_peer_link(link)
         return secret, link, inv
 
@@ -1782,17 +1791,26 @@ class Store:
         for old in self.conn.execute("SELECT url FROM peer_links WHERE hub_id = ? AND url != ?",
                                      (link["hub_id"], link["url"])).fetchall():
             self._drop_peer_rows(old["url"])
-        self.conn.execute("INSERT OR REPLACE INTO peer_links(url, hub_id, name, secret, added_at) "
-                          "VALUES(?,?,?,?,?)", (link["url"], link["hub_id"], link["name"],
-                                                link["secret"], link["added_at"]))
+        self.conn.execute("DELETE FROM peer_links WHERE link_id = ? AND url != ?", (link["link_id"], link["url"]))
+        self.conn.execute("INSERT OR REPLACE INTO peer_links(url, link_id, hub_id, name, secret, added_at) "
+                          "VALUES(?,?,?,?,?,?)", (link["url"], link["link_id"], link["hub_id"], link["name"],
+                                                  link["secret"], link["added_at"]))
 
-    def add_peer_link(self, url: str, hub_id: str, name: str, secret: str) -> Dict[str, Any]:
+    def add_peer_link(self, url: str, link_id: str, hub_id: str, name: str, secret: str) -> Dict[str, Any]:
         """Store the link to a hub whose peer invite this hub redeemed (the joining side)."""
+        if not PEER_LINK_ID_RE.match(link_id or ""):
+            raise ValueError("bad link id")
         with self.tx():
-            link = {"url": url, "hub_id": hub_id, "name": name, "secret": secret,
+            link = {"url": url, "link_id": link_id, "hub_id": hub_id, "name": name, "secret": secret,
                     "added_at": self.now_ms()}
             self._put_peer_link(link)
         return link
+
+    def peer_link_secret(self, link_id: str) -> Optional[str]:
+        """The secret of the link with this id, read fresh (a removal counts at once)."""
+        with self.lock:
+            row = self.conn.execute("SELECT secret FROM peer_links WHERE link_id = ?", (link_id,)).fetchone()
+        return str(row["secret"]) if row else None
 
     def _drop_peer_rows(self, url: str) -> None:
         self.conn.execute("DELETE FROM peer_links WHERE url = ?", (url,))
@@ -2683,6 +2701,9 @@ class PeerWorker(threading.Thread):
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(self.peer + path, data=data, method=method)
         req.add_header("Authorization", "Bearer " + self.hub.secret_for(self.peer))
+        link_id = self.hub.link_id_for(self.peer)
+        if link_id:  # a link's secret is only good together with its link id
+            req.add_header(PEER_LINK_HEADER, link_id)
         req.add_header("X-Needs-You-Hub", self.hub.hub_id)
         if data is not None:
             req.add_header("Content-Type", "application/json")
@@ -3003,14 +3024,20 @@ class Handler(BaseHTTPRequestHandler):
         return str(self.client_address[0]) if self.client_address else ""
 
     def _peer_auth(self) -> None:
-        """The mesh secret (config) or any peer link's own secret (ADR 0012)."""
-        secrets_ = self.hub.peer_secrets()
+        """ADR 0012: with an X-Needs-You-Peer-Link header, only that link's own secret; without
+        one, only the mesh secret (config peers). So a link's secret works for that link alone,
+        and removing the link revokes exactly that peer."""
         tok = (self._bearer() or "").encode("utf-8")
-        if not secrets_:
+        link_id = (self.headers.get(PEER_LINK_HEADER) or "").strip()
+        mesh = str(self.hub.cfg.get("peer_secret") or "")
+        if not self.hub.peer_secrets():
             raise ApiError(404, "not_found", "replication is not enabled on this hub")
-        ok = False
-        for s in secrets_:  # every one compared, in constant time each
-            ok = hmac.compare_digest(tok, s.encode("utf-8")) or ok
+        if link_id:
+            secret = self.hub.store.peer_link_secret(link_id) if PEER_LINK_ID_RE.match(link_id) else None
+            # compared even for an unknown id, so timing doesn't tell ids apart
+            ok = hmac.compare_digest(tok, (secret or "\x00" * 48).encode("utf-8")) and secret is not None
+        else:
+            ok = bool(mesh) and hmac.compare_digest(tok, mesh.encode("utf-8"))
         if not ok:
             raise ApiError(401, "unauthorized", "bad peer secret")
 
@@ -3252,6 +3279,7 @@ class Handler(BaseHTTPRequestHandler):
             sys.stderr.write("peer invite redeemed: now replicating with %s (%s)\n"
                              % (safe_text(link["url"], 300), safe_text(link["hub_id"], 64)))
         self._send(200, {"role": PEER_ROLE, "name": link["name"], "peer_secret": secret,
+                         "link_id": link["link_id"],
                          "hub_id": hub.hub_id, "hub_url": hub.public_url, "schema": SCHEMA_VERSION,
                          "version": VERSION, "hub_urls": hub.hub_urls()})
 
@@ -3884,6 +3912,12 @@ class Hub:
         if link is not None:
             return str(link["secret"])
         return str(self.cfg.get("peer_secret") or "") if configured else ""
+
+    def link_id_for(self, peer: str) -> str:
+        """The link id sent with a link peer's secret ("" for a config peer)."""
+        with self.peers_lock:
+            link = self.links.get(peer)
+        return str(link["link_id"]) if link is not None else ""
 
     def _load_links(self) -> List[str]:
         """Re-read the links (the admin tool may have changed them); keep the store's peer list

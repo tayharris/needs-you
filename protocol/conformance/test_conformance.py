@@ -82,9 +82,12 @@ def tearDownModule() -> None:
 # -- helpers -----------------------------------------------------------------
 
 def call(method: str, path: str, token: Optional[str] = None, body: Any = None, url: Optional[str] = None,
-         raw: Optional[bytes] = None, timeout: float = 10.0) -> Tuple[int, Any]:
+         raw: Optional[bytes] = None, timeout: float = 10.0,
+         headers: Optional[Dict[str, str]] = None) -> Tuple[int, Any]:
     data = raw if raw is not None else (json.dumps(body).encode("utf-8") if body is not None else None)
     req = urllib.request.Request((url or Env.url) + path, data=data, method=method)
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
     if token:
         req.add_header("Authorization", "Bearer " + token)
     if data is not None:
@@ -561,7 +564,16 @@ class PeerInvites(HubCase):
         self.assertEqual((red["role"], red["hub_id"]), ("peer", Env.hub_id))
         self.assertGreaterEqual(len(red["peer_secret"]), 16)
         self.assertIn("http://127.0.0.1:9", red["hub_urls"])
-        self.assertEqual(call("GET", "/v1/replicate/changes?after=0&limit=1", red["peer_secret"])[0], 200)
+        self.assertTrue(red["link_id"].startswith("pl_"))
+        changes = "/v1/replicate/changes?after=0&limit=1"
+        link = {"X-Needs-You-Peer-Link": red["link_id"]}
+        self.assertEqual(call("GET", changes, red["peer_secret"], headers=link)[0], 200)
+        # a link's secret is good only with its own link id, never alone or with another id
+        self.assertError(call("GET", changes, red["peer_secret"]), 401, "unauthorized")
+        self.assertError(call("GET", changes, red["peer_secret"], headers={"X-Needs-You-Peer-Link": "pl_" + "x" * 16}),
+                         401, "unauthorized")
+        if Env.peer_secret:  # nor is the mesh secret good for a link
+            self.assertError(call("GET", changes, Env.peer_secret, headers=link), 401, "unauthorized")
         peers = call("GET", "/v1/peers", Env.owner)[1]["peers"]
         mine = [p for p in peers if p["hub_id"] == fake["hub_id"]]
         self.assertEqual([(p["url"], p["source"]) for p in mine], [("http://127.0.0.1:9", "invite")])
@@ -570,7 +582,7 @@ class PeerInvites(HubCase):
         status, gone = call("DELETE", "/v1/peers/" + fake["hub_id"], Env.owner)
         self.assertEqual(status, 200, gone)
         self.assertNotIn(fake["hub_id"], [p["hub_id"] for p in call("GET", "/v1/peers", Env.owner)[1]["peers"]])
-        self.assertIn(call("GET", "/v1/replicate/changes?after=0&limit=1", red["peer_secret"])[0], (401, 404))
+        self.assertIn(call("GET", changes, red["peer_secret"], headers=link)[0], (401, 404))
         self.assertError(call("DELETE", "/v1/peers/" + fake["hub_id"], Env.owner), 404, "not_found")
 
 

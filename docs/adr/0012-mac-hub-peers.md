@@ -64,13 +64,18 @@ it is. The mesh secret and config `peers` keep working unchanged (hand-set peers
 Mac's `LocalHubPlan.peers` with its `peer-secret` file for someone joining the Mac to an
 existing mesh by hand).
 
-**Inbound auth** accepts the mesh secret or any link's secret (each compared in constant
-time). That doesn't tell peers apart, and needn't: a peer is fully trusted, as mesh members
-are today (it pulls every record and may push any, tokens included), so a link's secret grants
-nothing a mesh secret doesn't, and removing the link revokes it. Binding a secret to a
-`from_hub` would also break on the Mac, whose hub id follows its local host name.
-**Outbound**, a link peer gets its own secret, a config peer the mesh secret, and any other URL
-nothing. A redeem can't take over a config peer's URL (`409 conflict`), and `peer.url` must be
+**Each secret is bound to its link.** Redeeming also mints a random **link id** (`pl_` + 96
+bits; not the hub id, which on the Mac follows its local host name). Both hubs store it with
+the secret, and every replication request over a link carries it in `X-Needs-You-Peer-Link`
+next to `Authorization: Bearer <secret>`. **Inbound**, a request with a link id is accepted
+only with that link's own secret (constant-time compare, the link read fresh from the
+database, so a removal counts at once); a request without one only with the mesh secret,
+which is for config peers. So one peer can't pose as another or as a mesh member, the mesh
+secret is never good for a link, and removing a link revokes exactly that peer. A peer is
+still fully trusted for the data it replicates (it pulls every record and may push any, tokens
+included), as mesh members are. The link id is not a secret.
+**Outbound**, a link peer gets its own secret and link id, a config peer the mesh secret, and
+any other URL nothing. A redeem can't take over a config peer's URL (`409 conflict`), and `peer.url` must be
 `https`, or plain `http` to a tailnet name or address or loopback (the inviting hub sends it its
 secret and every record); redirects are never followed. A hub
 needs no mesh secret to have link peers.

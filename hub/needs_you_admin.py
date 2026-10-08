@@ -298,7 +298,8 @@ def redeem_peer(hub: str, code: str, me: Dict[str, Any], timeout: float = 15.0) 
     except (OSError, ValueError) as e:
         raise RuntimeError("could not reach %s: %s" % (hub, hubmod.safe_text(str(e), 200)))
     if not isinstance(out, dict) or out.get("role") != hubmod.PEER_ROLE \
-            or not isinstance(out.get("peer_secret"), str) or len(out["peer_secret"]) < 16:
+            or not isinstance(out.get("peer_secret"), str) or len(out["peer_secret"]) < 16 \
+            or not isinstance(out.get("link_id"), str) or not hubmod.PEER_LINK_ID_RE.match(out["link_id"]):
         raise RuntimeError("%s did not answer like a needs-you hub that supports peer invites" % hub)
     return out
 
@@ -334,7 +335,7 @@ def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         hub_id = out.get("hub_id") if isinstance(out.get("hub_id"), str) and hubmod.HUB_ID_RE.match(
             out.get("hub_id") or "") else ""
         name = out.get("name") if isinstance(out.get("name"), str) else ""
-        link = store.add_peer_link(url, hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
+        link = store.add_peer_link(url, out["link_id"], hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
         if args.json:
             print(json.dumps({"url": link["url"], "hub_id": link["hub_id"], "name": link["name"]}))
         else:

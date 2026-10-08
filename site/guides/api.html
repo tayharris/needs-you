@@ -596,12 +596,15 @@ secret); a <code>schema</code> below the inviting hub's is <code>409 peer_outdat
 fields the newer one writes, such as <code>question</code> and <code>answer</code>: upgrade it first). A <code>peer</code> object
 sent with a <code>sender</code>, <code>reader</code> or <code>owner</code> invite is a <code>400</code> (<code>"field": "peer"</code>).</p>
 <p>Response <code>200</code>:</p>
-<div class="code"><pre><code class="language-json">{"role": "peer", "name": "hub-b", "peer_secret": "nyp_...",
+<div class="code"><pre><code class="language-json">{"role": "peer", "name": "hub-b", "peer_secret": "nyp_...", "link_id": "pl_...",
  "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 9, "version": "0.2.1",
  "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"]}</code></pre></div>
-<p><code>peer_secret</code> (<code>nyp_</code> plus 256 random bits) is this pair's own replication secret. The
-inviting hub stores <code>peer.url</code>, <code>peer.hub_id</code>, the invite's <code>name</code> and the secret, and starts
-replicating with that URL at once; the joining hub stores <code>hub_url</code> with the same secret. A
+<p><code>peer_secret</code> (<code>nyp_</code> plus 256 random bits) is this pair's own replication secret, and
+<code>link_id</code> (<code>pl_</code> plus 96 random bits, not a secret) names the pair: every replication request
+over the link sends it in <code>X-Needs-You-Peer-Link</code> with the secret (<a href="#replication-between-hubs">below</a>).
+The inviting hub stores <code>peer.url</code>, <code>peer.hub_id</code>, the invite's <code>name</code>, the link id and the
+secret, and starts replicating with that URL at once; the joining hub stores <code>hub_url</code> with the
+same link id and secret. A
 later peer invite redeemed by the same <code>hub_id</code> under another URL replaces that link. The
 secret is sent only in this response: never replicated, listed, or logged.</p>
 <p><code>GET /join/&lt;code&gt;</code> for a peer invite says what to run on the server;
@@ -711,9 +714,15 @@ revoked past the 24 h grace period.</p>
 <h2 id="replication-between-hubs">Replication between hubs <a class="anchor" href="#replication-between-hubs" aria-label="Link to this section">#</a></h2>
 <p>Hubs are peers with no leader. Each hub has a <code>hub_id</code>, a list of peer URLs and a shared
 <code>peer_secret</code>, plus any <a href="#peers">peer links</a> with their own secrets. Replication endpoints
-authenticate with <code>Authorization: Bearer &lt;secret&gt;</code>, the shared <code>peer_secret</code> or any link's
-secret (each compared in constant time), and are disabled (<code>404</code>) on a hub with neither. A hub
-sends a link peer its link's secret and a config peer the shared one.</p>
+authenticate with <code>Authorization: Bearer &lt;secret&gt;</code>, compared in constant time:</p>
+<ul>
+<li>with <code>X-Needs-You-Peer-Link: &lt;link_id&gt;</code>, only that link's own secret is accepted;</li>
+<li>without it, only the shared <code>peer_secret</code> (config peers).</li>
+</ul>
+<p>Anything else is <code>401</code>: a link's secret alone or with another link's id, the shared secret with
+a link id, a removed link. A hub with neither a shared secret nor links answers <code>404</code>. A hub
+sends a link peer its link's secret and link id, a config peer the shared secret, and nobody
+else anything.</p>
 <h3 id="records">Records <a class="anchor" href="#records" aria-label="Link to this section">#</a></h3>
 <p>Replication carries full records: the item JSON above with the raw stored <code>status</code> (expiry not
 applied) plus <code>token_id</code>, <code>origin_hub</code> (where it was minted) and <code>updated_by</code> (the hub that
