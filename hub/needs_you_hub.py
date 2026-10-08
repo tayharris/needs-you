@@ -116,6 +116,8 @@ QUARANTINE_MAX_BYTES = 256 * 1024  # an unreadable item record bigger than this 
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
+DEFAULT_MAX_CONNECTIONS = 128  # served at once (connection_limit)
+DEFAULT_REQUEST_READ_SECONDS = 10.0  # when full, slower requests give way (ConnectionSlots)
 LIST_LIMIT_DEFAULT = 500
 LIST_LIMIT_MAX = 2000
 EXPIRY_HUB = "~expiry"  # reserved; never a real hub id
@@ -649,10 +651,31 @@ def normalise_binds(bind: Any) -> List[str]:
     return out or [""]
 
 
+def is_any_interface(bind: str) -> bool:
+    """True for every spelling the OS binds as all interfaces: "0.0.0.0" and "::", but also
+    "0", "0x0", "000.0.0.0", "::0", "::ffff:0.0.0.0" (numeric forms only; names aren't looked up)."""
+    b = bind.strip()
+    if b in ANY_INTERFACE:
+        return True
+    try:
+        infos = socket.getaddrinfo(b, None, 0, socket.SOCK_STREAM, 0, socket.AI_NUMERICHOST)
+    except (socket.gaierror, UnicodeError, ValueError):
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(str(info[4][0]).split("%")[0])
+        except ValueError:
+            continue
+        mapped = getattr(ip, "ipv4_mapped", None)
+        if ip.is_unspecified or (mapped is not None and mapped.is_unspecified):
+            return True
+    return False
+
+
 def check_bind(cfg: Dict[str, Any]) -> None:
     binds = normalise_binds(cfg.get("bind"))
     for bind in binds:
-        if bind.strip() in ANY_INTERFACE and not cfg.get("allow_any_interface"):
+        if is_any_interface(bind) and not cfg.get("allow_any_interface"):
             raise SystemExit("refusing to bind to all interfaces (%r); bind to 127.0.0.1 and/or the "
                              "tailnet IP, or pass --allow-any-interface" % bind)
     if cfg.get("peers"):
@@ -1951,14 +1974,30 @@ def safe_text(value: Any, limit: int) -> str:
     return redact_log(str(value))[:limit]
 
 
+def _peer_link(link: Any) -> Optional[Dict[str, str]]:
+    """A replicated link as POST would store it, or None when POST would refuse it."""
+    try:
+        return _validate_link(link, "link")
+    except ApiError:
+        return None
+
+
 def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
     """A replicated step, kept as sent except a link this hub would refuse (dropped, the
-    step stays), like replicated item links. Its text and done must have their types."""
-    if not isinstance(step.get("text"), str) or not isinstance(step.get("done", False), bool):
+    step stays), like replicated item links. Its text must pass POST's rules and done must
+    be a boolean."""
+    if not isinstance(step.get("done", False), bool):
+        raise ValueError("steps")
+    try:
+        _str_field(step, "text", MAX_STEP_TEXT, required=True)
+    except ApiError:
         raise ValueError("steps")
     link = step.get("link")
-    if link is not None and not (isinstance(link, dict) and link_allowed(link.get("url"))):
+    if link is not None:
+        clean = _peer_link(link)
         step = {k: v for k, v in step.items() if k != "link"}
+        if clean is not None:
+            step["link"] = clean
     return step
 
 
@@ -1995,18 +2034,24 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
                 raise ValueError(c)
             out[c] = v
         out["body"] = _opt_str(rec, "body") or ""
-        # Defence in depth: a peer (or an older hub) can't hand us a link this hub would refuse.
+        # Defence in depth: a peer (or an older hub) can't hand us text POST would refuse
+        # (length, control characters), or a link or label it would refuse: readers decode
+        # what we serve, and a label or source field that isn't text fails their whole poll.
+        _str_field(out, "title", MAX_TITLE, required=True)
+        _str_field(out, "body", MAX_BODY, allow_newlines=True)
+        if _str_field(out, "key", MAX_KEY, required=True) is None or not KEY_RE.match(out["key"].strip()):
+            raise ValueError("key")
         links = rec.get("links") or []
-        out["links"] = json.dumps([lk for lk in (links if isinstance(links, list) else [])
-                                   if isinstance(lk, dict) and link_allowed(lk.get("url"))])
+        good = [_peer_link(lk) for lk in (links if isinstance(links, list) else [])]
+        out["links"] = json.dumps([lk for lk in good if lk is not None][:MAX_LINKS])
         steps = rec.get("steps") or []
-        if not isinstance(steps, list):
+        if not isinstance(steps, list) or len(steps) > MAX_STEPS:
             raise ValueError("steps")
         out["steps"] = json.dumps([_peer_step(st) for st in steps if isinstance(st, dict)])
         source = rec.get("source") or {}
         if not isinstance(source, dict):
             raise ValueError("source")
-        out["source"] = json.dumps(source)
+        out["source"] = json.dumps(validate_source(source))
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
         out["content_updated_at"] = parse_ts(rec.get("content_updated_at") or rec["updated_at"])
@@ -2018,6 +2063,10 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         out["origin_hub"] = _opt_str(rec, "origin_hub") or ""
         out["updated_by"] = _opt_str(rec, "updated_by") or ""
         out["superseded_by"] = _opt_str(rec, "superseded_by")
+        for c in ("id", "token_id", "origin_hub", "updated_by", "superseded_by"):  # ids, not text
+            if out[c] is not None and (len(out[c]) > MAX_KEY or re.search(r"[\x00-\x1f\x7f]", out[c])
+                                       or _SPOOF_RE.search(out[c])):
+                raise ValueError(c)
     except (KeyError, ValueError, TypeError) as e:
         raise ApiError(400, "invalid", "bad item record: %s" % e)
     if out["status"] not in STATUSES:
@@ -2139,7 +2188,15 @@ def token_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
 # Peer replication worker
 # ---------------------------------------------------------------------------
 
-_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A peer never redirects. urllib would follow a 3xx and copy the Authorization header
+    (the peer secret) to the Location, any origin: the 3xx is an error instead."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        return None
+
+
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
 class PeerWorker(threading.Thread):
@@ -2840,6 +2897,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, query: Dict[str, List[str]]) -> None:
         self._auth("reader")
+        # A reader's event stream is meant to stay open: it never gives way to new connections.
+        slots = getattr(self.server, "slots", None)
+        if slots is not None:
+            slots.keep(self.request)
         last = self.headers.get("Last-Event-ID") or (query.get("after") or [""])[0]
         try:
             after = int(last) if last else self.hub.store.max_seq()
@@ -2919,15 +2980,88 @@ class Handler(BaseHTTPRequestHandler):
                          "invites": [invite_wire(r) for r in invs]})
 
 
+def connection_limit(cfg: Dict[str, Any]) -> int:
+    """How many connections the hub serves at once (`max_connections`, default
+    DEFAULT_MAX_CONNECTIONS), kept well under the process's file descriptor limit (256 by
+    default on macOS) so the database, peers and the listening sockets always have some."""
+    limit = int(cfg.get("max_connections") or DEFAULT_MAX_CONNECTIONS)
+    try:
+        import resource
+        soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        if soft != resource.RLIM_INFINITY and soft > 0:
+            limit = min(limit, max(8, soft - 64))
+    except (ImportError, OSError, ValueError):
+        pass
+    return max(1, limit)
+
+
+class ConnectionSlots:
+    """The connections the hub serves at once, shared by every bind (the descriptors it
+    protects are the process's). A thread and a descriptor per connection: past the limit a
+    new connection is closed at once, so idle or slow clients can't exhaust descriptors
+    (accept then fails with EMFILE in a busy loop) or threads. When full, connections older
+    than `read_seconds` are closed to make room (a request trickled in a byte at a time, or
+    an answer the client stopped reading), so they can't hold every slot for the socket
+    timeout. Only a reader's event stream (/v1/stream, after its token is checked) is kept."""
+
+    def __init__(self, limit: int, read_seconds: float) -> None:
+        self.free = threading.BoundedSemaphore(max(1, int(limit)))
+        self.read_seconds = float(read_seconds)
+        self.lock = threading.Lock()
+        self.reading: Dict[int, Tuple[Any, float]] = {}  # id(socket) -> (socket, accepted at); may give way
+
+    def acquire(self, request: Any) -> bool:
+        if not self.free.acquire(blocking=False):
+            now = time.monotonic()
+            with self.lock:
+                stale = [sock for sock, t0 in self.reading.values() if now - t0 > self.read_seconds]
+            for sock in stale:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)  # its thread fails its read and gives the slot back
+                except OSError:
+                    pass
+            if not stale or not self.free.acquire(timeout=1.0):
+                return False
+        with self.lock:
+            self.reading[id(request)] = (request, time.monotonic())
+        return True
+
+    def keep(self, request: Any) -> None:
+        with self.lock:
+            self.reading.pop(id(request), None)
+
+    def release(self, request: Any) -> None:
+        self.keep(request)
+        self.free.release()
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, addr: Tuple[str, int], handler: Any, freebind: bool = False) -> None:
+    def __init__(self, addr: Tuple[str, int], handler: Any, freebind: bool = False,
+                 slots: Optional[ConnectionSlots] = None) -> None:
         self._freebind = freebind
+        self.slots = slots or ConnectionSlots(DEFAULT_MAX_CONNECTIONS, DEFAULT_REQUEST_READ_SECONDS)
         if ":" in addr[0]:
             self.address_family = socket.AF_INET6
         super().__init__(addr, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self.slots.acquire(request):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release(request)
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release(request)
 
     def server_bind(self) -> None:
         if self._freebind and sys.platform.startswith("linux"):
@@ -2987,10 +3121,12 @@ class Hub:
         handler = type("BoundHandler", (Handler,), {"hub": self})
         self.servers: List[_Server] = []
         port = int(cfg["port"])
+        slots = ConnectionSlots(connection_limit(cfg),
+                                float(cfg.get("request_read_seconds") or DEFAULT_REQUEST_READ_SECONDS))
         for bind in normalise_binds(cfg["bind"]):
             if bind in ANY_INTERFACE:
                 bind = "0.0.0.0"
-            srv = _Server((bind, port), handler, bool(cfg.get("freebind")))
+            srv = _Server((bind, port), handler, bool(cfg.get("freebind")), slots)
             port = srv.server_address[1]  # port 0: every address shares the first one's port
             self.servers.append(srv)
         self.server = self.servers[0]

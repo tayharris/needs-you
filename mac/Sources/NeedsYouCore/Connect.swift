@@ -85,12 +85,14 @@ public struct ConnectLink: Equatable, Sendable {
         return code.unicodeScalars.allSatisfy(allowed.contains)
     }
 
-    /// http(s)://host[:port][/path], no query/fragment, no trailing slash.
+    /// http(s)://host[:port][/path], no query/fragment, no trailing slash, no user@ (a
+    /// "https://hub-a.example.ts.net@evil.example" reads as one host and is another).
     public static func normalizedHubURL(_ string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var c = URLComponents(string: trimmed),
               let scheme = c.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              let host = c.host, !host.isEmpty
+              let host = c.host, !host.isEmpty,
+              c.percentEncodedUser == nil, c.percentEncodedPassword == nil
         else { return nil }
         c.scheme = scheme
         c.query = nil
@@ -449,7 +451,19 @@ public enum HubSession {
         return cfg
     }
 
-    public static let shared = URLSession(configuration: makeConfiguration())
+    /// Hub requests never follow a redirect: URLSession would re-send the request, bearer
+    /// token included, to whatever the Location names (an http:// IP literal is outside ATS).
+    /// The 3xx comes back as the response, which callers treat as an error.
+    public static let shared = URLSession(configuration: makeConfiguration(), delegate: RefuseRedirects(),
+                                          delegateQueue: nil)
+
+    public final class RefuseRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        public func urlSession(_ session: URLSession, task: URLSessionTask,
+                               willPerformHTTPRedirection response: HTTPURLResponse,
+                               newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
 }
 
 // MARK: - Client

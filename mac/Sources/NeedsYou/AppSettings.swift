@@ -272,7 +272,8 @@ final class AppSettings: ObservableObject {
     static func parseHubURL(_ string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty
+              scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty,
+              url.user == nil, url.password == nil  // no user@: it hides the real host
         else { return nil }
         return url
     }

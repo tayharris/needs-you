@@ -17,7 +17,36 @@ final class SecurityAuditTests: XCTestCase {
         ("testOrcaJumpArgumentsAreFixed", testOrcaJumpArgumentsAreFixed),
         ("testNewHubCannotRekeyKnownHubs", testNewHubCannotRekeyKnownHubs),
         ("testConnectConfirmationNamesTheHub", testConnectConfirmationNamesTheHub),
+        ("testHubURLsRefuseUserInfo", testHubURLsRefuseUserInfo),
+        ("testHubSessionRefusesRedirects", testHubSessionRefusesRedirects),
     ]
+
+    /// Scan 2026-10-08: "https://hub-a.example.ts.net@evil.example" reads as the first host
+    /// and is the second; it was stored, shown and used as the token key with the user@ in it.
+    func testHubURLsRefuseUserInfo() {
+        for raw in ["https://hub-a.example.ts.net@evil.example", "http://user:pw@100.64.1.2:8765",
+                    "https://@evil.example"] {
+            XCTAssertNil(ConnectLink.normalizedHubURL(raw), raw)
+            let link = "needsyou://connect?hub=" + raw.addingPercentEncoding(withAllowedCharacters: .alphanumerics)! + "&code=nyi_abc"
+            XCTAssertNil(ConnectLink.parse(link), link)
+        }
+        XCTAssertNotNil(ConnectLink.normalizedHubURL("https://hub-a.example.ts.net:8765"))
+        XCTAssertEqual(ConnectLink.parse("https://hub-a.example.ts.net@evil.example/join/nyi_abc")?.hub.absoluteString,
+                       "https://evil.example")
+    }
+
+    /// Scan 2026-10-08: the shared hub session followed redirects, re-sending the bearer token
+    /// to whatever the Location named.
+    func testHubSessionRefusesRedirects() {
+        XCTAssertTrue(HubSession.shared.delegate is HubSession.RefuseRedirects)
+        let task = HubSession.shared.dataTask(with: URL(string: "http://127.0.0.1:9/")!)
+        let response = HTTPURLResponse(url: URL(string: "http://127.0.0.1:9/")!, statusCode: 302,
+                                       httpVersion: "HTTP/1.1", headerFields: ["Location": "http://203.0.113.9/"])!
+        var next: URLRequest? = URLRequest(url: URL(string: "http://203.0.113.9/")!)
+        HubSession.RefuseRedirects().urlSession(HubSession.shared, task: task, willPerformHTTPRedirection: response,
+                                                newRequest: URLRequest(url: URL(string: "http://203.0.113.9/")!)) { next = $0 }
+        XCTAssertNil(next)
+    }
 
     func testLinkPolicyRejectsSchemeTricks() {
         let rejected = [
