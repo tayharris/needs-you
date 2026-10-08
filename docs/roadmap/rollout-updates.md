@@ -1,6 +1,6 @@
 # Rollout and updates: every machine on the version that passed
 
-Status: items 1-14 built on `tay/auto-update` (2026-10-07), with the security changes below; item 15 (server hub updater) not built. Marked per item in the build list.
+Status (2026-10-08): items 1–14 are built and shipped (0.1.2), with the security changes below; item 15 (an automatic updater for server hubs) isn't built. Marked per item in the build list. How it works for users: [Keeping up to date](../guides/updates.md).
 
 **Changed from this plan after review:** sender auto-updates are opt-in (`--auto-update` /
 `NEEDS_YOU_AUTO_UPDATE=1`), come only from the invite hub over https, loopback or the tailnet

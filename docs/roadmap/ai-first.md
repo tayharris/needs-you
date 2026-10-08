@@ -1,6 +1,6 @@
 # AI-first
 
-Status: plan; item 5 (`needs-you doctor`) is done. The decision behind it is [ADR 0005](../adr/0005-ai-first.md).
+Status (2026-10-08): items 4 (the MCP server) and 5 (`needs-you doctor`) are built and shipped, and most of 7 (agent self-setup) is. Still plan: the machine-readable spec (2), the conformance suite (3), the repo moves (1) and routing beyond links (6). The decision behind it is [ADR 0005](../adr/0005-ai-first.md).
 
 **Product goal:** give AI agents the tools to set themselves up and to alert people when they actually need them, routed to where they need to act.
 
@@ -10,13 +10,14 @@ That means two audiences are first-class: agents that *use* needs-you (set up a 
 
 | Surface | State |
 |---|---|
-| Sender contract | `docs/AGENT-GUIDE.md` (human prose; good rules) |
+| Sender contract | [AGENT-GUIDE.md](../AGENT-GUIDE.md); the same rules for Codex, Gemini and opencode through `--agent-instructions` |
 | Claude skill | `integrations/claude-code/skill/needs-you/SKILL.md` |
-| Hooks | `integrations/claude-code/` ("agent is waiting" cards) |
-| Self-setup | Invite links: an agent prompt or `curl` one-liner from the Mac app, a `/join/<code>` page (in progress on other branches) |
+| Hooks | Ten agents ([README](../../README.md#works-with)): "agent is waiting" and permission cards |
+| MCP server | `integrations/mcp/needs_you_mcp.py`, installed with `--mcp` ([guide](../guides/mcp.md)) |
+| Self-setup | Invite links: an agent prompt or `curl` one-liner from the Mac app; the `/join/<code>` page is Markdown written for an agent ([Add a sender](../guides/add-a-sender.md)) |
 | Contributor entry | `CLAUDE.md`, `AGENTS.md`, `.claude/skills/` |
 | Machine-readable API | None. `docs/API.md` is prose |
-| Diagnosis | `needs-you health` (reachability + token role); `needs-you doctor [--json]` (the whole setup, item 5) |
+| Diagnosis | `needs-you doctor [--json]`, one next step per `WARN`/`FAIL` ([Troubleshooting](../guides/troubleshooting.md#start-here-needs-you-doctor)) |
 
 ## 1. Repo structure review
 
@@ -55,80 +56,36 @@ Do these as one coordinated change with redirects (old paths as stubs or symlink
 
 ## 4. MCP server
 
-**Built, design Accepted** ([ADR 0008](../adr/0008-mcp-server.md), `integrations/mcp/needs_you_mcp.py`, [guide](../guides/mcp.md)). As built: `needs_you_add` (with `kind` instead of a separate done tool), `needs_you_resolve` and `needs_you_doctor`; it runs the CLI as a subprocess rather than importing it (the CLI writes to stdout, the protocol channel). No status/list tool: it needs a sender-scoped read endpoint, an owner decision. Not yet served from `/dl` or set up by the installer. The original plan:
-
-A `needs-you` MCP server so agents call tools instead of shelling out:
-
-| Tool | Maps to |
-|---|---|
-| `needs_you_add(key, title, body?, priority?, context?, links?)` | `POST /v1/items` |
-| `needs_you_done(key, title, ...)` | `POST /v1/items` kind `done` |
-| `needs_you_resolve(key)` | `POST /v1/items/resolve` |
-| `needs_you_status()` | health + the caller's open items (needs a sender-scoped list endpoint, or the CLI's local record of what it posted) |
-
-- Implementation: a stdlib Python stdio MCP server (`integrations/mcp/needs_you_mcp.py`) that reuses the CLI's config, outbox and failover by importing it, so there's one sending path. No SDK dependency (the stdio JSON-RPC surface needed is small).
-- The tool descriptions carry the AGENT-GUIDE rules (when to post, stable keys, no secrets), since that's what the model reads.
-- Install: `claude mcp add needs-you -- python3 ~/.local/bin/needs-you-mcp`; the invite prompt can offer it.
-- Open: also expose an MCP *resource* with the AGENT-GUIDE text?
+Built. Shipped in 0.1.4, installed by the invite's `--mcp` flag since 0.1.5. Design: [ADR 0008](../adr/0008-mcp-server.md). How to use it: [MCP server guide](../guides/mcp.md). Still open: a status tool listing the caller's open items, which needs a sender-scoped read endpoint (an owner decision; "no for now").
 
 ## 5. `needs-you doctor`
 
-**Done** (`cli/needs-you`, `tests/test_doctor.py`). As built: checks are `config`, `path`,
-`hub N` per URL plus a `hubs` summary (and `hub order` on a Mac whose `127.0.0.1` URL isn't
-first), `outbox`, `claude hooks`, `claude skill`, `orca` (only when Orca is present) and
-`flush schedule`. Each has a `status` of `OK`, `WARN`, `FAIL` or `INFO` and a `hint`. `--json`
-prints `{"ok", "version", "checks": [{"check", "status", "detail", "hint"}]}`; the exit code is
-1 on any `FAIL`. It is read-only (it runs before the usual outbox flush) and never posts.
-Tailscale isn't checked: hub reachability covers it. Still to do: the Mac diagnostics pane and
-the `/join` verify step reusing these checks.
-
-The original sketch:
-
-```
-$ needs-you doctor --json
-{"ok": false, "checks": [
-  {"id": "config", "ok": true, "detail": "~/.config/needs-you/env (mode 600)"},
-  {"id": "hubs", "ok": true, "detail": "2 configured, 1 reachable"},
-  {"id": "token", "ok": true, "detail": "role sender on hub-a"},
-  {"id": "outbox", "ok": false, "detail": "3 queued, oldest 2h", "fix": "needs-you flush"},
-  {"id": "path", "ok": false, "detail": "~/.local/bin not on PATH", "fix": "export PATH=..."},
-  {"id": "tailscale", "ok": true, "detail": "running"},
-  {"id": "hooks", "ok": true, "detail": "installed in ~/.claude/settings.json, opted in"}]}
-```
-
-- Every failing check has a `fix` string an agent can run or relay. Never prints the token.
-- Exit codes: 0 all ok, 1 a check failed.
-- Same checks back the Mac app's diagnostics pane ([future.md](future.md)) and the `/join` page's "verify" step.
+Built. Shipped in 0.1.1; since 0.1.4 every `WARN` and `FAIL` prints one next step an agent can run or relay. Checks and `--json` shape: [Troubleshooting](../guides/troubleshooting.md#start-here-needs-you-doctor). Still to do: a diagnostics pane in the Mac app reusing these checks ([future.md](future.md)).
 
 ## 6. Routing
 
 "Routed to where they need to act" has two halves:
 
 1. **Which device or person sees it.** Today: everything goes to the hub owner; `context` picks work vs personal hours. Next: optional `to` (person or group) and per-reader filters (team mode, [future.md](future.md)); device rules ("urgent → phone too", "personal → never on the work Mac") as reader-side settings, so the hub stays simple.
-2. **Where they act.** The item's links already open the right app. Make it better: AGENT-GUIDE asks for one primary `https` link first (works on phone and desktop); the Mac and iOS clients treat link 0 as the default click; integrations add the deepest stable link they have (the PR review page, not the repo).
+2. **Where they act.** Built: AGENT-GUIDE rule 4 asks for the act-here link first, the Mac app treats the first openable link as the default click (menu bar, hotkey, the arrival preview's button), and the integrations add the deepest stable link they have (the PR's files, the run page). An iOS client would do the same.
 
 Escalation (urgent and unseen → Discord/Slack) is in [future.md](future.md).
 
 ## 7. Self-setup for agents
 
-The invite flow is the agent's setup path. Make it fully scriptable:
-
-- The `/join/<code>` page serves both HTML (for a person) and `text/markdown` or JSON when the client asks (`Accept` header), so an agent fetching it gets exact steps.
-- The redeem response includes the hub URLs in failover order, the token, and a suggested key prefix and context, so `setup-sender.sh --non-interactive` can be fed from it directly.
-- After setup the agent runs `needs-you doctor` and posts a test `info` item.
+Built: the invite flow is the agent's setup path. The `/join/<code>` page is Markdown written for an agent, the redeem response carries the token and the hub URLs in failover order, the installer takes one flag per agent, and the agent prompt ends with `needs-you doctor` and acting on each next step. Not built: a JSON form of the join page for clients that ask for one (`Accept: application/json`), and posting a test `info` item from the doctor step (the installer's test card covers it today).
 
 ## Phases
 
 | Phase | What |
 |---|---|
-| 1 | `protocol/openapi.json` + schemas + drift test; `needs-you doctor` (done) |
+| 1 | `protocol/openapi.json` + schemas + drift test (`needs-you doctor` is done) |
 | 2 | Conformance suite extracted from `tests/test_api.py` and `test_replication.py`; CI job |
 | 3 | Repo moves (one coordinated PR) |
-| 4 | MCP server; machine-readable `/join` |
+| 4 | ~~MCP server~~ (done); a JSON `/join` |
 | 5 | Routing (`to`, reader-side device rules) |
 
 ## Open decisions
 
 1. OpenAPI as JSON (stdlib-parseable) or YAML (nicer to edit)?
-2. MCP server inside the CLI file (`needs-you mcp`) or a separate file?
-3. When to do the repo moves: right after the invite branches merge, before more integrations land.
+2. When to do the repo moves: right after the invite branches merge, before more integrations land.
