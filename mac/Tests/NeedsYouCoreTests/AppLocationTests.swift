@@ -105,7 +105,7 @@ final class AppLocationTests: XCTestCase {
 
     func testLoginItemLaunchAction() {
         let apps = "/Applications/NeedsYou.app"
-        func act(_ s: LoginItemStatus, _ loc: AppLocation = .applications, _ recorded: String?) -> LoginItemLaunchAction {
+        func act(_ s: LoginItemStatus, _ recorded: String?, at loc: AppLocation = .applications) -> LoginItemLaunchAction {
             LoginItemPolicy.launchAction(status: s, location: loc, currentPath: apps, recordedPath: recorded)
         }
         // Turned on from Downloads by an older build, now running from Applications.
@@ -121,8 +121,8 @@ final class AppLocationTests: XCTestCase {
         XCTAssertEqual(act(.requiresApproval, "/Users/sam/Downloads/NeedsYou.app"), .none)
         // A stray copy outside Applications never touches it.
         for loc: AppLocation in [.downloads, .translocated, .diskImage(volume: "NeedsYou"), .elsewhere(folder: "dist")] {
-            XCTAssertEqual(act(.enabled, loc, "/Some/Other/NeedsYou.app"), .none)
-            XCTAssertEqual(act(.notFound, loc, apps), .none)
+            XCTAssertEqual(act(.enabled, "/Some/Other/NeedsYou.app", at: loc), .none)
+            XCTAssertEqual(act(.notFound, apps, at: loc), .none)
         }
     }
 
