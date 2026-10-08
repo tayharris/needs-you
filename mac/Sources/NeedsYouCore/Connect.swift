@@ -226,6 +226,10 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     public static let geminiFlag = "--gemini-hooks user"
     public static let opencodeFlag = "--opencode-plugin"
     public static let copilotFlag = "--copilot-hooks user"
+    /// ...and Cursor, Cline and Aider (a card when a turn or task finishes).
+    public static let cursorFlag = "--cursor-hooks user"
+    public static let clineFlag = "--cline-hooks user"
+    public static let aiderFlag = "--aider"
 
     /// The end of the agent prompt: check the setup, and what to do when something failed
     /// (doctor prints one next step under each WARN or FAIL). Same text as the hub's.
@@ -242,7 +246,9 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         return "Set up needs-you alerts on this machine: read \(joinURL) and follow it. "
             + "If this machine runs Claude Code, use \(Self.claudeFlags). "
             + "If it runs OpenAI Codex CLI, add \(Self.codexFlag); Gemini CLI, add \(Self.geminiFlag); "
-            + "opencode, add \(Self.opencodeFlag); GitHub Copilot CLI, add \(Self.copilotFlag). " + Self.agentPromptCheck
+            + "opencode, add \(Self.opencodeFlag); GitHub Copilot CLI, add \(Self.copilotFlag); "
+            + "Cursor, add \(Self.cursorFlag); Cline, add \(Self.clineFlag); Aider, add \(Self.aiderFlag). "
+            + Self.agentPromptCheck
     }
     /// What to run on the new machine: the full Claude Code setup.
     public var shellOneLiner: String {

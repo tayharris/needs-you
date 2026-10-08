@@ -22,6 +22,9 @@ HOOKS=none
 CODEX_HOOKS=none
 GEMINI_HOOKS=none
 COPILOT_HOOKS=none
+CURSOR_HOOKS=none
+CLINE_HOOKS=none
+AIDER=0
 OPENCODE=0
 SKILL=0
 ORCA=0
@@ -81,8 +84,14 @@ Options:
   --copilot-hooks user|none     GitHub Copilot CLI hooks in ~/.copilot/hooks/: post when a
                                 session asks for permission or a question, or finishes
                                 its turn (default none)
+  --cursor-hooks user|none      Cursor hooks in ~/.cursor/hooks.json: post when a Cursor
+                                agent finishes its turn (no approval hook; default none)
+  --cline-hooks user|none       Cline hooks in ~/Documents/Cline/Hooks: post when a task
+                                finishes (no approval hook; default none)
+  --aider                       Aider: post when it waits for you after a reply
+                                (notifications-command in ~/.aider.conf.yml)
   --alerts                      turn the hooks on for every Claude Code, Codex, Gemini,
-                                opencode and Copilot session here
+                                opencode, Copilot, Cursor, Cline and Aider session here
                                 (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
                                 without it they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
@@ -132,6 +141,11 @@ while [ $# -gt 0 ]; do
     --opencode-plugin) OPENCODE=1; shift ;;
     --copilot-hooks) COPILOT_HOOKS=${2:-}; shift 2 || die "--copilot-hooks needs user or none" ;;
     --copilot-hooks=*) COPILOT_HOOKS=${1#*=}; shift ;;
+    --cursor-hooks) CURSOR_HOOKS=${2:-}; shift 2 || die "--cursor-hooks needs user or none" ;;
+    --cursor-hooks=*) CURSOR_HOOKS=${1#*=}; shift ;;
+    --cline-hooks) CLINE_HOOKS=${2:-}; shift 2 || die "--cline-hooks needs user or none" ;;
+    --cline-hooks=*) CLINE_HOOKS=${1#*=}; shift ;;
+    --aider) AIDER=1; shift ;;
     --skill) SKILL=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
@@ -162,6 +176,8 @@ case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, proj
 case "$CODEX_HOOKS" in user|none) ;; *) die "--codex-hooks must be user or none" ;; esac
 case "$GEMINI_HOOKS" in user|none) ;; *) die "--gemini-hooks must be user or none" ;; esac
 case "$COPILOT_HOOKS" in user|none) ;; *) die "--copilot-hooks must be user or none" ;; esac
+case "$CURSOR_HOOKS" in user|none) ;; *) die "--cursor-hooks must be user or none" ;; esac
+case "$CLINE_HOOKS" in user|none) ;; *) die "--cline-hooks must be user or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
@@ -407,6 +423,9 @@ say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && pr
 [ "$OPENCODE" -eq 1 ] && say "  plugin  -> opencode (${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/needs-you.js)"
 [ "$GEMINI_HOOKS" != none ] && say "  hooks   -> Gemini CLI (~/.gemini/settings.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$COPILOT_HOOKS" != none ] && say "  hooks   -> Copilot CLI (${COPILOT_HOME:-~/.copilot}/hooks/needs-you.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$CURSOR_HOOKS" != none ] && say "  hooks   -> Cursor (~/.cursor/hooks.json; finished turns only)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$CLINE_HOOKS" != none ] && say "  hooks   -> Cline (~/Documents/Cline/Hooks; finished tasks only)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$AIDER" -eq 1 ] && say "  notify  -> Aider (~/.aider.conf.yml)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
@@ -633,6 +652,25 @@ fi
 if [ "$COPILOT_HOOKS" = user ]; then
   ASKED=$((ASKED + 1))
   install_agent_hooks copilot "${COPILOT_HOME:-$HOME/.copilot}" --copilot-home || skipped "Copilot CLI hooks" "--copilot-hooks user"
+fi
+if [ "$CURSOR_HOOKS" = user ]; then
+  ASKED=$((ASKED + 1))
+  install_agent_hooks cursor "$HOME/.cursor" --cursor-dir || skipped "Cursor hooks" "--cursor-hooks user"
+fi
+# Cline and Aider: an installer and the hook, no config snippet.
+plain_agent() {  # plain_agent INSTALLER: download it with the hook, run it; its exit code
+  fetch "$1" "$TMP/$1" || { warn "could not download $1"; return 1; }
+  fetch needs-you-hook.sh "$TMP/needs-you-hook.sh" || { warn "could not download needs-you-hook.sh"; return 1; }
+  NEEDS_YOU_INSTALLER=1 bash "$TMP/$1"
+}
+if [ "$CLINE_HOOKS" = user ]; then
+  ASKED=$((ASKED + 1))
+  plain_agent install-cline-hooks.sh || skipped "Cline hooks" "--cline-hooks user"
+fi
+if [ "$AIDER" -eq 1 ]; then
+  ASKED=$((ASKED + 1))
+  # Exit 4: ~/.aider.conf.yml wasn't safe to change; the lines to add are printed above.
+  plain_agent install-aider-notifications.sh || skipped "Aider notifications" "--aider"
 fi
 opencode_plugin() {
   local f

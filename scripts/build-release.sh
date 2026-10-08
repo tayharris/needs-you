@@ -51,7 +51,9 @@ for f in integrations/claude-code/needs-you-hook.sh integrations/claude-code/ski
          integrations/codex/codex-hooks.json integrations/codex/install-codex-hooks.sh \
          integrations/gemini/gemini-hooks.json integrations/gemini/install-gemini-hooks.sh \
          integrations/opencode/needs-you.js integrations/opencode/install-opencode-plugin.sh \
-         integrations/copilot/copilot-hooks.json integrations/copilot/install-copilot-hooks.sh; do
+         integrations/copilot/copilot-hooks.json integrations/copilot/install-copilot-hooks.sh \
+         integrations/cursor/cursor-hooks.json integrations/cursor/install-cursor-hooks.sh \
+         integrations/cline/install-cline-hooks.sh integrations/aider/install-aider-notifications.sh; do
   got=$(sed -n 's/.*needs[-_]you[-_]version"\{0,1\}: *"\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$ROOT/$f" | head -n 1)
   [ "$got" = "$V" ] || die "$f has version stamp ${got:-none}, VERSION file has $V"
 done

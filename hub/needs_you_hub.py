@@ -150,6 +150,14 @@ DOWNLOADS = {
     "install-copilot-hooks.sh": ("integrations/copilot/install-copilot-hooks.sh",
                                  "text/x-shellscript; charset=utf-8"),
     "copilot-hooks.json": ("integrations/copilot/copilot-hooks.json", "application/json"),
+    # Cursor: the same hook, merged into ~/.cursor/hooks.json.
+    "install-cursor-hooks.sh": ("integrations/cursor/install-cursor-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    "cursor-hooks.json": ("integrations/cursor/cursor-hooks.json", "application/json"),
+    # Cline: hook files in ~/Documents/Cline/Hooks/ that start the same hook.
+    "install-cline-hooks.sh": ("integrations/cline/install-cline-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    # Aider: its notifications command, set in ~/.aider.conf.yml.
+    "install-aider-notifications.sh": ("integrations/aider/install-aider-notifications.sh",
+                                       "text/x-shellscript; charset=utf-8"),
 }
 # Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
 # the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
@@ -168,6 +176,10 @@ CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
 COPILOT_INSTALL_FLAG = "--copilot-hooks user"
+# ...Cursor, Cline and Aider (a card when a turn or task finishes: they have no approval hook).
+CURSOR_INSTALL_FLAG = "--cursor-hooks user"
+CLINE_INSTALL_FLAG = "--cline-hooks user"
+AIDER_INSTALL_FLAG = "--aider"
 # The end of every sender invite's agent prompt: verify, and what to do when something failed.
 # The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.
 AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
@@ -2053,9 +2065,11 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
-                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s. %s"
+                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s; "
+                               "Cursor, add %s; Cline, add %s; Aider, add %s. %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
-                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, AGENT_PROMPT_CHECK))
+                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, CURSOR_INSTALL_FLAG,
+                                  CLINE_INSTALL_FLAG, AIDER_INSTALL_FLAG, AGENT_PROMPT_CHECK))
     return out
 
 
@@ -3211,7 +3225,10 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--gemini-hooks user` | This machine runs Gemini CLI: post an item when a session asks to approve a tool call or finishes its turn and waits for you (hooks in `~/.gemini/settings.json`). Default `none`. |
 | `--opencode-plugin` | This machine runs opencode: install a plugin in `~/.config/opencode/plugins` that posts an item when a session asks for permission or a question, or goes idle waiting for you. |
 | `--copilot-hooks user` | This machine runs GitHub Copilot CLI: post an item when a session asks for permission or a question, or finishes its turn and waits for you (hooks in `~/.copilot/hooks/`). Default `none`. |
-| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode and Copilot CLI session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
+| `--cursor-hooks user` | This machine runs Cursor: post an item when a Cursor agent finishes its turn and waits for you (hooks in `~/.cursor/hooks.json`). Cursor has no hook for approval prompts, so there is no card for those. Default `none`. |
+| `--cline-hooks user` | This machine runs Cline (VS Code or the CLI): post an item when a task finishes (hook files in `~/Documents/Cline/Hooks/`). Cline has no hook for approval prompts. Default `none`. |
+| `--aider` | This machine runs Aider: post an item when Aider waits for you after a reply (`notifications-command` in `~/.aider.conf.yml`; printed instead when that file can't safely be changed). |
+| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Cursor, Cline and Aider session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
@@ -3228,7 +3245,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Works until the link expires or is revoked, even with no uses left. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude`,
-`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
+`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, `~/.cursor` or `cursor`/`cursor-agent` on PATH, `~/Documents/Cline` or `cline` on PATH, `aider` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
 health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
 
 - The PATH change reaches new shells only: in the shell you ran it from, call

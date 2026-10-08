@@ -13,9 +13,16 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
+import sys
+import tempfile
 import time
+import unittest
 
-from hook_case import SECRET, HookCase, opt
+from hook_case import BASH, HOOK, REAL_HOME, SECRET, HookCase, opt
+from support import CLI, ROOT, free_port
+from test_cli_update import UpdateCase, current_files, read
 
 CONV = "8e1f4d2c-6b7a-4c39-9a51-0f3e2d1c4b5a"
 EMAIL = "someone@acme.example"
@@ -143,6 +150,153 @@ class ClaudeHooksUnderCursor(HookCase):
         self.assertEqual(self.wait_calls(1)[-1], ["resolve", "--key", "agent:box:%s" % sid])
 
 
+CURSOR_HOOKS_JSON = os.path.join(ROOT, "integrations", "cursor", "cursor-hooks.json")
+INSTALLER = os.path.join(ROOT, "integrations", "cursor", "install-cursor-hooks.sh")
+PERMISSION_HOOKS = {"preToolUse", "beforeShellExecution", "beforeMCPExecution", "beforeReadFile",
+                    "beforeTabFileRead", "subagentStart", "permissionRequest"}
+
+
+class CursorHooksJson(unittest.TestCase):
+    def test_registers_the_events_and_no_permission_hook(self):
+        with open(CURSOR_HOOKS_JSON) as fh:
+            doc = json.load(fh)
+        self.assertEqual(doc["version"], 1)
+        self.assertRegex(doc["_needs_you_version"], r"^\d+\.\d+\.\d+$")
+        self.assertEqual({ev: h[0]["command"] for ev, h in doc["hooks"].items()},
+                         {"stop": "./hooks/needs-you-hook.sh notify cursor",
+                          "beforeSubmitPrompt": "./hooks/needs-you-hook.sh resolve cursor",
+                          "sessionEnd": "./hooks/needs-you-hook.sh end cursor"})
+        # Cursor blocks the action when a permission hook prints nothing or invalid JSON.
+        self.assertFalse(PERMISSION_HOOKS & set(doc["hooks"]))
+
+
+class Installer(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-cursor-inst-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.assertNotEqual(self.home, REAL_HOME)
+        self.cursor = os.path.join(self.home, ".cursor")
+        self.conf = os.path.join(self.cursor, "hooks.json")
+        self.hook = os.path.join(self.cursor, "hooks", "needs-you-hook.sh")
+
+    def run_installer(self, *args):
+        return subprocess.run([BASH, INSTALLER] + list(args), env={"HOME": self.home, "PATH": os.environ["PATH"]},
+                              capture_output=True, text=True, timeout=60)
+
+    def test_merge_rerun_and_uninstall_keep_other_hooks(self):
+        os.makedirs(self.cursor)
+        mine = {"version": 1, "hooks": {"stop": [{"command": "./hooks/mine.sh"}],
+                                        "afterFileEdit": [{"command": "./hooks/format.sh"}]}}
+        with open(self.conf, "w") as fh:
+            json.dump(mine, fh)
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no hook for \"waiting for your approval\"", r.stdout)
+        with open(self.conf) as fh:
+            doc = json.load(fh)
+        self.assertEqual(doc["hooks"]["stop"][0], {"command": "./hooks/mine.sh"})
+        self.assertEqual(doc["hooks"]["stop"][1]["command"], "./hooks/needs-you-hook.sh notify cursor")
+        self.assertNotIn("_needs_you_version", doc)
+        self.assertEqual(read(self.hook), read(HOOK))
+        self.assertTrue(os.access(self.hook, os.X_OK))
+        self.assertTrue([n for n in os.listdir(self.cursor) if n.startswith("hooks.json.bak-")])
+        self.assertIn("already up to date", self.run_installer().stdout)
+        r = self.run_installer("--uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(self.conf) as fh:
+            self.assertEqual(json.load(fh), mine)
+        self.assertFalse(os.path.exists(self.hook))
+
+    def test_refuses_invalid_json_and_symlinks(self):
+        os.makedirs(self.cursor)
+        with open(self.conf, "w") as fh:
+            fh.write("{ not json")
+        r = self.run_installer()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not valid JSON", r.stderr)
+        os.remove(self.conf)
+        victim = os.path.join(self.home, "victim.json")
+        with open(victim, "w") as fh:
+            fh.write("{}")
+        os.symlink(victim, self.conf)
+        r = self.run_installer()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("symlink", r.stderr)
+        with open(victim) as fh:
+            self.assertEqual(fh.read(), "{}")
+
+
+class Doctor(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-cursor-doc-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+
+    def check(self, **env):
+        e = {"HOME": self.home, "PATH": "/usr/bin:/bin", "NEEDS_YOU_URLS": "http://127.0.0.1:%d" % free_port(),
+             "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1", "NEEDS_YOU_GH": "none"}
+        e.update(env)
+        r = subprocess.run([sys.executable, CLI, "doctor", "--json"], env=e, capture_output=True, text=True, timeout=60)
+        rows = [c for c in json.loads(r.stdout)["checks"] if c["check"] == "cursor hooks"]
+        return rows[0] if rows else None
+
+    def test_states(self):
+        self.assertIsNone(self.check())
+        os.makedirs(os.path.join(self.home, ".cursor"))
+        row = self.check()
+        self.assertEqual(row["status"], "INFO")
+        self.assertIn("--cursor-hooks user", row["hint"])
+        subprocess.run([BASH, INSTALLER], env={"HOME": self.home, "PATH": os.environ["PATH"]},
+                       capture_output=True, timeout=60)
+        row = self.check(NEEDS_YOU_AGENT_ALERTS="1")
+        self.assertEqual(row["status"], "OK", row)
+        self.assertIn("no approval hook", row["hint"])
+        conf = os.path.join(self.home, ".cursor", "hooks.json")
+        with open(conf) as fh:
+            doc = json.load(fh)
+        doc["hooks"]["preToolUse"] = [{"command": "./hooks/needs-you-hook.sh notify cursor"}]
+        with open(conf, "w") as fh:
+            json.dump(doc, fh)
+        row = self.check()
+        self.assertEqual(row["status"], "WARN")
+        self.assertIn("preToolUse", row["detail"])
+        self.assertIn("--cursor-hooks user", row["hint"])
+
+
+class UninstallHooks(unittest.TestCase):
+    def test_offline_removal_keeps_other_hooks(self):
+        home = tempfile.mkdtemp(prefix="ny-cursor-un-")
+        self.addCleanup(shutil.rmtree, home, True)
+        env = {"HOME": home, "PATH": os.environ["PATH"]}
+        os.makedirs(os.path.join(home, ".cursor"))
+        with open(os.path.join(home, ".cursor", "hooks.json"), "w") as fh:
+            json.dump({"version": 1, "hooks": {"stop": [{"command": "./hooks/mine.sh"}]}}, fh)
+        subprocess.run([BASH, INSTALLER], env=env, capture_output=True, timeout=60)
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks", "--cursor"], env=env, capture_output=True,
+                           text=True, timeout=60, cwd=home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(home, ".cursor", "hooks.json")) as fh:
+            self.assertEqual(json.load(fh), {"version": 1, "hooks": {"stop": [{"command": "./hooks/mine.sh"}]}})
+        self.assertFalse(os.path.exists(os.path.join(home, ".cursor", "hooks", "needs-you-hook.sh")))
+
+
+class Update(UpdateCase):
+    def test_hook_copy_and_entries(self):
+        files = current_files()
+        files["install-cursor-hooks.sh"] = read(INSTALLER)
+        files["cursor-hooks.json"] = read(CURSOR_HOOKS_JSON)
+        h = self.hub(files=files)
+        hook = self.install(".cursor/hooks/needs-you-hook.sh", mode=0o755)
+        self.install(".cursor/hooks.json", b'{"version": 1, "hooks": {"stop": [{"command": '
+                     b'"./hooks/needs-you-hook.sh notify cursor"}]}}\n')
+        r = self.run_cli("update", "--check", urls=[h.url])
+        self.assertIn("needs-you-hook.sh (Cursor)", r.stdout)
+        self.assertIn("cursor-hooks.json", r.stdout)
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(read(hook), read(HOOK))
+        with open(os.path.join(self.home, ".cursor", "hooks.json")) as fh:
+            self.assertIn("beforeSubmitPrompt", json.load(fh)["hooks"])
+
+
 if __name__ == "__main__":
-    import unittest
     unittest.main()

@@ -68,7 +68,7 @@ else
   echo "warning: $REPO/integrations/claude-code not found; joiners won't get the Claude Code files" >&2
 fi
 
-for agent in codex gemini copilot; do
+for agent in codex gemini copilot cursor; do
   if [[ -d "$REPO/integrations/$agent" ]]; then
     mkdir -p "$RES/integrations/$agent"
     cp "$REPO/integrations/$agent/install-$agent-hooks.sh" "$REPO/integrations/$agent/$agent-hooks.json" \
@@ -80,6 +80,13 @@ if [[ -d "$REPO/integrations/opencode" ]]; then
   cp "$REPO/integrations/opencode/needs-you.js" "$REPO/integrations/opencode/install-opencode-plugin.sh" \
     "$RES/integrations/opencode/"
 fi
+# Cline and Aider: an installer each, no config snippet.
+for f in cline/install-cline-hooks.sh aider/install-aider-notifications.sh; do
+  if [[ -f "$REPO/integrations/$f" ]]; then
+    mkdir -p "$RES/integrations/$(dirname "$f")"
+    cp "$REPO/integrations/$f" "$RES/integrations/$f"
+  fi
+done
 
 if [[ -f "$REPO/integrations/orca/snippet.md" ]]; then
   mkdir -p "$RES/integrations/orca"

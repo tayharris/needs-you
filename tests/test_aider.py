@@ -8,11 +8,18 @@ reads stdin, returns at once, and names the session after the Aider process.
 """
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import subprocess
+import sys
+import tempfile
 import time
+import unittest
 
-from hook_case import BASH, HOOK, HookCase, opt
+from hook_case import BASH, HOOK, REAL_HOME, HookCase, opt
+from support import CLI, ROOT, free_port
+from test_cli_update import UpdateCase, current_files, read
 
 
 class AiderHook(HookCase):
@@ -67,6 +74,145 @@ class AiderHook(HookCase):
         self.assertEqual(self.calls(), [])
 
 
+INSTALLER = os.path.join(ROOT, "integrations", "aider", "install-aider-notifications.sh")
+BLOCK = ("# needs-you (managed by install-aider-notifications.sh; do not edit between these markers)\n"
+         "notifications: true\n"
+         "notifications-command: '\"$HOME/.config/needs-you/aider/hooks/needs-you-hook.sh\" notify aider'\n"
+         "# end needs-you\n")
+
+
+class Installer(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-aider-inst-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.assertNotEqual(self.home, REAL_HOME)
+        self.conf = os.path.join(self.home, ".aider.conf.yml")
+        self.hook = os.path.join(self.home, ".config", "needs-you", "aider", "hooks", "needs-you-hook.sh")
+
+    def run_installer(self, *args):
+        return subprocess.run([BASH, INSTALLER] + list(args), env={"HOME": self.home, "PATH": os.environ["PATH"]},
+                              capture_output=True, text=True, timeout=60)
+
+    def conf_text(self):
+        with open(self.conf) as fh:
+            return fh.read()
+
+    def test_new_file_rerun_uninstall(self):
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.conf_text(), BLOCK)
+        self.assertEqual(read(self.hook), read(HOOK))
+        self.assertTrue(os.access(self.hook, os.X_OK))
+        self.assertIn("already up to date", self.run_installer().stdout)
+        self.assertEqual(self.conf_text(), BLOCK)
+        r = self.run_installer("--uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(self.conf))
+        self.assertFalse(os.path.exists(self.hook))
+
+    def test_existing_settings_are_kept(self):
+        mine = "# my settings\nmodel: gpt-4o\nauto-commits: false"  # no final newline
+        with open(self.conf, "w") as fh:
+            fh.write(mine)
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.conf_text(), mine + "\n" + BLOCK)
+        self.run_installer("--uninstall")
+        self.assertEqual(self.conf_text(), mine + "\n")
+
+    def test_not_safe_to_change(self):
+        for mine in ("notifications: false\n", "notifications-command: say hi\n", "- a list\n",
+                     "{model: x}\n", "model: x\n---\nother: y\n"):
+            with open(self.conf, "w") as fh:
+                fh.write(mine)
+            r = self.run_installer()
+            self.assertEqual(r.returncode, 4, mine)
+            self.assertIn("Add these two lines to it yourself", r.stdout)
+            self.assertIn("notify aider'", r.stdout)
+            self.assertEqual(self.conf_text(), mine)
+            self.assertTrue(os.path.exists(self.hook))  # the hook is there for the lines printed
+        os.remove(self.conf)
+        target = os.path.join(self.home, "dotfiles.yml")
+        with open(target, "w") as fh:
+            fh.write("model: x\n")
+        os.symlink(target, self.conf)
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 4)
+        self.assertIn("symlink", r.stdout)
+        with open(target) as fh:
+            self.assertEqual(fh.read(), "model: x\n")
+
+    def test_aider_reads_the_block(self):
+        # The YAML Aider reads (it uses PyYAML; parse the block the same way when available).
+        self.run_installer()
+        try:
+            import yaml  # noqa: F401 (not stdlib; only where it happens to be installed)
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        import yaml
+        doc = yaml.safe_load(self.conf_text())
+        self.assertEqual(doc, {"notifications": True,
+                               "notifications-command": '"$HOME/.config/needs-you/aider/hooks/needs-you-hook.sh"'
+                                                        ' notify aider'})
+
+
+class Doctor(unittest.TestCase):
+    def test_states(self):
+        home = tempfile.mkdtemp(prefix="ny-aider-doc-")
+        self.addCleanup(shutil.rmtree, home, True)
+
+        def check(**env):
+            e = {"HOME": home, "PATH": "/usr/bin:/bin", "NEEDS_YOU_URLS": "http://127.0.0.1:%d" % free_port(),
+                 "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1", "NEEDS_YOU_GH": "none"}
+            e.update(env)
+            r = subprocess.run([sys.executable, CLI, "doctor", "--json"], env=e, capture_output=True, text=True,
+                               timeout=60)
+            rows = [c for c in json.loads(r.stdout)["checks"] if c["check"] == "aider notifications"]
+            return rows[0] if rows else None
+
+        self.assertIsNone(check())
+        with open(os.path.join(home, ".aider.conf.yml"), "w") as fh:
+            fh.write("model: x\n")
+        self.assertEqual(check()["status"], "INFO")
+        subprocess.run([BASH, INSTALLER], env={"HOME": home, "PATH": os.environ["PATH"]}, capture_output=True,
+                       timeout=60)
+        row = check(NEEDS_YOU_AGENT_ALERTS="1")
+        self.assertEqual(row["status"], "OK", row)
+        self.assertIn("NEEDS_YOU_AIDER_EXPIRY_HOURS", row["hint"])
+        with open(os.path.join(home, ".aider.conf.yml"), "w") as fh:
+            fh.write("model: x\n")
+        row = check()
+        self.assertEqual(row["status"], "WARN")
+        self.assertIn("--aider", row["hint"])
+
+
+class UninstallHooks(unittest.TestCase):
+    def test_offline_removal(self):
+        home = tempfile.mkdtemp(prefix="ny-aider-un-")
+        self.addCleanup(shutil.rmtree, home, True)
+        env = {"HOME": home, "PATH": os.environ["PATH"]}
+        conf = os.path.join(home, ".aider.conf.yml")
+        with open(conf, "w") as fh:
+            fh.write("model: x\n")
+        subprocess.run([BASH, INSTALLER], env=env, capture_output=True, timeout=60)
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks", "--aider"], env=env, capture_output=True,
+                           text=True, timeout=60, cwd=home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("removed the needs-you lines", r.stdout)
+        with open(conf) as fh:
+            self.assertEqual(fh.read(), "model: x\n")
+        self.assertFalse(os.path.exists(os.path.join(home, ".config", "needs-you", "aider")))
+
+
+class Update(UpdateCase):
+    def test_hook_copy(self):
+        h = self.hub(files=dict(current_files(), **{"install-aider-notifications.sh": read(INSTALLER)}))
+        hook = self.install(".config/needs-you/aider/hooks/needs-you-hook.sh", mode=0o755)
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("needs-you-hook.sh (Aider)", r.stdout)
+        self.assertEqual(read(hook), read(HOOK))
+
+
 if __name__ == "__main__":
-    import unittest
     unittest.main()
