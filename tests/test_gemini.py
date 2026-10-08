@@ -17,6 +17,7 @@ import tempfile
 import time
 import unittest
 
+from hook_case import fixture, step_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -119,6 +120,37 @@ class GeminiHook(unittest.TestCase):
         self.assertEqual(opt(argv, "--title"), "Gemini needs your approval: my-repo")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
 
+    def test_ask_user_question_and_choices(self):
+        # BeforeTool (matcher ^ask_user$) has the questions; the ToolPermission notification
+        # that follows for ask_user has none, and posts nothing over the question card.
+        data = fixture("gemini-ask-user.json")
+        data.update(session_id="gem-sess-1", cwd=self.cwd)
+        self.run_hook("notify", data)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"),
+                         "Gemini asks \u201cWhich test runner should the new package use?\u201d and 1 more: my-repo")
+        self.assertIn("**Publish** \u00b7 choose one\nPublish it to npm now?", opt(argv, "--body"))
+        self.assertEqual(step_texts(argv), ["Tests: Vitest \u2014 Same as the other packages",
+                                            "Tests: Jest \u2014 What the template ships", "Publish: Yes", "Publish: No"])
+        self.wait_marker()
+        self.permission({"type": "ask_user", "title": "Ask User"}, 1)
+        time.sleep(0.5)
+        self.assertEqual(len(self.calls()), 1)
+        # another tool through a wider matcher posts nothing
+        self.run_hook("notify", {"hook_event_name": "BeforeTool", "tool_name": "run_shell_command",
+                                 "tool_input": {"command": SECRET}})
+        # the turn ends with the question card still up (never shown): it goes, then "waiting"
+        self.run_hook("notify", {"hook_event_name": "AfterAgent"})
+        calls = self.wait_calls(3)
+        self.assertEqual([c[0] for c in calls], ["add", "resolve", "add"])
+        self.assertEqual(opt(calls[2], "--title"), "Gemini is waiting for you: my-repo")
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
+
+    def test_plan_approval(self):
+        argv = self.permission({"type": "exit_plan_mode", "title": "Plan", "planPath": "/x/%s.md" % SECRET}, 1)
+        self.assertEqual(opt(argv, "--title"), "Gemini wants approval for a plan: my-repo")
+        self.assertNotIn(SECRET, json.dumps(argv))
+
     def test_turn_end_card_and_switch(self):
         self.run_hook("notify", {"hook_event_name": "AfterAgent", "prompt": SECRET,
                                  "prompt_response": SECRET, "stop_hook_active": False})
@@ -165,9 +197,11 @@ class GeminiHooksJson(unittest.TestCase):
         hooks = doc["hooks"]
         self.assertEqual({ev: g[0]["hooks"][0]["command"].split()[-2:] for ev, g in hooks.items()},
                          {"Notification": ["notify", "gemini"], "AfterAgent": ["notify", "gemini"],
+                          "BeforeTool": ["notify", "gemini"],
                           "BeforeAgent": ["resolve", "gemini"], "AfterTool": ["resolve", "gemini"],
                           "SessionStart": ["start", "gemini"], "SessionEnd": ["end", "gemini"]})
         self.assertEqual(hooks["Notification"][0]["matcher"], "ToolPermission")
+        self.assertEqual(hooks["BeforeTool"][0]["matcher"], "^ask_user$")  # a regex in Gemini
         for groups in hooks.values():
             h = groups[0]["hooks"][0]
             self.assertEqual((h["type"], h["name"]), ("command", "needs-you"))

@@ -1,0 +1,23 @@
+{
+  "_source": "Gemini CLI source (0.65.0 nightly): BeforeToolInput (packages/core/src/hooks/types.ts) and the ask_user tool's params (packages/core/src/tools/ask-user.ts); not a live capture",
+  "session_id": "8d3f0c2a-0000-4000-8000-000000000001",
+  "transcript_path": "/home/me/.gemini/tmp/chats/session.json",
+  "cwd": "/home/me/src/my-repo",
+  "hook_event_name": "BeforeTool",
+  "timestamp": "2026-10-08T12:00:00.000Z",
+  "tool_name": "ask_user",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Which test runner should the new package use?",
+        "header": "Tests",
+        "type": "choice",
+        "options": [
+          {"label": "Vitest", "description": "Same as the other packages"},
+          {"label": "Jest", "description": "What the template ships"}
+        ]
+      },
+      {"question": "Publish it to npm now?", "header": "Publish", "type": "yesno"}
+    ]
+  }
+}

@@ -18,6 +18,7 @@ import tempfile
 import time
 import unittest
 
+from hook_case import fixture, step_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -117,6 +118,31 @@ class CodexHook(unittest.TestCase):
         self.assertEqual(opt(self.permission("$(rm -rf /)", {}), "--title"),
                          "Codex needs permission for a tool: my-repo")
 
+    def test_request_user_input_question_and_choices(self):
+        data = fixture("codex-request-user-input.json")
+        data.update(session_id="019a-codex-sess", cwd=self.cwd)
+        self.run_hook("notify", data)
+        argv = self.calls()[-1]
+        self.assertEqual(opt(argv, "--title"), "Codex asks \u201cWhich database should the service use?\u201d: my-repo")
+        self.assertTrue(opt(argv, "--body").startswith(
+            "**Database** \u00b7 choose one\nWhich database should the service use?\n\n"
+            "Answer in Codex; the choices below are what it offered."))
+        self.assertEqual(step_texts(argv), ["Postgres (Recommended) \u2014 Mature, already used by the team.",
+                                            "SQLite \u2014 Zero ops, single file."])
+        # outside Plan mode Codex refuses the call after PreToolUse: no PostToolUse, only Stop.
+        # The question card goes, and the turn-end card takes the key.
+        self.run_hook("notify", {"hook_event_name": "Stop"})
+        self.assertEqual([c[0] for c in self.calls()], ["add", "resolve", "add"])
+        self.assertEqual(opt(self.calls()[-1], "--title"), "Codex is waiting for you: my-repo")
+        # with turn cards off, the stale question card still goes
+        self.run_hook("notify", data)
+        self.run_hook("notify", {"hook_event_name": "Stop"}, NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertEqual([c[0] for c in self.calls()][3:], ["add", "resolve"])
+        # a turn-end card isn't a question: the next Stop doesn't resolve it first
+        self.run_hook("notify", {"hook_event_name": "Stop"})
+        self.run_hook("notify", {"hook_event_name": "Stop"})
+        self.assertEqual([c[0] for c in self.calls()][5:], ["add", "add"])
+
     def test_turn_end_card_has_no_assistant_text(self):
         self.run_hook("notify", {"hook_event_name": "Stop", "turn_id": "t1", "stop_hook_active": False,
                                  "last_assistant_message": "Here is the key: %s" % SECRET})
@@ -141,6 +167,8 @@ class CodexHook(unittest.TestCase):
 
     def test_other_events_post_nothing(self):
         self.run_hook("notify", {"hook_event_name": "PreToolUse", "tool_name": "Bash"})
+        self.run_hook("notify", {"hook_event_name": "PreToolUse", "tool_name": "request_user_input",
+                                 "tool_input": {"questions": "junk"}}, NEEDS_YOU_AGENT_ALERTS="0")
         self.assertEqual(self.calls(), [])
 
     def test_quiet_unless_opted_in(self):
@@ -249,9 +277,12 @@ class CodexHooksJson(unittest.TestCase):
         cmds = {ev: g[0]["hooks"][0]["command"] for ev, g in hooks.items()}
         self.assertEqual({ev: c.split()[-2:] for ev, c in cmds.items()},
                          {"PermissionRequest": ["notify", "codex"], "Stop": ["notify", "codex"],
+                          "PreToolUse": ["notify", "codex"],
                           "UserPromptSubmit": ["resolve", "codex"], "PostToolUse": ["resolve", "codex"],
                           "Interrupt": ["resolve", "codex"], "SessionStart": ["start", "codex"],
                           "SessionEnd": ["end", "codex"]})
+        # An exact name (letters and _ only) is an exact match in Codex, not a regex.
+        self.assertEqual(hooks["PreToolUse"][0]["matcher"], "request_user_input")
         for ev, groups in hooks.items():
             h = groups[0]["hooks"][0]
             self.assertTrue(h["command"].startswith('"$HOME/.codex/hooks/needs-you-hook.sh" '))
@@ -294,7 +325,8 @@ class Installer(unittest.TestCase):
         self.assertEqual(doc["hooks"]["Stop"][0], {"hooks": [OTHER_HOOK]})
         self.assertEqual(doc["hooks"]["Stop"][1]["hooks"][0]["command"],
                          '"$HOME/.codex/hooks/needs-you-hook.sh" notify codex')
-        self.assertEqual(doc["hooks"]["PreToolUse"], [{"matcher": "Bash", "hooks": [OTHER_HOOK]}])
+        self.assertEqual(doc["hooks"]["PreToolUse"][0], {"matcher": "Bash", "hooks": [OTHER_HOOK]})
+        self.assertEqual(doc["hooks"]["PreToolUse"][1]["matcher"], "request_user_input")
         self.assertIn("PermissionRequest", doc["hooks"])
         hook = os.path.join(self.codex, "hooks", "needs-you-hook.sh")
         self.assertEqual(read(hook), read(HOOK))
