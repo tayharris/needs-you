@@ -435,8 +435,23 @@ def field(name):
     return v if isinstance(v, str) else ""
 
 
+# Token-shaped text in the free text that reaches a card (an API error message, a
+# notification's message): the patterns of the CLI's `run` (cli/needs-you, _SECRET_*_RE).
+_SECRET_KV_RE = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key))"
+                           r"(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+_SECRET_AUTH_RE = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{12,}")
+_SECRET_RAW_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}"
+                            r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|ny_[\w-]{20,}|nyi_[\w-]{10,})")
+
+
+def redact(text):
+    text = _SECRET_RAW_RE.sub("<redacted>", text)
+    text = _SECRET_KV_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", text)
+    return _SECRET_AUTH_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", text)
+
+
 def oneline(text, limit):
-    return " ".join(str(text or "").split())[:limit]
+    return redact(" ".join(str(text or "").split()))[:limit]
 
 
 event = field("hook_event_name")

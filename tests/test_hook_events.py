@@ -150,6 +150,25 @@ class PermissionTests(HookHarness):
 
 
 class FailureTests(HookHarness):
+    def test_free_text_on_cards_is_redacted(self):
+        # Scan 2026-10-08: error_message and a notification's message are free text from the
+        # API or the agent, and went onto the card as they came.
+        secrets = ("sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+                   "ny_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+                   "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789")
+        text = "upstream said: %s; Authorization: Bearer abcdefghijklmnop12345 api_key=hunter2hunter2 %s %s" % secrets
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                 "error_message": text})
+        body = self.opt(self.last(), "--body")
+        self.assertIn("upstream said", body)
+        for s in secrets + ("abcdefghijklmnop12345", "hunter2hunter2"):
+            self.assertNotIn(s, body)
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt",
+                                 "message": "waiting " + text}, NEEDS_YOU_AGENT_TURN_CARDS="1")
+        body = self.opt(self.last(), "--body")
+        for s in secrets + ("abcdefghijklmnop12345", "hunter2hunter2"):
+            self.assertNotIn(s, body)
+
     def test_stop_failure_card(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
                                  "error_message": "Rate limit exceeded"})
