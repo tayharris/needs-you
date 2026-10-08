@@ -35,7 +35,19 @@ fail() { echo "  FAIL  $*"; FAILS=$((FAILS + 1)); }
 
 case "$DEST" in /Applications*|"") echo "refusing: bad test dir $DEST" >&2; exit 1 ;; esac
 
-pids_of() { pgrep -f "^$1/Contents/MacOS/NeedsYou( |$)" || true; }
+# A path as a literal inside a pgrep -f (extended) regex: every metacharacter escaped.
+re_escape() { printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|]/\\&/g'; }
+pids_of() { pgrep -f "^$(re_escape "$1")/Contents/MacOS/NeedsYou( |$)" || true; }
+# The test hub exits on its own within ~2 s of its app (--parent-pid). Never kill it here (no
+# kill by pattern: one can match far more than intended); a hub that outlives its app is a failure.
+wait_hub_gone() {
+  local pat
+  [[ -n "$SUPPORT" && "$SUPPORT" != / ]] || return 0
+  pat="needs_you_hub\\.py.*$(re_escape "$SUPPORT")"
+  for _ in $(seq 1 100); do pgrep -f "$pat" >/dev/null || return 0; sleep 0.1; done
+  echo "  FAIL  the test hub for $SUPPORT outlived its app (pids: $(pgrep -f "$pat" | tr '\n' ' ')); not killing it" >&2
+  return 1
+}
 stop_app() {
   local pids
   pids="$(pids_of "$1")"
@@ -47,7 +59,7 @@ stop_app() {
 cleanup() {
   set +e
   for app in "$APP" "$DL/NeedsYou.app" "/Volumes/$VOL/NeedsYou.app"; do stop_app "$app"; done
-  pkill -f "needs_you_hub.py.*$SUPPORT" 2>/dev/null
+  wait_hub_gone || LEFTOVER=1
   [[ -d "/Volumes/$VOL" ]] && hdiutil detach "/Volumes/$VOL" -force >/dev/null 2>&1
   for app in "$APP" "$DL/NeedsYou.app" "$T/dist/NeedsYou.app"; do
     [[ -d "$app" ]] && "$LSREGISTER" -u "$app" >/dev/null 2>&1
@@ -57,6 +69,7 @@ cleanup() {
     rm -f "$HOME/Library/Preferences/$domain.plist"
   done
   if [[ "${KEEP:-0}" == 1 ]]; then echo "kept $T"; else rm -rf "$T"; fi
+  [[ "${LEFTOVER:-0}" == 1 ]] && exit 1
 }
 trap cleanup EXIT
 
@@ -106,9 +119,9 @@ check_moved() {   # $1 = where it came from (a label)
   [[ -n "$OWNER" && "$(cat "$SUPPORT/owner.token" 2>/dev/null)" == "$OWNER" ]] && pass "$1: owner.token unchanged" || fail "$1: owner.token changed"
   [[ "$(stat -f %i "$SUPPORT/hub.db" 2>/dev/null)" == "$DB_INODE" ]] && pass "$1: hub.db is the same file" || fail "$1: hub.db replaced"
   hub_up && pass "$1: the moved copy's hub is up" || fail "$1: no hub after the move"
-  pgrep -f "$APP/Contents/Resources/hub/needs_you_hub\.py" >/dev/null \
+  pgrep -f "$(re_escape "$APP")/Contents/Resources/hub/needs_you_hub\.py" >/dev/null \
     && pass "$1: the hub runs from the moved copy's bundle" || fail "$1: the hub isn't the moved copy's"
-  [[ "$(pgrep -f "needs_you_hub.py.*$SUPPORT" | wc -l | tr -d ' ')" == 1 ]] && pass "$1: exactly one hub" || fail "$1: hub count wrong"
+  [[ "$(pgrep -f "needs_you_hub\.py.*$(re_escape "$SUPPORT")" | wc -l | tr -d ' ')" == 1 ]] && pass "$1: exactly one hub" || fail "$1: hub count wrong"
   curl -sf -H "Authorization: Bearer $OWNER" "$HUB/v1/invites" | grep -q "$INVITE_ID" \
     && pass "$1: hub data survived (the invite is still listed)" || fail "$1: hub data lost"
 }
@@ -125,7 +138,7 @@ INVITE_ID="$(curl -sf -X POST -H "Authorization: Bearer $OWNER" -H 'Content-Type
 [[ -n "$INVITE_ID" ]] || fail "couldn't make an invite on the Downloads copy's hub"
 DB_INODE="$(stat -f %i "$SUPPORT/hub.db" 2>/dev/null || echo none)"
 stop_app "$DL/NeedsYou.app"
-for _ in $(seq 1 50); do pgrep -f "needs_you_hub.py.*$SUPPORT" >/dev/null || break; sleep 0.1; done
+wait_hub_gone || fail "the Downloads copy's hub didn't exit with it"
 
 echo "==> 1. from Downloads"
 launch_moving "$DL/NeedsYou.app"

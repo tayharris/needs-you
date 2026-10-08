@@ -74,7 +74,15 @@ record_rollback() {   # $1 = the version that was left behind
   [[ -n "$RECORD_DIR" && -n "$1" ]] || return 0
   mkdir -p "$RECORD_DIR" && printf '%s\n' "$1" >"$RECORD_DIR/rolled-back-version" || true
 }
-running_pids() { pgrep -f "^$1/Contents/MacOS/NeedsYou( |$)" || true; }
+# A path as a literal inside a pgrep -f (extended) regex: every metacharacter escaped.
+re_escape() { printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|]/\\&/g'; }
+# Only ever an absolute path to an .app bundle: an empty or "/" path would make the patterns
+# below match far more than this app.
+app_path_ok() { case "$1" in /*?.app|/*?.app.previous) [[ "$1" != *$'\n'* ]] ;; *) return 1 ;; esac; }
+running_pids() {
+  app_path_ok "$1" || { echo "error: refusing to look for processes of '$1'" >&2; exit 1; }
+  pgrep -f "^$(re_escape "$1")/Contents/MacOS/NeedsYou( |$)" || true
+}
 wait_gone() {   # $1 = app path, $2 = tenths of a second
   for _ in $(seq 1 "$2"); do
     [[ -z "$(running_pids "$1")" ]] && return 0
@@ -110,13 +118,15 @@ quit_app() {
 # The app's bundled hub normally exits with the app (--parent-pid), but a hub started by an
 # older build can outlive it and keep port 8765. Stop any hub still running from this bundle.
 stop_bundle_hubs() {
-  local app="$1" pids
-  pids="$(pgrep -f "^.*[Pp]ython.* $app/Contents/Resources/hub/needs_you_hub\.py" || true)"
+  local app="$1" pids pat
+  app_path_ok "$app" || { echo "error: refusing to look for processes of '$app'" >&2; exit 1; }
+  pat="$(re_escape "$app")/Contents/Resources/hub/needs_you_hub\.py"
+  pids="$(pgrep -f "^.*[Pp]ython.* $pat" || true)"
   [[ -n "$pids" ]] || return 0
   echo "==> stopping the old app's hub (pids: $(echo $pids))"
   kill -TERM $pids 2>/dev/null || true
   for _ in $(seq 1 50); do
-    pgrep -f "$app/Contents/Resources/hub/needs_you_hub\.py" >/dev/null || return 0
+    pgrep -f "$pat" >/dev/null || return 0
     sleep 0.1
   done
   kill -KILL $pids 2>/dev/null || true

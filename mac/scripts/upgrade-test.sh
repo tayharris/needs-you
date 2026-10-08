@@ -35,14 +35,25 @@ note() { echo "  note  $*"; }
 
 case "$DEST" in /Applications*|"") echo "refusing: bad test dir $DEST" >&2; exit 1 ;; esac
 
+# A path as a literal inside a pgrep -f (extended) regex: every metacharacter escaped.
+re_escape() { printf '%s' "$1" | sed 's/[][\\.*^$+?(){}|]/\\&/g'; }
+# The test hub exits on its own within ~2 s of its app (--parent-pid). Never kill it here (no
+# kill by pattern: one can match far more than intended); a hub that outlives its app is a failure.
+wait_hub_gone() {
+  local pat
+  [[ -n "$SUPPORT" && "$SUPPORT" != / ]] || return 0
+  pat="needs_you_hub\\.py.*$(re_escape "$SUPPORT")"
+  for _ in $(seq 1 100); do pgrep -f "$pat" >/dev/null || return 0; sleep 0.1; done
+  echo "  FAIL  the test hub for $SUPPORT outlived its app (pids: $(pgrep -f "$pat" | tr '\n' ' ')); not killing it" >&2
+  return 1
+}
 cleanup() {
   set +e
   for app in "$APP" "$APP.previous"; do
-    pids="$(pgrep -f "^$app/Contents/MacOS/NeedsYou( |$)")"
+    pids="$(pgrep -f "^$(re_escape "$app")/Contents/MacOS/NeedsYou( |$)")"
     [[ -n "$pids" ]] && kill -TERM $pids 2>/dev/null
   done
-  sleep 1
-  pkill -f "needs_you_hub.py.*$SUPPORT" 2>/dev/null
+  wait_hub_gone || LEFTOVER=1
   for app in "$APP" "$APP.previous" "$T/v1/NeedsYou.app" "$T/v2/NeedsYou.app"; do
     [[ -d "$app" ]] && "$LSREGISTER" -u "$app" >/dev/null 2>&1
   done
@@ -51,6 +62,7 @@ cleanup() {
     rm -f "$HOME/Library/Preferences/$domain.plist"
   done
   if [[ "${KEEP:-0}" == 1 ]]; then echo "kept $T"; else rm -rf "$T"; fi
+  [[ "${LEFTOVER:-0}" == 1 ]] && exit 1
 }
 trap cleanup EXIT
 
@@ -106,7 +118,7 @@ if [[ $HUB_UP == 1 ]]; then
     | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
 fi
 DB_INODE="$(stat -f %i "$SUPPORT/hub.db" 2>/dev/null || echo none)"
-V1_PIDS="$(pgrep -f "^$APP/Contents/MacOS/NeedsYou( |$)" || true)"
+V1_PIDS="$(pgrep -f "^$(re_escape "$APP")/Contents/MacOS/NeedsYou( |$)" || true)"
 
 # The update runs the copy of install.sh inside the installed v1, as the in-app updater
 # does (from a copy outside the bundle, since the bundle is moved during the swap).
@@ -121,12 +133,12 @@ echo "==> checks"
 V="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 [[ "$V" == 0.9.1 ]] && pass "installed version is 0.9.1" || fail "installed version is $V"
 [[ -d "$APP.previous" ]] && pass "previous version kept at NeedsYou.app.previous" || fail "no .previous"
-V2_PIDS="$(pgrep -f "^$APP/Contents/MacOS/NeedsYou( |$)" || true)"
+V2_PIDS="$(pgrep -f "^$(re_escape "$APP")/Contents/MacOS/NeedsYou( |$)" || true)"
 [[ -n "$V2_PIDS" ]] && pass "v2 is running" || fail "v2 isn't running"
 for pid in $V1_PIDS; do
   kill -0 "$pid" 2>/dev/null && fail "v1 (pid $pid) is still running" || pass "v1 (pid $pid) quit"
 done
-HUBS="$(pgrep -f "needs_you_hub.py.*$SUPPORT" | wc -l | tr -d ' ')"
+HUBS="$(pgrep -f "needs_you_hub\.py.*$(re_escape "$SUPPORT")" | wc -l | tr -d ' ')"
 [[ "$HUBS" == 1 ]] && pass "exactly one hub process (v1's stopped cleanly)" || fail "$HUBS hub processes"
 
 [[ "$(defaults read "$SUITE" userName 2>/dev/null)" == upgrade-tester ]] && pass "prefs: userName kept" || fail "prefs: userName lost"
@@ -161,7 +173,7 @@ V="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Conten
 [[ "$V" == 0.9.0 ]] && pass "rolled back to 0.9.0" || fail "after rollback the version is $V"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP.previous/Contents/Info.plist")" == 0.9.1 ]] \
   && pass "0.9.1 kept as .previous" || fail "0.9.1 not kept"
-[[ -n "$(pgrep -f "^$APP/Contents/MacOS/NeedsYou( |$)" || true)" ]] && pass "0.9.0 is running again" || fail "0.9.0 isn't running"
+[[ -n "$(pgrep -f "^$(re_escape "$APP")/Contents/MacOS/NeedsYou( |$)" || true)" ]] && pass "0.9.0 is running again" || fail "0.9.0 isn't running"
 [[ "$(defaults read "$SUITE" userName 2>/dev/null)" == upgrade-tester ]] && pass "prefs survive a rollback" || fail "prefs lost on rollback"
 [[ "$(defaults read "$SUITE" prefsVersion 2>/dev/null)" == "$PV" ]] && pass "prefsVersion not lowered" || fail "prefsVersion changed on rollback"
 [[ "$(cat "$SUPPORT/owner.token" 2>/dev/null)" == "$OWNER_BEFORE" ]] && pass "owner.token survives a rollback" || fail "owner.token changed on rollback"

@@ -43,6 +43,7 @@ Shell scripts are checked with `shellcheck -S warning` in CI. New Swift test cla
 6. A wire change updates `docs/API.md`, the hub, the CLI, the Mac client and tests in one change. Unknown fields stay ignored both ways.
 7. The link scheme allow-list is enforced in both the hub and the Mac app (`LinkPolicy.swift`): change both or neither.
 8. Senders never fail the caller's job: the CLI exits 0 when it queues; hooks always exit 0.
+9. Never kill processes by name or pattern (no `pkill`, no `killall`, in scripts, tests or by hand on a shared machine): kill only PIDs your own job saved (`$!` or a pidfile it wrote). To find an app's process, match its exact path with every regex metacharacter escaped, and refuse an empty path. macOS `pkill` stops reading options at the first pattern, so `pkill -f pat -U user` signals every process matching `user` too. `tests/test_no_broad_kills.py` checks the repo.
 
 The agent-facing entry points ([docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md), the Claude Code skill and hooks, the invite page) are product surface: treat changes to them like API changes.
 
