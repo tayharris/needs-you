@@ -146,3 +146,54 @@ public enum PanelStyle {
         text.basePoints + metrics(panel).bodyOffset
     }
 }
+
+/// The arrival preview's layout. The title (wrapped to two lines at most) and the meta line
+/// take the preview's full width, and the link button, when there is one, sits on its own
+/// row below them, left-aligned with the text. So the button never squeezes the title or
+/// the "needs you · devbox · claude-code" line. The panel's height follows from it: the
+/// original one-line preview with no link is `previewHeight`, unchanged.
+public enum PreviewLayout {
+    public static let maxTitleLines = 2
+    /// Left and right padding inside the preview.
+    public static let horizontalPadding: CGFloat = 12
+    /// The priority dot and the gap after it.
+    public static let dotSize: CGFloat = 7
+    public static let dotGap: CGFloat = 10
+    /// Between the title and the meta line.
+    public static let metaGap: CGFloat = 2
+    /// Between the meta line and the link button's row.
+    public static let linkRowGap: CGFloat = 6
+    /// The link button's vertical padding inside its capsule.
+    public static let linkChipVertical: CGFloat = 3
+
+    /// How wide the title, meta line and link row can be.
+    public static func textWidth(_ m: PanelMetrics) -> CGFloat {
+        m.previewWidth - horizontalPadding * 2 - dotSize - dotGap
+    }
+
+    /// One line of system text at `points`, rounded up.
+    public static func lineHeight(_ points: CGFloat) -> CGFloat {
+        ceil(points * 1.2)
+    }
+
+    /// Lines the title takes, from its height when wrapped at `textWidth` (measured by the
+    /// app with the real font): 1 or 2; a longer title is cut at the end of line 2.
+    public static func titleLines(wrappedHeight: CGFloat, lineHeight: CGFloat) -> Int {
+        guard lineHeight > 0, wrappedHeight.isFinite, wrappedHeight > 0 else { return 1 }
+        let lines = Int((wrappedHeight / lineHeight).rounded())
+        return min(maxTitleLines, max(1, lines))
+    }
+
+    /// The link button's row: the capsule's height (without the gap above it).
+    public static func linkRowHeight(_ m: PanelMetrics) -> CGFloat {
+        lineHeight(m.linkFont) + linkChipVertical * 2
+    }
+
+    /// The preview's height (the visible shape, without the glow padding).
+    public static func height(_ m: PanelMetrics, titleLines: Int, hasLink: Bool) -> CGFloat {
+        let extraLines = min(maxTitleLines, max(1, titleLines)) - 1
+        var height = m.previewHeight + CGFloat(extraLines) * lineHeight(m.titleFont)
+        if hasLink { height += linkRowGap + linkRowHeight(m) }
+        return height
+    }
+}

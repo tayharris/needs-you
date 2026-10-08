@@ -15,6 +15,10 @@ final class PanelStyleTests: XCTestCase {
         ("testBodyFont", testBodyFont),
         ("testPillWidths", testPillWidths),
         ("testRawValuesAreStable", testRawValuesAreStable),
+        ("testPreviewWithoutLinkKeepsTheOriginalSize", testPreviewWithoutLinkKeepsTheOriginalSize),
+        ("testPreviewLinkGetsItsOwnRow", testPreviewLinkGetsItsOwnRow),
+        ("testPreviewTitleWrapsToTwoLines", testPreviewTitleWrapsToTwoLines),
+        ("testPreviewTextTakesTheFullWidth", testPreviewTextTakesTheFullWidth),
     ]
 
     func testRegularIsTheOriginalLook() {
@@ -83,5 +87,53 @@ final class PanelStyleTests: XCTestCase {
         // Stored in UserDefaults; renaming a case would silently reset users' choice.
         XCTAssertEqual(PanelSize.allCases.map(\.rawValue), ["compact", "regular", "large"])
         XCTAssertEqual(TextSize.allCases.map(\.rawValue), ["small", "default", "large", "extraLarge"])
+    }
+
+    func testPreviewWithoutLinkKeepsTheOriginalSize() {
+        // One title line, no link: the original 52 pt preview at the regular size.
+        for size in PanelSize.allCases {
+            let m = PanelStyle.metrics(size)
+            XCTAssertEqual(PreviewLayout.height(m, titleLines: 1, hasLink: false), m.previewHeight)
+        }
+        XCTAssertEqual(PreviewLayout.height(PanelStyle.regular, titleLines: 1, hasLink: false), 52)
+    }
+
+    func testPreviewLinkGetsItsOwnRow() {
+        // The button sits on a row below the title and meta line, so the preview grows by
+        // that row (and the gap above it) instead of the button taking a column.
+        let m = PanelStyle.regular
+        XCTAssertEqual(PreviewLayout.linkRowHeight(m), 20)   // an 11 pt label (14 pt line), 3 pt above and below
+        XCTAssertEqual(PreviewLayout.height(m, titleLines: 1, hasLink: true), 52 + 6 + 20)
+        XCTAssertEqual(PreviewLayout.height(m, titleLines: 2, hasLink: true), 52 + 16 + 6 + 20)
+        for size in PanelSize.allCases {
+            let s = PanelStyle.metrics(size)
+            XCTAssertTrue(PreviewLayout.height(s, titleLines: 1, hasLink: true) >= s.previewHeight + PreviewLayout.linkRowHeight(s))
+        }
+    }
+
+    func testPreviewTitleWrapsToTwoLines() {
+        let line: CGFloat = 16
+        XCTAssertEqual(PreviewLayout.titleLines(wrappedHeight: 15.5, lineHeight: line), 1)
+        XCTAssertEqual(PreviewLayout.titleLines(wrappedHeight: 31, lineHeight: line), 2)
+        // Longer titles stop at two lines (cut at the end of the second).
+        XCTAssertEqual(PreviewLayout.titleLines(wrappedHeight: 80, lineHeight: line), 2)
+        // Nothing measured: one line.
+        XCTAssertEqual(PreviewLayout.titleLines(wrappedHeight: 0, lineHeight: line), 1)
+        XCTAssertEqual(PreviewLayout.titleLines(wrappedHeight: 20, lineHeight: 0), 1)
+        XCTAssertEqual(PreviewLayout.titleLines(wrappedHeight: .infinity, lineHeight: line), 1)
+        // A second title line adds one title line's height; never more than two.
+        let m = PanelStyle.regular
+        XCTAssertEqual(PreviewLayout.height(m, titleLines: 2, hasLink: false), 52 + PreviewLayout.lineHeight(m.titleFont))
+        XCTAssertEqual(PreviewLayout.height(m, titleLines: 9, hasLink: false), PreviewLayout.height(m, titleLines: 2, hasLink: false))
+        XCTAssertEqual(PreviewLayout.height(m, titleLines: 0, hasLink: false), 52)
+    }
+
+    func testPreviewTextTakesTheFullWidth() {
+        // Everything but the padding and the priority dot: no column kept for the button.
+        XCTAssertEqual(PreviewLayout.textWidth(PanelStyle.regular), 320 - 24 - 7 - 10)
+        for size in PanelSize.allCases {
+            let m = PanelStyle.metrics(size)
+            XCTAssertTrue(PreviewLayout.textWidth(m) > m.previewWidth * 0.85)
+        }
     }
 }
