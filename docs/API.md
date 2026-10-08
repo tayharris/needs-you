@@ -408,7 +408,7 @@ Response `201`:
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user. Only if I ask for them: --mcp <agents> registers the needs-you MCP server (claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds the posting rules to their instruction files (codex, gemini, opencode). Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
 ```
 
 `install_command` and `agent_prompt` are only present for `sender` invites. Both set up Claude
@@ -551,6 +551,8 @@ Serves files from the hub's install directory (`install_dir`, default: the direc
 | `hooks.json` | `integrations/claude-code/hooks.json` |
 | `SKILL.md` | `integrations/claude-code/skill/needs-you/SKILL.md` |
 | `orca-snippet.md` | `integrations/orca/snippet.md` (the Orca automation rules; prompts point at the installed copy) |
+| `needs_you_mcp.py` | `integrations/mcp/needs_you_mcp.py` (the MCP server; the installer's `--mcp`) |
+| `agent-instructions.md` | `integrations/agent-instructions/needs-you.md` (the skill's rules for Codex, Gemini CLI and opencode; `--agent-instructions`) |
 | `manifest.json` | generated: see below |
 
 Anything else is a `404`. A file the install directory lacks is a `404` too.
@@ -568,7 +570,7 @@ Anything else is a `404`. A file the install directory lacks is a `404` too.
 ```
 
 `version` at the top is the hub's; a file's `version` is its stamp (`needs-you-version: X.Y.Z`
-in a comment, `"_needs_you_version"` in `hooks.json`, `VERSION = "X.Y.Z"` in the CLI), absent
+in a comment, `"_needs_you_version"` in `hooks.json`, `VERSION = "X.Y.Z"` in the CLI and the MCP server), absent
 when the file has none. Files the hub doesn't have are left out. The checksums guard a sender
 against truncated or mixed-version downloads; they don't make the hub more trustworthy than
 it already is (it minted the sender's token and served its installer).
