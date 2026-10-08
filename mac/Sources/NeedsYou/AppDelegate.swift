@@ -131,6 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             guard let self else { return }
             if open { self.model.openAtLaunch() }
+            // Once the panel has its new shape (the sync runs on the next turn).
+            try? await Task.sleep(nanoseconds: 600_000_000)
             self.panel.logPlacement()
             // Debug aid (NEEDS_YOU_LAUNCH_SNAPSHOT_DIR, mac/scripts/launch-test.sh): the panel
             // just after launch and once the launch open has closed by itself.

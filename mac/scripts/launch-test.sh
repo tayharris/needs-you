@@ -58,6 +58,8 @@ EOF
   fi
   defaults write "$SUITE" openPanelAtLaunch -bool "$2"
   defaults write "$SUITE" pillSize large
+  # The start-of-day summary already shown today, so it doesn't open the panel mid-run.
+  defaults write "$SUITE" lastMorningSummary -date "$(date -u '+%Y-%m-%d %H:%M:%S +0000')"
 }
 
 mkdir -p "$OUT"
