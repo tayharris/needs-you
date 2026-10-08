@@ -25,12 +25,16 @@
 #            notification (permission_prompt, elicitation_dialog) and agentStop
 #            call `notify`. Its payload names the session `sessionId`. Copilot
 #            waits for most hooks, so like gemini the work runs in the background.
-#   grok     Grok Build, which runs the Claude Code hooks from ~/.claude/settings.json
-#            (on by default). Detected by $GROK_HOOK_EVENT whatever the argument
-#            says: Notification permission_prompt / idle_prompt (sent as
-#            notificationType) and StopFailure call `notify`, Stop resolves (no
-#            context check: Grok's transcript isn't Claude's). Grok waits for its
-#            hooks, so like Gemini the work goes to a background copy.
+#   grok     Grok Build (integrations/grok/, ~/.grok/hooks/needs-you.json):
+#            Notification permission_prompt / idle_prompt (sent as
+#            notificationType) and StopFailure call `notify`; Stop posts nothing
+#            (idle_prompt is the "waiting for you" card). Grok also runs the Claude
+#            Code hooks from ~/.claude/settings.json (on by default), so $GROK_HOOK_EVENT
+#            makes any call a grok one, and one card per wait: when needs-you's own
+#            Grok hooks file is installed, the Claude hooks do nothing in Grok;
+#            without it they post as Grok (their Stop resolves, with no context
+#            check: Grok's transcript isn't Claude's). Subagent sessions post
+#            nothing. Grok waits for its hooks, so the work goes to a background copy.
 #   kimi     Kimi Code CLI (integrations/kimi/, [[hooks]] in ~/.kimi-code/config.toml):
 #            PermissionRequest, PreToolUse for AskUserQuestion, Stop (the turn
 #            ended) and StopFailure call `notify`. Kimi awaits most hooks and kills
@@ -106,7 +110,12 @@ case "${2:-}" in
   *) agent=claude ;;
 esac
 # Grok Build runs the Claude hooks as they are: it names itself only in the environment.
-[ -n "${GROK_HOOK_EVENT:-}" ] && agent=grok
+# One card per wait: with needs-you's own Grok hooks installed, those handle Grok, and the
+# Claude hooks (any other argument) step aside.
+if [ -n "${GROK_HOOK_EVENT:-}" ]; then
+  [ "${2:-}" != grok ] && [ -f "${GROK_HOME:-$HOME/.grok}/hooks/needs-you.json" ] && exit 0
+  agent=grok
+fi
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
@@ -129,6 +138,11 @@ case "${NEEDS_YOU_AGENT_ALERTS:-}" in
 esac
 
 input=$(cat 2>/dev/null)
+
+# A Grok subagent's session is the parent session's work: its waits show up there.
+if [ "$agent" = grok ] && printf '%s' "$input" | grep -q '"subagentType"[[:space:]]*:[[:space:]]*"'; then
+  exit 0
+fi
 
 # Gemini CLI, Copilot CLI, Grok and Kimi wait for each hook (and Gemini and Copilot read its
 # stdout as JSON): hand the work to a background copy with no stdio and return at once.
@@ -728,19 +742,25 @@ def opencode_card():
 
 
 def grok_card():
-    """(kind, what, msg) for a Grok Build hook event (through the Claude hooks), or None.
-    Its Notification carries no tool name, so a permission card can't say what for."""
+    """(kind, what, msg) for a Grok Build hook event, or None. Its Notification carries no
+    tool name, so a permission card can't say what for. Stop posts nothing: idle_prompt,
+    about a minute later and only if the person hasn't typed, is the "waiting" card."""
     if event == "Notification":
         if ntype == "permission_prompt":
             return "permission", "Grok needs permission", "Grok is waiting for you to approve a tool call."
         if ntype == "idle_prompt":
-            if not turn_cards():
+            # An open permission card says more than "waiting"; keep it.
+            if not turn_cards() or read_marker(os.environ["NY_MARKER"]).get("kind") == "permission":
                 return None
             return "notify", "Grok is waiting for you", "Grok finished its turn and is waiting for your next message."
         return None
     if event == "StopFailure":
+        # errorDetails is free text from the API; the card takes only the error code's meaning.
+        what = {"rate_limit": "Grok hit a rate limit",
+                "authentication_failed": "Grok needs you to sign in again",
+                "billing_error": "Grok stopped on a billing problem"}.get(field("error"), "Grok stopped on an error")
         err = oneline(field("error_message"), 300)
-        return "failure", "Grok stopped on an error", ((err + "\n\n") if err else "") + \
+        return "failure", what, ((err + "\n\n") if err else "") + \
             "The turn ended and won't continue on its own; send a message to retry."
     return None
 
