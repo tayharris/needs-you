@@ -1,0 +1,30 @@
+{
+  "_source": "opencode 1.18.35 source: the question.asked bus event (packages/opencode/src/question/index.ts, packages/schema/src/v1/question.ts), as plugins receive it through the event hook; not a live capture",
+  "type": "question.asked",
+  "properties": {
+    "id": "que_01JABCDEF",
+    "sessionID": "ses_q1",
+    "questions": [
+      {
+        "question": "Which branch should the release come from?",
+        "header": "Branch",
+        "options": [
+          {"label": "main", "description": "Everything merged today"},
+          {"label": "release/1.4", "description": "Only the fixes"}
+        ],
+        "custom": true
+      },
+      {
+        "question": "Which platforms?",
+        "header": "Platforms",
+        "multiple": true,
+        "options": [
+          {"label": "macOS", "description": "arm64 and x64"},
+          {"label": "Linux", "description": "x64"},
+          {"label": "Windows", "description": "x64"}
+        ]
+      }
+    ],
+    "tool": {"messageID": "msg_01", "callID": "call_01"}
+  }
+}

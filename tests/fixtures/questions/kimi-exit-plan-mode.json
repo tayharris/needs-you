@@ -1,0 +1,29 @@
+{
+  "_source": "Kimi Code CLI 2.0.0, live capture (fake chat server, temp HOME), plan mode; ids, cwd and paths replaced",
+  "hook_event_name": "PermissionRequest",
+  "session_id": "session_0157e278-0000-4000-8000-000000000001",
+  "client_type": "kimi_code_cli",
+  "session_title": "plan it",
+  "cwd": "/home/me/src/my-repo",
+  "id": "approval_f907",
+  "agent_id": "main",
+  "turn_id": 3,
+  "tool_call_id": "call_ExitPlanMode_6",
+  "tool_name": "ExitPlanMode",
+  "action": "Presenting plan and exiting plan mode",
+  "display": {
+    "kind": "plan_review",
+    "plan": "# Plan\n\n1. Do the thing.\n",
+    "path": "/home/me/.kimi-code/plans/spectrum-iron-man-patriot.md",
+    "options": [
+      {"label": "Small refactor (Recommended)", "description": "Touch two files."},
+      {"label": "Rewrite", "description": "Start over."}
+    ]
+  },
+  "tool_input": {
+    "options": [
+      {"label": "Small refactor (Recommended)", "description": "Touch two files."},
+      {"label": "Rewrite", "description": "Start over."}
+    ]
+  }
+}

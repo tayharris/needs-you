@@ -1,0 +1,10 @@
+{
+  "_source": "GitHub Copilot CLI 1.0.63 app.js fireNotificationHook (an MCP server's requestElicitation) and the documented notification hook input; not a live capture",
+  "sessionId": "c0p1l0t0-0000-4000-8000-000000000001",
+  "timestamp": 1791460800000,
+  "cwd": "/home/me/src/my-repo",
+  "hook_event_name": "Notification",
+  "message": "Which Jira project should the issue go to?",
+  "title": "Information requested",
+  "notification_type": "elicitation_dialog"
+}

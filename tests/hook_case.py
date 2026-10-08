@@ -105,3 +105,26 @@ class HookCase(unittest.TestCase):
         p = subprocess.Popen(["true"])
         p.wait()
         return str(p.pid)
+
+
+FIXTURES = os.path.join(ROOT, "tests", "fixtures", "questions")
+
+
+def fixture(name):
+    """A captured (or source-derived) question payload from tests/fixtures/questions."""
+    with open(os.path.join(FIXTURES, name)) as fh:
+        return json.load(fh)
+
+
+def posted_item(argv):
+    """The item a hook's `needs-you add` argv would post, checked by the hub's own validation
+    (title, body and step limits, no control characters). Returns the normalised fields."""
+    from support import hubmod
+    item = {"title": opt(argv, "--title"), "body": opt(argv, "--body"), "kind": "needs"}
+    if has_opt(argv, "--steps-json"):
+        item["steps"] = json.loads(opt(argv, "--steps-json"))
+    return hubmod.validate_item_input(item)
+
+
+def step_texts(argv):
+    return [s["text"] for s in posted_item(argv)["steps"]]

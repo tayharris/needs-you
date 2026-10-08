@@ -1,0 +1,13 @@
+{
+  "_source": "Claude Code 2.1.293: PermissionRequest for ExitPlanMode as captured live (tool_input was {} because the fake model wrote no plan file), with the plan and planFilePath Claude Code adds from the plan file on disk (binary and docs); transcript_path and cwd replaced",
+  "session_id": "b317f18c-a389-4bca-b823-537760197b00",
+  "transcript_path": "/home/me/.claude/projects/-home-me-src-my-repo/b317f18c-a389-4bca-b823-537760197b00.jsonl",
+  "cwd": "/home/me/src/my-repo",
+  "permission_mode": "plan",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "ExitPlanMode",
+  "tool_input": {
+    "plan": "# Add a cache layer\n\n## Steps\n\n1. Add `CacheClient` in `src/cache.ts`.\n2. Read `REDIS_URL` from the env (never log it).\n3. Wrap `getUser` and `getOrg`.\n\n```ts\nconst client = new CacheClient({ url: process.env.REDIS_URL })\n```\n\n4. Tests for hit, miss and expiry.\n5. Update the README.\n6. Benchmark before and after.\n7. Feature flag `cache_v1`.\n8. Roll out to staging.\n9. Watch the dashboards for a day.\n10. Roll out to prod.\n11. Remove the flag.\n12. Write the changelog entry.\n13. Close ACME-123.\n",
+    "planFilePath": "/home/me/.claude/plans/add-a-cache-layer.md"
+  }
+}

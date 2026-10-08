@@ -1,0 +1,27 @@
+{
+  "_source": "Kimi Code CLI 2.0.0, live capture (fake chat server, temp HOME); cwd replaced. tool_input is the model's raw arguments: no defaults filled in",
+  "hook_event_name": "PreToolUse",
+  "session_id": "session_0157e278-0000-4000-8000-000000000001",
+  "client_type": "kimi_code_cli",
+  "session_title": "please ask me",
+  "cwd": "/home/me/src/my-repo",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Which database should the service use?",
+        "header": "Database",
+        "options": [
+          {"label": "Postgres (Recommended)", "description": "Mature, already used by the team."},
+          {"label": "SQLite", "description": "Zero ops, single file."}
+        ]
+      },
+      {
+        "question": "Which extras do you want?",
+        "multi_select": true,
+        "options": [{"label": "Metrics"}, {"label": "Tracing", "description": "OpenTelemetry"}]
+      }
+    ]
+  },
+  "tool_call_id": "call_AskUserQuestion_1"
+}
