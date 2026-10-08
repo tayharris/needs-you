@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **`needs-you orca`**: a read-only summary of Orca's worktrees for agents and people, one line each (host, name and branch, workspace status, live terminals, unread, linked PR), from `orca worktree ps --json`; `--all` adds every paired environment, `--json` for agents. Names are cleaned to one line, and a terminal's preview, comments, paths and URLs are never printed. It never posts anything ([Orca guide](docs/guides/orca.md#whats-running-needs-you-orca)).
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).

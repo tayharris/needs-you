@@ -41,6 +41,7 @@
         <li><a href="#automations-add-the-prompt-block">Automations: add the prompt block</a></li>
         <li><a href="#how-an-automation-posts-and-resolves">How an automation posts and resolves</a></li>
         <li><a href="#worked-example-hand-off-to-a-human-and-resume">Worked example: hand off to a human and resume</a></li>
+        <li><a href="#whats-running-needs-you-orca">What's running: <code>needs-you orca</code></a></li>
         <li><a href="#check-it-works">Check it works</a></li>
       </ul>
     </nav>
@@ -143,6 +144,12 @@ needs-you done --key "work:redo-fixer:last-run" --title "Redo fixer: 1 ticket ba
 <p>The card disappears from every Mac reading the hub; the <code>done</code> note shows as an FYI for a day.</p>
 <p><strong>If nobody had answered by 11:00,</strong> the run would see the same blocker and post the same <code>add</code> again: still one card, its expiry pushed to 14:00. If the fixer stopped running altogether, the card would expire three hours after its last post instead of sitting there for days.</p>
 <p><strong>The same hand-off in one live session.</strong> An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click <strong>Terminal</strong>, Orca switches to the agent's terminal, you type the answer, and the agent runs the <code>resolve</code> before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal (<a href="claude-code.html#one-card-for-one-wait">one card for one wait</a>). Once the agent resolves its item, an idle session gets the hooks' card again.</p>
+<h2 id="whats-running-needs-you-orca">What's running: <code>needs-you orca</code> <a class="anchor" href="#whats-running-needs-you-orca" aria-label="Link to this section">#</a></h2>
+<p>An agent (or you) can see Orca's worktrees on this machine in one read-only call, without opening Orca:</p>
+<div class="code"><pre><code class="language-bash">needs-you orca            # one line per worktree: host, name (branch), status, live terminals, unread, PR
+needs-you orca --all      # also every paired environment (`orca environment list`, at most 8)
+needs-you orca --environment "My Devbox" --json</code></pre></div>
+<p>It runs <code>orca worktree ps --json</code> (no shell, 20 s at most) and prints only the host, name, branch, repo, workspace status, live terminal and agent counts, unread flag, linked PR number and last activity, each cleaned to one short line. It never prints a terminal's <code>preview</code>, a worktree's comment, its path or any URL: those are free text from terminals and trackers. Archived worktrees are left out (<code>--archived</code> adds them). It never posts, queues or reaches a hub, and it exits 1 when <code>orca</code> isn't on <code>PATH</code> or can't answer. <code>--json</code> gives <code>{ok, worktrees: [...], scopes: {...}, errors: [...]}</code>.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <p>From an Orca terminal:</p>
 <div class="code" data-copy><pre><code class="language-bash">needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
