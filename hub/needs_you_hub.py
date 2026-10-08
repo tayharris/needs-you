@@ -4110,7 +4110,7 @@ class Hub:
     def _load_links(self) -> List[str]:
         """Re-read the links (the admin tool may have changed them); keep the store's peer list
         (the outbox fan-out) in step. Returns the peer list."""
-        links = {str(r["url"]): r for r in self.store.peer_links()}
+        links = {str(r["url"]): r for r in self.store.peer_links() if peer_url_allowed(str(r["url"]))}
         with self.peers_lock:
             self.links = links
             peers = list(self.config_peers) + [u for u in links if u not in self.config_peers]

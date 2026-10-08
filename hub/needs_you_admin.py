@@ -267,6 +267,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+PEER_URL_RULE = ("%s is neither https nor on the tailnet: a peer hub must be https, or plain http to a "
+                 "tailnet name (*.ts.net) or address. Use the hub's MagicDNS URL")
+
+
 def parse_join_link(link: str) -> Tuple[str, str]:
     """(hub URL, code) from a peer invite's join URL: http(s)://<hub>[/prefix]/join/<code>."""
     parts = urllib.parse.urlsplit(link.strip())
@@ -311,6 +315,10 @@ def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         except ValueError as e:
             sys.stderr.write("error: %s\n" % e)
             return 2
+        if not hubmod.peer_url_allowed(hub):
+            # The code is a credential and this hub will send that URL its secret and every record.
+            sys.stderr.write("error: %s\n" % PEER_URL_RULE % hub)
+            return 2
         me = {"url": args.public_url or public_url(cfg), "hub_id": str(cfg["hub_id"]),
               "schema": hubmod.SCHEMA_VERSION}
         try:
@@ -328,10 +336,22 @@ def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         except RuntimeError as e:
             sys.stderr.write("error: %s\n" % e)
             return 1
-        try:
-            url = hubmod.normalise_peer_url(out.get("hub_url") or hub)
-        except ValueError:
-            url = hubmod.normalise_peer_url(hub)
+        url = ""
+        for candidate in (out.get("hub_url"), hub):
+            try:
+                url = hubmod.normalise_peer_url(candidate)
+                break
+            except ValueError:
+                continue
+        if not url:
+            sys.stderr.write("error: %s answered without a usable hub_url (http(s)://host[:port]) and the "
+                             "link has a path, so there is no URL to replicate with. Nothing was stored here; "
+                             "remove this hub (%s) from that hub's peers\n" % (hub, me["hub_id"]))
+            return 1
+        if not hubmod.peer_url_allowed(url):
+            sys.stderr.write("error: %s. Nothing was stored here; remove this hub (%s) from that hub's "
+                             "peers\n" % (PEER_URL_RULE % url, me["hub_id"]))
+            return 1
         hub_id = out.get("hub_id") if isinstance(out.get("hub_id"), str) and hubmod.HUB_ID_RE.match(
             out.get("hub_id") or "") else ""
         name = out.get("name") if isinstance(out.get("name"), str) else ""
