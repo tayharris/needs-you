@@ -58,10 +58,13 @@ public enum AnswerState: Equatable, Sendable {
 
 public enum AnswerPolicy {
     /// Can the card answer this item's question? Open, answerable, every question with
-    /// options, not answered yet, and not past its `expires_at`.
+    /// options whose labels differ (an answer is labels only, so two options with one label
+    /// can't be told apart; hubs refuse that, an older one may still serve it), not answered
+    /// yet, and not past its `expires_at`.
     public static func canAnswer(_ item: Item, now: Date) -> Bool {
         guard item.status == .open, item.answer == nil, let q = item.question, q.answerable,
               !q.items.isEmpty, q.items.allSatisfy({ !$0.options.isEmpty }),
+              q.items.allSatisfy({ Set($0.options.map(\.label)).count == $0.options.count }),
               item.contentUpdatedAtRaw != nil else { return false }
         if let exp = q.expiresAt, exp <= now { return false }
         return true
