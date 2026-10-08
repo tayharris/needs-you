@@ -10,12 +10,14 @@
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
   needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
   needs-you resolve (--key KEY | --id ID)
-  needs-you answer-wait --key KEY [--timeout SECONDS]
+  needs-you answer-wait --key KEY [--question-id ID] [--timeout SECONDS]
                                                      wait for the person's answer to the
                                                      answerable question posted under KEY and
                                                      print it as JSON (exit 0); exit 3 when
                                                      the time runs out, 4 when no answer will
-                                                     come (closed, expired, not answerable)
+                                                     come (closed, expired, not answerable).
+                                                     --question-id: only an answer to the
+                                                     question with that id counts
   needs-you run [--key KEY] [--title TITLE] [--done-after SECONDS] [--no-output] [...] -- CMD [ARGS...]
                                                      run CMD with its output and exit code passed
                                                      through; on failure post a card (exit code and
@@ -1484,11 +1486,14 @@ ANSWER_EXIT_NONE = 4
 ANSWER_POLL_SECONDS = 25  # the hub holds a GET /v1/items/answer at most this long
 
 
-def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
+def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool,
+                question_id: Optional[str] = None) -> int:
     """Long-poll GET /v1/items/answer?key= until the person answers (print the answer as
     JSON, exit 0), the time runs out (3) or no answer will come (4: the item closed, its
     question expired or isn't answerable). A hub that can't be reached, or doesn't know the
     item yet (a post still queued or replicating), is asked again until the time runs out.
+    With `question_id`, an answer to any other question (an earlier one under the same key,
+    which the hub reads back while this post hasn't reached it) is "not there yet" too.
     Never answers anything itself."""
     if not cfg.ok:
         warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s)" % config_path())
@@ -1516,8 +1521,10 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
         if got is not None:
             status, body = got
             if status == 200 and isinstance(body.get("answers"), list):
-                print(json.dumps(body, sort_keys=True))
-                return 0
+                if question_id is None or body.get("question_id") == question_id:
+                    print(json.dumps(body, sort_keys=True))
+                    return 0
+                last_note = "the answer under %r is to another question" % key
             if status == 409:
                 if not quiet:
                     warn("no answer will come: %s" % clean(body.get("message") or body.get("error") or ""))
@@ -1534,6 +1541,8 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
             return ANSWER_EXIT_TIMEOUT
         if got is None or got[0] != 204:
             time.sleep(min(2.0, left))  # unreachable, or not there yet: don't spin
+        if got is not None and got[0] == 200:
+            flush(cfg)  # another question's answer: this post may still be in the outbox
 
 
 def hours_arg(raw: str) -> float:
@@ -1680,6 +1689,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
     ap = sub.add_parser("answer-wait", help="wait for the person's answer to the answerable question "
                         "posted under KEY; print it as JSON (exit 3: timed out, 4: none will come)")
     ap.add_argument("--key", required=True)
+    ap.add_argument("--question-id", metavar="ID",
+                    help="only an answer to the question with this id (its \"id\" in --question-json) counts")
     ap.add_argument("--timeout", type=float, default=600.0, metavar="SECONDS",
                     help="give up after this long (default 600)")
     add_run_parser(sub)
@@ -1766,7 +1777,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
             warn("--timeout must be a number of seconds")
             return 2
         flush(cfg)  # a queued post of this item goes out first
-        return answer_wait(cfg, args.key, args.timeout, args.quiet)
+        return answer_wait(cfg, args.key, args.timeout, args.quiet, args.question_id)
     if args.cmd == "resolve":
         if not (args.key if args.key is not None else args.id).strip():
             warn("resolve: --key/--id must not be empty")

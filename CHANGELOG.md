@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Security
+
+- **`needs-you answer-wait --question-id ID`** only takes an answer to the question with that id. Once nothing is open under a key the hub reads back the last item with it, so while a run's answerable question was still in the outbox or on another hub, an earlier run's answer (its card already resolved) came back as if the person had just clicked. The agent guide and the skill now give each ask a new id and pass it.
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).

@@ -179,12 +179,13 @@ button; their click comes back to you as JSON. Only the labels you offered can c
 never free text, and nothing comes back unless the person clicks.
 
 ```bash
+qid="deploy-214-$(date +%s)"   # a new id each time you ask
 needs-you add --key "work:deploy:api-v2.14" --title "Deploy api v2.14 now or after the migration?" \
   --body "Canary is green. The migration runs at 15:00." \
-  --question-json '{"id": "deploy-214", "answerable": true, "items": [{"header": "Deploy",
+  --question-json '{"id": "'"$qid"'", "answerable": true, "items": [{"header": "Deploy",
     "text": "When should v2.14 go out?", "options": [{"label": "Now", "description": "All regions"},
     {"label": "After the migration"}]}]}'
-answer=$(needs-you answer-wait --key "work:deploy:api-v2.14" --timeout 900)
+answer=$(needs-you answer-wait --key "work:deploy:api-v2.14" --question-id "$qid" --timeout 900)
 case $? in
   0) choice=$(printf '%s' "$answer" | python3 -c 'import json,sys; print(json.load(sys.stdin)["answers"][0]["selected"][0])') ;;
   3) choice="" ;;   # no answer in 15 minutes: do nothing rash, ask again later or stop
@@ -201,6 +202,10 @@ needs-you resolve --key "work:deploy:api-v2.14"   # once you've acted on it
   runs out and 4 when no answer will come (the card was resolved or dismissed, the question
   expired, or it isn't answerable). Treat anything but 0 as "no answer": never pick a
   default for the person.
+- Give each ask a new question `id` and pass it to `--question-id`. Once nothing is open
+  under the key, the hub reads back the last item with it, so without the id an earlier
+  run's answer (its card already resolved) could come back while this run's post is still
+  queued or on another hub. With it, only an answer to this question counts.
 - Only the token that posted the question can read its answer. Re-posting the same question
   keeps the answer; changing it clears it.
 - The item stays open after the click: resolve it once you've acted.

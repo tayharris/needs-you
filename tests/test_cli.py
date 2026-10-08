@@ -595,6 +595,29 @@ class AnswerWait(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)["answers"], [{"selected": ["Postgres"]}])
 
+    def test_an_earlier_questions_answer_is_never_taken_for_this_one(self):
+        # Security review 0.2: the hub reads back the last item with the key once none is
+        # open, so while this run's post is still in the outbox (or went to another hub) the
+        # answer to an earlier run's question came back as if the person had just clicked.
+        item = self.ask("deploy", dict(self.QUESTION, id="run-1"))
+        request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+                {"question_id": "run-1", "content_updated_at": item["content_updated_at"],
+                 "answers": [{"selected": ["Postgres"]}]})
+        self.run_cli("resolve", "--key", "deploy", urls=[self.hub.url], token=self.sender)
+        r = self.run_cli("answer-wait", "--key", "deploy", "--question-id", "run-2", "--timeout", "2",
+                         urls=[self.hub.url], token=self.sender)
+        self.assertEqual((r.returncode, r.stdout), (3, ""), r.stderr)
+        # The question it names, once posted and clicked, is answered as usual.
+        item = self.ask("deploy", dict(self.QUESTION, id="run-2"))
+        request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+                {"question_id": "run-2", "content_updated_at": item["content_updated_at"],
+                 "answers": [{"selected": ["SQLite"]}]})
+        r = self.run_cli("answer-wait", "--key", "deploy", "--question-id", "run-2", "--timeout", "5",
+                         urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        got = json.loads(r.stdout)
+        self.assertEqual((got["question_id"], got["answers"]), ("run-2", [{"selected": ["SQLite"]}]))
+
     def test_refused_token_and_usage(self):
         self.ask()
         r = self.run_cli("answer-wait", "--key", "q", "--timeout", "1", urls=[self.hub.url], token=self.reader)

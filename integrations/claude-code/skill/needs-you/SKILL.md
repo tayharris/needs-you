@@ -70,12 +70,13 @@ A numbered checklist on the Mac, each link a button. At most 10 steps, each one 
 When you're blocked on a choice between a few options and can wait, post an answerable question and wait for the person's click (only your labels come back; never free text):
 
 ```bash
+qid="db-choice-$(date +%s)"   # a new id each time you ask
 needs-you add --key "work:acme-web:db-choice" --title "Which database for acme-web?" \
-  --question-json '{"id": "db-choice", "answerable": true, "items": [{"header": "Database", "text": "Which database should the service use?", "options": [{"label": "Postgres", "description": "Already used by the team"}, {"label": "SQLite"}]}]}'
-needs-you answer-wait --key "work:acme-web:db-choice" --timeout 600
+  --question-json '{"id": "'"$qid"'", "answerable": true, "items": [{"header": "Database", "text": "Which database should the service use?", "options": [{"label": "Postgres", "description": "Already used by the team"}, {"label": "SQLite"}]}]}'
+needs-you answer-wait --key "work:acme-web:db-choice" --question-id "$qid" --timeout 600
 ```
 
-Exit 0 prints `{"answers": [{"selected": ["Postgres"]}], ...}`; 3 means no answer in time, 4 means none will come (closed or expired). On anything but 0, don't choose for them: ask in your own conversation instead, or stop. 1-4 questions, 1-8 options each, `"multi_select": true` for several picks. Resolve the card once you've acted on the answer.
+`--question-id` with a fresh id makes sure an answer to an earlier question under the same key is never taken for this one. Exit 0 prints `{"answers": [{"selected": ["Postgres"]}], ...}`; 3 means no answer in time, 4 means none will come (closed or expired). On anything but 0, don't choose for them: ask in your own conversation instead, or stop. 1-4 questions, 1-8 options each, `"multi_select": true` for several picks. Resolve the card once you've acted on the answer.
 
 ## Resolve what you posted
 
