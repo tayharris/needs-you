@@ -594,8 +594,10 @@ Response `200`:
  "hub_id": "hub-a"}
 ```
 
-- `name` is `<invite name>-<host>` (the host is reduced to letters, digits, `.`, `_`, `-`). If
-  an active token already has that name, `-2`, `-3`... is appended.
+- `name` is `<invite name>-<host>` (the host is reduced to letters, digits, `.`, `_`, `-`), or
+  just the invite name when it already is the host or ends with it (`-`, `.` or `_` before it;
+  no case; the host's first label counts too): an invite named `devbox` redeemed on `devbox`
+  mints `devbox`. If an active token already has that name, `-2`, `-3`... is appended.
 - `hub_urls` is this hub's `public_url` followed by its peers, in that order. Save it as
   `NEEDS_YOU_URLS`. When the request comes from the hub's own machine (a loopback address, or
   one of the addresses the hub listens on) and the hub listens on loopback, its loopback URL
