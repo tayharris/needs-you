@@ -1,5 +1,5 @@
 {
-  "_needs_you_version": "0.1.4",
+  "_needs_you_version": "0.1.5",
   "hooks": {
     "PermissionRequest": [
       {

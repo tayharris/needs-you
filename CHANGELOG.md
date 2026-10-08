@@ -4,6 +4,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-08
+
 ### Added
 
 - **Cursor, Cline and Aider.** Three more agents, each with what its hooks allow. **Cursor** (`--cursor-hooks user`): a card when the agent finishes its turn or stops on an error, cleared by your next prompt or the end of the chat; Cursor has no hook for approval prompts, so no card for those. The Claude Code hooks, which Cursor also runs, now step aside for Cursor's payloads. **Cline**, VS Code and CLI (`--cline-hooks user`): a card when a task finishes or fails, cleared when you reply, cancel, or start or resume a task; no approval card either. **Aider** (`--aider`): a card each time Aider waits for you after a reply; Aider never says when you answer, so it clears when Aider exits or after an hour (`NEEDS_YOU_AIDER_EXPIRY_HOURS`). The installer writes Aider's `notifications-command` into `~/.aider.conf.yml` only when that's safe, and otherwise prints the two lines to add. `needs-you doctor`, `update` and `uninstall-hooks --cursor/--cline/--aider` cover all three, and the invite agent prompt names the flags. Guides: [Cursor](docs/guides/cursor.md), [Cline](docs/guides/cline.md), [Aider](docs/guides/aider.md).
