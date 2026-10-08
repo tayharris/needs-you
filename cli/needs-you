@@ -53,7 +53,7 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
   NEEDS_YOU_OUTBOX_MAX       max queued requests kept (default 500)
   NEEDS_YOU_OUTBOX_MAX_DAYS  queued requests older than this are dropped (default 7)
 
-  needs-you update [--check] [--rollback] [--allow-downgrade]
+  needs-you update [--check] [--rollback] [--allow-downgrade] [--enable-auto | --disable-auto]
                                                      update the CLI, Claude Code hook (and its
                                                      settings entries), skill and Orca snippet
                                                      installed here, from the hub this machine
@@ -61,8 +61,11 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
                                                      or NEEDS_YOU_UPDATE_HUB; https, loopback or
                                                      tailnet only), sha256-checked against its
                                                      /dl/manifest.json and, with gh, the GitHub
-                                                     release. --check only reports. With
-                                                     NEEDS_YOU_AUTO_UPDATE=1, `flush` runs it daily,
+                                                     release (without gh: its files from
+                                                     github.com over https). --check only
+                                                     reports. With NEEDS_YOU_AUTO_UPDATE=1 (the
+                                                     installers' default; --enable-auto and
+                                                     --disable-auto set it), `flush` runs it daily,
                                                      and a hub's "update requested" (the Mac app's
                                                      Request update) starts it in the background;
                                                      without it, that request prints a reminder
@@ -1696,6 +1699,11 @@ def _main(argv: Optional[List[str]] = None) -> int:
                         help="quiet, never fails (what flush runs once a day with NEEDS_YOU_AUTO_UPDATE=1)")
         up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
         up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
+        ag = up.add_mutually_exclusive_group()
+        ag.add_argument("--enable-auto", action="store_true",
+                        help="turn daily automatic updates on (NEEDS_YOU_AUTO_UPDATE=1 in the env file), then update now")
+        ag.add_argument("--disable-auto", action="store_true",
+                        help="turn daily automatic updates off (NEEDS_YOU_AUTO_UPDATE=0 in the env file); change nothing else")
     uh = sub.add_parser("uninstall-hooks", help="remove the agent hooks: Claude Code, Codex, Gemini CLI, "
                         "opencode, Copilot CLI, Cursor, Cline, Aider, Kimi Code, Grok Build (offline; no hub needed)")
     uh.add_argument("--user", action="store_true", help="Claude Code's user level (~/.claude)")
@@ -1745,6 +1753,11 @@ def _main(argv: Optional[List[str]] = None) -> int:
     if args.cmd in ("update", "self-update"):
         if args.rollback:
             return rollback(args.quiet, args.json)
+        if args.enable_auto or args.disable_auto:
+            if not set_auto_update(args.enable_auto, args.quiet):
+                return 1
+            if args.disable_auto:
+                return 0
         return update(cfg, check=args.check, auto=args.auto, quiet=args.quiet or args.auto, as_json=args.json,
                       allow_downgrade=args.allow_downgrade)
     if args.cmd == "uninstall-hooks":  # local files only: no hub, no outbox
@@ -2462,6 +2475,25 @@ def check_attestation(output: str, sha256: str, v: str) -> None:
     raise UpdateRefused("release v%s's provenance doesn't fit: %s" % (v, clean("; ".join(reasons))))
 
 
+def _check_release_manifest(path: str, v: str, tarball: str, tarball_sha: str) -> str:
+    """The release's release-manifest.json (at `path`) must be for version v and list this
+    server tarball with this sha256. Returns the manifest's own sha256; raises UpdateRefused."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            rm = json.load(fh)
+        listed = {str(a.get("name")): str(a.get("sha256") or "").lower() for a in rm.get("assets") or []}
+        if rm.get("version") != v:
+            raise UpdateRefused("release v%s's release-manifest.json is for another version" % v)
+    except (OSError, ValueError, AttributeError, TypeError):
+        raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
+    if listed.get(tarball) != tarball_sha:
+        raise UpdateRefused("release v%s's release-manifest.json doesn't list this %s" % (v, tarball))
+    manifest_sha = _sha256_file(path)
+    if not manifest_sha:
+        raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
+    return manifest_sha
+
+
 def release_provenance(gh: str, v: str, tarball: str, tarball_sha: str, tmp: str) -> str:
     """Security audit #17 (c): the release's release-manifest.json must list this server
     tarball with this sha256, and carry a GitHub build-provenance attestation from
@@ -2485,19 +2517,7 @@ def release_provenance(gh: str, v: str, tarball: str, tarball_sha: str, tmp: str
         raise UpdateRefused("gh couldn't download release-manifest.json of v%s (%s)"
                             % (v, clean((r.stderr.strip().splitlines() or [""])[-1])))
     path = os.path.join(sub, "release-manifest.json")
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            rm = json.load(fh)
-        listed = {str(a.get("name")): str(a.get("sha256") or "").lower() for a in rm.get("assets") or []}
-        if rm.get("version") != v:
-            raise UpdateRefused("release v%s's release-manifest.json is for another version" % v)
-    except (OSError, ValueError, AttributeError, TypeError):
-        raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
-    if listed.get(tarball) != tarball_sha:
-        raise UpdateRefused("release v%s's release-manifest.json doesn't list this %s" % (v, tarball))
-    manifest_sha = _sha256_file(path)
-    if not manifest_sha:
-        raise UpdateRefused("couldn't read release-manifest.json of v%s" % v)
+    manifest_sha = _check_release_manifest(path, v, tarball, tarball_sha)
     # The exact file just read, pinned to the release workflow, the tag and GitHub-hosted runners.
     try:
         r = subprocess.run([gh, "attestation", "verify", path, "--repo", RELEASE_REPO,
@@ -2519,30 +2539,90 @@ def release_provenance(gh: str, v: str, tarball: str, tarball_sha: str, tmp: str
                         "not updating anything" % (v, why))
 
 
+
+
+# Without gh, the same release files come straight from GitHub over https: the repository is
+# public, so no account is needed. Only these hosts, https only, redirects included; the URL
+# is built here from RELEASE_REPO and the version, never taken from a hub or a setting.
+RELEASE_HOSTS = ("github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
+RELEASE_MAX_BYTES = 64 * 1024 * 1024
+
+
+class _ReleaseUnreachable(Exception):
+    """GitHub couldn't be reached at all (offline, DNS, a firewall): not a refusal by itself."""
+
+
+def _release_get(url: str, dest: str, timeout: float = 60.0) -> None:
+    """Download one release asset to dest. Raises _ReleaseUnreachable when GitHub can't be
+    reached, UpdateRefused for anything else (a 404, a redirect off GitHub, too big)."""
+    import urllib.request
+
+    def allowed(u: str) -> bool:
+        parts = urllib.parse.urlsplit(u)
+        return parts.scheme == "https" and (parts.hostname or "").lower() in RELEASE_HOSTS
+
+    class OnlyGitHub(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+            if not allowed(newurl):
+                raise UpdateRefused("the GitHub release download redirected off GitHub; not updating anything")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    if not allowed(url):
+        raise UpdateRefused("not a GitHub release URL")
+    opener = urllib.request.build_opener(OnlyGitHub)
+    req = urllib.request.Request(url, headers={"User-Agent": "needs-you/" + VERSION})
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            if not allowed(resp.geturl()):
+                raise UpdateRefused("the GitHub release download ended off GitHub; not updating anything")
+            data = resp.read(RELEASE_MAX_BYTES + 1)
+    except urllib.error.HTTPError as e:
+        raise UpdateRefused("GitHub has no %s for this release (HTTP %d)" % (url.rsplit("/", 1)[-1], e.code))
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+        raise _ReleaseUnreachable(clean(getattr(e, "reason", None) or type(e).__name__))
+    if len(data) > RELEASE_MAX_BYTES:
+        raise UpdateRefused("a GitHub release file is larger than expected; not updating anything")
+    with open(dest, "wb") as fh:
+        fh.write(data)
+
+
+def _release_fetch_https(v: str, names: List[str], tmp: str) -> None:
+    base = "https://github.com/%s/releases/download/v%s/" % (RELEASE_REPO, v)
+    for name in names:
+        _release_get(base + name, os.path.join(tmp, name))
+
+
 def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, str]], str]:
     """sha256 of each named /dl file as the GitHub release vX.Y.Z of RELEASE_REPO has it,
     from its server tarball (itself checked against the release's SHA256SUMS, its
-    release-manifest.json and that manifest's build provenance). Returns (digests, what the
-    provenance check found) or (None, why the cross-check couldn't run)."""
+    release-manifest.json and, with gh, that manifest's build provenance). Without gh the
+    same files come from GitHub over https, and the provenance step is skipped with a note.
+    Returns (digests, what was checked) or (None, why the cross-check couldn't run)."""
     import subprocess
     import tarfile
     import tempfile
     gh = _gh()
-    if not gh:
-        return None, "gh isn't installed"
+    if not gh and os.environ.get("NEEDS_YOU_GH"):
+        return None, "gh isn't installed"  # NEEDS_YOU_GH=none: no cross-check at all (tests)
     if _vtuple(version) is None:
         raise UpdateRefused("the hub's version %s isn't X.Y.Z" % clean(version))
     v = "%d.%d.%d" % _vtuple(version)  # type: ignore[str-format]
     tarball = "needs-you-server-%s.tar.gz" % v
     with tempfile.TemporaryDirectory(prefix="needs-you-release-") as tmp:
-        try:
-            r = subprocess.run([gh, "release", "download", "v" + v, "--repo", RELEASE_REPO,
-                                "--pattern", "SHA256SUMS", "--pattern", tarball, "--dir", tmp],
-                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
-        except (OSError, subprocess.SubprocessError) as e:
-            raise UpdateRefused("gh failed (%s)" % type(e).__name__)
-        if r.returncode != 0:
-            raise UpdateRefused("gh couldn't download release v%s (%s)" % (v, clean((r.stderr.strip().splitlines() or [""])[-1])))
+        if gh:
+            try:
+                r = subprocess.run([gh, "release", "download", "v" + v, "--repo", RELEASE_REPO,
+                                    "--pattern", "SHA256SUMS", "--pattern", tarball, "--dir", tmp],
+                                   stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+            except (OSError, subprocess.SubprocessError) as e:
+                raise UpdateRefused("gh failed (%s)" % type(e).__name__)
+            if r.returncode != 0:
+                raise UpdateRefused("gh couldn't download release v%s (%s)" % (v, clean((r.stderr.strip().splitlines() or [""])[-1])))
+        else:
+            try:
+                _release_fetch_https(v, ["SHA256SUMS", tarball, "release-manifest.json"], tmp)
+            except _ReleaseUnreachable as e:
+                return None, "gh isn't installed, and github.com couldn't be reached (%s)" % e
         sums: Dict[str, str] = {}
         try:
             with open(os.path.join(tmp, "SHA256SUMS"), "r", encoding="utf-8") as fh:
@@ -2553,7 +2633,11 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
             tar_path = os.path.join(tmp, tarball)
             if _sha256_file(tar_path) != sums.get(tarball):
                 raise UpdateRefused("the release's %s doesn't match its SHA256SUMS" % tarball)
-            note = release_provenance(gh, v, tarball, sums.get(tarball, ""), tmp)
+            if gh:
+                note = release_provenance(gh, v, tarball, sums.get(tarball, ""), tmp)
+            else:
+                _check_release_manifest(os.path.join(tmp, "release-manifest.json"), v, tarball, sums.get(tarball, ""))
+                note = "downloaded from github.com without gh; build provenance not checked (install gh to check it)"
             out: Dict[str, str] = {}
             with tarfile.open(tar_path, "r:gz") as tf:
                 for name in names:
@@ -2586,13 +2670,14 @@ def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, A
     except Exception as e:  # noqa: BLE001 - any failure of the check refuses (never fail open)
         raise UpdateRefused("the GitHub release check failed (%s)" % type(e).__name__)
     if digests is None:
-        # Only "gh isn't installed" gets here. Automatic updates need the match unless it
-        # is explicitly turned off; a manual update goes ahead with a warning.
+        # Only "no gh and github.com unreachable" gets here (or NEEDS_YOU_GH=none). Automatic
+        # updates need the match unless it is explicitly turned off; a manual update goes
+        # ahead with a warning.
         req = _setting(cfg, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH").strip().lower()
         if req in _ON or (auto and req not in _OFF):
             raise UpdateRefused("can't check against the GitHub release (%s), and %s" % (
                 why, "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH is on" if req in _ON else
-                "automatic updates need it (install and log in to gh, or set NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0)"))
+                "automatic updates need it (let this machine reach github.com, or install gh, or set NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0)"))
         return "WARNING: not checked against the GitHub release (%s); only the hub's checksums were checked" % why
     files = manifest.get("files") or {}
     for name in names:
@@ -2752,6 +2837,48 @@ def rollback(quiet: bool, as_json: bool) -> int:
     for e in errors:
         warn("couldn't restore %s" % e)
     return 1 if errors else 0
+
+
+def set_env_setting(name: str, value: str) -> None:
+    """NAME=VALUE in the env file: the line replaced where it is, or added at the end; every
+    other line kept. Mode 600, written atomically. VALUE is plain (no quoting needed)."""
+    path = config_path()
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except FileNotFoundError:
+        lines = ["# needs-you sender config"]
+    out, done = [], False
+    for line in lines:
+        k = line.strip()
+        if k.startswith("export "):
+            k = k[len("export "):].strip()
+        if k.split("=", 1)[0].strip() == name and "=" in k:
+            if not done:
+                out.append("%s=%s" % (name, value))
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        out.append("%s=%s" % (name, value))
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    _write_atomic(path, ("\n".join(out) + "\n").encode("utf-8"), 0o600)
+
+
+def set_auto_update(on: bool, quiet: bool = False) -> bool:
+    """`update --enable-auto` / `--disable-auto`: NEEDS_YOU_AUTO_UPDATE in the env file."""
+    try:
+        set_env_setting("NEEDS_YOU_AUTO_UPDATE", "1" if on else "0")
+    except OSError as e:
+        warn("couldn't write %s (%s)" % (config_path(), type(e).__name__))
+        return False
+    if not quiet:
+        print("daily automatic updates %s (NEEDS_YOU_AUTO_UPDATE=%s in %s)"
+              % ("on" if on else "off", "1" if on else "0", _tilde(config_path())))
+    env = os.environ.get("NEEDS_YOU_AUTO_UPDATE", "").strip().lower()
+    if env and (env in _ON) != on:
+        warn("NEEDS_YOU_AUTO_UPDATE=%s in this shell's environment overrides the file" % clean(env))
+    return True
 
 
 def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = False, as_json: bool = False,
@@ -4006,6 +4133,8 @@ def _doctor_update(self: "Doctor") -> None:
     st = _read_state()
     when = st.get("auto_ok_at") or st.get("last_update_at")
     tail = "; daily auto-update %s" % ("on (NEEDS_YOU_AUTO_UPDATE=1)" if auto else "off")
+    if auto and not os.environ.get("NEEDS_YOU_GH") and not _gh():
+        tail += ", checked against the GitHub release over https (no gh: no build-provenance check)"
     if when:
         tail += ", last %s ago" % _age(time.time() - float(when))
     if not self.cfg.urls:
@@ -4025,8 +4154,13 @@ def _doctor_update(self: "Doctor") -> None:
         return
     detail = "%s; hub %s serves %s%s" % (local, hub.url, clean(manifest.get("version")), tail)
     if changes:
-        self.add("update", "WARN", detail + "; newer on the hub: " + ", ".join(c.get("label") or c["file"] for c in changes),
-                 "run: needs-you update")
+        newer = "; newer on the hub: " + ", ".join(c.get("label") or c["file"] for c in changes)
+        if auto:
+            self.add("update", "WARN", detail + newer, "run: needs-you update")
+        else:
+            # Older than the hub and nothing will catch it up: one command does both.
+            self.add("update", "WARN", detail + newer + "; nothing updates this machine on its own",
+                     "run: needs-you update --enable-auto (updates now, then daily from the 5-minute flush)")
     else:
         self.add("update", "OK", detail + ("; " + "; ".join(notes) if notes else ""))
 
