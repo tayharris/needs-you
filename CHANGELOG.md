@@ -4,6 +4,26 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **`--mcp cursor`** registers the MCP server in Cursor's global `~/.cursor/mcp.json`, like the other agents' files (backed up, never through a symlink); `needs-you doctor` and `needs-you uninstall-hooks --mcp` cover it.
+- **One card per wait for Kimi Code outside Orca.** When Kimi posts its own `needs` item from its Bash tool, its "waiting for you" card is skipped while that item is open, as for Claude Code, Codex, Gemini CLI and opencode.
+
+### Fixed
+
+- Agent hooks: **no card for a big tool call.** A permission prompt for a `Write` of a large file (over 128 KiB on Linux) posted nothing; the hook now reads any size. Bytes that aren't UTF-8 in a message no longer make the hub refuse the card.
+- Agent hooks: an MCP tool whose arguments are named `conversation_id` or `session_id` no longer silences the Claude card or keys it to the wrong session.
+- Agent hooks: a hook started with stdin closed returned only when the agent's timeout killed it; it now returns at once.
+- `needs-you` no longer follows a redirect from a hub URL (which sent the token to the redirect's host and turned the post into a GET): it tries the next hub, else queues.
+- `needs-you update` with something that isn't a hub on the hub's port (`--auto` included) says so instead of crashing with a traceback.
+- `needs-you flush` no longer resolves live agent cards when `ps` fails, no longer crashes when the outbox can't be changed, and a request that can't be queued no longer goes ahead of queued ones.
+- `needs-you add` exits 2 with the hub's reason when another run's flush sent its post and the hub refused it (it exited 0 silently). `--expires-in 0` no longer holds back the session's "waiting" card for 48 hours, and `NEEDS_YOU_OUTBOX_MAX=0` no longer drops the post being made.
+- With `HOME` set to a directory under a real home (a sandbox), `needs-you doctor`, `update` and `uninstall-hooks` no longer take the real `~/.claude` above it for a project's hooks (uninstall-hooks used to remove them).
+- `install-mcp codex` no longer adds a second `needs-you` server to a `config.toml` that defines one inside `[mcp_servers]` or under a quoted header (Codex refused the file); the Kimi installer no longer misreads the rows of a multi-line array and appends to a file it should refuse.
+- Installers keep a CRLF file's line endings through install and uninstall (Codex `config.toml`, `AGENTS.md`, `GEMINI.md`, `.aider.conf.yml`), the Claude Code installer no longer overwrites an earlier backup made in the same second, and `--uninstall` with no needs-you hooks in the file no longer rewrites it.
+- `needs-you doctor` no longer suggests `needs-you update` against an older hub (it never downgrades), and names the hub URL setting the CLI actually uses.
+- Hub: a sender's re-post on a merged item could be undone by a late write from the other hub (its links, kind and expiry came back); a peer timestamp at the year-9999 limit made every listing fail; a client cursor from before a backup restore missed new items; an invite name ending in a newline, an invite that expired as it was made, and revoking a token named `request-update` by name are fixed.
+
 ## [0.1.5] - 2026-10-08
 
 ### Added
