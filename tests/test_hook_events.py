@@ -446,6 +446,30 @@ class FailureTests(HookHarness):
         for kept in ("postgres://app:", "@db.example:5432/app", "https://bot:", "PGPASSWORD=", "psql"):
             self.assertIn(kept, body)
 
+    def test_quoted_names_flags_and_arrows_are_redacted(self):
+        # Security review 0.2, second pass: a quoted name (JSON, a Python dict), `=>`, a
+        # --password flag with a space, and DB_PASS / passphrase went out as is.
+        text = ('{"password":"Jzq81kLmw"} {\'api_key\': \'Pv72hhQx\'} auth_token => Rt55wqPz '
+                "mysql --password Ux31mmKa; DB_PASS=Wc48rrTy; passphrase: Lq09ssDe")
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                 "error_message": text})
+        body = self.opt(self.last(), "--body")
+        for s in ("Jzq81kLmw", "Pv72hhQx", "Rt55wqPz", "Ux31mmKa", "Wc48rrTy", "Lq09ssDe"):
+            self.assertNotIn(s, body)
+        for kept in ('"password"', "mysql --password", "DB_PASS=", "passphrase:"):
+            self.assertIn(kept, body)
+
+    def test_redaction_takes_linear_time(self):
+        # Security review 0.2: ~100 KB of text built to make the redaction patterns backtrack
+        # (names glued with "_", "-" runs before "://", "--a-a-a" flags) must not stall the hook.
+        import time
+        for chunk in ("a_", "x_password_", "a-", "--a-", "token_", "a://b:", "//user", "x:", "a="):
+            with self.subTest(chunk=chunk):
+                started = time.time()
+                self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                         "error_message": chunk * (100000 // len(chunk))})
+                self.assertLess(time.time() - started, 8)
+
     def test_stop_failure_card(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
                                  "error_message": "Rate limit exceeded"})
