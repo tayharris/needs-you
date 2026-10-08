@@ -116,6 +116,6 @@ Principles: numbers only, read locally by the agent's own machine, never credent
 | 6 | `needs-you orca` read-only summary for agents | low-medium | small | none | — |
 | 7 | Orca accounts usage poller | medium | medium | none | after verifying `rateLimits` values on a host with managed accounts |
 | 8 | Deploy-finished recipe for CI | medium | docs | none | — |
-| 9 | `status` records on the wire (progress strip, usage meter, Orca rows from servers) | high | large | **ADR + api-change** | whether needs-you shows anything that isn't "you have to do something" |
+| 9 | `status` records on the wire (progress strip, usage meter, Orca rows from servers) | high | large | **ADR + api-change** ([ADR 0011](../adr/0011-status-records.md), Proposed) | whether needs-you shows anything that isn't "you have to do something" |
 | 10 | Pill usage meter with Settings choices | medium | medium after 9 | depends on 9 | providers, session/weekly, thresholds |
 | — | Reading OAuth tokens or browser cookies for usage | — | — | — | **not doing**: violates the no-credentials rule |
