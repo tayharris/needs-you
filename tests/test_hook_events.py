@@ -442,8 +442,7 @@ class ResolveWhilePostingTests(HookHarness):
         proc.stdin.close()
         proc.stdin = None
         # once the hook is under way (it has noted that a card is coming), before the post ends
-        posting = os.path.join(self.state, ".posting-sess-1234-abcd")
-        self.assertTrue(wait_until(lambda: os.path.exists(posting), timeout=20))
+        self.assertTrue(wait_until(lambda: any(n.startswith(".pending.") for n in self.state_files()), timeout=20))
         self.assertEqual(self.calls(), [])
         second = dict({"session_id": "sess-1234-abcd", "cwd": self.cwd}, **resolve)
         r = subprocess.run([BASH, HOOK, mode], input=json.dumps(second), env=env, capture_output=True,
@@ -452,6 +451,12 @@ class ResolveWhilePostingTests(HookHarness):
         out, _ = proc.communicate(timeout=30)
         self.assertEqual((proc.returncode, out), (0, ""))
         return [c[0] for c in self.calls()]
+
+    def state_files(self):
+        try:
+            return os.listdir(self.state)
+        except OSError:
+            return []
 
     def test_claude_permission_answered_while_posting(self):
         got = self.race({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
