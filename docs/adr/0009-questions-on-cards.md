@@ -1,6 +1,6 @@
 # 0009. Questions and choices on cards
 
-- Status: Proposed (phase A built; phase B waits for the owner)
+- Status: Accepted (2026-10-08): phases A and B1–B2; B3 after a live check
 - Date: 2026-10-08
 
 ## Context
@@ -37,7 +37,7 @@ Constraints:
 
 ## Decision
 
-Two phases. Phase A ships now with no API change; phase B is a proposal for the owner.
+Phase A shipped with no API change. Phase B adds the `question` field (B1) and answering (B2, B3).
 
 ### Phase A: the question on the card, read-only (built)
 
@@ -74,7 +74,7 @@ the Mac is "a checklist the person ticks off", which fits choices badly: a tick 
 and answers nothing. The body says where to answer, and phase B replaces steps with a real
 field.
 
-### Phase B (proposed): a `question` field and answers by click
+### Phase B: a `question` field and answers by click
 
 1. **Item field** `question` (optional, sender-written, replicated like `steps`):
 
