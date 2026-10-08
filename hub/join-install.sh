@@ -257,7 +257,8 @@ if [ -n "$AGENT_LINK" ] && [ "$AGENT_LINK" != none ]; then
 fi
 
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"
-ENV_FILE="$CONF_DIR/env"
+# NEEDS_YOU_CONFIG: the env file where the CLI, the hooks and the flush schedule look for it.
+ENV_FILE="${NEEDS_YOU_CONFIG:-$CONF_DIR/env}"
 BIN_DIR="${NEEDS_YOU_BIN_DIR:-$HOME/.local/bin}"
 case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac  # it goes into crontab and the profile
 # ...inside double quotes, so nothing in it may end the quotes or expand later.
@@ -565,6 +566,7 @@ say "installed $CLI"
 # ---------------------------------------------------------------- token + config
 mkdir -p "$CONF_DIR"
 chmod 700 "$CONF_DIR"
+mkdir -p "$(dirname "$ENV_FILE")"
 if [ "$HAVE_TOKEN" -eq 0 ] || [ "$FORCE" -eq 1 ]; then
   python3 -c 'import json,sys; print(json.dumps({"code": sys.argv[1], "host": sys.argv[2]}))' \
     "$CODE" "$HOST_NAME" >"$TMP/req.json"
@@ -861,7 +863,7 @@ PY
     chmod 755 "$BIN_DIR/.needs-you-usage.new" &&
     mv -f "$BIN_DIR/.needs-you-usage.new" "$BIN_DIR/needs-you-usage" || return 1
   say "installed $BIN_DIR/needs-you-usage. To use it, set NEEDS_YOU_USAGE_ALERT_PCT=85 in"
-  say "  $CONF_DIR/env and make it your Claude Code statusLine (in ~/.claude/settings.json):"
+  say "  $ENV_FILE and make it your Claude Code statusLine (in ~/.claude/settings.json):"
   say "  \"statusLine\": {\"type\": \"command\", \"command\": \"$BIN_DIR/needs-you-usage --print\"}"
   say "  or, to keep a status line you have: \"command\": \"$BIN_DIR/needs-you-usage -- <your command>\""
 }

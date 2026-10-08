@@ -73,6 +73,17 @@ class SetupSender(HubTestCase):
         r = self.run_setup("--no-path", "--no-schedule")
         self.assertIn("won't run until you schedule", r.stderr)
 
+    def test_env_file_honours_needs_you_config(self):
+        # The CLI, the hooks and the cron line read NEEDS_YOU_CONFIG; the token went elsewhere.
+        conf = os.path.join(self.tmp, "my conf", "ny.env")
+        self.run_setup("--alerts", "--no-path", NEEDS_YOU_CONFIG=conf)
+        with open(conf) as fh:
+            self.assertIn("NEEDS_YOU_AGENT_ALERTS=1\n", fh.read())
+        self.assertEqual(os.stat(conf).st_mode & 0o777, 0o600)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
+        with open(self.cron) as fh:
+            self.assertIn("NEEDS_YOU_CONFIG='%s'" % conf, fh.read())
+
     def test_schedule_passes_xdg_dirs_on(self):
         # cron runs without the shell's XDG_CONFIG_HOME: the flush found no config
         xdg = os.path.join(self.tmp, "xdg")

@@ -431,6 +431,23 @@ class InstallScript(HubTestCase):
         with open(os.path.join(self.home, "Library", "LaunchAgents", "io.needs-you.flush.plist"), "rb") as fh:
             self.assertEqual(plistlib.load(fh)["EnvironmentVariables"], xdg)
 
+    def test_needs_you_config_is_where_the_token_goes(self):
+        # The flush schedule and the CLI read NEEDS_YOU_CONFIG, but the installer wrote the
+        # token to ~/.config/needs-you/env: exit 0, and a machine that could never send.
+        inv = self.invite(uses=1)
+        conf = os.path.join(self.home, "my conf", "ny.env")
+        r = self.install(inv, "--yes", "--host", "nc1", STUB_UNAME="Linux", NEEDS_YOU_CONFIG=conf)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(conf) as fh:
+            self.assertIn("NEEDS_YOU_TOKEN=", fh.read())
+        self.assertEqual(stat.S_IMODE(os.stat(conf).st_mode), 0o600)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
+        h = subprocess.run([os.path.join(self.home, ".local", "bin", "needs-you"), "health"],
+                           env=self.env(NEEDS_YOU_CONFIG=conf), capture_output=True, text=True, timeout=60)
+        self.assertEqual(h.returncode, 0, h.stdout + h.stderr)
+        r = self.install(inv, "--yes", "--host", "nc1", STUB_UNAME="Linux", NEEDS_YOU_CONFIG=conf)
+        self.assertIn("kept the existing token", r.stdout)  # a re-run finds it there
+
     def test_codex_hooks(self):
         inv = self.invite(uses=1)
         codex = os.path.join(self.home, ".codex")

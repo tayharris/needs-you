@@ -27,7 +27,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"  # where the CLI and the hooks look
-ENV_FILE="$CONFIG_DIR/env"
+ENV_FILE="${NEEDS_YOU_CONFIG:-$CONFIG_DIR/env}"  # NEEDS_YOU_CONFIG: as the CLI and the hooks
 BIN_DIR="$HOME/.local/bin"
 
 # Flags
@@ -386,7 +386,8 @@ if [ "$SCHEDULE" -eq 0 ] && [ "$AUTO_UPDATE" != 0 ]; then
   warn "--no-schedule: daily updates run from the 5-minute flush, so they won't run until you schedule 'needs-you flush' yourself"
 fi
 
-TMP_ENV=$(umask 077; mktemp "$CONFIG_DIR/.env.XXXXXX")
+mkdir -p "$(dirname "$ENV_FILE")"
+TMP_ENV=$(umask 077; mktemp "$(dirname "$ENV_FILE")/.env.XXXXXX")
 trap 'rm -f "$TMP_ENV"' EXIT
 {
   printf '# needs-you sender config, written by setup-sender.sh. Keep this file private (mode 600).\n'
