@@ -31,6 +31,22 @@
 #            notificationType) and StopFailure call `notify`, Stop resolves (no
 #            context check: Grok's transcript isn't Claude's). Grok waits for its
 #            hooks, so like Gemini the work goes to a background copy.
+#   cursor   Cursor (integrations/cursor/, ~/.cursor/hooks.json): stop (status
+#            completed or error) calls `notify`, beforeSubmitPrompt `resolve`,
+#            sessionEnd `end`. The session is conversation_id. Cursor reads a hook's
+#            stdout as its answer: this prints {"continue":true} in resolve mode (only
+#            beforeSubmitPrompt runs it) and {} otherwise, then works in the background.
+#            Cursor also runs the Claude Code hooks; given a Cursor payload they exit.
+#   cline    Cline (integrations/cline/, executables in ~/Documents/Cline/Hooks/, which
+#            pass the event name as a third argument): TaskComplete and TaskError call
+#            `notify`, UserPromptSubmit and TaskCancel `resolve`, TaskStart and
+#            TaskResume `start` (clears the cards of earlier tasks in the same Cline),
+#            SessionShutdown `end`. The session is taskId. Background work, as Cline
+#            in VS Code waits for its hooks.
+#   aider    Aider's --notifications-command: one `notify` each time Aider waits for
+#            the person after an LLM reply. No payload, and stdin is the terminal, so
+#            it is never read. The session is the Aider process; the card goes when
+#            Aider exits (the lease) or expires (NEEDS_YOU_AIDER_EXPIRY_HOURS, default 1).
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -97,10 +113,22 @@ case "${2:-}" in
   opencode) agent=opencode ;;
   grok) agent=grok ;;
   copilot) agent=copilot ;;
+  cursor) agent=cursor ;;
+  cline) agent=cline ;;
+  aider) agent=aider ;;
   *) agent=claude ;;
 esac
 # Grok Build runs the Claude hooks as they are: it names itself only in the environment.
 [ -n "${GROK_HOOK_EVENT:-}" ] && agent=grok
+# Cline's hook files name their event in a third argument (kept for the background copy).
+[ "$agent" = cline ] && { NY_EVENT=${NY_EVENT:-${3:-}}; export NY_EVENT; }
+
+# Cursor reads every hook's stdout as its answer, and a beforeSubmitPrompt answer says whether
+# the prompt goes on. Answer first, before anything below can exit: "continue" in resolve mode
+# (only beforeSubmitPrompt runs it), an empty answer otherwise. Never a decision hook.
+if [ "$agent" = cursor ] && [ -z "${NY_HOOK_BG:-}" ]; then
+  if [ "$mode" = resolve ]; then printf '{"continue":true}\n'; else printf '{}\n'; fi
+fi
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
@@ -122,19 +150,53 @@ case "${NEEDS_YOU_AGENT_ALERTS:-}" in
   *) [ -n "${ORCA_TERMINAL_HANDLE:-}" ] || exit 0 ;;
 esac
 
-input=$(cat 2>/dev/null)
+# Aider gives its notifications command no input, and its stdin is the terminal: reading it
+# would swallow what the person types. Its session is the Aider process: the first ancestor
+# that isn't a shell (Aider runs the command through `sh -c`), found now, while that shell is
+# still there, and handed to the background copy as the lease's starting point.
+if [ "$agent" = aider ]; then
+  input=
+  p=${NY_HOOK_PPID:-$PPID}
+  n=0
+  while [ "$n" -lt 8 ] && [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null; do
+    comm=$(ps -o comm= -p "$p" 2>/dev/null) || { p=; break; }
+    case "${comm##*/}" in
+      sh|-sh|bash|-bash|dash|zsh|-zsh|env|timeout|nohup) p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ') ;;
+      *) break ;;
+    esac
+    n=$((n + 1))
+  done
+  if [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null; then
+    input="{\"session_id\":\"aider-$p\"}"
+    NY_HOOK_PPID=$p
+  else
+    exit 0
+  fi
+else
+  input=$(cat 2>/dev/null)
+fi
+
+# Cursor runs the Claude Code hooks from ~/.claude/settings.json as well (Stop,
+# UserPromptSubmit, SessionStart, SessionEnd). Its payloads carry cursor_version and
+# conversation_id, which Claude Code's never do. The cursor hooks handle Cursor; here a Stop
+# would clear the card they just posted (same conversation id), so step aside.
+if [ "$agent" = claude ] && printf '%s' "$input" | grep -Eq '"(cursor_version|conversation_id)"[[:space:]]*:'; then
+  exit 0
+fi
 
 # Gemini CLI, Copilot CLI and Grok wait for each hook (and Gemini and Copilot read its
 # stdout as JSON): hand the work to a background copy with no stdio and return at once.
 # The copy starts the lease search from this hook's parent.
-if { [ "$agent" = gemini ] || [ "$agent" = copilot ] || [ "$agent" = grok ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
+if { [ "$agent" = gemini ] || [ "$agent" = copilot ] || [ "$agent" = grok ] || [ "$agent" = cursor ] ||
+     [ "$agent" = cline ] || [ "$agent" = aider ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
   printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=${NY_HOOK_PPID:-$PPID} bash "$0" "$mode" "$agent" >/dev/null 2>&1 &
   exit 0
 fi
 
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
-           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS; do
+           NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
+           NEEDS_YOU_AIDER_EXPIRY_HOURS; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -158,6 +220,10 @@ json_str() {
 
 session_id=$(json_str session_id)
 [ -n "$session_id" ] || session_id=$(json_str sessionId)  # Copilot CLI
+[ -n "$session_id" ] || session_id=$(json_str conversation_id)  # Cursor
+[ -n "$session_id" ] || session_id=$(json_str taskId)  # Cline
+# A Cline subagent's run isn't one the person waits on.
+[ "$agent" = cline ] && [ -n "$(json_str parent_agent_id)" ] && exit 0
 
 host=$(hostname -s 2>/dev/null || hostname 2>/dev/null)
 host=$(sanitize "${host%%.*}")
@@ -303,10 +369,11 @@ import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENTS = ("codex", "gemini", "opencode", "copilot", "grok")
+AGENTS = ("codex", "gemini", "opencode", "copilot", "grok", "cursor", "cline", "aider")
 AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in AGENTS else "claude"
 AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
-            "copilot": "copilot-cli", "grok": "grok"}.get(AGENT, "claude-code")
+            "copilot": "copilot-cli", "grok": "grok", "cursor": "cursor", "cline": "cline",
+            "aider": "aider"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -315,6 +382,12 @@ if not isinstance(data, dict):
     data = {}
 if not isinstance(data.get("session_id"), str) and isinstance(data.get("sessionId"), str):
     data["session_id"] = data["sessionId"]  # Copilot CLI's camelCase payloads
+if not isinstance(data.get("cwd"), str):
+    # Cursor and Cline name the project only as their workspace roots (a Cursor user hook
+    # runs in ~/.cursor, so its cwd is no help).
+    _roots = data.get("workspace_roots") or data.get("workspaceRoots")
+    if isinstance(_roots, list) and _roots and isinstance(_roots[0], str):
+        data["cwd"] = _roots[0]
 
 
 def field(name):
@@ -368,7 +441,9 @@ def where_lines():
             tmux_target = ""
         if tmux_target:
             where.append("tmux `%s`" % tmux_target)
-    if (os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK_CLI")
+    if AGENT == "cursor":
+        where.append("Cursor")
+    elif (os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK_CLI")
             or os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"):
         where.append("VS Code")
     elif os.environ.get("SSH_CONNECTION") and not tmux_target:
@@ -517,10 +592,11 @@ def make_links():
         return links
     platform = os.environ.get("NEEDS_YOU_HOOK_PLATFORM") or sys.platform
     alias = os.environ.get("NEEDS_YOU_SSH_ALIAS", "")
+    editor, scheme = ("Cursor", "cursor") if AGENT == "cursor" else ("VS Code", "vscode")
     if platform == "darwin" and not os.environ.get("SSH_CONNECTION"):
-        links.append("VS Code=vscode://file" + quote(cwd))  # this is the Mac: the path exists there
+        links.append("%s=%s://file%s" % (editor, scheme, quote(cwd)))  # this is the Mac: the path exists there
     elif SAFE_NAME.match(alias):
-        links.append("VS Code=vscode://vscode-remote/ssh-remote+%s%s" % (alias, quote(cwd)))
+        links.append("%s=%s://vscode-remote/ssh-remote+%s%s" % (editor, scheme, alias, quote(cwd)))
     return links
 
 
@@ -532,10 +608,13 @@ def base_args(key, title, body, priority):
     # --opt=value: a title, body or project starting with "-" isn't taken for an option
     args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
              "--agent", AGENT_ID, "--project=" + project]
+    # Aider has no "the person answered" event: its card lasts an hour unless re-posted.
+    name, default = (("NEEDS_YOU_AIDER_EXPIRY_HOURS", 1.0) if AGENT == "aider"
+                     else ("NEEDS_YOU_AGENT_EXPIRY_HOURS", 48.0))
     try:
-        expiry = float(os.environ.get("NEEDS_YOU_AGENT_EXPIRY_HOURS") or 48)
+        expiry = float(os.environ.get(name) or default)
     except ValueError:
-        expiry = 48.0
+        expiry = default
     if expiry > 0:
         args += ["--expires-in", "%g" % expiry]
     return args
@@ -742,12 +821,51 @@ def copilot_card():
     return None
 
 
+def cursor_card():
+    """(kind, what, msg) for a Cursor stop hook, or None. Cursor has no hook for "waiting for
+    approval", so this is the only card: the agent's turn ended (or failed)."""
+    if event != "stop":
+        return None
+    status = field("status")
+    if status == "completed":
+        if not turn_cards():
+            return None
+        return "notify", "Cursor finished", "Cursor's agent finished its turn and is waiting for your next message."
+    if status == "error":
+        return "failure", "Cursor stopped on an error", "The agent's turn ended on an error; send a message to retry."
+    return None  # aborted: the person stopped it, so they are right there
+
+
+def cline_card():
+    """(kind, what, msg) for a Cline hook file (the event is its name), or None. Cline runs no
+    hook when it waits for an approval, so a finished task is the only waiting signal.
+    TaskComplete's payload holds the agent's final text: never in a card."""
+    ev = os.environ.get("NY_EVENT", "")
+    if ev == "TaskError":
+        return ("failure", "Cline stopped on an error",
+                "The task ended on an error and won't continue on its own; send a message to retry.")
+    if ev == "TaskComplete":
+        if not turn_cards():
+            return None
+        return "notify", "Cline finished", "Cline finished the task and is waiting for your next message."
+    return None
+
+
+def aider_card():
+    """Aider says only that it is waiting: for the next message or a yes/no question."""
+    if not turn_cards():
+        return None
+    return ("notify", "Aider is waiting for you",
+            "Aider replied and is waiting for you: an answer to its question, or your next message.")
+
+
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT in ("codex", "gemini", "opencode", "copilot", "grok"):
+    if AGENT in ("codex", "gemini", "opencode", "copilot", "grok", "cursor", "cline", "aider"):
         card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
-                "copilot": copilot_card, "grok": grok_card}[AGENT]()
+                "copilot": copilot_card, "grok": grok_card, "cursor": cursor_card,
+                "cline": cline_card, "aider": aider_card}[AGENT]()
         if card is None:
             return 3
         kind, what, msg = card
@@ -980,8 +1098,11 @@ case "$mode" in
       printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
       find "$state_dir" -name '.model-*' -mtime +7 -exec rm -f {} + 2>/dev/null
     fi
-    case "$(json_str source)" in
-      clear|compact|resume)
+    # Cline: a task starts or resumes (a new task has a new taskId): the finished cards of
+    # earlier tasks in the same Cline (the lease's process) no longer apply.
+    [ "$agent" = cline ] && resolve_marker "$marker"
+    case "$agent:$(json_str source)" in
+      *:clear|*:compact|*:resume|cline:*)
         # A new conversation in the same Claude process: cards from before it
         # (the old session id after /clear, a full context before compaction)
         # no longer apply. Find them by the lease's process.
@@ -1045,16 +1166,30 @@ case "$mode" in
         fi
         ;;
     esac
+    # The same for Cursor's stop, Cline's TaskComplete and Aider (one card per wait).
+    case "$agent:$(json_str hook_event_name)${NY_EVENT:-}" in
+      cursor:stop|cline:TaskComplete|aider:)
+        if own_item_open; then
+          log "notify $key -> skipped: the agent's own item for this session is open"
+          exit 0
+        fi
+        ;;
+    esac
     # `copilot -p` ends its turn, ends the session and exits within a moment: wait that
     # moment before a turn-end card (no notification type), so the lease below finds it gone.
     if [ "$agent" = copilot ] && [ -z "$(json_str notification_type)" ]; then
       sleep "${NY_COPILOT_TURN_WAIT:-2}"
     fi
+    # So do `cursor-agent -p` and a one-shot `cline "task"`.
+    if [ "$agent" = cursor ] || [ "$agent" = cline ]; then
+      sleep "${NY_TURN_WAIT:-2}"
+    fi
     # Take the lease now, before the post (run_py runs in a subshell, and the agent may exit
     # while the CLI posts). `opencode run` goes idle and exits at once: with the agent
     # already gone nobody is waiting, and a card without a lease would stay for 48 hours.
     lease
-    if { [ "$agent" = opencode ] || [ "$agent" = copilot ]; } && [ -z "$lease_pid" ]; then
+    if { [ "$agent" = opencode ] || [ "$agent" = copilot ] || [ "$agent" = cursor ] || [ "$agent" = cline ] ||
+         [ "$agent" = aider ]; } && [ -z "$lease_pid" ]; then
       log "notify $key -> skipped: $agent has exited"
       exit 0
     fi
