@@ -19,6 +19,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- `needs-you resolve` refuses an empty `--key`/`--id` (exit 2) instead of queueing a request the hub would refuse.
+
 - Docs: **the Mac's own hub doesn't replicate with server hubs**, though the README, the quickstart, Words and HUB.md said it did. Server hubs replicate only with each other, and invites made on the Mac list only the Mac's URL. [HUB.md](docs/HUB.md#with-the-macs-own-hub) now says how to use server hubs today (make sender invites on a server hub, and connect the Mac to it). Peering the Mac's hub is planned ([next-big-item.md](docs/roadmap/next-big-item.md)).
 - Docs: the README has a table of every supported agent and tool with its install flag, the guides cover `needs-you run` and the safety nets for cards whose sender went away, and the update guide no longer says the app needs a GitHub credential (the repo is public).
 - Agent hooks: **no card for a big tool call.** A permission prompt for a `Write` of a large file (over 128 KiB on Linux) posted nothing; the hook now reads any size. Bytes that aren't UTF-8 in a message no longer make the hub refuse the card.

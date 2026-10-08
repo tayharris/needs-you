@@ -394,18 +394,24 @@ class ConnectionLimit(HubTestCase):
 
     def test_limit_is_shared_by_every_bind(self):
         # Two binds (loopback and the tailnet IP) must not get the limit each: the descriptors
-        # it protects are the process's.
-        hub = self.make_hub("hub-a", bind="127.0.0.1,127.0.0.2", maintenance_seconds=0,
+        # it protects are the process's. ::1, not 127.0.0.2: macOS configures only 127.0.0.1.
+        try:
+            probe = socket.socket(socket.AF_INET6)
+            probe.bind(("::1", 0))
+            probe.close()
+        except OSError:
+            self.skipTest("no IPv6 loopback")
+        hub = self.make_hub("hub-a", bind="127.0.0.1,::1", maintenance_seconds=0,
                             max_connections=4, request_read_seconds=30)
         port = hub.port
         idle = []
         try:
-            for host in ("127.0.0.1", "127.0.0.1", "127.0.0.2", "127.0.0.2"):
+            for host in ("127.0.0.1", "127.0.0.1", "::1", "::1"):
                 s = socket.create_connection((host, port), timeout=5)
                 s.sendall(b"GET /v1/health HTTP/1.0\r\n")
                 idle.append(s)
             time.sleep(0.3)
-            for host in ("127.0.0.1", "127.0.0.2"):
+            for host in ("127.0.0.1", "::1"):
                 extra = socket.create_connection((host, port), timeout=5)
                 try:
                     self.assertEqual(extra.recv(100), b"")
