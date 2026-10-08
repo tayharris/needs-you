@@ -4,6 +4,18 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Security
+
+- **Hub: binding to all interfaces is refused in every spelling.** `--bind 0`, `0x0`, `::0`, `::ffff:0.0.0.0` and the like bound every interface without `--allow-any-interface`; they are refused like `0.0.0.0` and `::`.
+- **Hub: connections are capped.** At most `max_connections` (128, kept under the process's file descriptor limit) are served at once, across every bind. When the hub is full, connections open longer than `request_read_seconds` (10), such as a request trickled in a byte at a time or an answer the client stopped reading, are closed to make room. A reader's `/v1/stream` is never closed this way. Before, a few hundred idle connections could exhaust the descriptors (macOS gives apps 256), and the hub then spun on a CPU, answering nothing until they went away.
+- **Hub: peer requests never follow a redirect.** A peer URL that answered with a 3xx was sent the peer secret at the redirect's target, any host.
+- **Hub: replicated items follow the same text rules as posted ones.** An item from a peer whose title, body, key, step text, id or hub names break the posting rules (length, control characters) is now skipped and listed in the reply. Its links are checked label and all, and its `source` keeps only `host`, `agent` and `project`. Before, a link label or source field that wasn't text made the Mac app's whole poll fail.
+- **Mac app: hub requests never follow a redirect**, so the token never goes to another host. Hub URLs with a `user@` before the host (`https://hub-a.example.ts.net@evil.example`) are refused everywhere.
+- **Agent hooks:** free text that reaches a card (an API error message, a notification's text) has token-shaped strings redacted. A `session_id` inside a tool's arguments no longer takes over the card. Odd folder names and session ids no longer lose the card.
+- **Claude Code installer:** the `settings.json` backup is now private (0600) and is never written through a symlink a repo planted under its name, and the hook is copied in through a fresh temp file. A `--settings` directory with shell syntax in its path is refused.
+- **CLI:** config files are written through `mkstemp`, never a predictable temp name a repo could plant as a symlink (`uninstall-hooks` rewrites the current project's settings).
+- **MCP server:** a deeply nested line is a parse error instead of ending the server.
+
 ## [0.1.5] - 2026-10-08
 
 ### Added
