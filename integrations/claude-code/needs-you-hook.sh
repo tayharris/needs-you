@@ -21,6 +21,10 @@
 #   opencode opencode, through integrations/opencode/needs-you.js (a plugin that
 #            starts this hook with a small JSON object): PermissionRequest,
 #            Question and Stop (the session went idle) call `notify`.
+#   copilot  GitHub Copilot CLI (integrations/copilot/, ~/.copilot/hooks/):
+#            notification (permission_prompt, elicitation_dialog) and agentStop
+#            call `notify`. Its payload names the session `sessionId`. Copilot
+#            waits for most hooks, so like gemini the work runs in the background.
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -71,7 +75,7 @@
 #   NEEDS_YOU_ORCA_ENVIRONMENT  on a paired Orca server: the name the Mac's
 #                             Orca uses for it (`orca environment list`), so
 #                             the switch command gets --environment
-#   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode: 0 = no card when a turn ends,
+#   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode, Copilot: 0 = no card when a turn ends,
 #                             just approval prompts (default: on)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
@@ -85,6 +89,7 @@ case "${2:-}" in
   codex) agent=codex ;;
   gemini) agent=gemini ;;
   opencode) agent=opencode ;;
+  copilot) agent=copilot ;;
   *) agent=claude ;;
 esac
 
@@ -110,11 +115,11 @@ esac
 
 input=$(cat 2>/dev/null)
 
-# Gemini CLI waits for each hook (and reads its stdout and stderr as JSON): hand
-# the work to a background copy with no stdio and return at once. The copy
-# starts the lease search from this hook's parent.
-if [ "$agent" = gemini ] && [ -z "${NY_HOOK_BG:-}" ]; then
-  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=$PPID bash "$0" "$mode" gemini >/dev/null 2>&1 &
+# Gemini CLI and Copilot CLI wait for each hook (and read its stdout as JSON):
+# hand the work to a background copy with no stdio and return at once. The
+# copy starts the lease search from this hook's parent.
+if { [ "$agent" = gemini ] || [ "$agent" = copilot ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
+  printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=${NY_HOOK_PPID:-$PPID} bash "$0" "$mode" "$agent" >/dev/null 2>&1 &
   exit 0
 fi
 
@@ -143,6 +148,7 @@ json_str() {
 }
 
 session_id=$(json_str session_id)
+[ -n "$session_id" ] || session_id=$(json_str sessionId)  # Copilot CLI
 
 host=$(hostname -s 2>/dev/null || hostname 2>/dev/null)
 host=$(sanitize "${host%%.*}")
@@ -254,14 +260,18 @@ import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in ("codex", "gemini", "opencode") else "claude"
-AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode"}.get(AGENT, "claude-code")
+AGENTS = ("codex", "gemini", "opencode", "copilot")
+AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in AGENTS else "claude"
+AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
+            "copilot": "copilot-cli"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
     data = {}
 if not isinstance(data, dict):
     data = {}
+if not isinstance(data.get("session_id"), str) and isinstance(data.get("sessionId"), str):
+    data["session_id"] = data["sessionId"]  # Copilot CLI's camelCase payloads
 
 
 def field(name):
@@ -648,11 +658,35 @@ def opencode_card():
     return None
 
 
+def copilot_card():
+    """(kind, what, msg) for a Copilot CLI hook event, or None. A notification's message
+    can hold the whole command line or URL ("Run command: <cmd>", "Fetch URL: <url>"): the
+    card takes at most the program. agentStop has no notification_type."""
+    if ntype == "permission_prompt":
+        msg = field("message")
+        if msg.startswith("Run command: "):
+            word = command_word(msg[len("Run command: "):])
+            what = "Copilot wants to run %s" % word if word else "Copilot wants to run a command"
+        elif msg.startswith("Fetch URL: "):
+            what = "Copilot wants to fetch a page"
+        else:
+            what = "Copilot needs your approval"
+        return "permission", what, "Copilot is waiting for you to allow or deny it."
+    if ntype == "elicitation_dialog":
+        return "notify", "Copilot asked you a question", "Copilot is waiting for your answer."
+    if not ntype and "stopReason" in data:
+        if not turn_cards():
+            return None
+        return "notify", "Copilot is waiting for you", "Copilot finished its turn and is waiting for your next message."
+    return None
+
+
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT in ("codex", "gemini", "opencode"):
-        card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card}[AGENT]()
+    if AGENT in ("codex", "gemini", "opencode", "copilot"):
+        card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
+                "copilot": copilot_card}[AGENT]()
         if card is None:
             return 3
         kind, what, msg = card
@@ -930,21 +964,27 @@ case "$mode" in
     # skill), the generic "waiting for input" card would only repeat it. Permission prompts,
     # questions and errors still post: they are a different thing to act on.
     # The same wait in each agent: Claude's idle / needs-input notifications, and the "turn
-    # ended" card of Codex (Stop), Gemini (AfterAgent) and opencode (Stop: session idle).
+    # ended" card of Codex (Stop), Gemini (AfterAgent), opencode (Stop: session idle) and
+    # Copilot (agentStop: no event name or notification type).
     case "$agent:$(json_str notification_type):$(json_str hook_event_name)" in
-      claude:idle_prompt:*|claude:agent_needs_input:*|codex::Stop|opencode::Stop|gemini::AfterAgent)
+      claude:idle_prompt:*|claude:agent_needs_input:*|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
         if own_item_open; then
           log "notify $key -> skipped: the agent's own item for this session is open"
           exit 0
         fi
         ;;
     esac
+    # `copilot -p` ends its turn, ends the session and exits within a moment: wait that
+    # moment before a turn-end card (no notification type), so the lease below finds it gone.
+    if [ "$agent" = copilot ] && [ -z "$(json_str notification_type)" ]; then
+      sleep "${NY_COPILOT_TURN_WAIT:-2}"
+    fi
     # Take the lease now, before the post (run_py runs in a subshell, and the agent may exit
-    # while the CLI posts). `opencode run` goes idle and exits at once: with opencode
+    # while the CLI posts). `opencode run` goes idle and exits at once: with the agent
     # already gone nobody is waiting, and a card without a lease would stay for 48 hours.
     lease
-    if [ "$agent" = opencode ] && [ -z "$lease_pid" ]; then
-      log "notify $key -> skipped: opencode has exited"
+    if { [ "$agent" = opencode ] || [ "$agent" = copilot ]; } && [ -z "$lease_pid" ]; then
+      log "notify $key -> skipped: $agent has exited"
       exit 0
     fi
     # Build the item from the hook JSON and call the CLI with an argv list

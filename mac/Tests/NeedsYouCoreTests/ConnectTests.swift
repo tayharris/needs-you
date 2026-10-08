@@ -71,7 +71,7 @@ final class ConnectLinkTests: XCTestCase {
 
     func testInviteTexts() {
         let invite = InviteResponse(code: "c", joinURL: "http://mac.tail1.ts.net:8765/join/c", macURL: "needsyou://connect?x", expiresAt: nil)
-        XCTAssertEqual(invite.agentPrompt, "Set up needs-you alerts on this machine: read http://mac.tail1.ts.net:8765/join/c and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin.")
+        XCTAssertEqual(invite.agentPrompt, "Set up needs-you alerts on this machine: read http://mac.tail1.ts.net:8765/join/c and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user.")
         XCTAssertEqual(invite.shellOneLiner, "curl -fsSL http://mac.tail1.ts.net:8765/join/c/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts")
         // An older hub's short texts are replaced; a current hub's are used as sent.
         let old = InviteResponse(code: "c", joinURL: "http://mac.tail1.ts.net:8765/join/c/", macURL: nil, expiresAt: nil,
