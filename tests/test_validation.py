@@ -18,6 +18,14 @@ def link(url, label="L"):
     return {"label": label, "url": url}
 
 
+def opt(label, description=None):
+    return {"label": label} if description is None else {"label": label, "description": description}
+
+
+def q(text, *options):
+    return {"text": text, "options": list(options)}
+
+
 def step(text, **kw):
     d = {"text": text}
     d.update(kw)
@@ -109,6 +117,38 @@ class ValidateItemInput(unittest.TestCase):
          "steps[0].link.label is required"),
         ("step link url too long", with_(steps=[step("a", link=link("https://a/" + "x" * 2000))]),
          "longer than 2000"),
+        # question (ADR 0009): what the agent asked, read-only
+        ("question null", with_(question=None), None),
+        ("question ok", with_(question={"id": "toolu_1", "items": [q("Which?", opt("A"), opt("B", "why"))]}), None),
+        ("question text only", with_(question={"items": [{"text": "Name it?"}]}), None),
+        ("question not object", with_(question=["x"]), "question must be an object"),
+        ("question no items", with_(question={"items": []}), "question.items must be a list"),
+        ("question items missing", with_(question={"id": "x"}), "question.items must be a list"),
+        ("4 questions ok", with_(question={"items": [q("q%d" % i) for i in range(4)]}), None),
+        ("5 questions", with_(question={"items": [q("q%d" % i) for i in range(5)]}), "at most 4 questions"),
+        ("question item not object", with_(question={"items": ["Which?"]}), "question.items[0] must be an object"),
+        ("question text missing", with_(question={"items": [{"header": "H"}]}), "question.items[0].text is required"),
+        ("question text 500 ok", with_(question={"items": [q("x" * 500)]}), None),
+        ("question text 501", with_(question={"items": [q("x" * 501)]}), "question.items[0].text is longer than 500"),
+        ("question text newlines ok", with_(question={"items": [q("a\nb")]}), None),
+        ("question text bidi", with_(question={"items": [q("a\u202eb")]}), "control characters"),
+        ("question header 31", with_(question={"items": [dict(q("a"), header="h" * 31)]}),
+         "question.items[0].header is longer than 30"),
+        ("question header newline", with_(question={"items": [dict(q("a"), header="a\nb")]}), "control characters"),
+        ("question id 201", with_(question={"id": "i" * 201, "items": [q("a")]}), "question.id is longer than 200"),
+        ("8 options ok", with_(question={"items": [q("a", *[opt("o%d" % i) for i in range(8)])]}), None),
+        ("9 options", with_(question={"items": [q("a", *[opt("o%d" % i) for i in range(9)])]}), "at most 8 options"),
+        ("options not list", with_(question={"items": [dict(q("a"), options="A,B")]}),
+         "question.items[0].options must be a list"),
+        ("option not object", with_(question={"items": [dict(q("a"), options=["A"])]}),
+         "question.items[0].options[0] must be an object"),
+        ("option label missing", with_(question={"items": [dict(q("a"), options=[{"description": "d"}])]}),
+         "question.items[0].options[0].label is required"),
+        ("option label 81", with_(question={"items": [q("a", opt("l" * 81))]}), "label is longer than 80"),
+        ("option description 201", with_(question={"items": [q("a", opt("l", "d" * 201))]}),
+         "description is longer than 200"),
+        ("multi_select not bool", with_(question={"items": [dict(q("a"), multi_select="yes")]}),
+         "question.items[0].multi_select must be true or false"),
         # urlsplit raises on an unbalanced '[' in the host: a 400, never a 500
         ("link unbalanced bracket", with_(links=[link("https://[x/y")]), "links[0].url"),
         ("step link unbalanced bracket", with_(steps=[step("a", link=link("vscode://[::1"))]),

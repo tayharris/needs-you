@@ -15,7 +15,7 @@ import sys
 import tempfile
 import unittest
 
-from hook_case import fixture, posted_item, step_texts
+from hook_case import choice_texts, fixture, has_opt, posted_item, step_texts
 from support import CLI, ROOT, hubmod
 
 BASH = shutil.which("bash") or "/bin/bash"
@@ -160,10 +160,17 @@ class PermissionTests(HookHarness):
         self.assertEqual(self.opt(argv, "--title"),
                          "Claude asks \u201cWhich database should we use?\u201d and 1 more: my-repo")
         self.assertTrue(self.opt(argv, "--body").startswith(
-            "**Database** \u00b7 choose one\nWhich database should we use?\n\n"
-            "**Features** \u00b7 choose any\nWhich features?\n\n"
-            "Answer in Claude; the choices below are what it offered.\n\n`"), self.opt(argv, "--body"))
-        self.assertEqual(step_texts(argv), [
+            "**Database** \u00b7 choose one\nWhich database should we use?\n"
+            "- Postgres \u2014 Relational, robust\n- SQLite \u2014 Embedded, simple\n\n"
+            "**Features** \u00b7 choose any\nWhich features?\n"
+            "- Auth \u2014 Login\n- Search \u2014 Full text\n- Export \u2014 CSV\n\n"
+            "Answer in Claude.\n\n`"), self.opt(argv, "--body"))
+        q = posted_item(argv)["question"]
+        self.assertNotIn("id", q)  # Claude's PermissionRequest has no tool_use_id
+        self.assertEqual([(i["header"], i["multi_select"]) for i in q["items"]],
+                         [("Database", False), ("Features", True)])
+        self.assertFalse(has_opt(argv, "--steps-json"))  # the choices travel as the question
+        self.assertEqual(choice_texts(argv), [
             "Database: Postgres \u2014 Relational, robust", "Database: SQLite \u2014 Embedded, simple",
             "Features: Auth \u2014 Login", "Features: Search \u2014 Full text", "Features: Export \u2014 CSV"])
         # the permission_prompt notification that follows ~6 s later keeps this card
@@ -172,22 +179,53 @@ class PermissionTests(HookHarness):
                                  "message": "Claude needs your permission"})
         self.assertEqual(len(self.calls()), n)
 
+    def old_cli(self):
+        """A fake CLI from before --question-json: it refuses the flag (argparse, exit 2)."""
+        path = os.path.join(self.home, "old-needs-you")
+        with open(path, "w") as fh:
+            fh.write("#!/usr/bin/env python3\nimport json, os, sys\n"
+                     "with open(os.environ['FAKE_CLI_LOG'], 'a') as fh:\n"
+                     "    fh.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                     "sys.exit(2 if any(a.startswith('--question-json') for a in sys.argv) else 0)\n")
+        os.chmod(path, 0o755)
+        return path
+
+    def test_old_cli_gets_the_choices_as_steps(self):
+        data = fixture("claude-ask-user-question.json")
+        data.update(session_id="sess-1234-abcd", cwd=self.cwd)
+        self.run_hook("notify", data, NEEDS_YOU_BIN=self.old_cli())
+        first, argv = self.calls()[-2:]
+        self.assertTrue(has_opt(first, "--question-json"))
+        self.assertFalse(has_opt(argv, "--question-json"))
+        self.assertEqual(step_texts(argv), [
+            "Database: Postgres \u2014 Relational, robust", "Database: SQLite \u2014 Embedded, simple",
+            "Features: Auth \u2014 Login", "Features: Search \u2014 Full text", "Features: Export \u2014 CSV"])
+        self.assertIn("Answer in Claude; the choices below are what it offered.", self.opt(argv, "--body"))
+        self.assertNotIn("- Postgres", self.opt(argv, "--body"))
+        self.assertEqual(self.marker()["kind"], "permission")
+
     def test_single_question_has_no_header_prefix(self):
         argv = self.permission("AskUserQuestion", {"questions": [{
             "question": "Ship it?", "header": "Ship", "multiSelect": False,
             "options": [{"label": "Yes", "description": "Now"}, {"label": "No", "description": ""}]}]})
         self.assertEqual(self.opt(argv, "--title"), "Claude asks \u201cShip it?\u201d: my-repo")
-        self.assertEqual(step_texts(argv), ["Yes \u2014 Now", "No"])
+        self.assertEqual(choice_texts(argv), ["Yes \u2014 Now", "No"])
 
     def test_question_limits(self):
         # 4 questions of 4 options (Claude's maximum), long text everywhere: within the hub's
-        # limits, every question keeps some choices, and the last step counts the rest.
+        # limits as a question field, and as steps for a CLI that refuses the field, where every
+        # question keeps some choices and the last step counts the rest.
         long = "word " * 300
         qs = [{"question": "Q%d %s" % (i, long), "header": "H%d %s" % (i, long), "multiSelect": i % 2 == 1,
                "options": [{"label": "L%d%d %s" % (i, j, long), "description": "D %s" % long} for j in range(4)]}
               for i in range(4)]
         argv = self.permission("AskUserQuestion", {"questions": qs})
         item = posted_item(argv)  # raises if the hub would refuse it
+        self.assertEqual([len(i["options"]) for i in item["question"]["items"]], [4, 4, 4, 4])
+        self.assertLessEqual(len(item["body"]), 2000)
+        self.assertIn("Session `sess-123`", item["body"])
+        argv = self.permission("AskUserQuestion", {"questions": qs}, NEEDS_YOU_BIN=self.old_cli())
+        item = posted_item(argv)
         self.assertLessEqual(len(item["title"]), 100)
         self.assertTrue(item["title"].startswith("Claude asks \u201cQ0 word"))
         self.assertTrue(item["title"].endswith("\u201d and 3 more: my-repo"), item["title"])

@@ -18,7 +18,7 @@ import tempfile
 import time
 import unittest
 
-from hook_case import fixture, step_texts
+from hook_case import fixture, choice_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -125,9 +125,11 @@ class CodexHook(unittest.TestCase):
         argv = self.calls()[-1]
         self.assertEqual(opt(argv, "--title"), "Codex asks \u201cWhich database should the service use?\u201d: my-repo")
         self.assertTrue(opt(argv, "--body").startswith(
-            "**Database** \u00b7 choose one\nWhich database should the service use?\n\n"
-            "Answer in Codex; the choices below are what it offered."))
-        self.assertEqual(step_texts(argv), ["Postgres (Recommended) \u2014 Mature, already used by the team.",
+            "**Database** \u00b7 choose one\nWhich database should the service use?\n"
+            "- Postgres (Recommended) \u2014 Mature, already used by the team.\n"
+            "- SQLite \u2014 Zero ops, single file.\n\nAnswer in Codex."))
+        self.assertEqual(json.loads(opt(argv, "--question-json"))["id"], "call_q1")
+        self.assertEqual(choice_texts(argv), ["Postgres (Recommended) \u2014 Mature, already used by the team.",
                                             "SQLite \u2014 Zero ops, single file."])
         # outside Plan mode Codex refuses the call after PreToolUse: no PostToolUse, only Stop.
         # The question card goes, and the turn-end card takes the key.

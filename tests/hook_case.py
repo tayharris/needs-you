@@ -123,8 +123,22 @@ def posted_item(argv):
     item = {"title": opt(argv, "--title"), "body": opt(argv, "--body"), "kind": "needs"}
     if has_opt(argv, "--steps-json"):
         item["steps"] = json.loads(opt(argv, "--steps-json"))
+    if has_opt(argv, "--question-json"):
+        item["question"] = json.loads(opt(argv, "--question-json"))
     return hubmod.validate_item_input(item)
 
 
 def step_texts(argv):
     return [s["text"] for s in posted_item(argv)["steps"]]
+
+
+def choice_texts(argv):
+    """A question card's choices as "Header: Label — description" (the header only when
+    there are several questions), from its `question` field as the hub would store it."""
+    q = posted_item(argv)["question"]
+    out = []
+    for item in q["items"] if q else []:
+        prefix = item["header"] + ": " if len(q["items"]) > 1 and item["header"] else ""
+        for o in item["options"]:
+            out.append(prefix + o["label"] + (" — " + o["description"] if o["description"] else ""))
+    return out

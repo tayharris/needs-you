@@ -17,7 +17,7 @@ import tempfile
 import time
 import unittest
 
-from hook_case import fixture, step_texts
+from hook_case import fixture, choice_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -130,7 +130,7 @@ class GeminiHook(unittest.TestCase):
         self.assertEqual(opt(argv, "--title"),
                          "Gemini asks \u201cWhich test runner should the new package use?\u201d and 1 more: my-repo")
         self.assertIn("**Publish** \u00b7 choose one\nPublish it to npm now?", opt(argv, "--body"))
-        self.assertEqual(step_texts(argv), ["Tests: Vitest \u2014 Same as the other packages",
+        self.assertEqual(choice_texts(argv), ["Tests: Vitest \u2014 Same as the other packages",
                                             "Tests: Jest \u2014 What the template ships", "Publish: Yes", "Publish: No"])
         self.wait_marker()
         self.permission({"type": "ask_user", "title": "Ask User"}, 1)

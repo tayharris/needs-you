@@ -697,7 +697,17 @@ def base_args(key, title, body, priority):
     return args
 
 
-def post(args, links, steps=None):
+def post(args, links, steps=None, asked=None, steps_body=None):
+    """Post the card. With `asked` (a question card): with its `question` field, and if the
+    CLI or hub refuses that (an older one), again with the choices as steps and `steps_body`."""
+    if asked is not None and asked.question:
+        rc = post(args + ["--question-json=" + json.dumps(asked.question, ensure_ascii=False)], links)
+        if rc != 2:
+            return rc
+        args = [("--body=" + (steps_body or "")[:MAX_BODY]) if a.startswith("--body=") else a for a in args]
+        steps = asked.steps
+    elif asked is not None:
+        steps = asked.steps
     if steps:
         args = args + ["--steps-json=" + json.dumps(steps[:MAX_STEPS], ensure_ascii=False)]
 
@@ -773,6 +783,9 @@ def tool_label(tool):
 # NEEDS_YOU_AGENT_QUESTIONS=0 keeps the old cards ("<Agent> asked you a question", no text).
 MAX_TITLE, MAX_BODY, MAX_STEPS, MAX_STEP = 100, 2000, 10, 200  # the hub's limits
 QUESTION_BUDGET = 1200  # of the body, for the question text: the "where" lines follow it
+# The hub's limits for the `question` field (docs/API.md)
+MAX_QUESTIONS, MAX_OPTIONS = 4, 8
+MAX_QUESTION_HEADER, MAX_QUESTION_TEXT, MAX_OPTION_LABEL = 30, 500, 80
 _BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f­؜᠎​-‏ -‮"
                         "⁠-⁩﻿]")
 _SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
@@ -887,8 +900,42 @@ def share(counts, budget):
     return taken
 
 
-def question_card(name, questions):
-    """(what, msg, steps) for a card about `questions`, or None. `name` is the agent ("Claude")."""
+class Asked(object):
+    """A question card's structured part: the item's `question` field (docs/API.md), and for a
+    CLI or hub that refuses it, the choices as steps with the body that goes with them."""
+
+    def __init__(self, question, steps, steps_msg):
+        self.question, self.steps, self.steps_msg = question, steps, steps_msg
+
+
+def question_field(questions, qid=""):
+    """The `question` field for `questions` (the hub's limits: 4 questions, 8 options), or None."""
+    items = []
+    for header, text, opts, multi in questions:
+        t = text_block(text, MAX_QUESTION_TEXT) or one_line(header, MAX_QUESTION_TEXT)
+        if not t or len(items) == MAX_QUESTIONS:
+            continue
+        item = {"text": t, "multi_select": bool(multi), "options": []}
+        h = one_line(header, MAX_QUESTION_HEADER)
+        if h:
+            item["header"] = h
+        for label, desc in opts:
+            lb = one_line(label, MAX_OPTION_LABEL)
+            if lb and len(item["options"]) < MAX_OPTIONS:
+                item["options"].append({"label": lb, "description": one_line(desc, MAX_STEP)})
+        items.append(item)
+    if not items:
+        return None
+    out = {"items": items}
+    if one_line(qid, 200):
+        out["id"] = one_line(qid, 200)
+    return out
+
+
+def question_card(name, questions, qid=""):
+    """(what, msg, Asked) for a card about `questions`, or None. `name` is the agent
+    ("Claude"). The body lists each question's choices (for clients that don't show the
+    `question` field); the steps form is only for a CLI or hub that refuses the field."""
     if not questions:
         return None
     multi_q = len(questions) > 1
@@ -910,10 +957,28 @@ def question_card(name, questions):
         parts.append("\n".join(x for x in (head, text_block(text, per_q)) if x))
     if len(questions) > 8:
         parts.append("+%d more questions" % (len(questions) - 8))
-    parts.append("Answer in %s; the choices below are what it offered." % name
-                 if any(q[2] for q in questions) else "Answer in %s." % name)
-    msg = clamp("\n\n".join(p for p in parts if p), QUESTION_BUDGET + 200)
-    return what, msg, choice_steps(name, questions)
+    tail = "Answer in %s." % name
+    steps_msg = clamp("\n\n".join([p for p in parts if p] + [
+        "Answer in %s; the choices below are what it offered." % name if any(q[2] for q in questions) else tail]),
+        QUESTION_BUDGET + 200)
+    # The body with each question's choices listed under it, as far as the budget goes.
+    room = max(120, (QUESTION_BUDGET + 200) // min(len(questions), 8)) - 10
+    listed = []
+    for part, (_, _, opts, _) in zip(parts, questions[:8]):
+        lines = [part] if part else []
+        size = len(part)
+        for n, (label, desc) in enumerate(opts):
+            d = one_line(desc, 120)
+            line = clamp("- " + one_line(label, MAX_OPTION_LABEL) + (" \u2014 " + d if d else ""), 160)
+            if size + len(line) + 1 > room:
+                lines.append("- +%d more" % (len(opts) - n))
+                break
+            lines.append(line)
+            size += len(line) + 1
+        listed.append("\n".join(lines))
+    listed += parts[len(listed):]  # "+N more questions"
+    msg = clamp("\n\n".join([p for p in listed if p] + [tail]), QUESTION_BUDGET + 400)
+    return what, msg, Asked(question_field(questions, qid), choice_steps(name, questions), steps_msg)
 
 
 def choice_steps(name, questions):
@@ -974,7 +1039,8 @@ def codex_card():
         if field("tool_name") != "request_user_input":
             return None
         ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
-        asked = question_card("Codex", questions_from(ti.get("questions"))) if questions_on() else None
+        asked = (question_card("Codex", questions_from(ti.get("questions")), field("tool_use_id"))
+                 if questions_on() else None)
         if asked:
             return ("question",) + asked
         return "question", "Codex asked you a question", "Codex is waiting for your answer."
@@ -1055,7 +1121,8 @@ def opencode_card():
             what = "opencode needs permission for %s" % tool_label(perm)
         return "permission", what, "opencode is waiting for you to allow or deny it."
     if event == "Question":
-        asked = question_card("opencode", questions_from(data.get("questions"))) if questions_on() else None
+        asked = (question_card("opencode", questions_from(data.get("questions")), field("question_id"))
+                 if questions_on() else None)
         if asked:
             return ("question",) + asked
         return "question", "opencode asked you a question", "opencode is waiting for your answer."
@@ -1121,7 +1188,8 @@ def kimi_card():
     if event == "PreToolUse":
         # Kimi approves AskUserQuestion by itself, so there is no PermissionRequest for it.
         if tool == "AskUserQuestion":
-            asked = question_card("Kimi", questions_from(ti.get("questions"))) if questions_on() else None
+            asked = (question_card("Kimi", questions_from(ti.get("questions")), field("tool_call_id"))
+                     if questions_on() else None)
             if asked:
                 return ("question",) + asked
             return "question", "Kimi asked you a question", "Kimi is waiting for your answer."
@@ -1208,6 +1276,7 @@ def notify():
     priority = agent_priority()
     kind = "notify"
     steps = []
+    asked = None
     if AGENT in ("codex", "gemini", "opencode", "copilot", "grok", "kimi", "cursor", "cline", "aider"):
         card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
                 "copilot": copilot_card, "grok": grok_card, "kimi": kimi_card, "cursor": cursor_card,
@@ -1216,6 +1285,8 @@ def notify():
             return 3
         kind, what, msg = card[:3]
         steps = card[3] if len(card) > 3 else []
+        if isinstance(steps, Asked):
+            asked, steps = steps, []
     elif event == "PermissionRequest":
         if data.get("requires_user_approval") is False:
             return 3
@@ -1225,8 +1296,8 @@ def notify():
         if tool == "ExitPlanMode":
             what, msg = plan_card("Claude", ti.get("plan"))
         elif tool == "AskUserQuestion":
-            asked = question_card("Claude", questions_from(ti.get("questions"))) if questions_on() else None
-            what, msg, steps = asked or ("Claude asked you a question", "Claude is waiting for your answer.", [])
+            card = question_card("Claude", questions_from(ti.get("questions"))) if questions_on() else None
+            what, msg, asked = card or ("Claude asked you a question", "Claude is waiting for your answer.", None)
         elif tool in ("Bash", "PowerShell"):
             word = command_word(ti.get("command"))
             what = "Claude wants to run %s" % word if word else "Claude wants to run a command"
@@ -1272,7 +1343,8 @@ def notify():
             kind = "failure"
     title = "%s: %s" % (what, project)
     body = "\n\n".join(([msg] if msg else []) + where_lines())
-    rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links(), steps)
+    steps_body = "\n\n".join(([asked.steps_msg] if asked else []) + where_lines())
+    rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links(), steps, asked, steps_body)
     if rc == 0:
         sys.stdout.write(kind)
     return rc

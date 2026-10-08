@@ -486,6 +486,27 @@ class Steps(CliTestCase):
                          urls=[a.url], token=sender)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_question_end_to_end(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        question = {"id": "toolu_1", "items": [{"header": "DB", "text": "Which?",
+                                                 "options": [{"label": "Postgres", "description": "Durable"}]}]}
+        path = os.path.join(self.tmp, "question.json")
+        with open(path, "w") as fh:
+            json.dump(question, fh)
+        r = self.run_cli("add", "--key", "q", "--title", "Claude asks", "--question-json", "@" + path,
+                         urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        want = {"id": "toolu_1", "items": [{"header": "DB", "text": "Which?", "multi_select": False,
+                                            "options": [{"label": "Postgres", "description": "Durable"}]}]}
+        self.assertEqual(self.items(a, reader, "open")[0]["question"], want)
+        for bad in ("{not json", '["a list"]', '{"items": []}', "@" + os.path.join(self.tmp, "missing.json")):
+            with self.subTest(bad):
+                r = self.run_cli("add", "--key", "k", "--title", "t", "--question-json", bad,
+                                 urls=[a.url], token=sender)
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertEqual(self.queued(), [])
+
     def test_bad_steps_exit_2_and_are_not_queued(self):
         a = self.make_hub("hub-a")
         sender, _ = self.tokens(a)

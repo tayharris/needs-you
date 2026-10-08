@@ -63,12 +63,12 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <tr><td>Approval for an edit</td><td><strong>Kimi wants to edit config.py: my-repo</strong></td></tr>
 <tr><td>Approval to fetch a page</td><td><strong>Kimi wants to fetch a page: my-repo</strong></td></tr>
 <tr><td>A plan to approve</td><td><strong>Kimi wants approval for a plan: my-repo</strong>, the plan's first lines, its options as steps</td></tr>
-<tr><td>A question for you</td><td><strong>Kimi asks “Which database should the service use?”: my-repo</strong>, each choice a step</td></tr>
+<tr><td>A question for you</td><td><strong>Kimi asks “Which database should the service use?”: my-repo</strong>, its choices listed</td></tr>
 <tr><td>Turn finished, waiting for you</td><td><strong>Kimi is waiting for you: my-repo</strong></td></tr>
 <tr><td>The turn failed on an error</td><td><strong>Kimi stopped on an error: my-repo</strong></td></tr>
 </tbody>
 </table></div>
-<p>One card per session, updated in place. Command lines, prompts and tool output aren't sent: an approval card names at most the program or a file's name. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Kimi; ticking a step on the Mac answers nothing. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval, question and error cards. A one-shot <code>kimi -p</code> gets no "waiting" card, because Kimi has already exited.</p>
+<p>One card per session, updated in place. Command lines, prompts and tool output aren't sent: an approval card names at most the program or a file's name. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's <code>question</code> field for the Mac. Answer in Kimi. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval, question and error cards. A one-shot <code>kimi -p</code> gets no "waiting" card, because Kimi has already exited.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "kimi hooks" line should be OK
 kimi doctor         # Kimi refuses a config with any key it doesn't know

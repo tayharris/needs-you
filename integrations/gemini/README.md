@@ -30,7 +30,7 @@ The installer backs up `settings.json`, replaces only entries whose command cont
 | Gemini event | Hook mode | Action |
 |---|---|---|
 | `Notification`, matcher `ToolPermission` | `notify gemini` | `needs-you add`: **Gemini wants to run npm** (`details.rootCommand`), **Gemini wants to edit app.py** (`details.fileName`), **Gemini needs permission for github create_pr** (MCP), **Gemini wants to fetch a page**, **Gemini wants approval for a plan**, else **Gemini needs your approval**. Nothing for `ask_user` (its confirmation has no question): `BeforeTool` posts that one |
-| `BeforeTool`, matcher `^ask_user$` | `notify gemini` | `needs-you add`: **Gemini asks “<question>”**, the questions in the body and each choice as a read-only step (a yes/no question: Yes and No) |
+| `BeforeTool`, matcher `^ask_user$` | `notify gemini` | `needs-you add`: **Gemini asks “<question>”**, the questions and their choices in the body and as the item's `question` (a yes/no question: Yes and No) |
 | `AfterAgent` | `notify gemini` | resolves a question card the turn ended under, then `needs-you add`: **Gemini is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval cards |
 | `BeforeAgent`, `AfterTool` | `resolve gemini` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`) | `start gemini` | resolves the cards this Gemini process posted before |

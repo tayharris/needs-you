@@ -4,6 +4,7 @@
   needs-you add --key KEY --title TITLE [--context work|personal] [--priority urgent|normal|low]
                 [--body TEXT | --body-file PATH|-] [--link "Label=https://..."]...
                 [--step "Text" | --step "Text=https://..."]... [--steps-json JSON|@PATH]
+                [--question-json JSON|@PATH]
                 [--agent NAME] [--project NAME] [--host NAME] [--kind needs|done|info]
                 [--expires-in HOURS]
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
@@ -73,6 +74,11 @@ chars, limited markdown). `--step "Text=URL"` gives the step a link button label
 so "Set FOO=bar" stays plain text. `--steps-json` takes the full form,
 '[{"text": "...", "link": {"label": "...", "url": "..."}, "done": false}]', inline or
 from a file (@PATH); --step entries are appended after it.
+
+A question is what an agent asked the person and the choices it offered, shown read-only
+(the person answers in the agent): `--question-json '{"id": "...", "items": [{"header":
+"...", "text": "...", "options": [{"label": "...", "description": "..."}], "multi_select":
+false}]}'` (1-4 items, at most 8 options each; docs/API.md), inline or from a file (@PATH).
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
@@ -1494,6 +1500,16 @@ def parse_step(raw: str) -> Dict[str, Any]:
     return {"text": raw[:m.start()].strip(), "link": {"label": "Open", "url": raw[m.end():].strip()}}
 
 
+def parse_question_json(raw: str) -> Dict[str, Any]:
+    if raw.startswith("@"):
+        with open(raw[1:], "r", encoding="utf-8") as fh:
+            raw = fh.read()
+    question = json.loads(raw)
+    if not isinstance(question, dict):
+        raise ValueError("must be a JSON object")
+    return question
+
+
 def parse_steps_json(raw: str) -> List[Any]:
     if raw.startswith("@"):
         with open(raw[1:], "r", encoding="utf-8") as fh:
@@ -1521,6 +1537,8 @@ def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, An
     steps = list(args.steps_json or []) + list(args.step or [])
     if steps:
         item["steps"] = steps
+    if getattr(args, "question_json", None):
+        item["question"] = args.question_json
     source = {"host": args.host or cfg.host}
     if args.agent:
         source["agent"] = args.agent
@@ -1567,6 +1585,9 @@ def _main(argv: Optional[List[str]] = None) -> int:
                         help="repeatable, at most 6")
         sp.add_argument("--step", action="append", type=parse_step, metavar="TEXT[=URL]",
                         help="a step the person has to do, in order; repeatable, at most %d" % MAX_STEPS)
+        sp.add_argument("--question-json", metavar="JSON|@PATH",
+                        help='what an agent asked, read-only: {"items": [{"text", "options": [{"label", '
+                             '"description"}], "multi_select"}]}')
         sp.add_argument("--steps-json", metavar="JSON|@PATH",
                         help='steps as a JSON array of {"text", "link": {"label", "url"}, "done"}')
         sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")
@@ -1681,6 +1702,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
             args.steps_json = parse_steps_json(args.steps_json)
         except (OSError, ValueError) as e:
             warn("--steps-json: %s" % e)
+            return 2
+    if getattr(args, "question_json", None):
+        try:
+            args.question_json = parse_question_json(args.question_json)
+        except (OSError, ValueError) as e:
+            warn("--question-json: %s" % e)
             return 2
     if len(args.steps_json or []) + len(args.step or []) > MAX_STEPS:
         warn("at most %d steps" % MAX_STEPS)

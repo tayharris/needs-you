@@ -72,7 +72,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Permission prompt for a command | **Claude wants to run git: my-repo** |
 | Permission prompt for an edit | **Claude wants to edit config.yml: my-repo** |
 | Plan ready (plan mode, `ExitPlanMode`) | **Claude wants approval for a plan: my-repo**, the plan's first lines in the body |
-| Claude asks you a question (`AskUserQuestion`) | **Claude asks “Which database should we use?”: my-repo**, each choice a step (`and 1 more` for two questions) |
+| Claude asks you a question (`AskUserQuestion`) | **Claude asks “Which database should we use?”: my-repo**, its choices listed (`and 1 more` for two questions) |
 | Any other permission prompt | **Claude needs permission for <tool>: my-repo** (MCP tools as `<server> <tool>`) |
 | Idle, waiting for your input | **Claude is waiting for you: my-repo** |
 | MCP server asks for input / a sign-in | **Claude needs an answer: my-repo** / **Claude needs you to sign in: my-repo** |
@@ -81,7 +81,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Turn ended on an API error | **Claude hit a rate limit**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
 | Context at 80% or more (low priority, a card of its own) | **Claude's context is 85% full: my-repo**, suggesting `/compact` or `/clear` |
 
-A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Claude Code (the terminal, or the Terminal button); ticking a step on the Mac answers nothing. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). A question with several parts is one card: each part under its header, its choices prefixed with the header, at most 10 steps (`+N more choices` past that).
+A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in Claude Code (the terminal, or the Terminal button). `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). A question with several parts is one card, each part under its header.
 
 `my-repo` is the basename of the project directory. Cards are kind `needs`, priority `normal` (the context card `low`), context `work` unless you set otherwise, and carry `--agent claude-code`.
 

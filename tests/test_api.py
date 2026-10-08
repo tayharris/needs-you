@@ -156,6 +156,40 @@ class Upsert(ApiTestCase):
         _, e = self.post({"key": "plain", "title": "t"})
         self.assertEqual(e["steps"], [])
 
+    def test_question(self):
+        question = {"id": "toolu_01", "future": 1, "items": [
+            {"header": "Database", "text": "Which database?", "multi_select": False, "x": 2,
+             "options": [{"label": "Postgres", "description": "Durable", "y": 3}, {"label": "SQLite"}]},
+            {"text": "Which extras?", "multi_select": True, "options": [{"label": "Metrics"}]}]}
+        s1, a = self.post({"key": "q", "title": "Claude asks", "question": question})
+        self.assertEqual(s1, 201)
+        want = {"id": "toolu_01", "items": [
+            {"header": "Database", "text": "Which database?", "multi_select": False,
+             "options": [{"label": "Postgres", "description": "Durable"}, {"label": "SQLite", "description": ""}]},
+            {"header": "", "text": "Which extras?", "multi_select": True,
+             "options": [{"label": "Metrics", "description": ""}]}]}
+        self.assertEqual(a["question"], want)
+        _, got = request("GET", self.base + "/v1/items/" + a["id"], self.reader)
+        self.assertEqual(got["question"], want)
+        _, listed = self.list()
+        self.assertEqual([i["question"] for i in listed["items"] if i["key"] == "q"], [want])
+        # the same question again: not a visible change; a different one is
+        self.clock.advance(60)
+        _, b = self.post({"key": "q", "title": "Claude asks", "question": question})
+        self.assertFalse(b["changed"])
+        self.clock.advance(60)
+        question["items"][0]["options"][1]["label"] = "Redis"
+        _, c = self.post({"key": "q", "title": "Claude asks", "question": question})
+        self.assertTrue(c["changed"])
+        # a re-post without one clears it (a change); items without one carry null
+        self.clock.advance(60)
+        _, d = self.post({"key": "q", "title": "Claude asks"})
+        self.assertIsNone(d["question"])
+        self.assertTrue(d["changed"])
+        status, err = self.post({"key": "q2", "title": "t", "question": {"items": [{"text": ""}]}})
+        self.assertEqual(status, 400)
+        self.assertIn("question.items[0].text", json.dumps(err))
+
     def test_updated_at_strictly_increases_even_with_a_frozen_clock(self):
         _, a = self.post({"key": "k", "title": "t"})
         _, b = self.post({"key": "k", "title": "t"})

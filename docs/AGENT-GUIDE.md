@@ -168,6 +168,10 @@ needs-you add --key "work:billing:rotate-stripe-key" --priority urgent \
   whole list, and a change to the steps re-animates the card.
 - The person's ticks stay on their Mac; you never hear about them. Resolve when the work is
   actually done.
+- Choices you are waiting on the person to pick between are a question, not steps:
+  `--question-json '{"items": [{"text": "Deploy now or wait?", "options": [{"label": "Now"},
+  {"label": "Wait for the migration"}]}]}'` ([API.md](API.md)). Say in the body where they
+  answer; there is no answer path back to you yet.
 
 ### When something seems wrong
 

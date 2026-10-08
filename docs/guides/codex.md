@@ -40,12 +40,12 @@ Sessions in an Orca terminal are on automatically; `NEEDS_YOU_AGENT_ALERTS=0` tu
 | Approval prompt for a shell command | **Codex wants to run make: my-repo** |
 | Approval prompt for an edit | **Codex wants to edit config.py: my-repo** |
 | Approval prompt for an MCP tool | **Codex needs permission for linear create_issue: my-repo** |
-| A question in Plan mode (`request_user_input`) | **Codex asks “Which database should the service use?”: my-repo**, each choice a step |
+| A question in Plan mode (`request_user_input`) | **Codex asks “Which database should the service use?”: my-repo**, its choices listed |
 | Turn finished, waiting for you | **Codex is waiting for you: my-repo** |
 
 One card per session (key `agent:<host>:<session>`), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), or the end of the session. After `/clear`, or when a Codex window is closed or killed, Codex ends that session within about a minute (its background app-server unloads it), and the card clears then. If Codex itself dies, the 5-minute `needs-you flush` cleans up; any card expires 48 hours after its last post.
 
-Approval cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Codex; ticking a step on the Mac answers nothing. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders ([details](claude-code-everywhere.md#buttons)).
+Approval cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in Codex. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders ([details](claude-code-everywhere.md#buttons)).
 
 Only want approval prompts, not a card at the end of every turn?
 

@@ -264,6 +264,10 @@ retries for up to 7 days, and anti-entropy catches up after that.</li>
 <code>steps</code>. When it later resolves, dismisses or marks such an item seen, the upgraded hubs keep
 their steps; only a re-post that changes the title, body or priority on the old hub clears
 them. Upgrade peers together to avoid the gap.</li>
+<li><strong>Item question (schema 7):</strong> the same for an agent's <code>question</code> (<a href="api.html">API</a>): a hub
+without it drops the field from replicated items, and keeps nothing to hand back; the
+upgraded hubs keep theirs through its resolves and seen marks. An older hub refuses a
+database at schema 7 (it backs up before migrating), so upgrade every hub together.</li>
 </ul>
 <h2 id="operations">Operations <a class="anchor" href="#operations" aria-label="Link to this section">#</a></h2>
 <ul>

@@ -128,19 +128,20 @@ Clients must likewise ignore unknown response fields.</p></li>
      "link": {"label": "PR #42", "url": "https://github.com/example/app/pull/42"}},
     {"text": "Re-run the push", "done": false}
   ],
+  "question": null,                          // what an agent asked and the choices it offered; null when none
   "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
   "updated_at": "2026-10-06T18:04:05.456Z",  // moves on EVERY write (re-post, resolve, patch)
-  "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority or steps change
+  "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority, steps or question change
   "seen_at": null,
   "expires_at": null,                        // done/info default to created/re-posted + 24 h
   "superseded_by": null                      // set when this item lost a same-key merge (see Replication)
 }</code></pre></div>
 <h3 id="change-detection-content_updated_at">Change detection: <code>content_updated_at</code> <a class="anchor" href="#change-detection-content_updated_at" aria-label="Link to this section">#</a></h3>
 <p><code>content_updated_at</code> is the re-animation signal. It is set at creation and changes only when a
-re-post changes <code>title</code>, <code>body</code>, <code>priority</code> or <code>steps</code> (any step's text, link or <code>done</code>, or
-the list itself). Re-posting identical content, changing only
+re-post changes <code>title</code>, <code>body</code>, <code>priority</code>, <code>steps</code> (any step's text, link or <code>done</code>, or
+the list itself) or <code>question</code> (any part of it, or adding or removing it). Re-posting identical content, changing only
 links/source/kind/context, resolving, dismissing and setting <code>seen_at</code> all move <code>updated_at</code>
 but never <code>content_updated_at</code>.</p>
 <p>A client animates an item when it is new to it, or when its <code>content_updated_at</code> is later than
@@ -180,6 +181,7 @@ all absent from hubs up to 0.1.2); an unknown or revoked token adds <code>"token
 <tr><td><code>priority</code></td><td>string</td><td><code>urgent</code>, <code>normal</code> or <code>low</code> (case-insensitive)</td><td><code>normal</code></td></tr>
 <tr><td><code>links</code></td><td>array</td><td>≤ 6 of <code>{"label": ≤ 80 chars, "url": ≤ 2,000 chars}</code></td><td><code>[]</code></td></tr>
 <tr><td><code>steps</code></td><td>array</td><td>≤ 10 of <code>{"text", "link", "done"}</code>, see below</td><td><code>[]</code></td></tr>
+<tr><td><code>question</code></td><td>object</td><td>what an agent asked, see below</td><td><code>null</code></td></tr>
 <tr><td><code>source</code></td><td>object</td><td>optional <code>host</code>, <code>agent</code>, <code>project</code>, each ≤ 100 chars</td><td><code>{}</code></td></tr>
 <tr><td><code>expires_at</code></td><td>timestamp</td><td>any accepted timestamp</td><td><code>done</code>/<code>info</code>: now + 24 h (the hub's <code>default_expiry_hours</code>, see <a href="hub.html">Server hubs</a>); <code>needs</code>: none</td></tr>
 <tr><td><code>status</code></td><td></td><td><strong>rejected</strong> whenever the key is present, even <code>"status": null</code> (use resolve or PATCH)</td><td></td></tr>
@@ -269,21 +271,41 @@ an item is skipped, and such a token or invite record fails the batch closed.</p
 hub returns every step as <code>{"text", "done"}</code> plus <code>"link"</code> when it has one; an item without
 steps has <code>"steps": []</code>. Steps are the sender's view: there is no endpoint to tick one, and
 the Mac app keeps the person's ticks locally (it offers Done once every step is ticked).</p>
+<p><strong>Question</strong> (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>) is what an agent asked the person
+and the choices it offered, so a client can show them as choices rather than as a checklist.
+It is read-only: the person answers in the agent (an answer path is planned, not built).</p>
+<div class="code"><pre><code class="language-jsonc">"question": {
+  "id": "toolu_01ABC",            // optional, ≤ 200 chars: the agent's own id for the request
+  "items": [{                     // 1–4 questions, in order
+    "header": "Database",         // optional, ≤ 30 chars, one line
+    "text": "Which database should we use?",  // required, 1–500 chars; newlines allowed
+    "options": [                  // 0–8; none for a free-text question
+      {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
+    ],
+    "multi_select": false         // true: the agent takes several options
+  }]
+}</code></pre></div>
+<p>Text follows the same rules as every field (trimmed, no control or bidi characters; only
+<code>text</code> may hold newlines). Unknown fields are ignored. Errors name the part, for example
+<code>question.items[1].options[0].label</code>. The hub returns it normalised: <code>header</code> and
+<code>description</code> as <code>""</code> when left out, <code>options</code> as <code>[]</code>, <code>multi_select</code> as a boolean, <code>id</code> only
+when given; an item without one has <code>"question": null</code>. Senders keep the question's text in
+<code>body</code> as well, for clients and views that don't show the field.</p>
 <p>Semantics:</p>
 <ol>
 <li>If an item with this <code>key</code> is open (and not expired), it is updated **in place, keeping its
 id**. A re-post is the sender's full current view: <code>title</code>, <code>body</code>, <code>context</code>, <code>kind</code>,
-<code>priority</code>, <code>links</code>, <code>steps</code>, <code>source</code> and <code>expires_at</code> are all replaced (omitted optional
-fields become empty/default). <code>updated_at</code> always moves (strictly forward, even within one
-millisecond). <code>content_updated_at</code> moves only if <code>title</code>, <code>body</code>, <code>priority</code> or <code>steps</code>
-changed. The
+<code>priority</code>, <code>links</code>, <code>steps</code>, <code>question</code>, <code>source</code> and <code>expires_at</code> are all replaced (omitted
+optional fields become empty/default). <code>updated_at</code> always moves (strictly forward, even
+within one millisecond). <code>content_updated_at</code> moves only if <code>title</code>, <code>body</code>, <code>priority</code>,
+<code>steps</code> or <code>question</code> changed. The
 item's token becomes the re-posting token. The volume guard does not apply to updates.</li>
 <li>Otherwise a new item is created with a new id. If the token already owns 60 open,
 unexpired items, the hub returns <code>429 too_many_open</code> instead.</li>
 </ol>
 <p>Response: <code>201</code> when created, <code>200</code> when an existing item was updated. The body is the item
 plus <code>"created": true|false</code> and <code>"changed": true|false</code> (<code>changed</code> is true on create and when
-title/body/priority/steps changed).</p>
+title/body/priority/steps/question changed).</p>
 <h3 id="post-v1itemsresolve-sender"><code>POST /v1/items/resolve</code> (sender) <a class="anchor" href="#post-v1itemsresolve-sender" aria-label="Link to this section">#</a></h3>
 <p>Body: exactly one of <code>{"key": "..."}</code> or <code>{"id": "..."}</code>. Leading and trailing whitespace is
 trimmed, as <code>POST /v1/items</code> trims the key it stores.</p>
@@ -562,7 +584,9 @@ made this version). <code>steps</code> is carried as the array. A record <strong
 from a hub that predates steps: the receiver keeps its own steps for that id when the record's
 <code>content_updated_at</code> equals its own (a resolve, dismiss, seen or unchanged re-post on the old
 hub), and otherwise stores none. An empty array clears them. Older hubs ignore the field, so
-their own copies have no steps. Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
+their own copies have no steps. <code>question</code> works the same way: carried as the object (or
+<code>null</code>), kept when a record without the key has the receiver's <code>content_updated_at</code>. A
+replicated question this hub would refuse on POST is dropped (the item stays). Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}</code></pre></div>
@@ -624,7 +648,7 @@ unexpired item with the same key, it merges them:</p>
 <li>the <strong>lowest id wins</strong> (ULIDs start with the creation time, so the earliest-minted item
 survives);</li>
 <li>the winner takes the <strong>freshest content</strong>: the <code>title</code>, <code>body</code>, <code>priority</code>, <code>context</code>,
-<code>kind</code>, <code>links</code>, <code>steps</code>, <code>source</code>, <code>expires_at</code> and <code>content_updated_at</code> of whichever record has the
+<code>kind</code>, <code>links</code>, <code>steps</code>, <code>question</code>, <code>source</code>, <code>expires_at</code> and <code>content_updated_at</code> of whichever record has the
 greatest <code>(content_updated_at, updated_at, updated_by)</code>; <code>created_at</code> becomes the earliest,
 <code>seen_at</code> the latest;</li>
 <li>every loser becomes <code>status: "resolved"</code> with <code>superseded_by: &lt;winner id&gt;</code>;</li>
