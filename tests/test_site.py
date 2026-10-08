@@ -249,6 +249,29 @@ class SiteTests(unittest.TestCase):
         self.assertIn("visibilitychange", js)
         self.assertIn("IntersectionObserver", js)
         self.assertIn("prefers-reduced-motion: reduce", css)
+        # Interactive: real buttons (the pill, its link button, Close, Send a test alert), a
+        # caption that can announce, and a screen that's inert until site.js wakes it up.
+        self.assertRegex(demo, r'<div class="demo-screen"[^>]*\binert\b')
+        for cls in ("pv-hit", "pv-link", "pp-close", "demo-send", "demo-toggle"):
+            with self.subTest(button=cls):
+                self.assertRegex(demo, r'<button class="%s"[^>]*type="button"' % cls)
+        self.assertRegex(demo, r'class="demo-caption"[^>]*aria-live=')
+        self.assertIn('"(prefers-reduced-motion: reduce)"', js)
+        # The HTML is the still frame of the first example: keep the two the same.
+        first = re.search(r'var EXAMPLES = \[\s*\{[^}]*?title: "([^"]+)"[^}]*?label: "([^"]+)", dest: "([^"]+)"', js)
+        self.assertIsNotNone(first)
+        self.assertIn('data-demo="title">%s<' % first.group(1), demo)
+        self.assertIn('data-demo="label">%s<' % first.group(2), demo)
+        self.assertIn('data-demo="dest">%s<' % first.group(3), demo)
+        # The commands it shows are examples: placeholder hosts only, and never a Copy button.
+        cmds = re.findall(r"cmd: ((?:'[^']*'\s*\+?\s*)+)", js)
+        self.assertEqual(len(cmds), 4)
+        for cmd in cmds:
+            with self.subTest(cmd=cmd[:60]):
+                self.assertIn("needs-you add --key", cmd)
+                for url in re.findall(r"[a-z-]+://[^\s\"']+", cmd):
+                    self.assertRegex(url, r"^(?:https://(?:ci\.example\.com|github\.com/acme)/|vscode://vscode-remote/ssh-remote\+devbox/)", url)
+        self.assertNotIn("data-copy", demo)
         # The CSP has no 'unsafe-inline': no style attributes or inline scripts and styles.
         for name in ["index.html"] + ["guides/" + n for n in os.listdir(os.path.join(SITE, "guides"))]:
             text = read_site(name)

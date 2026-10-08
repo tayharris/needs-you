@@ -409,7 +409,9 @@ code, pre { font-family: var(--font-mono); }
   background: var(--hud-link-fill);
   border: 1px solid var(--hud-link-stroke);
   border-radius: 999px;
+  font-family: var(--font-sans); color: var(--hud-text);
 }
+button.pv-link { margin: 0; cursor: pointer; }
 .pv-dest { font-weight: var(--weight-regular); color: var(--hud-link-dest); }
 .pv-arrow { width: 8px; height: 8px; margin-left: 1px; }
 .pv-arrow path, .pv-done path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -455,20 +457,58 @@ code, pre { font-family: var(--font-mono); }
 .demo-mb-pill { width: 14px; height: 7px; border-radius: 4px; border: 1.5px solid currentColor; opacity: 0.7; }
 .demo-slot { position: absolute; top: 2.125rem; left: var(--space-3); right: var(--space-3); }
 .demo .pv { max-width: none; }
-.demo-cursor, .demo-ripple { display: none; }
+.demo-cursor, .demo-ripple, .pv-hit, .pv-count { display: none; }
 .demo-caption {
   margin: var(--space-3) 0 0;
   min-height: 3.1em;
   font-size: var(--size-small); line-height: 1.55; color: var(--text-secondary);
 }
+.demo-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-top: var(--space-3); }
+.demo-controls[hidden], .demo-cmd[hidden], .pp[hidden] { display: none; }
+/* Send a test alert: the demo's one real control, a quiet outlined button. */
+.demo-send {
+  min-height: var(--tap); padding: 0 var(--space-4);
+  background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  font: var(--weight-medium) var(--size-small)/1 var(--font-sans);
+  cursor: pointer;
+}
+.demo-send:hover { background: var(--surface-hover); }
+.demo-send:active { translate: 0 1px; }
 .demo-toggle {
-  min-height: var(--tap); margin: 0 0 0 calc(-1 * var(--space-3)); padding: 0 var(--space-3);
+  min-height: var(--tap); margin: 0; padding: 0 var(--space-2);
   background: none; border: 0; border-radius: var(--radius);
   font: var(--weight-medium) var(--size-h6)/1 var(--font-sans);
   color: var(--text-muted); cursor: pointer;
   text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px;
 }
 .demo-toggle:hover { color: var(--text-primary); }
+/* The command that would have posted the alert just sent. To read, not to copy. */
+.demo-cmd { margin-top: var(--space-3); }
+.demo-cmd p { margin: 0 0 var(--space-1); font-size: var(--size-h6); color: var(--text-muted); }
+.demo-cmd pre {
+  margin: 0; padding: var(--space-3);
+  background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius);
+  font: var(--size-caption)/1.6 var(--font-mono); color: var(--text-secondary);
+  white-space: pre; overflow-x: auto;
+}
+
+/* Live and interactive. The pill is a button (.pv-hit, the whole card: opens the panel)
+   under the card's text; the link button sits above it. */
+.demo.is-live .pv-hit {
+  display: block; position: absolute; inset: 0; z-index: 1;
+  width: 100%; margin: 0; padding: 0;
+  background: transparent; border: 0; border-radius: 12px;
+  cursor: pointer;
+}
+.demo.is-live .pv-hit:hover { background: rgba(255, 255, 255, 0.04); }
+.demo.is-live .pv-hit:focus-visible { outline-offset: -3px; border-radius: 12px; }
+.demo.is-live .pv-body { z-index: 2; pointer-events: none; }
+.demo.is-live .pv-link { position: relative; pointer-events: auto; }
+/* A bigger target than the chip draws, for fingers. */
+.demo.is-live .pv-link::after { content: ""; position: absolute; inset: -6px -4px; }
+.demo.is-live .pv-link:hover, .pp-link:hover { background: var(--hud-link-fill-hover); border-color: var(--hud-link-stroke-hover); }
+.demo.is-live .pv-link:active { scale: 0.94; }
 
 /* Live: the pill is pinned to the slot's top-right corner and its size comes from its state.
    --slot-w and --pv-h are measured by site.js. */
@@ -499,6 +539,19 @@ code, pre { font-family: var(--font-mono); }
   transition-duration: 0.45s; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 .demo.is-live .pv[data-state="idle"] .pv-idle { opacity: 1; transition-delay: 0.25s; }
+/* Waiting, not new: the count, ringed in the top priority's colour. */
+.demo.is-live .pv-count {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--size-h6); font-weight: var(--weight-semibold); color: var(--hud-text);
+  opacity: 0; transition: opacity 0.08s ease;
+}
+.demo.is-live .pv[data-state="count"] {
+  width: 3.25rem; height: 1.625rem; border-radius: 13px;
+  background: var(--hud-idle);
+  transition-duration: 0.45s; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+.demo.is-live .pv[data-state="count"] .pv-count { opacity: 1; transition-delay: 0.25s; }
 .demo.is-live .pv[data-state="done"] { border-color: var(--hud-border); background: var(--hud-fill); }
 .demo.is-live .pv[data-state="done"] .pv-kind { color: var(--hud-muted); transition: color 0.3s ease; }
 .demo.is-live .pv[data-state="done"] .pv-dot { background: var(--hud-faint); transition: background-color 0.3s ease; }
@@ -539,6 +592,89 @@ code, pre { font-family: var(--font-mono); }
   from { opacity: 1; scale: 0.3; }
   to { opacity: 0; scale: 1.2; }
 }
+
+/* The panel (.pp), as the app draws it: a header, then the waiting cards grouped by
+   priority, each with a coloured bar, its link button and Done. Opening it grows the
+   screen; the list scrolls past about four cards. */
+.demo-screen.has-panel { height: auto; }
+.demo-screen.has-panel .demo-slot { position: relative; top: auto; left: auto; right: auto; margin: 0.625rem var(--space-3) var(--space-3); }
+.pp {
+  color: var(--hud-text);
+  background: var(--hud-surface);
+  border: 1px solid var(--hud-border);
+  border-radius: 14px;
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+.pp p { margin: 0; }
+.pp-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 4px 4px 12px;
+  border-bottom: 1px solid var(--hud-border);
+}
+.pp-name { font-size: var(--size-h6); font-weight: var(--weight-semibold); }
+.pp-tab {
+  padding: 1px 8px; border-radius: 999px; background: var(--hud-link-fill);
+  font-size: var(--size-caption); font-weight: var(--weight-semibold);
+}
+.pp-n { color: var(--prio-urgent); }
+.pp-n.is-zero { color: var(--hud-muted); }
+.pp-close {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; margin: 0 0 0 auto; padding: 0;
+  background: none; border: 0; border-radius: var(--radius);
+  color: var(--hud-muted); cursor: pointer;
+}
+.pp-close:hover { color: var(--hud-text); background: var(--hud-link-fill); }
+.pp-close svg, .pp-done svg, .pp-empty svg { width: 10px; height: 10px; }
+.pp-close path, .pp-done path, .pp-empty path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pp-list {
+  display: grid; gap: 6px; align-content: start;
+  max-height: 19rem; overflow-y: auto; overscroll-behavior: contain;
+  padding: 8px;
+}
+.pp-group { padding: 4px 2px 0; font-size: 0.625rem; font-weight: var(--weight-semibold); letter-spacing: 0.02em; }
+.pp-group.pp-urgent { color: var(--prio-urgent); }
+.pp-group.pp-normal { color: var(--prio-normal); }
+.pp-group.pp-low { color: var(--prio-low); }
+.pp-card {
+  --pv-color: var(--prio-normal);
+  position: relative;
+  display: grid; justify-items: start; gap: 2px;
+  padding: 8px 10px 4px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hud-border);
+  border-radius: 10px;
+}
+.pp-card.pp-urgent { --pv-color: var(--prio-urgent); }
+.pp-card.pp-low { --pv-color: var(--prio-low); }
+.pp-card::before {
+  content: ""; position: absolute; left: 8px; top: 9px; bottom: 9px;
+  width: 3px; border-radius: 2px; background: var(--pv-color);
+}
+.pp-card:focus-visible { outline-offset: 1px; }
+.pp-card.is-target { animation: pp-target 1.6s ease-out; }
+@keyframes pp-target {
+  0%, 40% { border-color: var(--pv-color); }
+  100% { border-color: var(--hud-border); }
+}
+.pp-title { font-size: var(--size-h6); font-weight: var(--weight-semibold); line-height: 1.4; }
+.pp-meta { font-size: var(--size-caption); line-height: 1.45; color: var(--hud-muted); }
+.pp-kind { color: var(--pv-color); }
+.pp-link { grid-area: auto; margin-top: 5px; }
+.pp-done {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 28px; margin: 2px 0 0 -6px; padding: 0 6px;
+  background: none; border: 0; border-radius: var(--radius);
+  font: var(--size-caption) var(--font-sans); color: var(--hud-muted); cursor: pointer;
+}
+.pp-done:hover { color: var(--hud-text); background: var(--hud-link-fill); }
+.pp-empty {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: var(--space-6) 0;
+  font-size: var(--size-h6); color: var(--hud-secondary);
+}
+.pp-empty svg { color: var(--ok); }
 
 @media (prefers-reduced-motion: reduce) {
   .demo *, .demo *::before { transition: none !important; animation: none !important; }
