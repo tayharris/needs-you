@@ -1,6 +1,6 @@
 # 0008. A one-file stdlib MCP server that wraps the CLI
 
-- Status: Proposed
+- Status: Accepted (2026-10-08)
 - Date: 2026-10-07
 
 ## Context

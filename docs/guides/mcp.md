@@ -2,7 +2,7 @@
 
 For agents that speak MCP but have no shell, or whose shell you'd rather not hand over: chat apps, IDE assistants, sandboxed agents. The needs-you MCP server gives them three tools: `needs_you_add` posts a card (or updates the one with the same key), `needs_you_resolve` closes it, and `needs_you_doctor` checks the setup. Agents with a shell don't need it; the `needs-you` CLI and the [Claude Code skill](claude-code.md) do the same.
 
-The server is one Python file (standard library only) that runs the `needs-you` CLI for each call, so posts get the same failover, offline queue and rules. Its tool descriptions tell the model when to post and when not to ([the agent guide](../AGENT-GUIDE.md)). Reference: [integrations/mcp/README.md](../../integrations/mcp/README.md). It's new and its design is still [proposed](../adr/0008-mcp-server.md), so the installer doesn't set it up yet.
+The server is one Python file (standard library only) that runs the `needs-you` CLI for each call, so posts get the same failover, offline queue and rules. Its tool descriptions tell the model when to post and when not to ([the agent guide](../AGENT-GUIDE.md)). Reference: [integrations/mcp/README.md](../../integrations/mcp/README.md). Design: [ADR 0008](../adr/0008-mcp-server.md). The installer doesn't set it up yet.
 
 ## Install
 

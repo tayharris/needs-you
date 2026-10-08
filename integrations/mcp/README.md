@@ -2,7 +2,7 @@
 
 `needs_you_mcp.py` is a stdio [MCP](https://modelcontextprotocol.io) server, so an agent that
 speaks MCP can post to the needs-you inbox without a shell. One file, Python 3.9+ standard
-library only. Status: [ADR 0008](../../docs/adr/0008-mcp-server.md) (Proposed). Setup guide:
+library only. Status: [ADR 0008](../../docs/adr/0008-mcp-server.md) (Accepted). Setup guide:
 [docs/guides/mcp.md](../../docs/guides/mcp.md).
 
 ## Tools

@@ -6,7 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Added
 
-- **MCP server** for agents that speak MCP but have no shell: `integrations/mcp/needs_you_mcp.py`, one stdlib Python file with the tools `needs_you_add`, `needs_you_resolve` and `needs_you_doctor`. It runs the `needs-you` CLI for each call, so posts get the same failover, offline queue and rules. Install it by hand for now: [MCP server guide](docs/guides/mcp.md). There's no tool to list your open items, since senders can't read the inbox. Design: [ADR 0008](docs/adr/0008-mcp-server.md) (proposed).
+- **MCP server** for agents that speak MCP but have no shell: `integrations/mcp/needs_you_mcp.py`, one stdlib Python file with the tools `needs_you_add`, `needs_you_resolve` and `needs_you_doctor`. It runs the `needs-you` CLI for each call, so posts get the same failover, offline queue and rules. Install it by hand for now: [MCP server guide](docs/guides/mcp.md). There's no tool to list your open items, since senders can't read the inbox. Design: [ADR 0008](docs/adr/0008-mcp-server.md).
 
 ### Changed
 
