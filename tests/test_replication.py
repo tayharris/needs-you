@@ -352,6 +352,40 @@ class LastWriterWins(HubTestCase):
                                content_updated_at="2026-10-06T10:00:02.000Z"))
         self.assertEqual(hubmod.item_wire(st.get_item(iid))["steps"], [])
 
+    QUESTION = {"id": "toolu_1", "items": [{"header": "DB", "text": "Which?", "multi_select": False,
+                                            "options": [{"label": "A", "description": "a"}]}]}
+
+    def test_question_round_trip_and_old_peers(self):
+        h = self.make_hub("hub-x", start=False)
+        st = h.store
+        iid = self.rec()["id"]
+        self.assertTrue(st.apply_item(self.rec(question=self.QUESTION)))
+        wire = hubmod.item_wire(st.get_item(iid))
+        self.assertEqual(wire["question"], self.QUESTION)
+        h2 = self.make_hub("hub-y", start=False)
+        self.assertTrue(h2.store.apply_item(wire))
+        self.assertEqual(hubmod.item_wire(h2.store.get_item(iid)), wire)
+        # a hub older than `question`: its content-neutral write (a resolve) keeps ours
+        old = self.rec(status="resolved", updated_at="2026-10-06T10:00:01.000Z",
+                       content_updated_at="2026-10-06T10:00:00.000Z", updated_by="hub-old")
+        self.assertNotIn("question", old)
+        self.assertTrue(st.apply_item(old))
+        self.assertEqual(hubmod.item_wire(st.get_item(iid))["question"], self.QUESTION)
+        # its content change wins, and has none
+        self.assertTrue(st.apply_item(self.rec(title="new", updated_at="2026-10-06T10:00:02.000Z",
+                                               content_updated_at="2026-10-06T10:00:02.000Z",
+                                               updated_by="hub-old")))
+        self.assertIsNone(hubmod.item_wire(st.get_item(iid))["question"])
+
+    def test_peer_question_this_hub_would_refuse_is_dropped(self):
+        h = self.make_hub("hub-x", start=False)
+        st = h.store
+        bad = {"items": [{"text": "x" * 600}]}
+        self.assertTrue(st.apply_item(self.rec(question=bad)))
+        wire = hubmod.item_wire(st.get_item(self.rec()["id"]))
+        self.assertIsNone(wire["question"])
+        self.assertEqual(wire["title"], self.rec()["title"])
+
     def test_peer_step_links_are_checked(self):
         """Defence in depth, like item links: a peer's step link this hub would refuse is
         dropped (the step stays)."""

@@ -107,6 +107,14 @@ MAX_LINK_LABEL = 80
 MAX_LINK_URL = 2000
 MAX_STEPS = 10
 MAX_STEP_TEXT = 200
+# question (ADR 0009 phase B1): what the agent asked and the choices it offered, read-only
+MAX_QUESTION_ID = 200
+MAX_QUESTION_ITEMS = 4
+MAX_QUESTION_HEADER = 30
+MAX_QUESTION_TEXT = 500
+MAX_QUESTION_OPTIONS = 8
+MAX_OPTION_LABEL = 80
+MAX_OPTION_DESCRIPTION = 200
 MAX_SOURCE_FIELD = 100
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_REPLICATE_BYTES = 8 * 1024 * 1024
@@ -494,6 +502,60 @@ def validate_steps(steps: Any) -> List[Dict[str, Any]]:
     return out
 
 
+def validate_question(question: Any) -> Optional[Dict[str, Any]]:
+    """Optional `question`: {"id"?, "items": [{"header"?, "text", "options"?: [{"label",
+    "description"?}], "multi_select"?}]}. Unknown fields are ignored. Normalised to every
+    field present ("" / [] / false for the optional ones), "id" only when given."""
+    if question is None:
+        return None
+    if not isinstance(question, dict):
+        raise _invalid("question", "question must be an object")
+    out: Dict[str, Any] = {}
+    qid = _str_field(question, "id", MAX_QUESTION_ID, path="question.id")
+    if qid:
+        out["id"] = qid
+    items = question.get("items")
+    if not isinstance(items, list) or not items:
+        raise _invalid("question.items", "question.items must be a list of 1 to %d questions" % MAX_QUESTION_ITEMS)
+    if len(items) > MAX_QUESTION_ITEMS:
+        raise _invalid("question.items", "at most %d questions" % MAX_QUESTION_ITEMS)
+    out["items"] = []
+    for i, item in enumerate(items):
+        path = "question.items[%d]" % i
+        if not isinstance(item, dict):
+            raise _invalid(path, "%s must be an object" % path)
+        rec: Dict[str, Any] = {
+            "header": _str_field(item, "header", MAX_QUESTION_HEADER, path=path + ".header") or "",
+            "text": _str_field(item, "text", MAX_QUESTION_TEXT, required=True, allow_newlines=True,
+                               path=path + ".text"),
+        }
+        opts = item.get("options")
+        if opts is None:
+            opts = []
+        if not isinstance(opts, list):
+            raise _invalid(path + ".options", "%s.options must be a list" % path)
+        if len(opts) > MAX_QUESTION_OPTIONS:
+            raise _invalid(path + ".options", "at most %d options" % MAX_QUESTION_OPTIONS)
+        rec["options"] = []
+        for j, opt in enumerate(opts):
+            op = "%s.options[%d]" % (path, j)
+            if not isinstance(opt, dict):
+                raise _invalid(op, "%s must be an object" % op)
+            rec["options"].append({
+                "label": _str_field(opt, "label", MAX_OPTION_LABEL, required=True, path=op + ".label"),
+                "description": _str_field(opt, "description", MAX_OPTION_DESCRIPTION,
+                                          path=op + ".description") or "",
+            })
+        multi = item.get("multi_select")
+        if multi is None:
+            multi = False
+        elif not isinstance(multi, bool):
+            raise _invalid(path + ".multi_select", "%s.multi_select must be true or false" % path)
+        rec["multi_select"] = multi
+        out["items"].append(rec)
+    return out
+
+
 def validate_source(source: Any) -> Dict[str, str]:
     if source is None:
         return {}
@@ -524,6 +586,7 @@ def validate_item_input(data: Any) -> Dict[str, Any]:
     out["priority"] = _enum_field(data, "priority", PRIORITIES, "normal")
     out["links"] = validate_links(data.get("links"))
     out["steps"] = validate_steps(data.get("steps"))
+    out["question"] = validate_question(data.get("question"))
     out["source"] = validate_source(data.get("source"))
     out["expires_at"] = None
     if data.get("expires_at") is not None:
@@ -792,11 +855,15 @@ CREATE TABLE IF NOT EXISTS quarantine (
   received_at INTEGER NOT NULL
 );
 """,
+    # 7: an item's question (ADR 0009): a JSON object, NULL when none
+    """
+ALTER TABLE items ADD COLUMN question TEXT;
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
 
-ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "steps", "source",
+ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "steps", "question", "source",
              "status", "created_at", "updated_at", "content_updated_at", "seen_at", "expires_at",
              "token_id", "origin_hub", "updated_by", "superseded_by", "seq", "local_at")
 TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked_at",
@@ -1043,13 +1110,15 @@ class Store:
                 cur = existing[0]
                 changed = (cur["title"] != fields["title"] or cur["body"] != fields["body"]
                            or cur["priority"] != fields["priority"]
-                           or _json_val(cur.get("steps"), []) != fields["steps"])
+                           or _json_val(cur.get("steps"), []) != fields["steps"]
+                           or _json_val(cur.get("question"), None) != fields["question"])
                 updated = self.bump(cur["updated_at"])
                 rec = dict(cur)
                 rec.update({
                     "context": fields["context"], "kind": fields["kind"],
                     "priority": fields["priority"], "title": fields["title"], "body": fields["body"],
                     "links": json.dumps(fields["links"]), "steps": json.dumps(fields["steps"]),
+                    "question": _question_col(fields["question"]),
                     "source": json.dumps(fields["source"]), "updated_at": updated, "updated_by": self.hub_id, "expires_at": expires,
                     "token_id": token["id"] if token else cur["token_id"],
                 })
@@ -1071,7 +1140,7 @@ class Store:
                 "id": item_id, "key": fields["key"] or item_id, "context": fields["context"],
                 "kind": fields["kind"], "priority": fields["priority"], "title": fields["title"],
                 "body": fields["body"], "links": json.dumps(fields["links"]),
-                "steps": json.dumps(fields["steps"]),
+                "steps": json.dumps(fields["steps"]), "question": _question_col(fields["question"]),
                 "source": json.dumps(fields["source"]), "status": "open",
                 "created_at": now, "updated_at": now, "content_updated_at": now,
                 "seen_at": None, "expires_at": expires, "token_id": token["id"] if token else None,
@@ -1231,6 +1300,7 @@ class Store:
     def apply_item(self, rec: Dict[str, Any], from_peer: Optional[str] = None) -> bool:
         """Last-writer-wins apply of a replicated item record. Returns True if it changed local state."""
         knows_steps = isinstance(rec, dict) and "steps" in rec
+        knows_question = isinstance(rec, dict) and "question" in rec
         rec = normalise_item_record(rec)
         if self.past_retention(rec):
             return False  # we purge these; applying would resurrect a purged item
@@ -1244,6 +1314,9 @@ class Store:
                 # A hub older than `steps` wrote this version (a resolve, a seen_at, an
                 # unchanged re-post). It never had the steps, so keep ours.
                 rec["steps"] = row["steps"]
+            if (not knows_question and row is not None
+                    and row["content_updated_at"] == rec["content_updated_at"]):
+                rec["question"] = row["question"]  # the same, from a hub older than `question`
             self._write_item(rec)
             now = self.now_ms()
             if rec["status"] == "open" and (rec["expires_at"] is None or rec["expires_at"] > now):
@@ -1254,7 +1327,8 @@ class Store:
             self._settle_content(rec["superseded_by"] or rec["id"])
             return True
 
-    CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "source", "expires_at",
+    CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "question", "source",
+                    "expires_at",
                     "token_id", "content_updated_at")
 
     @staticmethod
@@ -2003,6 +2077,11 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         if not isinstance(steps, list):
             raise ValueError("steps")
         out["steps"] = json.dumps([_peer_step(st) for st in steps if isinstance(st, dict)])
+        # A question this hub would refuse is dropped (the item stays), like a refused link.
+        try:
+            out["question"] = _question_col(validate_question(rec.get("question")))
+        except ApiError:
+            out["question"] = None
         source = rec.get("source") or {}
         if not isinstance(source, dict):
             raise ValueError("source")
@@ -2092,6 +2171,10 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
     return out
 
 
+def _question_col(q: Optional[Dict[str, Any]]) -> Optional[str]:
+    return json.dumps(q, sort_keys=True) if q else None
+
+
 def _json_val(v: Any, default: Any) -> Any:
     """A stored JSON column (str), an already-decoded value, or the default when absent."""
     if v is None:
@@ -2110,6 +2193,7 @@ def item_public(rec: Dict[str, Any], now_ms: int) -> Dict[str, Any]:
         "priority": rec["priority"], "title": rec["title"], "body": rec["body"] or None,
         "links": json.loads(links) if isinstance(links, str) else links,
         "steps": _json_val(rec.get("steps"), []),
+        "question": _json_val(rec.get("question"), None),
         "source": json.loads(source) if isinstance(source, str) else source,
         "status": status,
         "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"]),
