@@ -10,6 +10,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- Mac app: **the new-item preview no longer cuts off the title to make room for its link button.** The button (for example **VS Code** `vscode` ↗, which opens the link and marks the item done) now sits on its own row below the title and the `needs you · devbox · claude-code` line, which get the preview's full width. A long title wraps to a second line. A preview with no link keeps its old size.
 - Mac app: **a hub on this Mac that starts but never answers no longer leaves you at "Hub unreachable".** After 30 s the pill says **Hub not answering** and the panel shows a card saying what's wrong with a **Restart hub** button (it restarts in place; nothing takes focus). Settings → Your inbox shows the hub's last output and the same button. If the hub answers later after all, it all clears by itself.
 - Mac app: **with more than 500 open items, the rest never showed up.** The app's full poll got the first 500 and its cursor then skipped the others. It now asks for up to 2,000 at once and follows the hub's `next` for the rest (a hub from 0.1.3 or earlier still stops at 2,000; update it with the Mac).
 
