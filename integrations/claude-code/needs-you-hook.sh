@@ -269,7 +269,7 @@ fi
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
            NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
-           NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS; do
+           NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS NEEDS_YOU_ANSWER_TIMEOUT; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -435,7 +435,7 @@ run_py() {
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
   NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
   python3 - 2>/dev/null 3<<<"$input" <<'PY'
-import json, os, re, shlex, subprocess, sys
+import json, os, re, shlex, subprocess, sys, time
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
@@ -904,8 +904,33 @@ class Asked(object):
         self.question, self.steps, self.steps_msg = question, steps, steps_msg
 
 
-def question_field(questions, qid=""):
-    """The `question` field for `questions` (the hub's limits: 4 questions, 8 options), or None."""
+def answer_timeout():
+    """NEEDS_YOU_ANSWER_TIMEOUT: how long a sender waits for an answer from the card (s)."""
+    try:
+        t = int(os.environ.get("NEEDS_YOU_ANSWER_TIMEOUT") or 600)
+    except ValueError:
+        t = 600
+    return min(max(t, 30), 3600)
+
+
+def answerable_as_is(questions, field):
+    """Only a question the card can show whole may be answered from it: every question kept,
+    each with 1-8 options, and every label exactly as the agent wrote it (not cut, cleaned or
+    redacted), so the labels the person clicks are the agent's own."""
+    if not field or len(field["items"]) != len(questions):
+        return False
+    for (_, _, opts, _), item in zip(questions, field["items"]):
+        if not opts or len(opts) != len(item["options"]):
+            return False
+        if any(label != o["label"] for (label, _), o in zip(opts, item["options"])):
+            return False
+    return True
+
+
+def question_field(questions, qid="", answerable=False):
+    """The `question` field for `questions` (the hub's limits: 4 questions, 8 options), or None.
+    With `answerable` (the opencode plugin waits for an answer): marked answerable, with its
+    expiry, when the question fits whole (answerable_as_is)."""
     items = []
     for header, text, opts, multi in questions:
         t = text_block(text, MAX_QUESTION_TEXT) or one_line(header, MAX_QUESTION_TEXT)
@@ -925,10 +950,13 @@ def question_field(questions, qid=""):
     out = {"items": items}
     if one_line(qid, 200):
         out["id"] = one_line(qid, 200)
+    if answerable and answerable_as_is(questions, out):
+        out["answerable"] = True
+        out["expires_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + answer_timeout()))
     return out
 
 
-def question_card(name, questions, qid=""):
+def question_card(name, questions, qid="", answerable=False):
     """(what, msg, Asked) for a card about `questions`, or None. `name` is the agent
     ("Claude"). The body lists each question's choices (for clients that don't show the
     `question` field); the steps form is only for a CLI or hub that refuses the field."""
@@ -974,7 +1002,11 @@ def question_card(name, questions, qid=""):
         listed.append("\n".join(lines))
     listed += parts[len(listed):]  # "+N more questions"
     msg = clamp("\n\n".join([p for p in listed if p] + [tail]), QUESTION_BUDGET + 400)
-    return what, msg, Asked(question_field(questions, qid), choice_steps(name, questions), steps_msg)
+    field_ = question_field(questions, qid, answerable)
+    if field_ and field_.get("answerable"):
+        msg = clamp(msg[:-len(tail)] + "Answer on the card or in %s." % name, QUESTION_BUDGET + 400) \
+            if msg.endswith(tail) else msg
+    return what, msg, Asked(field_, choice_steps(name, questions), steps_msg)
 
 
 def choice_steps(name, questions):
@@ -1117,7 +1149,9 @@ def opencode_card():
             what = "opencode needs permission for %s" % tool_label(perm)
         return "permission", what, "opencode is waiting for you to allow or deny it."
     if event == "Question":
-        asked = (question_card("opencode", questions_from(data.get("questions")), field("question_id"))
+        # The plugin sets `answerable` when it will wait for the card's answer (ADR 0009 B2).
+        asked = (question_card("opencode", questions_from(data.get("questions")), field("question_id"),
+                               answerable=data.get("answerable") is True)
                  if questions_on() else None)
         if asked:
             return ("question",) + asked
@@ -1562,6 +1596,19 @@ case "$mode" in
       lease
       [ -n "$lease_pid" ] && rm -rf "$items_base/pid-$lease_pid"
     fi
+    ;;
+
+  answer-wait)
+    # The opencode plugin, after posting an answerable question card: wait for the person's
+    # click on the card and print the answer (the CLI's JSON) for the plugin to hand to
+    # opencode. Nothing on a timeout, an error or a card closed without an answer: the plugin
+    # then answers nothing. Never picks or invents an answer.
+    t=${NEEDS_YOU_ANSWER_TIMEOUT:-600}
+    case "$t" in ''|*[!0-9]*) t=600 ;; esac
+    [ "$t" -lt 30 ] && t=30
+    [ "$t" -gt 3600 ] && t=3600
+    "$cli" answer-wait --key "$key" --timeout "$t" </dev/null 2>/dev/null
+    log "answer-wait $key -> $?"
     ;;
 
   notify)

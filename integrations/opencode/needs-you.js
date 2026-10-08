@@ -16,6 +16,15 @@
 // The hook does the rest (opt-in gate, card text, links, lease, the CLI call); it is off
 // unless NEEDS_YOU_AGENT_ALERTS=1 or the session runs in an Orca terminal. This file never
 // throws, never makes opencode wait for the hook, and never changes a permission decision.
+//
+// Answers from the card (ADR 0009 B2): for a question the card can show whole (1-4
+// questions, each with 1-8 options, labels as written, not a plan approval) the card is
+// posted answerable, and the hook's `answer-wait` mode waits for the person's click (up to
+// NEEDS_YOU_ANSWER_TIMEOUT s, default 600). A click's labels, checked against the options
+// asked, go to opencode's own POST /question/{id}/reply; the TUI shows the question all the
+// while, and whichever answer comes first wins. question.replied or question.rejected stops
+// the wait. Nothing is ever answered on a timeout, an error or by default, and permission
+// prompts are never answered.
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -76,10 +85,123 @@ function run(mode, payload) {
   const next = (queues.get(id) || Promise.resolve()).then(() => start(mode, payload))
   queues.set(id, next)
   next.then(() => { if (queues.get(id) === next) queues.delete(id) })
+  return next
 }
 
-export const NeedsYou = async ({ directory, worktree }) => {
+// Can the card answer this question? Only the question tool's own questions, shown whole:
+// opencode's plan exit ("Build Agent", custom: false) is an approval, never answered here.
+function answerable(list) {
+  if (!Array.isArray(list) || list.length < 1 || list.length > 4) return false
+  return list.every((q) => q && typeof q === "object" && q.custom !== false && str(q.header) !== "Build Agent" &&
+    str(q.question).trim() !== "" && Array.isArray(q.options) && q.options.length >= 1 && q.options.length <= 8 &&
+    q.options.every((o) => o && typeof o === "object" && str(o.label).trim() === str(o.label) &&
+      str(o.label) !== "" && str(o.label).length <= 80 && !/[\u0000-\u001f\u007f-\u009f]/.test(str(o.label))))
+}
+
+// The answer the hook printed, as opencode's reply: one array of labels per question, in
+// order, every label one of that question's options, one for a single-choice question. null
+// for anything else (then nothing is answered).
+function replyFor(list, printed, requestID) {
+  let a
+  try { a = JSON.parse(printed) } catch { return null }
+  if (!a || a.question_id !== requestID || !Array.isArray(a.answers) || a.answers.length !== list.length) return null
+  const out = []
+  for (let i = 0; i < list.length; i++) {
+    const sel = a.answers[i] && a.answers[i].selected
+    const labels = list[i].options.map((o) => o.label)
+    if (!Array.isArray(sel) || sel.length < 1 || (!list[i].multiple && sel.length !== 1)) return null
+    if (!sel.every((l) => typeof l === "string" && labels.includes(l)) || new Set(sel).size !== sel.length) return null
+    out.push(sel.slice())
+  }
+  return out
+}
+
+// Start the hook's answer-wait mode; resolves with what it printed ("" on anything else).
+function waitForAnswer(payload, pending) {
+  return new Promise((done) => {
+    try {
+      if (!existsSync(HOOK)) return done("")
+      const child = spawn("bash", [HOOK, "answer-wait", "opencode"], {
+        stdio: ["pipe", "pipe", "ignore"],
+        detached: true,
+      })
+      pending.child = child
+      let out = ""
+      child.stdout.on("data", (b) => { if (out.length < 65536) out += b })
+      child.on("error", () => done(""))
+      child.on("exit", () => done(out))
+      child.stdin.on("error", () => {})
+      child.stdin.end(JSON.stringify(payload))
+    } catch {
+      done("")
+    }
+  })
+}
+
+// Stop a wait: its hook and the CLI under it (their own process group).
+function stopWait(pending) {
+  pending.stopped = true
+  const child = pending.child
+  if (!child || child.exitCode !== null) return
+  try { process.kill(-child.pid, "SIGTERM") } catch {
+    try { child.kill() } catch {}
+  }
+}
+
+// POST /question/{id}/reply through the plugin's own client (in-process when opencode runs
+// without a server port, with its auth and directory), else at serverUrl.
+async function reply(client, serverUrl, requestID, answers) {
+  const inner = client && client._client
+  if (inner && typeof inner.post === "function") {
+    const r = await inner.post({
+      url: "/question/{requestID}/reply",
+      path: { requestID },
+      body: { answers },
+      headers: { "Content-Type": "application/json" },
+    })
+    return !(r && r.error)
+  }
+  const url = new URL("/question/" + encodeURIComponent(requestID) + "/reply", serverUrl)
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers }) })
+  return r.ok
+}
+
+export const NeedsYou = async (input) => {
+  const { directory, worktree, client } = input || {}
   const cwd = str(directory) || str(worktree) || process.cwd()
+  // Question request id -> its wait for an answer from the card.
+  const waits = new Map()
+
+  function ask(sid, p) {
+    const requestID = str(p.id).slice(0, 200)
+    const list = Array.isArray(p.questions) ? p.questions : []
+    const canAnswer = requestID !== "" && answerable(list)
+    const posted = notify(sid, { hook_event_name: "Question", question_id: requestID, questions: questions(p.questions),
+      ...(canAnswer ? { answerable: true } : {}) })
+    if (!canAnswer || !posted) return
+    const pending = { stopped: false, child: null }
+    waits.set(requestID, pending)
+    posted
+      .then(() => (pending.stopped ? "" : waitForAnswer({ session_id: sid, cwd, hook_event_name: "AnswerWait" }, pending)))
+      .then(async (printed) => {
+        if (waits.get(requestID) === pending) waits.delete(requestID)
+        if (pending.stopped || !printed) return
+        const answers = replyFor(list, printed, requestID)
+        if (!answers) return
+        let serverUrl
+        try { serverUrl = input.serverUrl } catch {}
+        await reply(client, serverUrl, requestID, answers)
+      })
+      .catch(() => {}) // never fail opencode
+  }
+  function answered(p) {
+    const pending = waits.get(str(p.requestID))
+    if (pending) {
+      waits.delete(str(p.requestID))
+      stopWait(pending)
+    }
+  }
   // Session -> the event behind its card, so the frequent resolve events cost nothing
   // otherwise, and session.idle plus session.status idle post once.
   const open = new Map()
@@ -88,7 +210,7 @@ export const NeedsYou = async ({ directory, worktree }) => {
     if (!sessionID) return
     if (data.hook_event_name === "Stop" && open.get(sessionID) === "Stop") return
     open.set(sessionID, data.hook_event_name)
-    run("notify", { session_id: sessionID, cwd, ...data })
+    return run("notify", { session_id: sessionID, cwd, ...data })
   }
   function resolve(sessionID, mode = "resolve") {
     if (!sessionID || !open.has(sessionID)) return
@@ -119,7 +241,7 @@ export const NeedsYou = async ({ directory, worktree }) => {
             break
           }
           case "question.asked":
-            notify(sid, { hook_event_name: "Question", question_id: str(p.id).slice(0, 200), questions: questions(p.questions) })
+            ask(sid, p)
             break
           case "session.idle":
             notify(sid, { hook_event_name: "Stop" })
@@ -130,9 +252,12 @@ export const NeedsYou = async ({ directory, worktree }) => {
             else if (st === "busy") resolve(sid)
             break
           }
-          case "permission.replied":
           case "question.replied":
           case "question.rejected":
+            answered(p)
+            resolve(sid)
+            break
+          case "permission.replied":
             resolve(sid)
             break
           case "session.deleted":

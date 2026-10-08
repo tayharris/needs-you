@@ -181,7 +181,7 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
         event["properties"]["questions"][0]["options"][0]["metadata"] = SECRET  # not a field it reads
         self.drive([{"type": event["type"], "properties": event["properties"]}])
         self.assertTrue(wait_until(lambda: len(self.calls()) >= 1, timeout=10))
-        argv = self.calls()[-1]
+        argv = [c for c in self.calls() if c[0] == "add"][-1]
         self.assertEqual(opt(argv, "--title"),
                          "opencode asks \u201cWhich branch should the release come from? (key [redacted])\u201d "
                          "and 1 more: my-repo")
@@ -260,6 +260,156 @@ console.log(JSON.stringify(out))
         self.drive([{"type": "session.idle", "properties": {"sessionID": "ses_x"}}])
         time.sleep(0.3)
         self.assertEqual(self.calls(), [])
+
+
+@unittest.skipIf(NODE is None, "node isn't installed")
+class Answers(Base):
+    """ADR 0009 B2: an answerable question card, the hook's answer-wait, and the plugin's reply
+    through opencode's own POST /question/{id}/reply (a stand-in client records it)."""
+    DRIVER = r"""
+import { pathToFileURL } from "node:url"
+import { appendFileSync } from "node:fs"
+const [plugin, dir, eventsJson, replyLog, gapMs] = process.argv.slice(2)
+const mod = await import(pathToFileURL(plugin).href)
+const client = { _client: { post: async (req) => {
+  appendFileSync(replyLog, JSON.stringify(req) + "\n")
+  return { data: true }
+} } }
+const hooks = await mod[Object.keys(mod)[0]]({ directory: dir, worktree: dir, client,
+  get serverUrl() { return new URL("http://127.0.0.1:9") } })
+const events = JSON.parse(eventsJson)
+for (const e of events) {
+  await hooks.event({ event: e })
+  await new Promise((r) => setTimeout(r, Number(gapMs)))
+}
+"""
+    # The CLI stand-in: logs its argv; `answer-wait` prints $FAKE_ANSWER after $FAKE_DELAY s.
+    ANSWER_CLI = """#!/usr/bin/env python3
+import json, os, sys, time
+with open(os.environ["FAKE_CLI_LOG"], "a") as fh:
+    fh.write(json.dumps(sys.argv[1:]) + "\\n")
+if sys.argv[1:2] == ["answer-wait"]:
+    time.sleep(float(os.environ.get("FAKE_DELAY") or 0))
+    sys.stdout.write(os.environ.get("FAKE_ANSWER", ""))
+"""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.cli, "w") as fh:
+            fh.write(self.ANSWER_CLI)
+        self.replies = os.path.join(self.home, "replies.log")
+
+    def event(self, **change):
+        e = fixture("opencode-question-asked.json")
+        props = e["properties"]
+        props.update(change)
+        return {"type": "question.asked", "properties": props}
+
+    def drive(self, events, answer, delay=0, gap_ms=0, timeout=20):
+        driver = os.path.join(self.home, "answer-driver.mjs")
+        with open(driver, "w") as fh:
+            fh.write(self.DRIVER)
+        with open(os.path.join(self.oc, "plugins", "package.json"), "w") as fh:
+            fh.write('{"type": "module"}\n')
+        env = self.env(FAKE_ANSWER=json.dumps(answer) if isinstance(answer, dict) else answer,
+                       FAKE_DELAY=str(delay))
+        r = subprocess.run([NODE, driver, os.path.join(self.oc, "plugins", "needs-you.js"), self.cwd,
+                            json.dumps(events), self.replies, str(gap_ms)], env=env,
+                           capture_output=True, text=True, timeout=timeout)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def posted(self):
+        try:
+            with open(self.replies) as fh:
+                return [json.loads(l) for l in fh]
+        except OSError:
+            return []
+
+    def answer(self, *sel, qid="que_01JABCDEF"):
+        return {"id": "01X", "key": "agent:x:ses_q1", "status": "open", "question_id": qid,
+                "answers": [{"selected": list(s)} for s in sel], "answered_at": "2026-10-08T10:00:00.000Z",
+                "answered_by": "mac"}
+
+    def test_a_click_becomes_opencodes_reply(self):
+        self.install()
+        self.drive([self.event()], self.answer(["release/1.4"], ["Linux", "macOS"]))
+        self.assertTrue(wait_until(lambda: self.posted(), timeout=10))
+        self.assertEqual(self.posted(), [{"url": "/question/{requestID}/reply", "path": {"requestID": "que_01JABCDEF"},
+                                          "body": {"answers": [["release/1.4"], ["Linux", "macOS"]]},
+                                          "headers": {"Content-Type": "application/json"}}])
+        add = [c for c in self.calls() if c[0] == "add"][-1]
+        q = json.loads(opt(add, "--question-json"))
+        self.assertTrue(q["answerable"])
+        self.assertTrue(q["expires_at"].endswith("Z"))
+        self.assertIn("Answer on the card or in opencode.", opt(add, "--body"))
+        wait = [c for c in self.calls() if c[0] == "answer-wait"]
+        self.assertEqual(wait, [["answer-wait", "--key", opt(add, "--key"), "--timeout", "600"]])
+
+    def test_nothing_is_answered_without_a_good_answer(self):
+        self.install()
+        bad = [
+            "",                                                         # timeout / nothing printed
+            "not json",
+            self.answer(["develop"], ["Linux"]),                        # not an offered label
+            self.answer(["main", "release/1.4"], ["Linux"]),            # two for a single choice
+            self.answer(["main"]),                                      # one question short
+            self.answer(["main"], ["Linux"], qid="que_other"),          # another question
+        ]
+        for answer in bad:
+            with self.subTest(answer=answer):
+                self.drive([self.event()], answer)
+                time.sleep(0.5)
+                self.assertEqual(self.posted(), [])
+
+    def test_the_tui_answer_stops_the_wait(self):
+        self.install()
+        replied = {"type": "question.replied", "properties": {"sessionID": "ses_q1", "requestID": "que_01JABCDEF",
+                                                              "answers": [["main"], ["Linux"]]}}
+        started = time.time()
+        self.drive([self.event(), replied], self.answer(["main"], ["Linux"]), delay=8, gap_ms=1500)
+        self.assertLess(time.time() - started, 7)  # the wait was stopped, not sat out
+        time.sleep(0.5)
+        self.assertEqual(self.posted(), [])
+        self.assertIn("resolve", [c[0] for c in self.calls()])
+
+    def test_plan_exit_and_odd_questions_are_never_answerable(self):
+        self.install()
+        plan = {"question": "Plan at plan.md is complete. Switch to the build agent?", "header": "Build Agent",
+                "custom": False, "options": [{"label": "Yes", "description": "Build"}, {"label": "No", "description": "Stay"}]}
+        nine = {"question": "Pick", "header": "Many", "options": [{"label": "o%d" % i, "description": ""} for i in range(9)]}
+        free = {"question": "Name it?", "header": "Name", "options": []}
+        for qs in ([plan], [nine], [free]):
+            with self.subTest(qs=qs[0]["header"]):
+                open(self.log, "w").close()
+                self.drive([self.event(questions=qs, id="que_x")], self.answer(["Yes"], qid="que_x"))
+                self.assertTrue(wait_until(lambda: any(c[0] == "add" for c in self.calls()), timeout=10))
+                time.sleep(0.5)
+                add = [c for c in self.calls() if c[0] == "add"][-1]
+                self.assertFalse(json.loads(opt(add, "--question-json")).get("answerable"))
+                self.assertNotIn("answer-wait", [c[0] for c in self.calls()])
+                self.assertEqual(self.posted(), [])
+
+
+class AnswerWaitMode(Base):
+    def test_hook_prints_the_cli_answer_and_always_exits_0(self):
+        cli = os.path.join(self.home, "answer-cli")
+        with open(cli, "w") as fh:
+            fh.write("#!/bin/sh\necho \"$@\" >> \"$FAKE_CLI_LOG\"\nprintf '{\"answers\": []}'\nexit 3\n")
+        os.chmod(cli, 0o755)
+        r = subprocess.run([BASH, HOOK, "answer-wait", "opencode"], input=json.dumps({"session_id": "ses_w"}),
+                           env=self.env(NEEDS_YOU_BIN=cli, NEEDS_YOU_ANSWER_TIMEOUT="5"),
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual((r.returncode, r.stdout), (0, '{"answers": []}'))
+        with open(self.log) as fh:
+            line = fh.read().split()
+        self.assertEqual(line[:2], ["answer-wait", "--key"])
+        self.assertTrue(line[2].endswith(":ses_w"))
+        self.assertEqual(line[3:], ["--timeout", "30"])  # clamped to 30-3600 s
+        # opted out: nothing runs
+        r = subprocess.run([BASH, HOOK, "answer-wait", "opencode"], input=json.dumps({"session_id": "ses_w"}),
+                           env=self.env(NEEDS_YOU_BIN=cli, NEEDS_YOU_AGENT_ALERTS="0"),
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
 
 
 class Installer(Base):
