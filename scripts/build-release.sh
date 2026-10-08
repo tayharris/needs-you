@@ -53,7 +53,8 @@ for f in integrations/claude-code/needs-you-hook.sh integrations/claude-code/ski
          integrations/opencode/needs-you.js integrations/opencode/install-opencode-plugin.sh \
          integrations/copilot/copilot-hooks.json integrations/copilot/install-copilot-hooks.sh \
          integrations/kimi/kimi-hooks.toml integrations/kimi/install-kimi-hooks.sh \
-         integrations/grok/grok-hooks.json integrations/grok/install-grok-hooks.sh; do
+         integrations/grok/grok-hooks.json integrations/grok/install-grok-hooks.sh \
+         integrations/agent-instructions/needs-you.md; do
   got=$(sed -n 's/.*needs[-_]you[-_]version"\{0,1\}: *"\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$ROOT/$f" | head -n 1)
   [ "$got" = "$V" ] || die "$f has version stamp ${got:-none}, VERSION file has $V"
 done

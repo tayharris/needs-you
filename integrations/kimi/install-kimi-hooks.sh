@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.1.3
+# needs-you-version: 0.1.4
 # install-kimi-hooks.sh: add the needs-you hooks to Kimi Code CLI's config.toml.
 #
 #   ./install-kimi-hooks.sh                  ~/.kimi-code/config.toml ($KIMI_CODE_HOME if set)

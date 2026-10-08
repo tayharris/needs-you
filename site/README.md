@@ -15,7 +15,15 @@ The favicon is an inline SVG data URI in `index.html`, so there's no separate ic
 
 ## The live demo
 
-`#demo` on the landing page is the app's arrival preview drawn in HTML and CSS (`.pv`), looping through four example alerts in `EXAMPLES` in `site.js`: each springs out of the pill, a pointer clicks its link button, the card is marked done and the pill settles. The layout follows the app: title and meta on full-width lines, the link button (label, the fainter real destination, an arrow) on its own row below. On wide screens it sits in a right-hand rail and stays in view as you scroll; under 68rem it's inline under the intro, so it never covers text. It pauses while the tab is hidden, while it's off screen and when the reader presses Pause. With reduced motion, or without JS, it shows the first alert, still: the HTML is that frame, so keep the markup and `EXAMPLES[0]` the same. Examples use placeholder names only (`devbox`, `build-box`, `acme-api`, `ci.example.com`).
+`#demo` on the landing page is a working model of the pill, drawn in HTML and CSS (`.pv` for the pill, `.pp` for the panel) and run by `site.js` (vanilla JS, no libraries). The examples are `EXAMPLES` in `site.js`; each has the `needs-you add` command that would have posted it.
+
+- **Visitors can press it.** The link button shows the real destination and the result ("Opened VS Code · marked done") without going anywhere, and the card is done. The card itself (`.pv-hit`, a button under the card's text) opens the panel at that card; the pill opens the panel when it's idle ("All clear in Work") or showing a count. In the panel, Done removes a card, its link button says it opened but leaves the card (as in the app), and Close or Escape goes back to the pill. **Send a test alert** brings in the next example and shows its command (to read: no Copy button, like every example on the site).
+- **Left alone, it plays itself:** each example springs out of the pill, a pointer presses its link button, the card is marked done. A press, key or focus in the demo stops the pointer; it comes back after 10 s without one (mouse movement over it keeps it waiting, and it never comes back while keyboard focus is in the screen). It pauses while the tab is hidden, while it's off screen and when the reader presses Pause.
+- **Accessible:** all real buttons, keyboard operable, with focus moved sensibly (to the card when the panel opens, to the next card after Done, back to the pill on Close). The caption is a live region only for what the visitor did; the self-playing loop stays quiet.
+- **Reduced motion:** no pointer, no springs, no Pause button, but it all still works.
+- **Without JS** the screen is `inert` and shows the first alert, still: the HTML is that frame, so keep the markup and `EXAMPLES[0]` the same (`tests/test_site.py` checks).
+
+The layout follows the app: title and meta on full-width lines, the link button (label, the fainter real destination, an arrow) on its own row below. On wide screens it sits in a right-hand rail and stays in view as you scroll; under 68rem it's inline under the intro, so it never covers text, and opening the panel only makes the screen taller. Examples use placeholder names only (`devbox`, `build-box`, `acme-api`, `ci.example.com`, `github.com/acme`).
 
 Screenshots sit on a `.stage` (a quiet backdrop with room around the image) with the caption under it, outside the frame. CSS sets how big each is shown, so a retaken PNG with new dimensions only needs its `width`/`height` attributes updated (half the pixels; `tests/test_site.py` checks).
 
@@ -56,7 +64,7 @@ python3 -m http.server -d site 8000
 ## Checks before publishing
 
 - Width 375 px (DevTools device mode): no horizontal scroll.
-- macOS **System Settings → Accessibility → Display → Reduce motion** on: the demo shows one alert, still, with no Pause button.
+- macOS **System Settings → Accessibility → Display → Reduce motion** on: the demo shows one alert, still, with no Pause button, and pressing it (and Send a test alert) still works.
 - Light and dark appearance both read well.
 - Tab through the page: every link and button shows a focus ring; the "Skip to content" link appears first.
 

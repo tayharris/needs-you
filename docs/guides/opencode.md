@@ -38,6 +38,16 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 
 One card per session, updated in place. Commands, patterns, questions and answers aren't sent. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
 
+## Tell opencode when to post (optional)
+
+The hooks cover "opencode is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add `--agent-instructions opencode` to the invite's one line.
+
+```bash
+curl -fsSL <join_url>/install.sh | bash -s -- --yes --agent-instructions opencode
+```
+
+It appends a marked block (`<!-- needs-you:begin ... -->` to `<!-- needs-you:end -->`) to `~/.config/opencode/AGENTS.md` (opencode's global rules; once that file exists, opencode stops falling back to `~/.claude/CLAUDE.md`). The file is created if it's missing, backed up before it changes, and never written through a symlink. The text is generated from the skill, so the two say the same. `needs-you update` keeps the block current, and `needs-you uninstall-hooks --instructions` takes exactly the block out again (and deletes the file if nothing else is in it). To give opencode the needs-you tools over MCP as well, see [MCP server](mcp.md).
+
 ## Check it works
 
 ```bash

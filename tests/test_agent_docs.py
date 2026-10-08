@@ -16,6 +16,7 @@ DOCS = [
     "docs/AGENT-GUIDE.md",
     "integrations/orca/snippet.md",
     "docs/guides/mcp.md",
+    "integrations/agent-instructions/needs-you.md",
 ]
 TOP_LEVEL = {"-q", "--quiet", "--json", "--version"}
 # `needs-you` (the CLI, also by path) followed by its arguments; not needs-you-admin, needs-you-hook.sh.
