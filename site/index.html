@@ -43,7 +43,7 @@
     <section class="intro" aria-labelledby="title">
       <h1 id="title">One inbox for <span class="h1-quote">&ldquo;you have to do something.&rdquo;</span></h1>
       <p class="lede">Your agents, servers and CI jobs post when they need you. A small pill on your Mac shows it. When it's handled, it goes away.</p>
-      <p class="hero-sub">Your Mac is the hub: the app holds the alerts itself. No server, no account, no cloud.</p>
+      <p class="hero-sub">The Mac app has its own hub built in, so it holds the alerts itself. No server, no account, no cloud.</p>
     </section>
 
     <!-- The live demo: the pill, drawn in HTML and CSS (site.js). Example alerts arrive on
@@ -98,13 +98,26 @@
     </aside>
 
     <section id="how" aria-labelledby="how-title">
-      <h2 id="how-title">How it works</h2>
+      <h2 id="how-title">How it works: app &middot; hub &middot; senders</h2>
       <ol class="how">
-        <li><strong>Your Mac is the hub.</strong> The app runs a hub: a small SQLite database behind a tiny web server, one Python file. It holds your alerts; there's nothing else to install.</li>
-        <li><strong>Senders post to it.</strong> A Claude session, a cron job or a CI step runs the one-file <code>needs-you</code> command. If your Mac is asleep, the alert waits in a local outbox and goes out when it wakes.</li>
-        <li><strong>The pill shows it until it's handled.</strong> It floats over everything and never takes focus. The sender clears it, or you click Done. Nothing piles up.</li>
+        <li><strong>Senders post alerts.</strong> Install them anywhere you run AI agents or jobs: the one-file <code>needs-you</code> command, plus hooks for Claude Code and other agents, an MCP server, CI steps and a GitHub poller. One invite link sets a machine up. If no hub answers, the alert waits in a local outbox and goes out later.</li>
+        <li><strong>A hub stores them.</strong> A small SQLite database behind a tiny web server, one Python file. The Mac app has one built in, on by default, so there's nothing else to install. Optionally, run a hub on an always-on server too, or instead.</li>
+        <li><strong>The app shows them.</strong> The Needs You app on your Mac is the pill: it floats over everything and never takes focus, and each alert stays until it's handled. The sender clears it, or you click Done.</li>
       </ol>
-      <p class="note">Server hubs are optional, for redundancy: the same hub on an always-on Linux server, so alerts land while your Mac sleeps. Most people don't need one. <a href="#inside">Under the hood</a> has the details and the measured numbers.</p>
+      <div class="table-wrap">
+        <table class="weight">
+          <thead>
+            <tr><th scope="col">Part</th><th scope="col">Runs on</th><th scope="col">You need it?</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">The Needs You app</th><td>Your Mac</td><td>Yes: it's what shows your alerts</td></tr>
+            <tr><th scope="row">Built-in hub</th><td>Inside the app, on your Mac</td><td>On by default; enough for most people</td></tr>
+            <tr><th scope="row">Server hub</th><td>A Linux server you run, always on</td><td>Optional, so alerts land while your Mac sleeps</td></tr>
+            <tr><th scope="row">Senders</th><td>Any machine where agents or jobs run, your Mac included</td><td>Yes, one per machine that should alert you</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">The names, and the three ways to place the hub: <a href="guides/concepts.html">App, hubs and senders</a>. <a href="#inside">Under the hood</a> has the details and the measured numbers.</p>
     </section>
 
     <section id="agents" aria-labelledby="agents-title">
@@ -193,7 +206,7 @@
           <div class="arch-col">
             <p class="arch-label">Hubs</p>
             <ul class="arch-nodes">
-              <li class="arch-node arch-main">Hub on your Mac<span>SQLite, runs inside the app</span></li>
+              <li class="arch-node arch-main">Built-in hub<span>SQLite, inside the app on your Mac</span></li>
               <li class="arch-repl" aria-hidden="true">
                 <span>or</span>
               </li>
@@ -209,24 +222,24 @@
           <div class="arch-col">
             <p class="arch-label">You</p>
             <ul class="arch-nodes">
-              <li class="arch-node arch-pill"><span class="pill-dot" aria-hidden="true"></span>The pill on your Mac</li>
+              <li class="arch-node arch-pill"><span class="pill-dot" aria-hidden="true"></span>The Needs You app</li>
             </ul>
-            <p class="arch-sub">uses whichever hub answers</p>
+            <p class="arch-sub">the pill on your Mac; reads the first hub that answers</p>
           </div>
         </div>
-        <figcaption>Senders post to a hub. Server hubs copy every write to each other. The Mac app reads from the first hub that answers, its own first.</figcaption>
+        <figcaption>Senders post to a hub. Server hubs copy every write to each other. The app reads from the first hub that answers, its built-in hub first.</figcaption>
       </figure>
 
-      <p><strong>A hub is a small SQLite database behind a tiny web server.</strong> It's one Python file that needs only the standard library. The Mac app runs one, so your Mac is the hub: nothing to install or keep running.</p>
+      <p><strong>A hub is a small SQLite database behind a tiny web server.</strong> It's one Python file that needs only the standard library. The Mac app has one built in, so there's nothing to install or keep running.</p>
       <figure class="shot">
         <div class="stage stage-window">
           <img src="img/settings-inbox.png" width="760" height="548" loading="lazy" decoding="async"
-               alt="Settings, Your inbox page. How it works: your machines and agents send alerts; this Mac holds them, the hub runs inside the app; the pill shows them until they're handled. Below, Run hub on this Mac is on and Running.">
+               alt="Settings, Built-in hub page. How it works: senders post alerts; a hub stores them, and this app has one built in; this app shows them in the pill until they're handled. Below, Run hub on this Mac is on and Running.">
         </div>
-        <figcaption>Settings &rarr; Your inbox: the hub runs inside the app, on by default.</figcaption>
+        <figcaption>Settings &rarr; Built-in hub: the hub inside the app, on by default.</figcaption>
       </figure>
       <p><strong>Senders are the one-file <code>needs-you</code> command.</strong> It tries each hub in turn. If none answers (your Mac is asleep, say), it keeps the alert in a local outbox, exits cleanly so the job carries on, and sends it later.</p>
-      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. Server hubs copy every write to each other; copying to and from your Mac's own hub is coming, and until then <a href="guides/hub.html#with-the-macs-own-hub">Server hubs</a> says how to set one up. Most people don't need one.</p>
+      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. Server hubs copy every write to each other; copying to and from the app's built-in hub is coming, and until then <a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a> says how to set one up. Most people don't need one.</p>
       <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
       <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day, closed items are deleted after 7 days, and a sender's outbox keeps at most 500 alerts for 7 days.</p>
 
@@ -246,7 +259,7 @@
           </tbody>
         </table>
       </div>
-      <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a href="guides/concepts.html">Words</a> and <a href="guides/hub.html#resource-use">Server hubs</a>.</p>
+      <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a href="guides/concepts.html">App, hubs and senders</a> and <a href="guides/hub.html#resource-use">Server hubs</a>.</p>
     </section>
 
     <section id="works" aria-labelledby="works-title">
@@ -283,7 +296,7 @@
       <p>The latest release has <code>NeedsYou-&lt;version&gt;.dmg</code> (open it, drag the app to Applications) and the same app as a <code>.zip</code>. macOS 14 or later.</p>
       <p class="note">The app is ad-hoc signed, not notarized, so macOS blocks the first launch. On macOS 15 and later: double-click it, then System Settings &rarr; Privacy &amp; Security &rarr; <strong>Open Anyway</strong>. On macOS 14: Right-click the app &rarr; <strong>Open</strong> &rarr; <strong>Open</strong>.</p>
       <h3 id="connect">Connect a machine</h3>
-      <p>A faint pill appears at the top right, and your Mac is now the hub. To connect a sender (a server, a CI runner, or Claude Code on this Mac): right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>.</p>
+      <p>A faint pill appears at the top right, and the app's built-in hub is running. To connect a sender (a server, a CI runner, or Claude Code on this Mac): right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>.</p>
       <figure class="shot">
         <div class="stage stage-window">
           <img src="img/settings-connect.png" width="760" height="548" loading="lazy" decoding="async"

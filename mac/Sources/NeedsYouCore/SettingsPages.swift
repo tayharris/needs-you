@@ -7,12 +7,13 @@ import Foundation
 /// One Settings page. (The name is from when these were tabs; menu items and links open
 /// one with `SettingsWindowController.show(tab:)`.)
 ///
-/// The middle group is named after tasks, not parts: Your inbox (the hub inside this app),
-/// Connect a machine (make an invite link), Machines (who's connected) and Other hubs
-/// (advanced: joining another hub, adding one by hand, always-on server hubs).
+/// The middle group uses the product's three part names (docs/guides/concepts.md): Built-in
+/// hub (the hub inside this app), Connect a machine (an invite link for a sender or another
+/// Mac), Machines (who's connected) and Other hubs (advanced: server hubs, another hub,
+/// adding one by hand).
 public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     case general
-    // Inbox and machines
+    // Hubs and machines
     case inbox, connect, machines, otherHubs
     // The app
     case panel, appearance, alerts, integrations, updates, advanced
@@ -20,7 +21,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     public var title: String {
         switch self {
         case .general: return "General"
-        case .inbox: return "Your inbox"
+        case .inbox: return "Built-in hub"
         case .connect: return "Connect a machine"
         case .machines: return "Machines"
         case .otherHubs: return "Other hubs (advanced)"
@@ -56,13 +57,13 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .general:
             return "Your name, starting at login, and demo mode."
         case .inbox:
-            return "This Mac holds your alerts: it runs the hub your machines and agents send to."
+            return "The hub inside this app stores the alerts your senders post. On by default; you can use a server hub instead."
         case .connect:
-            return "Make a link that sets up a server, an agent or another Mac to use your inbox."
+            return "Make a link that sets up a sender (a server or agent machine) or another Mac that shows your alerts."
         case .machines:
-            return "Every machine connected to your inbox, and open invite links. Revoke any of them."
+            return "Every sender and Mac connected to your hub, and open invite links. Revoke any of them."
         case .otherHubs:
-            return "Optional. Join a hub someone else runs, add one by URL, or use always-on server hubs."
+            return "Optional. Use an always-on server hub, join a hub someone else runs, or add one by URL."
         case .panel:
             return "How the floating pill and its cards look, where they show, and the shortcut."
         case .appearance:
@@ -122,7 +123,7 @@ public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
     public var title: String? {
         switch self {
         case .start: return nil
-        case .hubs: return "Inbox and machines"
+        case .hubs: return "Hubs and machines"
         case .app: return "Needs You"
         }
     }
@@ -162,7 +163,7 @@ extension HubRole {
     /// One more sentence about the choice.
     public var connectDetail: String {
         switch self {
-        case .sender: return "It gets the needs-you command, not this app. It sends alerts but can't see yours."
+        case .sender: return "A sender: it gets the needs-you command, not this app. It sends alerts but can't see yours."
         case .reader: return "It needs this app. It shows the same alerts, but can't connect machines."
         case .owner: return "Like another Mac, and it can also make links and revoke machines. Only for your own Macs."
         }
@@ -171,8 +172,8 @@ extension HubRole {
     /// The role on Machines.
     public var machineLabel: String {
         switch self {
-        case .sender: return "Sends alerts"
-        case .reader: return "Mac, shows alerts"
+        case .sender: return "Sender"
+        case .reader: return "Mac, reader"
         case .owner: return "Mac, owner"
         }
     }

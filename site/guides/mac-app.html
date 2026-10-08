@@ -36,7 +36,7 @@
       <p>On this page</p>
       <ul>
         <li><a href="#install">Install</a></li>
-        <li><a href="#its-own-hub">Its own hub</a></li>
+        <li><a href="#its-built-in-hub">Its built-in hub</a></li>
         <li><a href="#using-it">Using it</a></li>
         <li><a href="#focus-heads-down-except-what-you-choose">Focus: heads-down, except what you choose</a></li>
         <li><a href="#make-it-yours">Make it yours</a></li>
@@ -44,8 +44,8 @@
         <li><a href="#settings">Settings</a></li>
       </ul>
     </nav>
-<p><code>NeedsYou.app</code> is the only thing that shows anything. It's a small floating panel (no Dock icon; an optional menu bar icon) that polls your hubs and stays out of the way until something needs you.</p>
-<p>Build, install and signing details live with the code: <strong><a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a></strong>. This page is the short version for users. New to the words hub, sender and owner? <a href="concepts.html">Words</a> explains them in one table.</p>
+<p><code>NeedsYou.app</code>, <strong>the Needs You app</strong>, is the part of needs-you that shows your alerts. It's a small floating panel (no Dock icon; an optional menu bar icon) that reads them from a hub and stays out of the way until something needs you. It has a hub built in, so it works on its own; senders on your other machines post to that hub.</p>
+<p>Build, install and signing details live with the code: <strong><a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a></strong>. This page is the short version for users. New to the words app, hub, sender and owner? <a href="concepts.html">App, hubs and senders</a> explains them.</p>
 <h2 id="install">Install <a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
 <ol>
 <li>Download <code>NeedsYou-X.Y.Z.dmg</code> (or <code>NeedsYou-X.Y.Z-macos.zip</code>) from the repository's <strong>Releases</strong> page, plus <code>SHA256SUMS</code> if you want to check it (<code>shasum -a 256 -c SHA256SUMS</code>), and check its build provenance with <code>gh attestation verify NeedsYou-X.Y.Z.dmg --repo tayharris/needs-you</code> (<a data-repo="/blob/main/docs/security/release-signing.md" href="https://github.com/tayharris/needs-you/blob/main/docs/security/release-signing.md">release-signing.md</a>). Or build it per <a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a>.</li>
@@ -64,11 +64,13 @@
 </ul>
 <h2 id="its-own-hub">Its own hub <a class="anchor" href="#its-own-hub" aria-label="Link to this section">#</a></h2>
 <p>The app runs a hub itself (<code>hub/needs_you_hub.py</code> with the Mac's <code>/usr/bin/python3</code>, as a child process that exits with the app). It listens on <code>127.0.0.1:8765</code>, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; <strong>Settings… → Your inbox</strong> shows the URL servers use, next to the <code>127.0.0.1</code> one). It provisions its own <code>owner</code> token, so there's nothing to configure. The first time a server connects, macOS may ask whether <code>python3</code> may accept incoming connections: allow it.</p>
+<h2 id="its-built-in-hub">Its built-in hub <a class="anchor" href="#its-built-in-hub" aria-label="Link to this section">#</a></h2>
+<p>The app has a hub built in and runs it itself (<code>hub/needs_you_hub.py</code> with the Mac's <code>/usr/bin/python3</code>, as a child process that exits with the app). It listens on <code>127.0.0.1:8765</code>, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; <strong>Settings… → Built-in hub</strong> shows the URL servers use, next to the <code>127.0.0.1</code> one). It provisions its own <code>owner</code> token, so there's nothing to configure. The built-in hub is optional: turn off <strong>Run hub on this Mac</strong> and the app shows alerts from a server hub instead (<a href="concepts.html#where-the-hub-runs-three-setups">the three setups</a>). The first time a server connects, macOS may ask whether <code>python3</code> may accept incoming connections: allow it.</p>
 <ul>
 <li><strong>Connect a machine</strong> (right-click the pill → <strong>Settings…</strong>, or <strong>Connect a Machine…</strong> in the menu bar menu) makes an invite link plus a prompt to paste into an agent (<a href="add-a-sender.html">Add a sender</a>). <strong>Machines</strong> (the next page in the sidebar) lists every connected machine with its role, CLI version and open items, and the open invite links, with a <strong>Revoke</strong> button for each (<a href="add-a-sender.html#removing-a-sender">Removing a sender</a>). A sender whose CLI is older than the app, or hasn't reported a version, also has <strong>Request update</strong>: its next call to the hub asks it to run <code>needs-you update</code> (by itself with auto-update on, else a once-a-day reminder on that machine); the row then says "Update requested …" with <strong>Cancel</strong>, and "Up to date" once it has updated (<a href="updates.html#sender-machines">Keeping up to date</a>).</li>
 <li><strong>Server hubs (optional, advanced):</strong> set one up on a server from the command line (<a href="hub.html">Server hubs</a>; there's no app screen for it), then open a <code>needsyou://connect?hub=...&amp;code=...</code> link from its owner invite, or paste it into <strong>Settings → Other hubs (advanced)</strong>, and the app adds that hub (its token goes in <code>~/Library/Application Support/NeedsYou/tokens.json</code>, mode 600; nothing is kept in the Keychain) and fails over between hubs.</li>
 </ul>
-<p>While the Mac sleeps its hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on <a href="hub.html">server hubs</a> avoid the wait.</p>
+<p>While the Mac sleeps its built-in hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on <a href="hub.html">server hubs</a> avoid the wait.</p>
 <p>The exact settings and how the app passes options to its hub are in <a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a>.</p>
 <h2 id="using-it">Using it <a class="anchor" href="#using-it" aria-label="Link to this section">#</a></h2>
 <figure class="doc-fig">
@@ -112,7 +114,7 @@
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Tip</th><th>Shows when</th><th>Button</th></tr></thead>
 <tbody>
-<tr><td><strong>Turn on the hub on this Mac</strong></td><td><strong>Run hub on this Mac</strong> is off and no other hub is set up</td><td><strong>Open Settings</strong> (Your inbox)</td></tr>
+<tr><td><strong>Turn on the hub on this Mac</strong></td><td><strong>Run hub on this Mac</strong> is off and no other hub is set up</td><td><strong>Open Settings</strong> (Built-in hub)</td></tr>
 <tr><td><strong>Connect your first agent or machine</strong></td><td>The hub answers, but nothing has ever posted to it and it lists no token besides this Mac's</td><td><strong>Copy agent prompt</strong>: makes a one-use sender invite (24 hours) and copies the prompt to paste into Claude Code</td></tr>
 <tr><td><strong>Reach this Mac from your other machines</strong></td><td>The hub on this Mac listens on <code>127.0.0.1</code> only (no Tailscale) and you have server hubs or cards from other machines</td><td><strong>Open Settings</strong>, and the <a href="tailscale.html">Tailscale guide</a></td></tr>
 <tr><td><strong>Install the Claude Code hooks on this Mac</strong></td><td><code>~/.claude</code> exists but <code>~/.claude/settings.json</code> doesn't use the needs-you hook, after the first sender connected</td><td><strong>Copy agent prompt</strong>, and the <a href="claude-code.html">Claude Code guide</a></td></tr>
@@ -236,7 +238,7 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <h2 id="settings">Settings <a class="anchor" href="#settings" aria-label="Link to this section">#</a></h2>
 <p>Right-click the pill (or the menu bar icon) → <strong>Settings…</strong>. Settings is a sidebar of short pages, like System Settings. The look, alerts and shortcut are under <strong>Make it yours</strong> above; the pages:</p>
 <figure class="doc-fig">
-<div class="stage"><img src="../img/settings-inbox.png" width="380" height="274" alt="Settings, Your inbox: How it works in three lines, then Run hub on this Mac, on and Running." loading="lazy" decoding="async"> <img src="../img/settings-connect.png" width="380" height="274" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite." loading="lazy" decoding="async"></div>
+<div class="stage"><img src="../img/settings-inbox.png" width="380" height="274" alt="Settings, Built-in hub: How it works in three lines, then Run hub on this Mac, on and Running." loading="lazy" decoding="async"> <img src="../img/settings-connect.png" width="380" height="274" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite." loading="lazy" decoding="async"></div>
 </figure>
 <ul>
 <li><strong>General:</strong> your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up, and <strong>Move to Applications</strong> when the app runs from anywhere else (<a href="#opened-it-from-downloads-or-the-disk-image">above</a>).</li>
@@ -249,6 +251,18 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <li><strong>Alerts:</strong> how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.</li>
 <li><strong>Integrations:</strong> <strong>Jump to iTerm2 and Terminal tabs</strong> (<a href="#terminal-button">Terminal button</a>).</li>
 <li><strong>Updates</strong> (<a href="updates.html">guide</a>) and <strong>Advanced</strong> (reset the look and alerts).</li>
+<li><p><strong>General:</strong> your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.
+Under <strong>Hubs and machines</strong>:</p></li>
+<li><p><strong>Built-in hub:</strong> three lines on how it works (senders post alerts, a hub stores them and this app has one built in, the pill shows them), <strong>Run hub on this Mac</strong> (on by default; off to use only a server hub) and its two addresses, each with <strong>Copy</strong>: <strong>On this Mac</strong> (<code>http://127.0.0.1:8765</code>, for agents on the Mac) and <strong>From your other machines (Tailscale)</strong> (<code>http://&lt;name&gt;.&lt;tailnet&gt;.ts.net:8765</code>). Without Tailscale it says other machines can't reach the hub and links to the <a href="tailscale.html">Tailscale guide</a>.</p></li>
+<li><p><strong>Connect a machine:</strong> pick what it is (<em>A server or agent that sends alerts</em>, <em>Another Mac that shows the same alerts</em>, or <em>Another Mac that can also connect machines (advanced)</em>), a name, uses and expiry, then <strong>Create invite</strong>. See above.</p></li>
+<li><p><strong>Machines:</strong> every connected sender and Mac with its role (<em>Sender</em>, <em>Mac, reader</em>, <em>Mac, owner</em>), open items and, for senders, the CLI version (<em>version unknown (hasn't posted since updating)</em> until it reports one), and the open invite links; <strong>Revoke</strong> any of them. Shows only when you have an owner token.</p></li>
+<li><p><strong>Other hubs (advanced):</strong> you don't need it with the built-in hub. <strong>Join a hub with a link</strong>: paste a <code>needsyou://connect?...</code> or <code>/join/...</code> link that someone made for this Mac, and it joins their hub. The link comes from another Mac's <strong>Settings → Connect a machine</strong> (<em>Another Mac that shows the same alerts</em>) or from a server hub's admin (<code>needs-you-admin invite create my-mac --role owner</code>). If the clipboard already holds such a link when the page opens, it's filled in for you; <strong>Paste</strong> does the same by hand. Opening a <code>needsyou://connect</code> link does all of this by itself, after asking. <strong>Always-on server hubs</strong> explains them and links to <a href="hub.html">Server hubs</a> (they're set up from the command line). <strong>Hubs by URL and token</strong>: hubs added by hand, tried in order; the <em>This Mac (built-in hub)</em> row shows its Tailscale URL too.
+Under <strong>Needs You</strong>:</p></li>
+<li><p><strong>Panel:</strong> look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.</p></li>
+<li><p><strong>Appearance:</strong> the theme and the accent colour, with a sample (<a href="#themes">Themes</a>).</p></li>
+<li><p><strong>Alerts:</strong> how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.</p></li>
+<li><p><strong>Integrations:</strong> <strong>Jump to iTerm2 and Terminal tabs</strong> (<a href="#terminal-button">Terminal button</a>).</p></li>
+<li><p><strong>Updates</strong> (<a href="updates.html">guide</a>) and <strong>Advanced</strong> (reset the look and alerts).</p></li>
 </ul>
 <p>Built in, not settings yet:</p>
 <ul>

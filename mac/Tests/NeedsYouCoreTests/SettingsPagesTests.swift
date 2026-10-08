@@ -25,7 +25,7 @@ final class SettingsPagesTests: XCTestCase {
             [.panel, .appearance, .alerts, .integrations, .updates, .advanced],
         ])
         XCTAssertNil(SettingsSidebarGroup.start.title)
-        XCTAssertEqual(SettingsSidebarGroup.hubs.title, "Inbox and machines")
+        XCTAssertEqual(SettingsSidebarGroup.hubs.title, "Hubs and machines")
         // Every page is in exactly one group.
         let listed = SettingsSidebarGroup.allCases.flatMap { $0.pages(canInvite: true) }
         XCTAssertEqual(Set(listed), Set(SettingsTab.allCases))
@@ -44,10 +44,10 @@ final class SettingsPagesTests: XCTestCase {
 
     func testTaskBasedNames() {
         XCTAssertEqual(SettingsSidebarGroup.hubs.pages(canInvite: true).map(\.title),
-                       ["Your inbox", "Connect a machine", "Machines", "Other hubs (advanced)"])
+                       ["Built-in hub", "Connect a machine", "Machines", "Other hubs (advanced)"])
         // None of the old, confusing names is left in the sidebar.
         let titles = Set(SettingsTab.allCases.map(\.title))
-        for old in ["This Mac", "Join a hub", "Invite a machine", "Access", "Hubs (manual)", "Hubs"] {
+        for old in ["This Mac", "Your inbox", "Join a hub", "Invite a machine", "Access", "Hubs (manual)", "Hubs"] {
             XCTAssertFalse(titles.contains(old), old)
         }
     }
@@ -76,16 +76,16 @@ final class SettingsPagesTests: XCTestCase {
 
     func testMachineRowText() {
         let sender = TokenSummary(id: "1", name: "devbox", role: .sender, openItems: 2, client: ["cli": "0.4.1"])
-        XCTAssertEqual(MachineRowText.detail(sender), "Sends alerts · 2 open · CLI 0.4.1")
+        XCTAssertEqual(MachineRowText.detail(sender), "Sender · 2 open · CLI 0.4.1")
         let quiet = TokenSummary(id: "2", name: "ci", role: .sender)
-        XCTAssertEqual(MachineRowText.detail(quiet), "Sends alerts · version unknown (hasn't posted since updating)")
+        XCTAssertEqual(MachineRowText.detail(quiet), "Sender · version unknown (hasn't posted since updating)")
         let unknown = TokenSummary(id: "3", name: "old", role: .sender, client: ["cli": "unknown"])
         XCTAssertTrue(MachineRowText.detail(unknown).hasSuffix(MachineRowText.versionUnknown))
         // Macs don't run the CLI, so no version line for them.
         let me = TokenSummary(id: "4", name: "mac", role: .owner, current: true)
         XCTAssertEqual(MachineRowText.detail(me), "Mac, owner · this Mac")
         let reader = TokenSummary(id: "5", name: "laptop", role: .reader, openItems: 1)
-        XCTAssertEqual(MachineRowText.detail(reader), "Mac, shows alerts · 1 open")
+        XCTAssertEqual(MachineRowText.detail(reader), "Mac, reader · 1 open")
     }
 
     func testLinksUseTheUpdaterRepository() {

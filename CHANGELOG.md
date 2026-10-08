@@ -17,6 +17,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **Open at login can't be turned on from the wrong place any more.** Outside Applications the toggle is greyed out and says why (*Needs You is running from Downloads. Move it to Applications to open it at login.*). If it was turned on for a copy somewhere else, the copy in Applications takes the login item over at launch.
 
+### Changed
+
+- **Clearer names for the three parts: the app, the hub, senders.** The Needs You app shows your alerts; a hub stores them (built into the app, or on a server you run); senders post them from any machine where agents or jobs run. Settings → **Your inbox** is now **Built-in hub**, in a group called **Hubs and machines**; its How it works lines, Machines (rows now read *Sender*, *Mac, reader*, *Mac, owner*) and Other hubs use the same names, and Other hubs says plainly that server hubs don't replicate with the built-in hub yet. The Words guide is now [App, hubs and senders](docs/guides/concepts.md), with the three places a hub can run; the README and the site's How it works use the same breakdown.
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).
@@ -55,7 +59,7 @@ The hub's database moves from schema 6 to 8 the first time 0.2.0 opens it (the M
 
 - `needs-you resolve` refuses an empty `--key`/`--id` (exit 2) instead of queueing a request the hub would refuse.
 
-- Docs: **the Mac's own hub doesn't replicate with server hubs**, though the README, the quickstart, Words and HUB.md said it did. Server hubs replicate only with each other, and invites made on the Mac list only the Mac's URL. [HUB.md](docs/HUB.md#with-the-macs-own-hub) now says how to use server hubs today (make sender invites on a server hub, and connect the Mac to it). Peering the Mac's hub is planned ([next-big-item.md](docs/roadmap/next-big-item.md)).
+- Docs: **the Mac's own hub doesn't replicate with server hubs**, though the README, the quickstart, Words and HUB.md said it did. Server hubs replicate only with each other, and invites made on the Mac list only the Mac's URL. [HUB.md](docs/HUB.md#with-the-apps-built-in-hub) now says how to use server hubs today (make sender invites on a server hub, and connect the Mac to it). Peering the Mac's hub is planned ([next-big-item.md](docs/roadmap/next-big-item.md)).
 - Docs: the README has a table of every supported agent and tool with its install flag, the guides cover `needs-you run` and the safety nets for cards whose sender went away, and the update guide no longer says the app needs a GitHub credential (the repo is public).
 - Agent hooks: **no card for a big tool call.** A permission prompt for a `Write` of a large file (over 128 KiB on Linux) posted nothing; the hook now reads any size. Bytes that aren't UTF-8 in a message no longer make the hub refuse the card.
 - Agent hooks: an MCP tool whose arguments are named `conversation_id` or `session_id` no longer silences the Claude card or keys it to the wrong session.

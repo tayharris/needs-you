@@ -1,33 +1,76 @@
-# Words
+# App, hubs and senders
 
-The few words needs-you uses, and where each lives in the Mac app.
+needs-you has three parts. Each has one name, used the same way in Settings, on the site and in every guide.
 
-The short version: **your Mac is the hub.** A hub is a small SQLite database behind a tiny web server: one Python file that needs only the standard library. The Mac app runs one, so there's nothing else to install. **Senders** (servers, CI, agents) post to it with the `needs-you` command, also one Python file: it tries each hub in turn, and if none answers (the Mac is asleep, say) it keeps the alert in a local outbox and sends it later. **Server hubs** are optional: the same hub, always on, on a Linux server, for redundancy, so alerts land while the Mac sleeps. Most people don't need one. It's all light: the idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](../HUB.md#resource-use)).
+| Part | What it does | Where it runs | You install it with |
+|---|---|---|---|
+| **The Needs You app** | Shows your alerts: the pill and the panel. It reads them from a hub; it doesn't post them. | Your Mac (macOS 14+) | The `.dmg` or `.zip` from the Releases page |
+| **A hub** | Stores alerts and hands them to the app. Also makes invite links and keeps the list of connected machines. One Python file, SQLite, standard library only. | **Built into the app** (on by default), and optionally on **a server you run** | Nothing for the built-in hub; `scripts/install-hub.sh` for a server hub ([HUB.md](../HUB.md)) |
+| **Senders** | Post alerts when something needs you, and clear them once it's handled. They can't read your alerts. | Any machine where agents or jobs run: your Mac, a devbox, a CI runner | An invite link: the agent prompt or the shell one-liner |
+
+So the thing on your Mac that shows alerts is **the app**. The **hub** is where alerts are stored; the app has one built in, which is why there's nothing else to set up. Senders don't need the app, only the `needs-you` command.
+
+## How it fits together
 
 ```
- servers, CI, agents ──(needs-you command)──►  your Mac: the hub (Settings → Your inbox)  ──►  the pill
-                                                  ▲
-           optional: always-on server hubs ───────┘  (set up from the command line, HUB.md)
+ where agents and jobs run               your Mac
+ ┌──────────────────────────┐            ┌────────────────────────────────────┐
+ │ senders                  │   post     │ the Needs You app                  │
+ │  needs-you CLI           │ ─────────► │   built-in hub (stores alerts)     │
+ │  agent hooks, MCP server │            │        │                           │
+ │  CI, cron, GitHub poller │            │        ▼                           │
+ └──────────────────────────┘            │   pill and panel (show alerts)     │
+              │                          └────────────────────────────────────┘
+              │ or post to                               ▲
+              ▼                                          │ reads
+     server hub (optional, always on) ───────────────────┘
 ```
+
+Senders post to a hub over HTTP. The app reads from one hub at a time: the first in its list that answers, the built-in hub first. A sender lists one or more hubs and tries each in turn; if none answers (the Mac is asleep, say), it keeps the alert in a local outbox and sends it later, so a job never fails because of needs-you.
+
+## Where the hub runs: three setups
+
+| Setup | How | Today |
+|---|---|---|
+| **Built-in hub only** (the default) | Nothing to do: **Settings → Built-in hub → Run hub on this Mac** is on. Servers reach it over [Tailscale](tailscale.md). | Works. While the Mac sleeps, senders queue alerts and deliver them within about 5 minutes of it waking. |
+| **Server hub only** | Set up a hub on a server ([HUB.md](../HUB.md)), join it from **Settings → Other hubs (advanced)** with an owner link from it, make sender invites on it, and turn off **Run hub on this Mac**. | Works. Alerts land while the Mac sleeps; the app shows them when it wakes. |
+| **Both, kept in step** | The built-in hub and a server hub replicate every alert both ways, so senders can post to either. | Not yet. Server hubs replicate with each other, but not with the built-in hub; that's being built ([ADR 0004](../adr/0004-always-on-hub.md)). Until then, if the app lists both, it shows the built-in hub's alerts and switches to the server hub only while the built-in one is down. [HUB.md](../HUB.md#with-the-apps-built-in-hub) |
+
+Most people need only the first. The idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](../HUB.md#resource-use)).
+
+## Senders
+
+Everything that posts is a sender, and all of it is built on one file, the `needs-you` command:
+
+- **The `needs-you` CLI**: `needs-you add`, `resolve`, `run` (alert when a long job fails or finishes), `doctor`, `update`. It keeps the hub URLs and its token in `~/.config/needs-you/env`.
+- **Agent hooks**: Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok Build, Cursor, Cline and Aider post "agent is waiting" cards and clear them when you answer ([Claude Code](claude-code.md) and the other guides).
+- **The MCP server**, for agents with MCP but no shell ([MCP server](mcp.md)).
+- **CI, cron and scripts** ([Add a sender](add-a-sender.md#cron-systemd-ci)), **Orca** automations ([Orca](orca.md)) and the **GitHub poller** ([GitHub](github.md)).
+
+One invite link installs the CLI and, with the options you pick, the hooks, the skill or the MCP server.
+
+## Other words
 
 | Word | What it is | In the app |
 |---|---|---|
-| **Hub** | Holds your alerts: a small SQLite database behind a tiny web server, one Python file (standard library only). The Mac app runs one for you, so your Mac is the hub; you don't install anything. | **Settings → Your inbox** (**Run hub on this Mac**, on by default) |
-| **Sender** | Any machine or agent that sends alerts: a server, a CI job, a cron script, Claude Code. It doesn't need the Mac app, only the `needs-you` command (one Python file), which a link installs. If no hub answers, it keeps the alert in a local outbox and sends it later. It can send but can't see your alerts. | **Settings → Connect a machine** → *A server or agent that sends alerts* |
-| **Reader** (another Mac) | Another Mac with the app that shows the same alerts as yours. It can't connect other machines. | **Connect a machine** → *Another Mac that shows the same alerts* |
-| **Owner** | A Mac that can also make links and revoke machines. Your own Mac is the owner of its hub. Give it to other Macs only if they're yours. | **Connect a machine** → *Another Mac that can also connect machines (advanced)* |
-| **Invite link** / **connect link** | A link that sets up one or more machines. For a sender it's `http://<hub>/join/<code>` (an agent reads it, or you run its one-liner); for another Mac it's `needsyou://connect?…`. It works a set number of times, then expires. Each machine it sets up gets its own token you can revoke. | Made in **Connect a machine**; joined in **Other hubs (advanced)**; listed and revoked in **Machines** |
-| **Machines** | Every machine that can use your hub, with its role, CLI version and open items. | **Settings → Machines** |
-| **Server hub** | Optional, for redundancy: the same hub, always on, on a Linux server or VM, so alerts land while your Mac sleeps. Server hubs replicate with each other; the Mac's own hub doesn't replicate with them yet, so the app reads a server hub as one of its hubs. Set up from the command line with `scripts/install-hub.sh`; there's no app screen for it. Most people don't need one: senders queue alerts while the Mac sleeps. | [HUB.md](../HUB.md); join it from **Other hubs (advanced)** |
-| **Tailnet** | Your private [Tailscale](tailscale.md) network. It lets servers reach the hub on your Mac (`http://<name>.<tailnet>.ts.net:8765`) without opening it to the internet. | **Your inbox → Addresses** |
+| **Token** | What a machine uses to talk to a hub. Each machine gets its own, with one role, and you can revoke it. The hub stores only a hash of it. | Listed in **Settings → Machines** |
+| **Sender** (role) | Can post and resolve alerts, nothing else. Every sender machine gets this role. | **Connect a machine** → *A server or agent that sends alerts* |
+| **Reader** (role) | Another Mac with the app that shows the same alerts from the same hub. It can't connect machines. | **Connect a machine** → *Another Mac that shows the same alerts* |
+| **Owner** (role) | A reader that can also make invite links and revoke machines. The app is the owner of its built-in hub. Give it to other Macs only if they're yours. | **Connect a machine** → *Another Mac that can also connect machines (advanced)* |
+| **Peer** | Another hub this hub replicates with, using a shared peer secret (not a token). Today only server hubs have peers. | [HUB.md](../HUB.md) |
+| **Invite link** | Sets up one or more machines, each with its own token. For a sender it's `http://<hub>/join/<code>` (an agent reads it, or you run its one-liner); for another Mac it's a connect link, `needsyou://connect?…`. It works a set number of times, then expires. | Made in **Connect a machine**; joined in **Other hubs (advanced)**; listed and revoked in **Machines** |
+| **Machines** | Every sender and Mac that can use your hub, with its role, CLI version and open items. | **Settings → Machines** |
+| **Tailnet** | Your private [Tailscale](tailscale.md) network. It lets servers reach the built-in hub (`http://<name>.<tailnet>.ts.net:8765`) without opening it to the internet. | **Built-in hub → Addresses** |
 
 ## The Settings pages, by task
 
+The sidebar group **Hubs and machines** has four pages:
+
 | You want to | Page |
 |---|---|
-| Check the hub on this Mac is running, copy its address | **Your inbox** |
-| Set up a server, an agent or another Mac | **Connect a machine** (menu: **Connect a Machine…**) |
-| See who's connected, revoke a machine or a link | **Machines** (only with an owner token) |
-| See alerts from someone else's hub, add a server hub, or add a hub by URL and token | **Other hubs (advanced)** |
+| Check the built-in hub is running, copy its address, or turn it off | **Built-in hub** |
+| Set up a sender (a server or agent machine) or another Mac | **Connect a machine** (menu: **Connect a Machine…**) |
+| See which senders and Macs are connected, revoke one or a link | **Machines** (only with an owner token) |
+| Use a server hub or someone else's hub, or add a hub by URL and token | **Other hubs (advanced)** |
 
-Older builds called these pages This Mac, Invite a machine, Access, and Join a hub plus Hubs (manual).
+Older builds called these pages Your inbox (before that, This Mac), Invite a machine, Access, and Join a hub plus Hubs (manual), under a group called Inbox and machines.

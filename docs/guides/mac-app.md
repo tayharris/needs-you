@@ -1,8 +1,8 @@
 # The Mac app
 
-`NeedsYou.app` is the only thing that shows anything. It's a small floating panel (no Dock icon; an optional menu bar icon) that polls your hubs and stays out of the way until something needs you.
+`NeedsYou.app`, **the Needs You app**, is the part of needs-you that shows your alerts. It's a small floating panel (no Dock icon; an optional menu bar icon) that reads them from a hub and stays out of the way until something needs you. It has a hub built in, so it works on its own; senders on your other machines post to that hub.
 
-Build, install and signing details live with the code: **[mac/README.md](../../mac/README.md)**. This page is the short version for users. New to the words hub, sender and owner? [Words](concepts.md) explains them in one table.
+Build, install and signing details live with the code: **[mac/README.md](../../mac/README.md)**. This page is the short version for users. New to the words app, hub, sender and owner? [App, hubs and senders](concepts.md) explains them.
 
 ## Install
 
@@ -22,13 +22,14 @@ Open at login only works from Applications (macOS ties the login item to where t
 - **Moved it by hand, or from an older build?** If Open at login was on for a copy somewhere else, the copy in Applications takes the login item over at launch. A copy outside Applications never touches it.
 
 ## Its own hub
+## Its built-in hub
 
-The app runs a hub itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; **Settings… → Your inbox** shows the URL servers use, next to the `127.0.0.1` one). It provisions its own `owner` token, so there's nothing to configure. The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
+The app has a hub built in and runs it itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; **Settings… → Built-in hub** shows the URL servers use, next to the `127.0.0.1` one). It provisions its own `owner` token, so there's nothing to configure. The built-in hub is optional: turn off **Run hub on this Mac** and the app shows alerts from a server hub instead ([the three setups](concepts.md#where-the-hub-runs-three-setups)). The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
 
 - **Connect a machine** (right-click the pill → **Settings…**, or **Connect a Machine…** in the menu bar menu) makes an invite link plus a prompt to paste into an agent ([add-a-sender.md](add-a-sender.md)). **Machines** (the next page in the sidebar) lists every connected machine with its role, CLI version and open items, and the open invite links, with a **Revoke** button for each ([Removing a sender](add-a-sender.md#removing-a-sender)). A sender whose CLI is older than the app, or hasn't reported a version, also has **Request update**: its next call to the hub asks it to run `needs-you update` (by itself with auto-update on, else a once-a-day reminder on that machine); the row then says "Update requested …" with **Cancel**, and "Up to date" once it has updated ([updates.md](updates.md#sender-machines)).
 - **Server hubs (optional, advanced):** set one up on a server from the command line ([HUB.md](../HUB.md); there's no app screen for it), then open a `needsyou://connect?hub=...&code=...` link from its owner invite, or paste it into **Settings → Other hubs (advanced)**, and the app adds that hub (its token goes in `~/Library/Application Support/NeedsYou/tokens.json`, mode 600; nothing is kept in the Keychain) and fails over between hubs.
 
-While the Mac sleeps its hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on [server hubs](../HUB.md) avoid the wait.
+While the Mac sleeps its built-in hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on [server hubs](../HUB.md) avoid the wait.
 
 The exact settings and how the app passes options to its hub are in [mac/README.md](../../mac/README.md).
 
@@ -71,7 +72,7 @@ While something isn't set up yet, the open panel shows a **setup tip**: a card l
 
 | Tip | Shows when | Button |
 |---|---|---|
-| **Turn on the hub on this Mac** | **Run hub on this Mac** is off and no other hub is set up | **Open Settings** (Your inbox) |
+| **Turn on the hub on this Mac** | **Run hub on this Mac** is off and no other hub is set up | **Open Settings** (Built-in hub) |
 | **Connect your first agent or machine** | The hub answers, but nothing has ever posted to it and it lists no token besides this Mac's | **Copy agent prompt**: makes a one-use sender invite (24 hours) and copies the prompt to paste into Claude Code |
 | **Reach this Mac from your other machines** | The hub on this Mac listens on `127.0.0.1` only (no Tailscale) and you have server hubs or cards from other machines | **Open Settings**, and the [Tailscale guide](tailscale.md) |
 | **Install the Claude Code hooks on this Mac** | `~/.claude` exists but `~/.claude/settings.json` doesn't use the needs-you hook, after the first sender connected | **Copy agent prompt**, and the [Claude Code guide](claude-code.md) |
@@ -216,13 +217,19 @@ If a CLI switch fails (the pane is gone), the command goes on the clipboard. Log
 
 Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a sidebar of short pages, like System Settings. The look, alerts and shortcut are under **Make it yours** above; the pages:
 
-<img src="../../site/img/settings-inbox.png" width="380" alt="Settings, Your inbox: How it works in three lines, then Run hub on this Mac, on and Running."> <img src="../../site/img/settings-connect.png" width="380" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite.">
+<img src="../../site/img/settings-inbox.png" width="380" alt="Settings, Built-in hub: How it works in three lines, then Run hub on this Mac, on and Running."> <img src="../../site/img/settings-connect.png" width="380" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite.">
 
 - **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up, and **Move to Applications** when the app runs from anywhere else ([above](#opened-it-from-downloads-or-the-disk-image)).
 - **Your inbox:** three lines on how it works (your machines and agents send alerts, this Mac holds them because it's the hub, the pill shows them), **Run hub on this Mac** (on by default) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
+- **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.
+Under **Hubs and machines**:
+
+- **Built-in hub:** three lines on how it works (senders post alerts, a hub stores them and this app has one built in, the pill shows them), **Run hub on this Mac** (on by default; off to use only a server hub) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
 - **Connect a machine:** pick what it is (*A server or agent that sends alerts*, *Another Mac that shows the same alerts*, or *Another Mac that can also connect machines (advanced)*), a name, uses and expiry, then **Create invite**. See above.
-- **Machines:** every connected machine with its role, open items and, for senders, the CLI version (*version unknown (hasn't posted since updating)* until it reports one), and the open invite links; **Revoke** any of them. Shows only when you have an owner token.
-- **Other hubs (advanced):** you don't need it with the hub on this Mac. **Join a hub with a link**: paste a `needsyou://connect?...` or `/join/...` link that someone made for this Mac, and it joins their hub. The link comes from another Mac's **Settings → Connect a machine** (*Another Mac that shows the same alerts*) or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`). If the clipboard already holds such a link when the page opens, it's filled in for you; **Paste** does the same by hand. Opening a `needsyou://connect` link does all of this by itself, after asking. **Always-on server hubs** explains them and links to [HUB.md](../HUB.md) (they're set up from the command line). **Hubs by URL and token**: hubs added by hand, tried in order; the *This Mac (your inbox)* row shows its Tailscale URL too.
+- **Machines:** every connected sender and Mac with its role (*Sender*, *Mac, reader*, *Mac, owner*), open items and, for senders, the CLI version (*version unknown (hasn't posted since updating)* until it reports one), and the open invite links; **Revoke** any of them. Shows only when you have an owner token.
+- **Other hubs (advanced):** you don't need it with the built-in hub. **Join a hub with a link**: paste a `needsyou://connect?...` or `/join/...` link that someone made for this Mac, and it joins their hub. The link comes from another Mac's **Settings → Connect a machine** (*Another Mac that shows the same alerts*) or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`). If the clipboard already holds such a link when the page opens, it's filled in for you; **Paste** does the same by hand. Opening a `needsyou://connect` link does all of this by itself, after asking. **Always-on server hubs** explains them and links to [HUB.md](../HUB.md) (they're set up from the command line). **Hubs by URL and token**: hubs added by hand, tried in order; the *This Mac (built-in hub)* row shows its Tailscale URL too.
+Under **Needs You**:
+
 - **Panel:** look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.
 - **Appearance:** the theme and the accent colour, with a sample ([Themes](#themes)).
 - **Alerts:** how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
