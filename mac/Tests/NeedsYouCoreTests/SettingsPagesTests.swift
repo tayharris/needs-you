@@ -15,6 +15,7 @@ final class SettingsPagesTests: XCTestCase {
         ("testDeepLinksAndOldNames", testDeepLinksAndOldNames),
         ("testConnectChoicesInPlainWords", testConnectChoicesInPlainWords),
         ("testMachineRowText", testMachineRowText),
+        ("testThisMacRows", testThisMacRows),
         ("testLinksUseTheUpdaterRepository", testLinksUseTheUpdaterRepository),
     ]
 
@@ -83,9 +84,37 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertTrue(MachineRowText.detail(unknown).hasSuffix(MachineRowText.versionUnknown))
         // Macs don't run the CLI, so no version line for them.
         let me = TokenSummary(id: "4", name: "mac", role: .owner, current: true)
-        XCTAssertEqual(MachineRowText.detail(me), "Mac, owner · this Mac")
+        XCTAssertEqual(MachineRowText.detail(me), "Mac, owner · this Mac: app")
         let reader = TokenSummary(id: "5", name: "laptop", role: .reader, openItems: 1)
         XCTAssertEqual(MachineRowText.detail(reader), "Mac, shows alerts · 1 open")
+    }
+
+    func testThisMacRows() {
+        let hosts = MachineRowText.hostNames(["DevBox", "devbox.local", nil, "", "localhost"])
+        XCTAssertEqual(hosts, ["devbox"])
+        XCTAssertEqual(MachineRowText.hostNames(["Dev's Box.local"]), ["dev-s-box"])
+
+        let app = TokenSummary(id: "1", name: "this-mac", role: .owner, current: true)
+        let agents = TokenSummary(id: "2", name: "devbox", role: .sender)
+        let old = TokenSummary(id: "3", name: "devbox-devbox", role: .sender)
+        let invited = TokenSummary(id: "4", name: "agent-devbox-2", role: .sender)
+        let other = TokenSummary(id: "5", name: "build-1", role: .sender)
+        let lookalike = TokenSummary(id: "6", name: "mydevbox", role: .sender)
+        let reader = TokenSummary(id: "7", name: "mac-devbox", role: .reader)
+        XCTAssertEqual(MachineRowText.thisMac(app, hostNames: hosts), .app)
+        XCTAssertEqual(MachineRowText.thisMac(agents, hostNames: hosts), .agents)
+        XCTAssertEqual(MachineRowText.thisMac(old, hostNames: hosts), .agents)
+        XCTAssertEqual(MachineRowText.thisMac(invited, hostNames: hosts), .agents)
+        XCTAssertNil(MachineRowText.thisMac(other, hostNames: hosts))
+        XCTAssertNil(MachineRowText.thisMac(lookalike, hostNames: hosts))
+        XCTAssertEqual(MachineRowText.thisMac(reader, hostNames: hosts), .other)
+        // Without this Mac's names only the current token is this Mac.
+        XCTAssertNil(MachineRowText.thisMac(agents, hostNames: []))
+
+        XCTAssertEqual(MachineRowText.detail(agents, hostNames: hosts),
+                       "Sends alerts · this Mac: agents · \(MachineRowText.versionUnknown)")
+        XCTAssertEqual(MachineRowText.ordered([other, agents, lookalike, app, old], hostNames: hosts).map(\.id),
+                       ["1", "2", "3", "5", "6"])
     }
 
     func testLinksUseTheUpdaterRepository() {

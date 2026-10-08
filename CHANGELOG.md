@@ -15,6 +15,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Fixed
 
 - **A machine set up with an invite named after it is no longer named twice.** Redeeming an invite named `devbox` on `devbox` now names the token `devbox`, not `devbox-devbox` (also when the invite name already ends with the host). Other invites still mint `<invite name>-<host>` ([API.md](docs/API.md#post-v1invitesredeem-no-token)).
+- **Mac app: Settings → Machines says which rows are this Mac.** The Mac can be listed twice, once for the app itself and once for the `needs-you` command and agent hooks set up on it with an invite. The app's row now reads *this Mac: app* and a sender named after this Mac *this Mac: agents*, both listed first, with a line saying why.
 
 ## [0.2.1] - 2026-10-08
 
