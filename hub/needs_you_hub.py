@@ -992,7 +992,9 @@ class Store:
         """A new updated_at that is strictly after prev (so LWW always moves forward)."""
         now = self.now_ms()
         if prev is not None and now <= prev:
-            return prev + 1
+            # Never past the last printable timestamp (a peer may send one at the limit):
+            # fmt_ts would fail on every read of the record after that.
+            return min(prev + 1, MAX_TS_MS)
         return now
 
     @staticmethod
