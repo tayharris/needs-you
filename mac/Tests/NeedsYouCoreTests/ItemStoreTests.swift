@@ -31,6 +31,7 @@ final class ItemStoreMergeTests: XCTestCase {
         ("testIncrementalPollKeepsUnmentionedItems", testIncrementalPollKeepsUnmentionedItems),
         ("testFullSnapshotDropsItemsNoLongerOpen", testFullSnapshotDropsItemsNoLongerOpen),
         ("testClosedStatusInResponseRemovesItem", testClosedStatusInResponseRemovesItem),
+        ("testTombstoneInTheFeedClosesTheItem", testTombstoneInTheFeedClosesTheItem),
         ("testSameKeyNewIdReplacesOldItem", testSameKeyNewIdReplacesOldItem),
         ("testExpiredItemsArePruned", testExpiredItemsArePruned),
         ("testLatestUpdatedAtTracksNewest", testLatestUpdatedAtTracksNewest),
@@ -103,6 +104,30 @@ final class ItemStoreMergeTests: XCTestCase {
         let r = store.merge([item("a", status: .resolved, updated: 10)], isFullSnapshot: false, now: t0)
         XCTAssertEqual(r.removed.map(\.id), ["a"])
         XCTAssertTrue(store.items.isEmpty)
+    }
+
+    func testTombstoneInTheFeedClosesTheItem() throws {
+        // ADR 0012: a closed item whose text the hub purged. A Mac that slept for days gets
+        // it in its next poll: the card goes, and nothing empty is ever shown.
+        var store = ItemStore()
+        store.merge([item("a"), item("b")], isFullSnapshot: true, now: t0)
+        let json = """
+        [{"id": "a", "key": "k:a", "context": "work", "kind": "needs", "priority": "normal", "title": "",
+          "body": null, "links": [], "steps": [], "question": null, "answer": null, "source": {},
+          "status": "resolved", "created_at": "2026-09-22T10:00:00.000Z", "updated_at": "2026-09-23T10:00:00.000Z",
+          "content_updated_at": "2026-09-22T10:00:00.000Z", "seen_at": null, "expires_at": null,
+          "superseded_by": null, "tombstone": true},
+         {"id": "b", "key": "k:b", "title": "", "status": "open", "tombstone": true,
+          "created_at": "2026-09-22T10:00:00.000Z", "updated_at": "2026-09-23T10:00:00.000Z"}]
+        """
+        let items = try HubJSON.makeDecoder().decode([Item].self, from: Data(json.utf8))
+        XCTAssertTrue(items.allSatisfy { $0.tombstone && $0.isClosed })
+        let r = store.merge(items, isFullSnapshot: false, now: t0)
+        XCTAssertEqual(Set(r.removed.map(\.id)), ["a", "b"])
+        XCTAssertTrue(store.items.isEmpty)
+        // An item without the field is no tombstone.
+        let plain = try HubJSON.makeDecoder().decode(Item.self, from: Data(#"{"id": "c", "title": "x"}"#.utf8))
+        XCTAssertFalse(plain.tombstone)
     }
 
     func testSameKeyNewIdReplacesOldItem() {

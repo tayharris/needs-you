@@ -136,9 +136,10 @@ that notices it slept retries at once).</li>
 </ul>
 <p>The server's <code>public_url</code> must be its MagicDNS name (the installer's default with Tailscale),
 so the Mac reaches it by name whatever its tailnet IP. The Mac's hub is named the same way.</p>
-<p>Known limit: a server deletes resolved items after <code>retention_days</code> (7). If the Mac sleeps
-longer than that, an item resolved on the server meanwhile can stay open on the Mac until you
-close it. Raise <code>retention_days</code> on the server if your Mac is often away for longer.</p>
+<p>A Mac that sleeps for days still learns what was resolved meanwhile: a closed item's text is
+purged a day after it closed, but a text-free tombstone stays for 30 days (<a href="#housekeeping">housekeeping</a>),
+and the Mac's hub pulls it when it wakes. Only after 30 days away can an item resolved on the
+server stay open on the Mac until you close it.</p>
 <p>Joining one server to another works the same way: <code>needs-you-admin invite create hub-b --role peer</code> on one, <code>install-hub.sh --join</code> (or <code>needs-you-admin peer join</code>) on the other.</p>
 <h2 id="what-install-hubsh---user-sets-up">What <code>install-hub.sh --user</code> sets up <a class="anchor" href="#what-install-hubsh---user-sets-up" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">
@@ -201,7 +202,8 @@ on <code>needs_you_hub.py</code>, so no file is required: the named flags below,
 <tr><td><code>owner_token_name</code></td><td><code>--owner-token-name</code></td><td><code>this-mac</code></td><td>Its name. A changed secret replaces the old one.</td></tr>
 <tr><td><code>parent_pid</code></td><td><code>--parent-pid</code></td><td></td><td>Exit cleanly when that process is gone (checked every 2 s).</td></tr>
 <tr><td><code>install_dir</code></td><td><code>--install-dir</code></td><td>the directory above <code>hub/</code></td><td>Where <code>/dl/</code> files are read from (<code>cli/</code>, <code>integrations/claude-code/</code>).</td></tr>
-<tr><td><code>retention_days</code></td><td><code>--retention-days</code></td><td>7</td><td>Closed and expired items older than this are deleted. 0 keeps them forever.</td></tr>
+<tr><td><code>text_retention_hours</code></td><td></td><td>24</td><td>A closed or expired item's text (title, body, links, steps, question, answer, source) is purged this long after it closed; a tombstone stays. 0 keeps the text until the item is deleted.</td></tr>
+<tr><td><code>retention_days</code></td><td><code>--retention-days</code></td><td>30</td><td>Closed and expired items (tombstones by then) older than this are deleted. 0 keeps them forever.</td></tr>
 <tr><td><code>freebind</code></td><td><code>--freebind</code></td><td>false</td><td>Linux: bind before tailscaled has the address. The installer sets it.</td></tr>
 <tr><td><code>allow_any_interface</code></td><td><code>--allow-any-interface</code></td><td>false</td><td>Allow <code>0.0.0.0</code> / <code>::</code>.</td></tr>
 <tr><td><code>allowed_hosts</code></td><td><code>--allowed-host</code> (repeatable)</td><td><code>[]</code></td><td>Extra <code>Host</code> names the hub answers to, besides IP literals, <code>localhost</code>, bind names, <code>public_url</code>, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, <a href="api.html#conventions">API</a>). Also <code>$NEEDS_YOU_HUB_ALLOWED_HOSTS</code> (comma-separated), which is how to set it for the Mac app's hub (<code>launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name</code>, then restart the app). <code>*</code> turns the check off.</td></tr>
@@ -249,7 +251,10 @@ queues the change for replication, so an invite or token made on one hub works o
 them within seconds. A link from one hub can be redeemed on any; see
 <a href="api.html#invite-replication">API</a> for the small double-spend window.</p>
 <h2 id="housekeeping">Housekeeping <a class="anchor" href="#housekeeping" aria-label="Link to this section">#</a></h2>
-<p>The hub keeps itself small: closed items are deleted after <code>retention_days</code> (7), stale peer
+<p>The hub keeps itself small and keeps little: a closed item's text (title, body, links, steps,
+question, answer, source) is purged <code>text_retention_hours</code> (24) after it closed, leaving a
+tombstone (id, key, status, times, origin hub) so peers and clients that were away still learn it
+closed; tombstones are deleted after <code>retention_days</code> (30), stale peer
 outbox rows after 7 days, dead invites after a day, with a WAL checkpoint and incremental
 vacuum every 10 minutes and a full <code>VACUUM</code> at most daily. Replicated records older than the
 cutoff are refused, so a peer can't bring purged items back. <code>GET /v1/health</code> shows
@@ -318,6 +323,11 @@ hub together.</li>
 <li><strong>Peer links (schema 9):</strong> a new local table for peers joined by a peer invite; nothing that
 replicates changes. A hub refuses a peer invite from a hub with an older schema
 (<code>peer_outdated</code>), so upgrade the server before joining it to a newer Mac app.</li>
+<li><strong>Short retention (schema 10):</strong> a <code>purged_at</code> column, and two defaults change: a closed item's
+text goes after <code>text_retention_hours</code> (24), tombstones after <code>retention_days</code> (now 30, was 7).
+A <code>hub.json</code> written by an older installer says <code>"retention_days": 7</code>: tombstones then go
+after 7 days; set 30 (or delete the line) to keep them as long as the new default. A hub up to
+0.2.1 skips the tombstones it receives (their title is empty) and keeps its own copy's text.</li>
 </ul>
 <h2 id="operations">Operations <a class="anchor" href="#operations" aria-label="Link to this section">#</a></h2>
 <ul>

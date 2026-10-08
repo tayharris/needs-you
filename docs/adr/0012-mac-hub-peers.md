@@ -97,7 +97,7 @@ sent once, in the redeem response, to the hub that spent the code.
 - **Wake detection:** a peer worker that sees the wall clock jump more than 30 s past the
   monotonic clock (the process was suspended) drops its backoff and pushes and pulls at once,
   instead of waiting out a 5-minute backoff from before the sleep.
-- **Known limit:** a resolve made on a server while the Mac sleeps longer than the server's
+- **Known limit** (narrowed by *Short retention* below): a resolve made on a server while the Mac sleeps longer than the server's
   `retention_days` (7) is purged there before the Mac pulls it, so the Mac keeps that item open
   until someone closes it. Its close then replicates normally. A longer `retention_days` on the
   always-on hub makes it rarer (owner decision below).
@@ -174,3 +174,28 @@ only; nothing in the panel.
   goes soon after it closes and a small tombstone (no text) stays long enough for a long-asleep
   Mac to learn it was resolved (section 3's known limit). Built on a follow-up branch,
   `tay/short-retention`.
+
+## Follow-up: short retention (2026-10-08)
+
+The owner wants less kept, not more: "if something's resolved it could be removed that day".
+So instead of a longer `retention_days`:
+
+- **Text goes a day after an item closes.** Maintenance purges the text of every item resolved
+  or dismissed more than `text_retention_hours` (24) ago, and of every item whose `expires_at`
+  passed that long ago: `title`, `body`, `links`, `steps`, `question`, `answer` and `source`.
+  Open items keep everything.
+- **A tombstone stays 30 days.** What's left (`id`, `key`, `status`, the times, `origin_hub`,
+  and `"tombstone": true` on the wire) tells a peer or a client that slept that the item
+  closed. `retention_days` now defaults to 30 and deletes tombstones.
+- **Purging isn't a write.** No new `updated_at` or `seq`: each hub purges its own copy on its
+  own clock. A peer still holding the text can't bring it back with the same version (last
+  writer wins needs a strictly newer one), and a tombstone replicates like any record when a
+  peer pulls or is pushed the item after the purge (a Mac waking after three days gets the
+  tombstone instead of the resolve it missed). A tombstone that is open and unexpired is refused.
+- **Nothing resurrects.** A tombstone or full version older than `retention_days` is refused,
+  as closed records past retention always were. A merge never copies a tombstone's (empty)
+  content onto the winner.
+- **Clients** drop a tombstone like any closed item; the Mac never shows one.
+- Schema 10 (`items.purged_at`), backed up before migrating like every migration. Hubs up to
+  0.2.1 skip tombstones as unreadable items (they keep their own text), so upgrade every hub.
+

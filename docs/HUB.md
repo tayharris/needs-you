@@ -127,9 +127,10 @@ Then:
 The server's `public_url` must be its MagicDNS name (the installer's default with Tailscale),
 so the Mac reaches it by name whatever its tailnet IP. The Mac's hub is named the same way.
 
-Known limit: a server deletes resolved items after `retention_days` (7). If the Mac sleeps
-longer than that, an item resolved on the server meanwhile can stay open on the Mac until you
-close it. Raise `retention_days` on the server if your Mac is often away for longer.
+A Mac that sleeps for days still learns what was resolved meanwhile: a closed item's text is
+purged a day after it closed, but a text-free tombstone stays for 30 days ([housekeeping](#housekeeping)),
+and the Mac's hub pulls it when it wakes. Only after 30 days away can an item resolved on the
+server stay open on the Mac until you close it.
 
 Joining one server to another works the same way: `needs-you-admin invite create hub-b --role
 peer` on one, `install-hub.sh --join` (or `needs-you-admin peer join`) on the other.
@@ -201,7 +202,8 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `owner_token_name` | `--owner-token-name` | `this-mac` | Its name. A changed secret replaces the old one. |
 | `parent_pid` | `--parent-pid` | | Exit cleanly when that process is gone (checked every 2 s). |
 | `install_dir` | `--install-dir` | the directory above `hub/` | Where `/dl/` files are read from (`cli/`, `integrations/claude-code/`). |
-| `retention_days` | `--retention-days` | 7 | Closed and expired items older than this are deleted. 0 keeps them forever. |
+| `text_retention_hours` | | 24 | A closed or expired item's text (title, body, links, steps, question, answer, source) is purged this long after it closed; a tombstone stays. 0 keeps the text until the item is deleted. |
+| `retention_days` | `--retention-days` | 30 | Closed and expired items (tombstones by then) older than this are deleted. 0 keeps them forever. |
 | `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
 | `allow_any_interface` | `--allow-any-interface` | false | Allow `0.0.0.0` / `::`. |
 | `allowed_hosts` | `--allowed-host` (repeatable) | `[]` | Extra `Host` names the hub answers to, besides IP literals, `localhost`, bind names, `public_url`, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, [API.md](API.md#conventions)). Also `$NEEDS_YOU_HUB_ALLOWED_HOSTS` (comma-separated), which is how to set it for the Mac app's hub (`launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name`, then restart the app). `*` turns the check off. |
@@ -259,7 +261,10 @@ them within seconds. A link from one hub can be redeemed on any; see
 
 ## Housekeeping
 
-The hub keeps itself small: closed items are deleted after `retention_days` (7), stale peer
+The hub keeps itself small and keeps little: a closed item's text (title, body, links, steps,
+question, answer, source) is purged `text_retention_hours` (24) after it closed, leaving a
+tombstone (id, key, status, times, origin hub) so peers and clients that were away still learn it
+closed; tombstones are deleted after `retention_days` (30), stale peer
 outbox rows after 7 days, dead invites after a day, with a WAL checkpoint and incremental
 vacuum every 10 minutes and a full `VACUUM` at most daily. Replicated records older than the
 cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` shows
@@ -334,6 +339,11 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
 - **Peer links (schema 9):** a new local table for peers joined by a peer invite; nothing that
   replicates changes. A hub refuses a peer invite from a hub with an older schema
   (`peer_outdated`), so upgrade the server before joining it to a newer Mac app.
+- **Short retention (schema 10):** a `purged_at` column, and two defaults change: a closed item's
+  text goes after `text_retention_hours` (24), tombstones after `retention_days` (now 30, was 7).
+  A `hub.json` written by an older installer says `"retention_days": 7`: tombstones then go
+  after 7 days; set 30 (or delete the line) to keep them as long as the new default. A hub up to
+  0.2.1 skips the tombstones it receives (their title is empty) and keeps its own copy's text.
 
 ## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`

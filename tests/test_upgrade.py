@@ -187,7 +187,8 @@ class UpgradeFromMain(HubTestCase):
         cfg = hubmod.load_config(None, {"bind": "100.64.1.2", "peers": [PEER], "peer_secret": PEER_SECRET,
                                         "hub_id": "hub-a", "port": 8765, "freebind": True})
         self.assertEqual(cfg["bind"], ["100.64.1.2"])
-        self.assertEqual(cfg["retention_days"], 7.0)
+        self.assertEqual(cfg["retention_days"], 30.0)
+        self.assertEqual(cfg["text_retention_hours"], 24.0)
         hubmod.check_bind(cfg)
 
 
