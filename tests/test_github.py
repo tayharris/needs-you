@@ -31,6 +31,27 @@ FAKE_GH = textwrap.dedent('''\
     def read(name):
         with open(os.path.join(d, name)) as fh:
             return fh.read()
+    if args[:2] == ["api", "graphql"] and any("pullRequest(number:" in a for a in args):
+        # The merged lookup: answer each alias pN from pr_states.json ({"owner/repo#N": {...}};
+        # a PR not listed is still open, null is one GitHub doesn't show us).
+        if os.path.exists(os.path.join(d, "lookup_fail")):
+            sys.stderr.write("gh: HTTP 502\\n")
+            sys.exit(1)
+        states = json.loads(read("pr_states.json")) if os.path.exists(os.path.join(d, "pr_states.json")) else {}
+        v = {}
+        for flag, kv in zip(args, args[1:]):
+            if flag in ("-f", "-F") and not kv.startswith("query="):
+                k, _, val = kv.partition("=")
+                v[k] = val
+        data = {}
+        i = 0
+        while "o%%d" %% i in v:
+            ref = "%%s/%%s#%%s" %% (v["o%%d" %% i], v["n%%d" %% i], v["r%%d" %% i])
+            st = states.get(ref, {"merged": False, "state": "OPEN", "title": "x", "url": ""})
+            data["p%%d" %% i] = None if st is None else {"pullRequest": st}
+            i += 1
+        sys.stdout.write(json.dumps({"data": data}))
+        sys.exit(1 if None in data.values() else 0)
     if args[:2] == ["api", "graphql"]:
         sys.stdout.write(read("prs.json"))
         sys.exit(0)
@@ -215,6 +236,104 @@ class GithubPoller(HubTestCase):
         with open(self.state) as fh:
             posted = json.load(fh)["posted"]
         self.assertNotIn("work:gh:acme/app#21:changes", posted)
+
+    def lookups(self):
+        return [c for c in self.calls() if any("pullRequest(number:" in a for a in c)]
+
+    def pr_states(self, states):
+        with open(os.path.join(self.ghdir, "pr_states.json"), "w") as fh:
+            json.dump(states, fh)
+
+    def drop_mine(self, numbers):
+        def fn(d):
+            d["data"]["mine"]["nodes"] = [n for n in d["data"]["mine"]["nodes"] if n["number"] not in numbers]
+        self.edit("prs.json", fn)
+
+    MERGED_20 = {"merged": True, "state": "MERGED", "title": "Cache the session store",
+                 "url": "https://github.com/acme/app/pull/20"}
+
+    def test_merged_pr_gets_one_done_card(self):
+        self.poll()
+        self.assertFalse([k for k in self.open_items() if k.endswith(":merged")])  # first run: nothing to compare
+        self.assertEqual(self.lookups(), [])
+        # #20 merged, #21 closed unmerged, #22 went quiet (still open), #24 (a draft) GitHub no longer shows.
+        self.drop_mine({20, 21, 22, 24})
+        self.pr_states({"acme/app#20": dict(self.MERGED_20, title="Cache the session store ‮!"),
+                        "acme/app#21": {"merged": False, "state": "CLOSED", "title": "x", "url": ""},
+                        "acme/app#24": None})
+        self.poll()
+        items = self.open_items()
+        done = items["work:gh:acme/app#20:merged"]
+        self.assertEqual(done["kind"], "done")
+        self.assertEqual(done["priority"], "low")
+        self.assertEqual(done["title"], "Merged acme/app#20: Cache the session store !")
+        self.assertEqual(done["links"], [{"label": "PR", "url": "https://github.com/acme/app/pull/20"}])
+        self.assertEqual(done["source"]["agent"], "github")
+        self.assertIsNotNone(done["expires_at"])
+        self.assertNotIn("work:gh:acme/app#20:merge", items)  # the "Merge" card resolved
+        self.assertEqual([k for k in items if k.endswith(":merged")], ["work:gh:acme/app#20:merged"])
+        with open(self.state) as fh:
+            mine = json.load(fh)["mine"]
+        self.assertEqual(sorted(mine), ["acme/app#22", "acme/app#23"])  # #22 still open: kept
+
+        # Later runs neither re-post nor resolve it; #22 is looked up again (still within PR_DAYS).
+        n = len(self.lookups())
+        self.poll()
+        self.poll()
+        self.assertEqual(len([i for i in self.all_items() if i["key"] == "work:gh:acme/app#20:merged"]), 1)
+        again = self.open_items()["work:gh:acme/app#20:merged"]
+        self.assertEqual((again["id"], again["content_updated_at"]), (done["id"], done["content_updated_at"]))
+        self.assertGreater(len(self.lookups()), n)
+
+    def test_merged_pr_seen_open_long_ago_is_forgotten(self):
+        self.poll()
+        with open(self.state) as fh:
+            st = json.load(fh)
+        st["mine"]["acme/app#22"]["seen"] = 1.0  # last seen open in 1970
+        with open(self.state, "w") as fh:
+            json.dump(st, fh)
+        self.drop_mine({22})
+        self.poll()
+        with open(self.state) as fh:
+            self.assertNotIn("acme/app#22", json.load(fh)["mine"])
+
+    def test_merged_lookup_failing_keeps_tracking(self):
+        self.poll()
+        self.drop_mine({20})
+        open(os.path.join(self.ghdir, "lookup_fail"), "w").close()
+        r = self.poll()
+        self.assertIn("merged lookup", r.stderr)
+        self.assertNotIn("work:gh:acme/app#20:merged", self.open_items())
+        self.assertFalse([k for k in self.open_items() if k.endswith(":poller-failing")])
+        os.remove(os.path.join(self.ghdir, "lookup_fail"))
+        self.pr_states({"acme/app#20": self.MERGED_20})
+        self.poll()
+        self.assertIn("work:gh:acme/app#20:merged", self.open_items())
+
+    def test_merged_can_be_turned_off(self):
+        self.poll({"NEEDS_YOU_GITHUB_REASONS": "-merged"})
+        self.drop_mine({20})
+        self.pr_states({"acme/app#20": self.MERGED_20})
+        self.poll({"NEEDS_YOU_GITHUB_REASONS": "-merged"})
+        self.assertFalse([k for k in self.open_items() if k.endswith(":merged")])
+        self.assertEqual(self.lookups(), [])
+        with open(self.state) as fh:
+            self.assertNotIn("mine", json.load(fh))
+
+    def test_merged_respects_exclude(self):
+        self.poll()
+        self.drop_mine({20})
+        self.pr_states({"acme/app#20": self.MERGED_20})
+        self.poll({"NEEDS_YOU_GITHUB_EXCLUDE": "acme"})
+        self.assertNotIn("work:gh:acme/app#20:merged", self.open_items())
+
+    def test_merged_dry_run(self):
+        self.poll()
+        self.drop_mine({20})
+        self.pr_states({"acme/app#20": self.MERGED_20})
+        r = self.poll(None, "--dry-run")
+        self.assertIn("done work:gh:acme/app#20:merged [low] Merged acme/app#20: Cache the session store", r.stdout)
+        self.assertNotIn("work:gh:acme/app#20:merged", self.open_items())
 
     def test_gh_failing_exits_zero_without_spam_then_one_card(self):
         self.poll()

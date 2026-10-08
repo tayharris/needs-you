@@ -12,6 +12,8 @@ that has `gh` logged in. Each run:
      open PRs that request your review.
   3. Posts a card per condition with a stable key, re-posts it while it holds (so its
      --expires-in keeps moving) and resolves it once the condition clears.
+  4. When one of your PRs leaves the open list, one GraphQL lookup says whether it
+     merged; if so, one `done` card "Merged owner/repo#N: title" (24 h FYI, never counted).
 
 It shells out to `gh api`, so auth is your gh login; it never reads or prints the token.
 Everything it reads from GitHub is untrusted: only titles (cleaned and truncated) and
@@ -22,7 +24,7 @@ Config (environment, else ~/.config/needs-you/env; all optional):
   NEEDS_YOU_GITHUB_EXCLUDE   comma list of owner or owner/repo to ignore (wins over include)
   NEEDS_YOU_GITHUB_CONTEXTS  owner=work|personal,... (default NEEDS_YOU_DEFAULT_CONTEXT, else work)
   NEEDS_YOU_GITHUB_REASONS   reasons to post, comma list; "-mention,-assign" turns some off.
-                             review deploy ci mention assign merge changes conflict checks
+                             review deploy ci mention assign merge changes conflict checks merged
   NEEDS_YOU_GITHUB_INTERVAL  minutes between runs (default 5); cards expire after 3x this
   NEEDS_YOU_GITHUB_PR_DAYS   only your PRs updated in the last N days (default 14)
   NEEDS_YOU_GITHUB_MAX_CARDS at most this many cards open at once (default 20; urgent first)
@@ -47,7 +49,8 @@ import time
 import urllib.parse
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-ALL_REASONS = ("review", "deploy", "ci", "mention", "assign", "merge", "changes", "conflict", "checks")
+ALL_REASONS = ("review", "deploy", "ci", "mention", "assign", "merge", "changes", "conflict", "checks", "merged")
+MERGED_LOOKUPS = 30  # PRs looked up per run (one GraphQL call); the rest wait for the next run
 MIN_POLL = 60
 FULL_REFRESH_S = 30 * 60
 FAILS_BEFORE_CARD = 3
@@ -74,6 +77,7 @@ query($mine: String!, $review: String!) {
 }
 """
 MINE_Q = "is:pr is:open author:@me archived:false updated:>=%s"
+REPO_PART = re.compile(r"^[A-Za-z0-9_.-]+$")
 REVIEW_Q = "is:pr is:open review-requested:@me archived:false"
 
 
@@ -285,6 +289,35 @@ def fetch_prs(cfg: Config) -> Dict[str, Any]:
             "review": [n for n in review if isinstance(n, dict) and n.get("number")]}
 
 
+def fetch_pr_states(cfg: Config, refs: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
+    """One GraphQL call: {ref: {"merged", "state", "title", "url"}} for each "owner/repo#N",
+    or None when GitHub has no such PR for us (deleted, renamed, access lost)."""
+    params, fields, args = [], [], []
+    for i, ref in enumerate(refs):
+        repo, _, num = ref.rpartition("#")
+        owner, _, name = repo.partition("/")
+        params.append("$o%d: String!, $n%d: String!, $r%d: Int!" % (i, i, i))
+        fields.append("p%d: repository(owner: $o%d, name: $n%d) { pullRequest(number: $r%d) "
+                      "{ merged state title url } }" % (i, i, i, i))
+        args += ["-f", "o%d=%s" % (i, owner), "-f", "n%d=%s" % (i, name), "-F", "r%d=%s" % (i, num)]
+    query = "query(%s) { %s }" % (", ".join(params), " ".join(fields))
+    r = gh(cfg, ["api", "graphql", "-f", "query=" + query] + args)
+    try:
+        data = json.loads(r.stdout or "{}").get("data")
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        # A missing repository makes GraphQL answer with errors and a partial `data`; no
+        # `data` at all is a real failure.
+        raise gh_error(r) if r.returncode != 0 else GhError("unexpected GraphQL response")
+    out: Dict[str, Optional[Dict[str, Any]]] = {}
+    for i, ref in enumerate(refs):
+        node = data.get("p%d" % i)
+        pr = node.get("pullRequest") if isinstance(node, dict) else None
+        out[ref] = pr if isinstance(pr, dict) else None
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Notifications -> thread records (only the fields we use, already cleaned)
 # ---------------------------------------------------------------------------
@@ -459,6 +492,62 @@ def pr_cards(cfg: Config, prs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # Posting through the CLI
 # ---------------------------------------------------------------------------
 
+def track_mine(cfg: Config, tracked: Dict[str, Any], prs: List[Dict[str, Any]], now: float) -> Set[str]:
+    """Remember each of your open PRs (title, URL, when last seen open). Returns the refs
+    that were tracked but aren't in this run's open list: the ones to look up."""
+    listed: Set[str] = set()
+    for pr in prs:
+        repo = str((pr.get("repository") or {}).get("nameWithOwner") or "")
+        owner, _, name = repo.partition("/")
+        if not (REPO_PART.match(owner) and REPO_PART.match(name)) or not cfg.watched(repo):
+            continue
+        if not isinstance(pr.get("number"), int):
+            continue
+        ref = "%s#%d" % (repo, pr["number"])
+        listed.add(ref)
+        tracked[ref] = {"t": safe_text(pr.get("title"), 200), "u": https(pr.get("url")), "seen": now}
+    return {ref for ref in tracked if ref not in listed}
+
+
+def merged_card(cfg: Config, ref: str, info: Dict[str, Any], pr: Dict[str, Any]) -> Dict[str, Any]:
+    repo = ref.rpartition("#")[0]
+    url = https(pr.get("url")) or info.get("u") or "https://github.com/%s/pull/%s" % (repo, ref.rpartition("#")[2])
+    return card(cfg, repo, "%s:merged" % ref, _title("Merged %s" % ref, pr.get("title") or info.get("t") or ""),
+                "low", "merged", [("PR", url)])
+
+
+def check_merged(cfg: Config, state: Dict[str, Any], prs: List[Dict[str, Any]], now: float,
+                 verbose: bool) -> List[Dict[str, Any]]:
+    """Done cards for your PRs that left the open list because they merged. A PR that
+    closed unmerged, or that GitHub no longer shows us, is forgotten; one still open (it
+    went quiet for NEEDS_YOU_GITHUB_PR_DAYS, or is past the 50 the search returns) is kept
+    until it hasn't been seen open for that long."""
+    tracked = state.get("mine") if isinstance(state.get("mine"), dict) else {}
+    tracked = {k: v for k, v in tracked.items() if isinstance(v, dict)}
+    gone = sorted(track_mine(cfg, tracked, prs, now), key=lambda r: -float(tracked[r].get("seen") or 0))
+    out: List[Dict[str, Any]] = []
+    if gone:
+        batch = gone[:MERGED_LOOKUPS]
+        try:
+            states = fetch_pr_states(cfg, batch)
+        except GhError as e:
+            warn("merged lookup: %s" % e)  # keep tracking; try again next run
+            states = {}
+        for ref, pr in states.items():
+            if pr is None or pr.get("state") == "CLOSED":
+                tracked.pop(ref, None)
+            elif pr.get("merged") or pr.get("state") == "MERGED":
+                if cfg.watched(ref.rpartition("#")[0]):
+                    out.append(merged_card(cfg, ref, tracked[ref], pr))
+                tracked.pop(ref, None)
+            elif now - float(tracked[ref].get("seen") or 0) > cfg.pr_days * 86400:
+                tracked.pop(ref, None)
+        if verbose:
+            warn("merged: %d PRs left the open list, %d merged" % (len(gone), len(out)))
+    state["mine"] = tracked
+    return out
+
+
 def card_hash(c: Dict[str, Any]) -> str:
     keep = {k: c.get(k) for k in ("title", "priority", "context", "links", "steps", "body", "project")}
     return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
@@ -475,6 +564,14 @@ def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
         argv.append("--steps-json=" + json.dumps(c["steps"]))
     if c.get("body"):
         argv.append("--body=" + c["body"])
+    return _cli(argv)
+
+
+def post_done(cfg: Config, c: Dict[str, Any]) -> bool:
+    argv = [cfg.cli, "-q", "done", "--key=" + c["key"], "--title=" + c["title"], "--priority=" + c["priority"],
+            "--context=" + c["context"], "--agent=github", "--project=" + c["project"]]
+    for label, url in c.get("links") or []:
+        argv.append("--link=%s=%s" % (label, url))
     return _cli(argv)
 
 
@@ -533,7 +630,7 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
     # 2. My PRs and the PRs waiting on my review.
     prs: List[Dict[str, Any]] = []
     review_set: Optional[Set[Tuple[str, int]]] = None
-    if cfg.reasons & {"merge", "changes", "conflict", "checks", "review", "ci"}:
+    if cfg.reasons & {"merge", "changes", "conflict", "checks", "review", "ci", "merged"}:
         try:
             data = fetch_prs(cfg)
             prs = data["mine"]
@@ -584,6 +681,16 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
     if not dry_run and not cfg.cli:
         warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
         return
+    # Your PRs that merged since the last run: one done card each, posted once and never
+    # tracked in `posted` (it expires on its own after 24 h; nothing resolves it).
+    if "merged" in cfg.reasons and "pr" not in failed:
+        for c in check_merged(cfg, state, prs, now, verbose):
+            if dry_run:
+                print("done %s [%s] %s" % (c["key"], c["priority"], c["title"]))
+            elif not post_done(cfg, c):
+                warn("could not post %s" % c["key"])
+    elif "merged" not in cfg.reasons:
+        state.pop("mine", None)
     expires_h = 3 * cfg.interval_min / 60.0
     backlog = outbox_has_backlog()
     for key, c in sorted(desired.items()):

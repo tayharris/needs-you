@@ -42,7 +42,7 @@
         <li><a href="#when-it-doesnt-post">When it doesn't post</a></li>
       </ul>
     </nav>
-<p>Get a card when GitHub is waiting on you: a review request, a deployment that needs your approval, CI that failed on your branch, a mention, or one of your PRs that is ready to merge, has changes requested, conflicts or failing checks. Each card clears itself once the condition goes away.</p>
+<p>Get a card when GitHub is waiting on you: a review request, a deployment that needs your approval, CI that failed on your branch, a mention, or one of your PRs that is ready to merge, has changes requested, conflicts or failing checks. Each card clears itself once the condition goes away. When one of your PRs merges, you get a low "Merged owner/repo#20: <em>title</em>" FYI that expires after a day.</p>
 <p>A small poller, <code>needs-you-github</code>, does this from <strong>one</strong> machine every 5 minutes, using that machine's <code>gh</code> login. Nothing on GitHub changes: no webhook, no app, no public endpoint.</p>
 <h2 id="before-you-start">Before you start <a class="anchor" href="#before-you-start" aria-label="Link to this section">#</a></h2>
 <ul>
@@ -66,7 +66,7 @@ gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/content
 <p>Settings go in <code>~/.config/needs-you/env</code>:</p>
 <div class="code"><pre><code class="language-bash">NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's cards are work or personal
 NEEDS_YOU_GITHUB_EXCLUDE=acme/huge-monorepo            # owners or repos to ignore
-NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want)</code></pre></div>
+NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want); -merged: no "Merged" FYIs</code></pre></div>
 <p>The full list of cards, keys and settings is in <a data-repo="/blob/main/integrations/github/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/github/README.md">integrations/github/README.md</a>. If you have many open PRs, <code>NEEDS_YOU_GITHUB_PR_DAYS</code> (default 14) skips the ones nobody has touched lately, and at most 20 cards are open at once (<code>NEEDS_YOU_GITHUB_MAX_CARDS</code>).</p>
 <h2 id="when-it-doesnt-post">When it doesn't post <a class="anchor" href="#when-it-doesnt-post" aria-label="Link to this section">#</a></h2>
 <ul>
