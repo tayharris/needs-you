@@ -58,7 +58,7 @@
 <p>On the sender, run:</p>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
 needs-you doctor --json   # the same, for agents: {ok, version, checks: [{check, status, detail, hint}]}</code></pre></div>
-<p>It checks the env file (and that its mode is 600), whether <code>needs-you</code> and <code>~/.local/bin</code> are on <code>PATH</code>, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), the Claude Code hooks and skill, Orca settings, and the 5-minute flush schedule. Each line is <code>OK</code>, <code>WARN</code>, <code>FAIL</code> or <code>INFO</code>. Every <code>WARN</code> and <code>FAIL</code> has one next step under it (after <code>-&gt;</code>): a command to run as is, or exactly what to ask for, such as a new invite link (<code>&lt;invite link&gt;</code> is the only placeholder). It exits 1 if any check is <code>FAIL</code>. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).</p>
+<p>It checks the env file (and that its mode is 600), whether <code>needs-you</code> and <code>~/.local/bin</code> are on <code>PATH</code>, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), each agent's hooks or plugin (Claude Code, Codex, Gemini, opencode, Copilot, Kimi, Grok, Cursor, Cline, Aider), the Claude skill, the MCP server and agent instructions if you installed them, Orca settings, updates, and the 5-minute flush schedule. Each line is <code>OK</code>, <code>WARN</code>, <code>FAIL</code> or <code>INFO</code>. Every <code>WARN</code> and <code>FAIL</code> has one next step under it (after <code>-&gt;</code>): a command to run as is, or exactly what to ask for, such as a new invite link (<code>&lt;invite link&gt;</code> is the only placeholder). It exits 1 if any check is <code>FAIL</code>. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).</p>
 <h2 id="quick-checks-by-hand">Quick checks by hand <a class="anchor" href="#quick-checks-by-hand" aria-label="Link to this section">#</a></h2>
 <div class="code"><pre><code class="language-bash"># on the sender
 . ~/.config/needs-you/env
@@ -121,6 +121,13 @@ tailscale status | head                          # is this machine on the tailne
 <ul>
 <li><strong>Duplicates:</strong> the sender changes its key between runs (a timestamp, a run id). Keys must be stable.</li>
 <li><strong>Cards that never go away:</strong> the sender never calls <code>resolve</code>. Fix the sender, then clear the card with <strong>Done</strong> on the Mac.</li>
+<li><strong>A sender that went away</strong> (a killed agent session, a machine that's gone, an automation that crashed) can't resolve its cards. Safety nets, in the order they kick in:
+<ul>
+<li>Agent hooks record the agent's process. The 5-minute <code>needs-you flush</code> on that machine resolves the card once the process is gone (<a href="claude-code.html">Claude Code</a>).</li>
+<li>Agent cards expire 48 hours after their last post (<code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code>; Aider's after an hour). Each new post pushes it out.</li>
+<li>Scheduled automations post with <code>--expires-in</code> of about twice their interval, so a blocker they stop reporting drops off by itself (<a href="orca.html">Orca</a>).</li>
+<li>On the Mac, a card waiting 4 hours or more shows its age, and its <strong>…</strong> menu has <strong>Dismiss All from &lt;host&gt;</strong> for a machine that went away (<a href="mac-app.html">Mac app</a>).</li>
+</ul></li>
 <li><strong>A card keeps re-animating:</strong> the title, body or priority changes on every post (e.g. a counter or time in the title). Put changing details in the body sparingly, or keep them out.</li>
 </ul>
 <h2 id="claude-code-hooks">Claude Code hooks <a class="anchor" href="#claude-code-hooks" aria-label="Link to this section">#</a></h2>

@@ -8,7 +8,7 @@ Four steps; only the first is required. Every step can be re-run safely until th
  Claude Code / Orca on the Mac ──► 127.0.0.1 ──┐
                                                ├──► NeedsYou.app (panel + its own hub)
  servers, VMs, CI ──── Tailscale ──────────────┘          ▲
-                                                           │ optional: replicate
+                                                           │ optional: the app reads them
                                          always-on server hubs (HUB.md)
 ```
 
@@ -69,7 +69,7 @@ Each server gets its own token (named `<invite name>-<hostname>`), so you can re
 
 ## 4. Optional: always-on server hubs
 
-If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs that replicate with the Mac: [HUB.md](../HUB.md). They're set up on a server from the command line (`scripts/install-hub.sh`); there's no app screen for them. The Mac joins one with a link in **Settings… → Other hubs (advanced)**. Senders then fail over between them and the Mac.
+If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). They're set up on a server from the command line (`scripts/install-hub.sh`); there's no app screen for them. The Mac joins one with a link in **Settings… → Other hubs (advanced)**. Today server hubs replicate only with each other, not with the Mac's own hub, and invites made on the Mac list only the Mac's URL, so senders that should fail over to a server hub need an invite made on it ([HUB.md](../HUB.md#with-the-macs-own-hub)).
 
 ## Done
 

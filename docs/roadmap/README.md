@@ -1,30 +1,47 @@
 # Roadmap
 
-Mostly plans. Each file's status line says what exists; `ci-cd.md` phases 1–2 are built. Each plan lists concrete steps, the files it would add, and its open decisions. Design decisions that are already made live in [../adr/](../adr/).
+Plans, and the record of plans that are built. Each file's status line says what exists on `main` (as of 2026-10-08, release 0.1.5). Once a plan is built, how it works for users lives in the [guides](../guides/); the plan keeps only what's still to do. Design decisions that are already made live in [../adr/](../adr/).
+
+**Choosing what's next:** [next-big-item.md](next-big-item.md) compares the always-on hub, the iPhone widget, the Focus filter and GitHub webhooks, and recommends one, with a first plan. The owner decides.
+
+## Plans with work left
+
+| Plan | Status | What's left |
+|---|---|---|
+| [next-big-item.md](next-big-item.md) | For a decision | The four candidates compared; recommends peering the Mac's hub with an always-on hub (ADR 0004 phases 1–2) |
+| [status-and-usage.md](status-and-usage.md) | Plan; the Claude usage-limit card is built | Orca worktree status and connections, a "PR merged" card, a quiet status strip, usage meters per provider and account |
+| [ios-widget.md](ios-widget.md) | Plan | iPhone app and widgets: reaching a hub from a phone, refresh and push, shared Swift core |
+| [future.md](future.md) | Plans | GitHub org webhooks, Discord/Slack fallback for urgent items, team mode, in-app help and onboarding, keyboard navigation in the open panel |
+| [ai-first.md](ai-first.md) | MCP server and `doctor` built | A machine-readable API spec, a conformance suite, the repo moves, routing |
+| [focus-tiers.md](focus-tiers.md) | Steps 1–8 built | The macOS Focus filter (spike first), the Interrupt sound, one sentence in the sender contract |
+| [human-gates.md](human-gates.md) | Mostly built | A deploy-approval CI template, a tmux marker, auto-mode signals, an Orca watchdog, peeking near a card's target |
+| [linking.md](linking.md) | Steps 1–9 built | `claude-cli` links (opt-in), Ghostty and VS Code spikes, remote tmux; the link security model |
+| [rollout-updates.md](rollout-updates.md) | Items 1–14 built | An automatic updater for server hubs |
+| [ci-cd.md](ci-cd.md) | Phases 1–2 built | Signing and notarization (needs a Developer ID) |
+| [distribution.md](distribution.md) | Releases published | Homebrew tap, a `curl \| bash` server install from a release, Developer ID |
+| [site-deploy.md](site-deploy.md) | Live at needsyou.app | Turning on the `site.yml` deploy |
+| [sharing-checklist.md](sharing-checklist.md) | Public | Developer ID, self-hosted runners on a public repo, a fresh-user run |
+| [launch-prep.md](launch-prep.md) | Mostly built | A donate link, repo topics and a social preview image |
+| [fresh-user-test-plan.md](fresh-user-test-plan.md) | Not run yet | Install from a release on a second Mac or user account |
+
+## Done, kept for the record
 
 | Plan | What |
 |---|---|
-| [ci-cd.md](ci-cd.md) | GitHub Actions: Python tests (Ubuntu + macOS system python3.9), Mac build and tests, shellcheck; tag → release packages, checksums, GitHub Release; signing and notarization; one `VERSION` file; changelog |
-| [distribution.md](distribution.md) | Release zip, Homebrew tap, `curl \| bash` server install, Gatekeeper and SentinelOne notes for ad-hoc builds, updates |
-| [site-deploy.md](site-deploy.md) | Cloudflare Pages for `site/`, domain options, docs hosting |
-| [ai-first.md](ai-first.md) | The AI-first product goal: repo structure review, `protocol/` spec and conformance suite, MCP server, `needs-you doctor`, routing |
-| [ios-widget.md](ios-widget.md) | iPhone companion app and widgets: reaching a hub from a phone, refresh and push options, shared Swift core, opening the right app |
-| [sharing-checklist.md](sharing-checklist.md) | What's done to share the repo, what waits on decisions (license, visibility, history, bundle id, Developer ID), and license options |
-| [fresh-user-test-plan.md](fresh-user-test-plan.md) | Install from a release on a second Mac or user account: Gatekeeper, no Command Line Tools, firewall, Invite and Access |
-| [test-plan-2026-10-08.md](test-plan-2026-10-08.md) | The owner's checklist after 0.1.4: preview layout, hub restart, real-model agent checks (Codex, Gemini, opencode, Copilot, Kimi, Grok, Cursor, Cline, Aider), `--mcp`, `--agent-instructions`, the site demo |
-| [friends-message.md](friends-message.md) | Draft message inviting testers, with the links they need ([testers.md](../guides/testers.md) is their install page) |
+| [stale-items.md](stale-items.md) | Cards that outlive their sender: process leases, expiry backstops, the age badge and Dismiss All |
+| [integrations-next.md](integrations-next.md) | Research behind the Kimi Code, Grok Build, Cursor, Cline and Aider integrations (all shipped in 0.1.5) |
 | [doc-test-findings.md](doc-test-findings.md) | The 2026-10-06 doc walk-through and the bugs it found (fixed) |
-| [future.md](future.md) | GitHub org webhooks, Discord/Slack fallback for urgent items, team mode, in-app help and onboarding, jumping to an agent's terminal from a card |
-| [launch-prep.md](launch-prep.md) | Next up: the minimal site, a repo ready to install from (DMG, README, guides, open source and donate links), and the Mac UI pass (settings, panel size, alert brightness, hotkey) |
-| [stale-items.md](stale-items.md) | Cards that outlive their sender (killed sessions, missed resolves): process leases, expiry backstops, app-side dismiss |
-| [linking.md](linking.md) | Cards that open exactly where you act: VS Code/Cursor (local, Remote-SSH, the Claude tab), terminal tab jumps (iTerm2, Terminal, WezTerm, tmux), Claude Code links, GitHub/Slack/Jira/Linear; the link security model |
-| [rollout-updates.md](rollout-updates.md) | Mac app auto-update gated on a published, passing release; senders updating from their hub (`needs-you update`, `/dl/manifest.json`); per-machine versions; `rollout.sh` fallback |
-| [human-gates.md](human-gates.md) | Which agent-workflow events deserve a card (Claude Code `PermissionRequest` and plan approval, GitHub notifications and my PRs, long jobs) and showing cards on the work display |
-| [focus-tiers.md](focus-tiers.md) | Delivery tiers (interrupt, ambient, later), in-app focus and macOS Focus filters, bypass rules, banners vs. the pill |
-| [integrations-next.md](integrations-next.md) | Research for the next agent hooks (Kimi Code, Grok Build, Cline, Cursor, Aider): config, events, payloads, mapping to the shared hook, ranking; Grok and Cursor already run the Claude hooks |
+| [friends-message.md](friends-message.md) | Draft message inviting testers ([testers.md](../guides/testers.md) is their install page) |
+
+## Checklists for the owner
+
+| Plan | What |
+|---|---|
+| [test-plan-2026-10-08.md](test-plan-2026-10-08.md) | After 0.1.4: preview layout, hub restart, real-model agent checks (Codex, Gemini, opencode, Copilot, Kimi, Grok, Cursor, Cline, Aider), `--mcp`, `--agent-instructions`, the site demo |
+| [test-plan-2026-10-07.md](test-plan-2026-10-07.md) | The first Mac session after 2026-10-07: panel and alert settings, stale cards, focus tiers, updates, GitHub gates, the terminal jump, the DMG |
 
 Related decision in progress: [ADR 0004: an always-on hub](../adr/0004-always-on-hub.md) (Proposed). The phone widget and GitHub webhooks both depend on it.
 
 ## Licensing
 
-Apache-2.0 (`LICENSE`). The repo is private for now and is planned to go open source as a non-profit project; what's left before that is in [sharing-checklist.md](sharing-checklist.md).
+Apache-2.0 (`LICENSE`). The repo is public on GitHub.

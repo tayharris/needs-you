@@ -13,7 +13,7 @@ needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
 needs-you doctor --json   # the same, for agents: {ok, version, checks: [{check, status, detail, hint}]}
 ```
 
-It checks the env file (and that its mode is 600), whether `needs-you` and `~/.local/bin` are on `PATH`, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), the Claude Code hooks and skill, Orca settings, and the 5-minute flush schedule. Each line is `OK`, `WARN`, `FAIL` or `INFO`. Every `WARN` and `FAIL` has one next step under it (after `->`): a command to run as is, or exactly what to ask for, such as a new invite link (`<invite link>` is the only placeholder). It exits 1 if any check is `FAIL`. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).
+It checks the env file (and that its mode is 600), whether `needs-you` and `~/.local/bin` are on `PATH`, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), each agent's hooks or plugin (Claude Code, Codex, Gemini, opencode, Copilot, Kimi, Grok, Cursor, Cline, Aider), the Claude skill, the MCP server and agent instructions if you installed them, Orca settings, updates, and the 5-minute flush schedule. Each line is `OK`, `WARN`, `FAIL` or `INFO`. Every `WARN` and `FAIL` has one next step under it (after `->`): a command to run as is, or exactly what to ask for, such as a new invite link (`<invite link>` is the only placeholder). It exits 1 if any check is `FAIL`. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).
 
 ## Quick checks by hand
 
@@ -81,6 +81,11 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 
 - **Duplicates:** the sender changes its key between runs (a timestamp, a run id). Keys must be stable.
 - **Cards that never go away:** the sender never calls `resolve`. Fix the sender, then clear the card with **Done** on the Mac.
+- **A sender that went away** (a killed agent session, a machine that's gone, an automation that crashed) can't resolve its cards. Safety nets, in the order they kick in:
+  - Agent hooks record the agent's process. The 5-minute `needs-you flush` on that machine resolves the card once the process is gone ([Claude Code](claude-code.md)).
+  - Agent cards expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`; Aider's after an hour). Each new post pushes it out.
+  - Scheduled automations post with `--expires-in` of about twice their interval, so a blocker they stop reporting drops off by itself ([Orca](orca.md)).
+  - On the Mac, a card waiting 4 hours or more shows its age, and its **…** menu has **Dismiss All from &lt;host&gt;** for a machine that went away ([Mac app](mac-app.md)).
 - **A card keeps re-animating:** the title, body or priority changes on every post (e.g. a counter or time in the title). Put changing details in the body sparingly, or keep them out.
 
 ## Claude Code hooks

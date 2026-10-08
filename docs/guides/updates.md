@@ -29,7 +29,7 @@ What it checks before installing anything: the release is published (not a draft
 
 After an update, if the macOS firewall asks whether `python3` may accept incoming connections, choose **Allow**: the ad-hoc signature changes with every build, and until then other machines can't reach this Mac's hub (they queue).
 
-**While the repo is private** the app needs a GitHub credential. It uses, in order: the GitHub CLI's token (`gh auth token`, from `/opt/homebrew/bin/gh` or `/usr/local/bin/gh`, so run `gh auth login` once), then a fine-grained token (Contents: read and Actions: read, on this repo only) in `~/Library/Application Support/NeedsYou/github.token` with mode 600. The token stays in memory, goes only to `api.github.com`, and is never logged or shown; Settings shows only where it came from.
+**No GitHub account is needed:** the repo is public, so the app checks anonymously when it finds no credential. If it finds one it uses it, in order: the GitHub CLI's token (`gh auth token`, from `/opt/homebrew/bin/gh` or `/usr/local/bin/gh`), then a fine-grained token (Contents: read and Actions: read, on this repo only) in `~/Library/Application Support/NeedsYou/github.token` with mode 600. The token stays in memory, goes only to `api.github.com`, and is never logged or shown; Settings shows only where it came from.
 
 **Testing without a release:** `mac/scripts/make-test-feed.sh --version 0.1.2` builds a feed in `/tmp/needsyou-feed`; `defaults write app.needsyou.mac updateFeedURL file:///tmp/needsyou-feed/` points the app at it (or `NEEDS_YOU_UPDATE_FEED`). Settings then shows a **Test update source** warning, and nothing from it installs automatically. `defaults delete app.needsyou.mac updateFeedURL` goes back to GitHub.
 

@@ -1,6 +1,6 @@
 # Fresh-user test plan
 
-Status: plan. Run it on the first release draft (`.github/workflows/release.yml`), before anyone outside the repo gets a link.
+Status (2026-10-08): plan, not run yet (no findings recorded). Releases are public now (latest 0.1.5), so run it on the latest published release before inviting more testers.
 
 Goal: someone who isn't the author can install needs-you from a GitHub Release, connect an agent and a server, and get an item, using only the release notes and the guides. Record every place they had to guess in a findings table like [doc-test-findings.md](doc-test-findings.md).
 
@@ -11,7 +11,7 @@ Use one of these, in order of preference:
 1. **A second Mac** that has never had needs-you, Xcode or the Command Line Tools. Check: `xcode-select -p` fails, and `/Applications/NeedsYou.app`, `~/Library/Application Support/NeedsYou` and `~/.config/needs-you` don't exist.
 2. **A new standard (non-admin) user account** on your Mac. The Command Line Tools are machine-wide, so this account can't test the "no Command Line Tools" path; do that part on (1) or skip it. Quit the main account's NeedsYou first (it holds port 8765), or expect and record the "port in use" behavior.
 
-The tester gets: the release's URL and [testers.md](../guides/testers.md), nothing else. No repo checkout, no Swift, no brew. Who can see the release: the repo is owned by a personal account, so every collaborator has write access and can see drafts too (the read-only **Read** role exists only for repos owned by an organization). Anyone who isn't a collaborator gets the assets handed over with `SHA256SUMS`.
+The tester gets: the release's URL and [testers.md](../guides/testers.md), nothing else. No repo checkout, no Swift, no brew. The repo is public, so anyone can download the release.
 
 Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, Tailscale installed or not.
 
@@ -76,16 +76,12 @@ Write down: macOS version, Apple silicon or Intel, managed (MDM or EDR) or not, 
 - No system dialog appears that the notes don't mention.
 - Every finding has a doc fix or an issue.
 
-## Blocked on decisions
+## Decisions
 
-These stay open until you decide. Everything above works without them.
+Only one is still open, and nothing above depends on it:
 
 | Decision | Blocks | Options | Where |
 |---|---|---|---|
-| **License** | Any public release or public repo. Release assets exist only as drafts for collaborators until then. | An OSI license (the project is planned as an open-source non-profit) | [distribution.md](distribution.md#license) |
-| **Public repo vs collaborators** | Who can download a release; whether `install-hub.sh` can curl from GitHub without a token; a Homebrew tap | Stay private and add testers as collaborators (read access sees releases), or go public after the license | [distribution.md](distribution.md) |
 | **Apple Developer ID** (personal or organization) | Notarization (no Gatekeeper workaround), EDR trust, a firewall rule that survives updates, Homebrew cask, CI phase 3 secrets | Personal account now; or wait for the non-profit's org account | [distribution.md](distribution.md#open-decisions), [ci-cd.md](ci-cd.md#phase-3-signing-and-notarization) |
-| **Draft vs auto-publish releases** | Nothing yet: the workflow makes drafts | Keep drafts, or publish when tests pass | [ci-cd.md](ci-cd.md#open-decisions) |
-| **Checksum signing** | Verifying downloads beyond `SHA256SUMS` from the same page | None, minisign, or Sigstore keyless | [ci-cd.md](ci-cd.md#open-decisions) |
-| **Update checks** | An "update available" notice in the app | Off by default, or on with disclosure | [distribution.md](distribution.md#open-decisions) |
-| **First version number** | Tagging the first release | decided: `0.1.1` | `VERSION`, `CHANGELOG.md` |
+
+Settled: Apache-2.0; a public repo; releases stay drafts that a person publishes; `SHA256SUMS` plus build provenance ([release-signing.md](../security/release-signing.md)); the app checks for updates ([updates.md](../guides/updates.md)); versions started at `0.1.1`.

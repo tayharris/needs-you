@@ -4,7 +4,33 @@ One inbox for "you have to do something". AI agents, servers and CI post an item
 
 **Your Mac is the hub.** A hub is a small SQLite database behind a tiny web server: one Python file that needs only the standard library. The Mac app runs one, so there's nothing else to install: no server, no account, no cloud. **Senders** (servers, CI, agents) post with the `needs-you` command, also one Python file: it tries each hub in turn, and if none answers (the Mac is asleep, say) it keeps the alert in a local outbox and sends it later. **Server hubs** are optional: the same hub, always on, on a Linux server, for redundancy, so alerts land while the Mac sleeps. Most people don't need one. It's light: the idle hub uses under 1% of one CPU core and about 30 MB of memory ([measured](docs/HUB.md#resource-use)). More in [Words](docs/guides/concepts.md).
 
-**Works with:** [Claude Code](docs/guides/claude-code.md) (hooks + skill), [Codex CLI](docs/guides/codex.md) (hooks), [Gemini CLI](docs/guides/gemini.md) (hooks), [opencode](docs/guides/opencode.md) (plugin), [GitHub Copilot CLI](docs/guides/copilot.md) (hooks), [Kimi Code](docs/guides/kimi.md) (hooks), [Grok Build](docs/guides/grok.md) (hooks), [Cursor](docs/guides/cursor.md) (hooks; finished turns only), [Cline](docs/guides/cline.md) (hooks; finished tasks only), [Aider](docs/guides/aider.md) (notifications command; waiting only) and [Orca](docs/guides/orca.md) (automation prompt blocks). Anything that can run a shell command can post too ([Add a sender](docs/guides/add-a-sender.md)), and any agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md).
+<p>
+<img src="site/img/preview-agent.png" width="330" alt="A new card springing out of the pill: Claude needs permission: acme-api, from devbox, with a VS Code button.">
+<img src="site/img/panel.png" width="190" alt="The open panel: an urgent deploy approval with its links, Claude waiting for a decision with numbered steps, a failed CI run, and a low-priority cleanup.">
+</p>
+
+## Works with
+
+Each agent gets a card when it's waiting on you, and the card clears itself when you answer. Add the flag to an invite link's one-liner, or paste the link's agent prompt into the agent ([Add a sender](docs/guides/add-a-sender.md)).
+
+| Agent or tool | Card when | Install flag | Guide |
+|---|---|---|---|
+| Claude Code | It asks for permission, a plan approval or an answer, waits for your next message, or stops on an API error | `--claude-hooks user --skill` | [Claude Code](docs/guides/claude-code.md) |
+| OpenAI Codex CLI | It asks to run a command, apply an edit or call an MCP tool, or finishes its turn | `--codex-hooks user` | [Codex](docs/guides/codex.md) |
+| Gemini CLI | It asks to approve a command, an edit, an MCP tool or a fetch, or finishes its turn | `--gemini-hooks user` | [Gemini](docs/guides/gemini.md) |
+| opencode | It asks for permission or asks a question, or goes idle | `--opencode-plugin` | [opencode](docs/guides/opencode.md) |
+| GitHub Copilot CLI | It asks for permission or asks a question, or finishes its turn | `--copilot-hooks user` | [Copilot](docs/guides/copilot.md) |
+| Kimi Code | It asks to approve a command, an edit or a plan, asks a question, finishes its turn or stops on an error | `--kimi-hooks user` | [Kimi Code](docs/guides/kimi.md) |
+| Grok Build | It shows a permission prompt, waits for your next message, or stops on an error | `--grok-hooks user` | [Grok Build](docs/guides/grok.md) |
+| Cursor | It finishes its turn or stops on an error (Cursor has no hook for approval prompts) | `--cursor-hooks user` | [Cursor](docs/guides/cursor.md) |
+| Cline (VS Code and CLI) | A task finishes or fails (no hook for approval prompts) | `--cline-hooks user` | [Cline](docs/guides/cline.md) |
+| Aider | It waits for you after a reply (clears when Aider exits, or after an hour) | `--aider` | [Aider](docs/guides/aider.md) |
+| Any MCP agent | The agent calls `needs_you_add` itself; for agents with MCP but no shell | `--mcp claude,codex,gemini,opencode,copilot` | [MCP server](docs/guides/mcp.md) |
+| Orca | Automations post blockers and run summaries; agent cards get a **Terminal** button | `--orca` | [Orca](docs/guides/orca.md) |
+| GitHub | Review requests, deploy approvals, failed CI, your PRs ready to merge or blocked | a poller on one machine | [GitHub](docs/guides/github.md) |
+| CI, cron, scripts | A job fails, or a long one finishes (`needs-you run`) | the CLI | [Add a sender](docs/guides/add-a-sender.md#cron-systemd-ci) |
+
+Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
 
 Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
@@ -45,10 +71,10 @@ Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/
  on servers or the Mac ──► (fails over, queues  ──────►  NeedsYou.app
                             while the Mac sleeps)        └─ its own hub (SQLite + tiny web server)
                                                              ▲
-                         optional: always-on server hubs ────┘ replicate
+                         optional: always-on server hubs ────┘ (the app can read from them)
 ```
 
-Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md) that replicate with the Mac.
+Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md). Today they replicate only with each other, not with the Mac's own hub, and invites made on the Mac list only the Mac's URL; [HUB.md](docs/HUB.md#with-the-macs-own-hub) says how to set it up.
 
 **[Quickstart](docs/guides/quickstart.md)** walks through all of it.
 
@@ -111,7 +137,8 @@ needs-you/
 ├── cli/            needs-you: the sender CLI, one Python file
 ├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
-├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd), github/ (poller), mcp/ (MCP server)
+├── integrations/   claude-code/ (the shared hook, skill), codex/, gemini/, opencode/, copilot/, kimi/, grok/,
+│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), github/ (poller), ci/ (Actions, cron, systemd)
 ├── deploy/         systemd units and an example hub config
 └── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, roadmap/, adr/
 ```

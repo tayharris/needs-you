@@ -1,6 +1,6 @@
 # Focus tiers: how loudly a card arrives, and what breaks through
 
-Status: steps 1–8 built on `tay/focus-tiers` (2026-10-07); 9–11 not started. See "Built" below for where the build differs from this plan.
+Status (2026-10-08): steps 1–8 are built and shipped (0.1.2); how they work for users is in the [Mac app guide](../guides/mac-app.md) (delivery tiers, focus, bypass rules, focus links and the Shortcuts recipe). Steps 9–11 (the macOS Focus filter spike, the filter, the sender-contract sentence) and the Interrupt sound aren't started. See "Built" below for where the build differs from this plan, and [next-big-item.md](next-big-item.md) for how 9–11 compare with the other candidates.
 
 Today every new `needs` item in the current context gets the same arrival (the pill springs out with a glow, urgent pulses twice). Out of context it's a faint second number. Snoozed or hidden, an urgent item breaks through (`SnoozeBreakthrough`, `HiddenArrivalPolicy`, settings `urgentBreaksSnooze` on, `urgentShowsHiddenPanel` off). There's no notion of "I'm heads-down", and the app doesn't know about macOS Focus. This plan adds **delivery tiers**, maps them from what the app already knows (priority, context, schedule, snooze) plus a focus state, and defines **bypass**. All of it is Mac-side: **no wire change**.
 
