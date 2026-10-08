@@ -217,7 +217,7 @@ Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a s
 - **Appearance:** the theme and the accent colour, with a sample ([Themes](#themes)).
 - **Alerts:** how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
 - **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
-- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts).
+- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
 
 Built in, not settings yet:
 
