@@ -255,9 +255,15 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     /// When the title, body, priority or steps last changed (docs/API.md); nil from hubs
     /// that don't send it. Read for the pill's "new since last opened" count.
     public var contentUpdatedAt: Date?
+    /// A closed item whose text the hub has purged (ADR 0012): only its id, key, status and
+    /// times are left. Never shown; it tells a client the item closed.
+    public var tombstone: Bool = false
+
+    /// Closed on the hub: resolved or dismissed, or a tombstone (whatever its status says).
+    public var isClosed: Bool { status != .open || tombstone }
 
     enum CodingKeys: String, CodingKey {
-        case id, key, context, kind, priority, title, body, links, steps, question, answer, source, status
+        case id, key, context, kind, priority, title, body, links, steps, question, answer, source, status, tombstone
         case answeredAt = "answered_at"
         case answeredBy = "answered_by"
         case createdAt = "created_at"
@@ -330,6 +336,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         answer = (question != nil && a?.isEmpty == false) ? a : nil
         answeredAt = answer == nil ? nil : ((try? c.decodeIfPresent(Date.self, forKey: .answeredAt)) ?? nil)
         answeredBy = answer == nil ? nil : ((try? c.decodeIfPresent(String.self, forKey: .answeredBy)) ?? nil)
+        tombstone = ((try? c.decodeIfPresent(Bool.self, forKey: .tombstone)) ?? nil) ?? false
     }
 
     /// Re-animation rule (docs/API.md `content_updated_at`): title, body, priority, steps or

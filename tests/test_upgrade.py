@@ -130,9 +130,9 @@ class UpgradeFromMain(HubTestCase):
         with st.lock:
             after = {t: sorted(tuple(r) for r in st.conn.execute("SELECT * FROM %s" % t)) for t in TABLES}
         # (plus the columns later migrations added, at their defaults: items.steps = '[]',
-        # items.question = items.answer = answered_at = answered_by = NULL, peer_state skipped_push = skipped_pull = 0, last_skipped =
+        # items.question = items.answer = answered_at = answered_by = purged_at = NULL, peer_state skipped_push = skipped_pull = 0, last_skipped =
         # blocked = NULL)
-        before["items"] = sorted(tuple(r) + ("[]", None, None, None, None) for r in before["items"])
+        before["items"] = sorted(tuple(r) + ("[]", None, None, None, None, None) for r in before["items"])
         before["peer_state"] = sorted(tuple(r) + (0, 0, None, None) for r in before["peer_state"])
         self.assertEqual(after, before)
         # and it works: old tokens authenticate, the old item is listed, the outbox is pending
@@ -187,7 +187,8 @@ class UpgradeFromMain(HubTestCase):
         cfg = hubmod.load_config(None, {"bind": "100.64.1.2", "peers": [PEER], "peer_secret": PEER_SECRET,
                                         "hub_id": "hub-a", "port": 8765, "freebind": True})
         self.assertEqual(cfg["bind"], ["100.64.1.2"])
-        self.assertEqual(cfg["retention_days"], 7.0)
+        self.assertEqual(cfg["retention_days"], 30.0)
+        self.assertEqual(cfg["text_retention_hours"], 24.0)
         hubmod.check_bind(cfg)
 
 

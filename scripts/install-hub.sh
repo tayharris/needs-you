@@ -442,7 +442,7 @@ put("peer_secret", e["NY_SECRET"])
 if cfg["peers"] and len(cfg.get("peer_secret") or "") < 16:
     sys.exit("install-hub: peers are set but there is no peer secret; pass --peer-secret-file "
              "(the other hub's secret) or --generate-peer-secret")
-cfg.setdefault("retention_days", 7)
+cfg.setdefault("retention_days", 30)
 print(json.dumps(cfg, indent=2))
 PY
 if [ "$MODE" = system ]; then

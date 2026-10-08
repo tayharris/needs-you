@@ -67,7 +67,7 @@ public struct ItemStore: Sendable {
     public static let maxClosedTombstones = 500
 
     public init(items: [Item] = []) {
-        for item in items where item.status == .open { self.items[item.id] = item }
+        for item in items where !item.isClosed { self.items[item.id] = item }
         latestUpdatedAt = items.map(\.updatedAt).max()
     }
 
@@ -87,7 +87,7 @@ public struct ItemStore: Sendable {
             latestUpdatedAt = max(latestUpdatedAt ?? incoming.updatedAt, incoming.updatedAt)
 
             if let tombstone = locallyClosed[incoming.id] {
-                if incoming.status != .open {
+                if incoming.isClosed {
                     // The close (ours or anyone's) reached the hub: settled.
                     locallyClosed[incoming.id] = nil
                 } else if tombstone.isReopened(by: incoming) {
@@ -101,7 +101,7 @@ public struct ItemStore: Sendable {
             let existing = items[incoming.id]
             if let existing, existing.updatedAt > incoming.updatedAt { continue } // stale
 
-            if incoming.status != .open || incoming.isExpired(at: now) {
+            if incoming.isClosed || incoming.isExpired(at: now) {
                 if let removed = items.removeValue(forKey: incoming.id) {
                     result.removed.append(removed)
                 }

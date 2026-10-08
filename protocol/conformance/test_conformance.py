@@ -641,6 +641,28 @@ class Replication(HubCase):
         self.assertEqual(len(body["skipped"]), 1)
         call("POST", "/v1/items/resolve", Env.sender, {"id": a["id"]})
 
+    def test_tombstones(self):
+        """Short retention (ADR 0012): a closed item's text-free tombstone replicates and closes
+        the item; one that is open isn't taken; an equal version with text never restores it."""
+        _, a = post({"key": key("tomb"), "title": "has text", "body": "b"})
+        self.assertIs(a["tombstone"], False)
+        rec = self.record(a["id"])
+        newer = parse_ts(rec["updated_at"]) + 60
+        tomb = dict(rec, status="resolved", tombstone=True, title="", body=None, links=[], steps=[],
+                    question=None, answer=None, source={}, updated_by="conformance-peer",
+                    updated_at=fmt_ts(newer))
+        status, body = self.push([dict(tomb, status="open")])
+        self.assertEqual((status, len(body["skipped"])), (200, 1))  # a tombstone must be closed
+        status, body = self.push([tomb])
+        self.assertEqual((status, body["applied"]), (200, 1), body)
+        got = item(a["id"])[1]
+        self.assertEqual((got["status"], got["tombstone"], got["title"], got["body"], got["links"], got["steps"]),
+                         ("resolved", True, "", None, [], []))
+        self.assertEqual(got["key"], key("tomb"))
+        full = dict(rec, status="resolved", updated_by="conformance-peer", updated_at=fmt_ts(newer))
+        self.assertEqual(self.push([full])[1]["applied"], 0)  # same version: the text stays gone
+        self.assertEqual(item(a["id"])[1]["title"], "")
+
     def test_same_key_merge_lowest_id_wins(self):
         k = key("merge")
         _, a = post({"key": k, "title": "minted here"})

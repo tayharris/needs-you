@@ -99,7 +99,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority, steps or question change
   "seen_at": null,
   "expires_at": null,                        // done/info default to created/re-posted + 24 h
-  "superseded_by": null                      // set when this item lost a same-key merge (see Replication)
+  "superseded_by": null,                     // set when this item lost a same-key merge (see Replication)
+  "tombstone": false                         // true: closed, and its text is gone (Housekeeping)
 }
 ```
 
@@ -391,7 +392,7 @@ request older than `request_read_seconds`), so long polls can't starve the hub.
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `{"id", "key", "status", "question_id", "answers", "answered_at", "answered_by"}` | The item has an answer (also after it was resolved) |
+| `200` | `{"id", "key", "status", "question_id", "answers", "answered_at", "answered_by"}` | The item has an answer (also after it was resolved, until its text is purged) |
 | `204` | none | No answer yet when `wait` ran out: ask again |
 | `404` | `not_found` | No such item for this token (yet: a post still in the sender's outbox) |
 | `409` | `not_open`, `not_answerable`, `question_expired` | No answer will come: the item closed, has no answerable question, or the question expired |
@@ -788,9 +789,29 @@ more than `uses`. Each extra machine still gets its own revocable token. Keep `u
 
 The hub cleans up after itself every 10 minutes (`maintenance_seconds`):
 
-- Hard-deletes items that were resolved or dismissed more than `retention_days` (default 7)
-  ago, and items whose `expires_at` passed more than `retention_days` ago. Open `needs` items
-  are never purged.
+- Purges the **text** of items that were resolved or dismissed more than
+  `text_retention_hours` (default 24) ago, and of items whose `expires_at` passed that long ago:
+  `title` becomes `""`, `body` `null`, `links`, `steps` `[]`, `question` and `answer` `null`,
+  `source` `{}`, and the item is reported with `"tombstone": true`. What's left (the
+  **tombstone**: `id`, `key`, `status`, the times, `origin_hub`) tells a client or a peer that slept
+  that the item closed. It isn't a write: `updated_at` and the item's place in the `cursor`
+  order don't move, every hub purges its own copy on its own clock, and a peer's equal version
+  that still has the text never brings it back (last writer wins needs a strictly newer
+  version). `0` keeps the text until the item is deleted. Clients drop a tombstone like any
+  closed item and never show one.
+
+  The hub's own clock decides: an item qualifies once it closed more than
+  `text_retention_hours` ago by its `updated_at` **or** by when this hub stored that closed
+  version, so a far-future `updated_at` from a peer can't keep the text. Text stays gone: a
+  replicated version of a closed (or expired) item is stored without its text when this hub has
+  already purged that item, or when it closed longer ago than `text_retention_hours`; only an
+  open, unexpired version (a re-open) carries text back. A sender re-posting the key gets a new
+  item. Unreadable replicated records in quarantine go after `text_retention_hours` too, the
+  database overwrites freed space (`secure_delete`) and the WAL is checkpointed, and the same
+  purge runs on the pre-migration backups (`hub.db.bak-N`).
+- Hard-deletes items (tombstones by then) that were resolved or dismissed more than
+  `retention_days` (default 30) ago, and items whose `expires_at` passed more than
+  `retention_days` ago. Open `needs` items are never purged.
 - Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).
 - Deletes expired invites, and revoked ones 24 h after their last change. Used-up invites
   are kept until they expire.
@@ -818,7 +839,9 @@ else anything.
 
 ### Records
 
-Replication carries full records: the item JSON above with the raw stored `status` (expiry not
+Replication carries full records (a tombstone too: `"tombstone": true` with its text empty; one
+that is open and unexpired is skipped as unreadable, and hubs up to 0.2.1 skip every tombstone,
+since its title is empty): the item JSON above with the raw stored `status` (expiry not
 applied) plus `token_id`, `origin_hub` (where it was minted) and `updated_by` (the hub that
 made this version). `steps` is carried as the array. A record **without** a `steps` key comes
 from a hub that predates steps: the receiver keeps its own steps for that id when the record's
@@ -942,6 +965,7 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
 - First answer wins on each hub. Two clicks on different hubs within the replication delay can
   both be taken; LWW then keeps the later one on every hub, and a sender that read the earlier
   one has already acted on it.
-- Closed items are purged after `retention_days`. A hub that was offline for longer than that
-  can still hold (and push) open versions of items the others resolved and purged; wipe such a
-  hub's database before bringing it back (see HUB.md).
+- Closed items lose their text after `text_retention_hours` and are deleted after
+  `retention_days` (30). A hub that slept for less than that learns of closes from the
+  tombstones. One offline for longer can still hold (and push) open versions of items the others
+  resolved and deleted; wipe such a hub's database before bringing it back (see HUB.md).

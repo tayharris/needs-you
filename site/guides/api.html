@@ -143,7 +143,8 @@ Clients must likewise ignore unknown response fields.</p></li>
   "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority, steps or question change
   "seen_at": null,
   "expires_at": null,                        // done/info default to created/re-posted + 24 h
-  "superseded_by": null                      // set when this item lost a same-key merge (see Replication)
+  "superseded_by": null,                     // set when this item lost a same-key merge (see Replication)
+  "tombstone": false                         // true: closed, and its text is gone (Housekeeping)
 }</code></pre></div>
 <h3 id="change-detection-content_updated_at">Change detection: <code>content_updated_at</code> <a class="anchor" href="#change-detection-content_updated_at" aria-label="Link to this section">#</a></h3>
 <p><code>content_updated_at</code> is the re-animation signal. It is set at creation and changes only when a
@@ -394,7 +395,7 @@ request older than <code>request_read_seconds</code>), so long polls can't starv
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Status</th><th>Body</th><th>When</th></tr></thead>
 <tbody>
-<tr><td><code>200</code></td><td><code>{"id", "key", "status", "question_id", "answers", "answered_at", "answered_by"}</code></td><td>The item has an answer (also after it was resolved)</td></tr>
+<tr><td><code>200</code></td><td><code>{"id", "key", "status", "question_id", "answers", "answered_at", "answered_by"}</code></td><td>The item has an answer (also after it was resolved, until its text is purged)</td></tr>
 <tr><td><code>204</code></td><td>none</td><td>No answer yet when <code>wait</code> ran out: ask again</td></tr>
 <tr><td><code>404</code></td><td><code>not_found</code></td><td>No such item for this token (yet: a post still in the sender's outbox)</td></tr>
 <tr><td><code>409</code></td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code></td><td>No answer will come: the item closed, has no answerable question, or the question expired</td></tr>
@@ -700,15 +701,34 @@ more than <code>uses</code>. Each extra machine still gets its own revocable tok
 <h2 id="housekeeping">Housekeeping <a class="anchor" href="#housekeeping" aria-label="Link to this section">#</a></h2>
 <p>The hub cleans up after itself every 10 minutes (<code>maintenance_seconds</code>):</p>
 <ul>
-<li>Hard-deletes items that were resolved or dismissed more than <code>retention_days</code> (default 7)
-ago, and items whose <code>expires_at</code> passed more than <code>retention_days</code> ago. Open <code>needs</code> items
-are never purged.</li>
-<li>Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).</li>
-<li>Deletes expired invites, and revoked ones 24 h after their last change. Used-up invites
-are kept until they expire.</li>
-<li>Checkpoints the WAL and runs an incremental vacuum (<code>auto_vacuum=INCREMENTAL</code>; older
+<li><p>Purges the <strong>text</strong> of items that were resolved or dismissed more than
+<code>text_retention_hours</code> (default 24) ago, and of items whose <code>expires_at</code> passed that long ago:
+<code>title</code> becomes <code>""</code>, <code>body</code> <code>null</code>, <code>links</code>, <code>steps</code> <code>[]</code>, <code>question</code> and <code>answer</code> <code>null</code>,
+<code>source</code> <code>{}</code>, and the item is reported with <code>"tombstone": true</code>. What's left (the
+<strong>tombstone</strong>: <code>id</code>, <code>key</code>, <code>status</code>, the times, <code>origin_hub</code>) tells a client or a peer that slept
+that the item closed. It isn't a write: <code>updated_at</code> and the item's place in the <code>cursor</code>
+order don't move, every hub purges its own copy on its own clock, and a peer's equal version
+that still has the text never brings it back (last writer wins needs a strictly newer
+version). <code>0</code> keeps the text until the item is deleted. Clients drop a tombstone like any
+closed item and never show one.</p>
+<p>The hub's own clock decides: an item qualifies once it closed more than
+<code>text_retention_hours</code> ago by its <code>updated_at</code> <strong>or</strong> by when this hub stored that closed
+version, so a far-future <code>updated_at</code> from a peer can't keep the text. Text stays gone: a
+replicated version of a closed (or expired) item is stored without its text when this hub has
+already purged that item, or when it closed longer ago than <code>text_retention_hours</code>; only an
+open, unexpired version (a re-open) carries text back. A sender re-posting the key gets a new
+item. Unreadable replicated records in quarantine go after <code>text_retention_hours</code> too, the
+database overwrites freed space (<code>secure_delete</code>) and the WAL is checkpointed, and the same
+purge runs on the pre-migration backups (<code>hub.db.bak-N</code>).</p></li>
+<li><p>Hard-deletes items (tombstones by then) that were resolved or dismissed more than
+<code>retention_days</code> (default 30) ago, and items whose <code>expires_at</code> passed more than
+<code>retention_days</code> ago. Open <code>needs</code> items are never purged.</p></li>
+<li><p>Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).</p></li>
+<li><p>Deletes expired invites, and revoked ones 24 h after their last change. Used-up invites
+are kept until they expire.</p></li>
+<li><p>Checkpoints the WAL and runs an incremental vacuum (<code>auto_vacuum=INCREMENTAL</code>; older
 databases are migrated once at start-up), plus a full <code>VACUUM</code> once a day when more than a
-quarter of the file is free pages.</li>
+quarter of the file is free pages.</p></li>
 </ul>
 <p>So purged items can't come back, a hub <strong>refuses to apply</strong> a replicated item that is closed
 (or expired) and older than its own retention cutoff, and an invite that is expired, or
@@ -726,7 +746,9 @@ a link id, a removed link. A hub with neither a shared secret nor links answers 
 sends a link peer its link's secret and link id, a config peer the shared secret, and nobody
 else anything.</p>
 <h3 id="records">Records <a class="anchor" href="#records" aria-label="Link to this section">#</a></h3>
-<p>Replication carries full records: the item JSON above with the raw stored <code>status</code> (expiry not
+<p>Replication carries full records (a tombstone too: <code>"tombstone": true</code> with its text empty; one
+that is open and unexpired is skipped as unreadable, and hubs up to 0.2.1 skip every tombstone,
+since its title is empty): the item JSON above with the raw stored <code>status</code> (expiry not
 applied) plus <code>token_id</code>, <code>origin_hub</code> (where it was minted) and <code>updated_by</code> (the hub that
 made this version). <code>steps</code> is carried as the array. A record <strong>without</strong> a <code>steps</code> key comes
 from a hub that predates steps: the receiver keeps its own steps for that id when the record's
@@ -834,9 +856,10 @@ wins.</li>
 <li>First answer wins on each hub. Two clicks on different hubs within the replication delay can
 both be taken; LWW then keeps the later one on every hub, and a sender that read the earlier
 one has already acted on it.</li>
-<li>Closed items are purged after <code>retention_days</code>. A hub that was offline for longer than that
-can still hold (and push) open versions of items the others resolved and purged; wipe such a
-hub's database before bringing it back (see HUB.md).</li>
+<li>Closed items lose their text after <code>text_retention_hours</code> and are deleted after
+<code>retention_days</code> (30). A hub that slept for less than that learns of closes from the
+tombstones. One offline for longer can still hold (and push) open versions of items the others
+resolved and deleted; wipe such a hub's database before bringing it back (see HUB.md).</li>
 </ul>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/API.md" href="https://github.com/tayharris/needs-you/blob/main/docs/API.md">docs/API.md</a> in the repo. View or edit it on GitHub.</p>
   </main>

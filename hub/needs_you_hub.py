@@ -135,7 +135,12 @@ DEFAULT_REQUEST_READ_SECONDS = 10.0  # when full, slower requests give way (Conn
 LIST_LIMIT_DEFAULT = 500
 LIST_LIMIT_MAX = 2000
 EXPIRY_HUB = "~expiry"  # reserved; never a real hub id
-DEFAULT_RETENTION_DAYS = 7.0
+DEFAULT_RETENTION_DAYS = 30.0  # tombstones (and anything closed) are deleted after this
+# A closed item's text (title, body, links, steps, question, answer, source) is purged this long
+# after it closed; a text-free tombstone stays until retention_days (ADR 0012, short retention).
+DEFAULT_TEXT_RETENTION_HOURS = 24.0
+TOMBSTONE_TEXT_COLS = {"title": "", "body": "", "links": "[]", "steps": "[]", "question": None,
+                       "answer": None, "answered_at": None, "answered_by": None, "source": "{}"}
 OUTBOX_MAX_AGE_MS = 7 * 24 * 3600 * 1000  # older undelivered peer rows: anti-entropy covers them
 INVITE_GRACE_MS = 24 * 3600 * 1000  # keep revoked invites this long so the revocation replicates
 INVITE_MAX_USES = 100
@@ -747,6 +752,7 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     cfg.setdefault("public_url", "")
     cfg.setdefault("install_dir", os.path.dirname(HUB_DIR))
     cfg.setdefault("retention_days", DEFAULT_RETENTION_DAYS)
+    cfg.setdefault("text_retention_hours", DEFAULT_TEXT_RETENTION_HOURS)
     cfg.setdefault("maintenance_seconds", 600.0)
     cfg.setdefault("vacuum_hours", 24.0)
     cfg.setdefault("redeem_fail_limit", 10)
@@ -1024,6 +1030,11 @@ CREATE TABLE IF NOT EXISTS peer_links (
   added_at INTEGER NOT NULL
 );
 """,
+    # 10: when a closed item's text was purged (a tombstone), NULL while it has its text
+    """
+ALTER TABLE items ADD COLUMN purged_at INTEGER;
+CREATE INDEX IF NOT EXISTS items_purged ON items(purged_at, status, updated_at);
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
@@ -1031,7 +1042,7 @@ DB_BACKUPS_KEPT = 2
 ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links", "steps", "question",
              "answer", "answered_at", "answered_by", "source",
              "status", "created_at", "updated_at", "content_updated_at", "seen_at", "expires_at",
-             "token_id", "origin_hub", "updated_by", "superseded_by", "seq", "local_at")
+             "token_id", "origin_hub", "updated_by", "superseded_by", "seq", "local_at", "purged_at")
 TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked_at",
               "updated_by", "seq")
 INVITE_COLS = ("id", "name", "role", "hash", "uses", "used", "created_at", "expires_at",
@@ -1079,8 +1090,10 @@ class Store:
 
     def __init__(self, path: str, hub_id: str, peers: List[str],
                  clock: Callable[[], float] = time.time,
-                 retention_days: float = DEFAULT_RETENTION_DAYS) -> None:
+                 retention_days: float = DEFAULT_RETENTION_DAYS,
+                 text_retention_hours: float = DEFAULT_TEXT_RETENTION_HOURS) -> None:
         self.path = path
+        self.text_retention_ms = int(float(text_retention_hours) * 3600 * 1000)
         self.hub_id = hub_id
         self.peers = list(peers)
         self.clock = clock
@@ -1101,6 +1114,8 @@ class Store:
         self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout=10000")
+        # Purged text is overwritten on disk, not just unlinked from the b-tree (short retention).
+        self.conn.execute("PRAGMA secure_delete=ON")
         version = int(self.conn.execute("PRAGMA user_version").fetchone()[0])
         has_tables = int(self.conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]) > 0
@@ -1523,11 +1538,19 @@ class Store:
         rec = normalise_item_record(rec)
         if self.past_retention(rec):
             return False  # we purge these; applying would resurrect a purged item
+        if rec["purged_at"] is not None:
+            if rec["status"] == "open" and rec["expires_at"] > self.now_ms():
+                raise ApiError(400, "invalid", "bad item record: a tombstone must be closed or expired")
+            rec["purged_at"] = self.now_ms()
         with self.tx():
             row = self.conn.execute("SELECT * FROM items WHERE id = ?", (rec["id"],)).fetchone()
             if row is not None and not self.newer(rec["updated_at"], rec["updated_by"],
                                                   row["updated_at"], row["updated_by"]):
                 return False
+            if rec["purged_at"] is None and self._stays_dead(rec, row):
+                rec.update(TOMBSTONE_TEXT_COLS)  # its metadata, never its text
+                rec["purged_at"] = (row["purged_at"] if row is not None and row["purged_at"] is not None
+                                    else self.now_ms())
             if (not knows_steps and row is not None
                     and row["content_updated_at"] == rec["content_updated_at"]):
                 # A hub older than `steps` wrote this version (a resolve, a seen_at, an
@@ -1550,6 +1573,22 @@ class Store:
             self._settle_content(rec["superseded_by"] or rec["id"])
             return True
 
+    def _stays_dead(self, rec: Dict[str, Any], row: Any) -> bool:
+        """A replicated version that must arrive as a tombstone: it is closed (or expired) and
+        either this hub already purged the item (only an open, unexpired version, a genuine
+        re-open, brings text back) or it closed longer ago than text_retention."""
+        if self.text_retention_ms <= 0:
+            return False
+        now = self.now_ms()
+        expired = rec["expires_at"] is not None and rec["expires_at"] <= now
+        if rec["status"] == "open" and not expired:
+            return False
+        if row is not None and row["purged_at"] is not None:
+            return True
+        tcut = now - self.text_retention_ms
+        return (rec["status"] != "open" and rec["updated_at"] < tcut) or \
+            (rec["expires_at"] is not None and rec["expires_at"] < tcut)
+
     CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "question",
                     "answer", "answered_at", "answered_by", "source",
                     "expires_at",
@@ -1569,9 +1608,11 @@ class Store:
         winner = dict(row)
         losers = [dict(r) for r in self.conn.execute(
             "SELECT * FROM items WHERE superseded_by = ?", (winner_id,))]
-        if not losers:
+        # A tombstone has no content to give, and a purged winner takes none back.
+        live = [r for r in losers if r.get("purged_at") is None]
+        if not live or winner.get("purged_at") is not None:
             return
-        best = max(losers, key=self._content_rank)
+        best = max(live, key=self._content_rank)
         # Only content that is really newer (API.md): a tie on content_updated_at broken by
         # updated_at would let a loser's later non-content write (its own hub's merge result)
         # copy its stale links, kind or expiry back over a re-post on the winner.
@@ -1912,13 +1953,29 @@ class Store:
         """Hard-delete what nobody needs: closed/expired items past retention, stale peer
         outbox rows, expired invites, and revoked invites past their grace period."""
         now = self.now_ms()
-        out = {"items": 0, "outbox": 0, "invites": 0}
+        out = {"items": 0, "outbox": 0, "invites": 0, "texts": 0}
         with self.tx() as c:
+            if self.text_retention_ms > 0:
+                # Tombstones: a closed (or expired) item's text goes; id, key, status and times
+                # stay so a peer that slept still learns it closed. Not a write (no new
+                # updated_at or seq): every hub does the same on its own clock, and an equal
+                # version from a peer that still has the text never brings it back (LWW).
+                tcut = now - self.text_retention_ms
+                sets = ", ".join("%s = ?" % k for k in TOMBSTONE_TEXT_COLS)
+                out["texts"] = c.execute(
+                    "UPDATE items SET %s, purged_at = ? WHERE purged_at IS NULL AND "
+                    "((status != 'open' AND (updated_at < ? OR local_at < ?)) OR "
+                    "(expires_at IS NOT NULL AND expires_at < ?))"
+                    % sets, tuple(TOMBSTONE_TEXT_COLS.values()) + (now, tcut, tcut, tcut)).rowcount
+                # (local_at: when this hub stored the closed version, by its own clock, so a
+                # peer's far-future updated_at can't keep the text.) Unreadable replicated
+                # records keep text too: they go as soon.
+                c.execute("DELETE FROM quarantine WHERE received_at < ?", (tcut,))
             if self.retention_ms > 0:
                 cutoff = now - self.retention_ms
                 out["items"] = c.execute(
-                    "DELETE FROM items WHERE (status != 'open' AND updated_at < ?) OR "
-                    "(expires_at IS NOT NULL AND expires_at < ?)", (cutoff, cutoff)).rowcount
+                    "DELETE FROM items WHERE (status != 'open' AND (updated_at < ? OR local_at < ?)) OR "
+                    "(expires_at IS NOT NULL AND expires_at < ?)", (cutoff, cutoff, cutoff)).rowcount
             out["outbox"] = c.execute("DELETE FROM outbox WHERE created_at < ?",
                                       (now - OUTBOX_MAX_AGE_MS,)).rowcount
             dead = []
@@ -1935,7 +1992,48 @@ class Store:
                       "(SELECT id FROM tokens WHERE revoked_at IS NULL)")
             if self.retention_ms > 0:
                 c.execute("DELETE FROM quarantine WHERE received_at < ?", (now - self.retention_ms,))
+        self._scrub_backups(now)
         return out
+
+    def _scrub_backups(self, now: int) -> None:
+        """The pre-migration backups (hub.db.bak-N) keep a copy of every item: apply the same
+        text purge and deletion to them, overwriting the freed space (secure_delete)."""
+        d = os.path.dirname(os.path.abspath(self.path))
+        prefix = os.path.basename(self.path) + ".bak-"
+        try:
+            names = [n for n in os.listdir(d) if n.startswith(prefix) and not n.endswith(".tmp")]
+        except OSError:
+            return
+        for n in names:
+            p = os.path.join(d, n)
+            try:
+                b = sqlite3.connect(p, isolation_level=None, timeout=5)
+            except sqlite3.Error:
+                continue
+            try:
+                b.execute("PRAGMA secure_delete=ON")
+                cols = {r[1] for r in b.execute("PRAGMA table_info(items)")}
+                if not cols:
+                    continue
+                closed = "status != 'open' AND (updated_at < ?%s)" % (" OR local_at < ?" if "local_at" in cols else "")
+                b.execute("BEGIN IMMEDIATE")
+                if self.text_retention_ms > 0:
+                    tcut = now - self.text_retention_ms
+                    sets = [(k, v) for k, v in TOMBSTONE_TEXT_COLS.items() if k in cols]
+                    args = [v for _k, v in sets] + [tcut] * (closed.count("?") + 1)
+                    b.execute("UPDATE items SET %s WHERE (%s) OR (expires_at IS NOT NULL AND expires_at < ?)"
+                              % (", ".join("%s = ?" % k for k, _v in sets), closed), args)
+                    if {r[0] for r in b.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {"quarantine"}:
+                        b.execute("DELETE FROM quarantine WHERE received_at < ?", (tcut,))
+                if self.retention_ms > 0:
+                    cutoff = now - self.retention_ms
+                    b.execute("DELETE FROM items WHERE (%s) OR (expires_at IS NOT NULL AND expires_at < ?)" % closed,
+                              [cutoff] * (closed.count("?") + 1))
+                b.execute("COMMIT")
+            except sqlite3.Error as e:
+                sys.stderr.write("couldn't scrub %s: %s\n" % (p, e))
+            finally:
+                b.close()
 
     def compact(self, full: bool = False) -> Dict[str, Any]:
         """WAL checkpoint plus incremental vacuum; a full VACUUM when `full` and >25% is free."""
@@ -2397,6 +2495,9 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
     if not utf8_ok(rec):
         raise ApiError(400, "invalid", "bad item record: text with an unpaired surrogate")
     out: Dict[str, Any] = {}
+    tomb = rec.get("tombstone") is True
+    if tomb:  # a closed item whose text is gone: validated with stand-in text, stored without
+        rec = dict(rec, title="-", body=None, links=[], steps=[], question=None, answer=None, source={})
     try:
         for c in ("id", "key", "context", "kind", "priority", "title", "status"):
             v = rec[c]
@@ -2463,6 +2564,12 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         raise ApiError(400, "invalid", "bad item record: %s" % e)
     if out["status"] not in STATUSES:
         raise ApiError(400, "invalid", "bad item status")
+    out["purged_at"] = None
+    if tomb:
+        if out["status"] == "open" and out["expires_at"] is None:
+            raise ApiError(400, "invalid", "bad item record: a tombstone must be closed or expired")
+        out.update(TOMBSTONE_TEXT_COLS)
+        out["purged_at"] = 0  # set to the time it is applied
     return out
 
 
@@ -2638,6 +2745,7 @@ def item_public(rec: Dict[str, Any], now_ms: int) -> Dict[str, Any]:
         "content_updated_at": fmt_ts(rec["content_updated_at"]),
         "seen_at": fmt_ts(rec["seen_at"]), "expires_at": fmt_ts(rec["expires_at"]),
         "superseded_by": rec.get("superseded_by"),
+        "tombstone": rec.get("purged_at") is not None,
     }
 
 
@@ -3773,7 +3881,8 @@ class Hub:
         self.cfg = cfg
         self.hub_id = str(cfg["hub_id"])
         self.store = Store(cfg["db"], self.hub_id, cfg["peers"], clock,
-                           retention_days=float(cfg.get("retention_days", DEFAULT_RETENTION_DAYS)))
+                           retention_days=float(cfg.get("retention_days", DEFAULT_RETENTION_DAYS)),
+                           text_retention_hours=float(cfg.get("text_retention_hours", DEFAULT_TEXT_RETENTION_HOURS)))
         self.stopping = threading.Event()
         self.exit_requested = threading.Event()  # set when the parent process is gone
         self.changed = threading.Condition()
@@ -3999,7 +4108,7 @@ class Hub:
         if full:
             self._last_vacuum = time.monotonic()
         if any(purged.values()) and not self.cfg.get("quiet"):
-            sys.stderr.write("maintenance: purged %(items)d items, %(outbox)d outbox rows, "
+            sys.stderr.write("maintenance: purged the text of %(texts)d closed items, %(items)d items, %(outbox)d outbox rows, "
                              "%(invites)d invites\n" % purged)
         return {"purged": purged, "compact": compacted}
 

@@ -10,7 +10,8 @@
     "http://my-mac.example.ts.net:8765"
   ],
   "peer_secret": "REPLACE-with-the-same-long-random-secret-on-every-hub",
-  "retention_days": 7,
+  "retention_days": 30,
+  "text_retention_hours": 24,
   "max_open_per_token": 60,
   "default_expiry_hours": 24,
   "anti_entropy_seconds": 60,
