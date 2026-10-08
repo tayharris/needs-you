@@ -39,6 +39,7 @@ invite**; on a server hub: `needs-you-admin invite create`). It looks like
    Code (plus `--ssh-alias <name>` if the person reaches it from the Mac over SSH),
    `--codex-hooks user` for Codex CLI, `--gemini-hooks user` for Gemini CLI,
    `--opencode-plugin` for opencode, `--copilot-hooks user` for GitHub Copilot CLI,
+   `--cursor-hooks user` for Cursor, `--cline-hooks user` for Cline, `--aider` for Aider,
    `--orca` for Orca automations, `--context personal` if
    its items are personal.
 3. Run `curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]`.
@@ -256,6 +257,9 @@ doesn't duplicate them.
 | Gemini CLI | `--gemini-hooks user`; only in folders you trust | [integrations/gemini](../integrations/gemini/README.md) |
 | opencode | `--opencode-plugin` | [integrations/opencode](../integrations/opencode/README.md) |
 | GitHub Copilot CLI | `--copilot-hooks user` | [integrations/copilot](../integrations/copilot/README.md) |
+| Cursor | `--cursor-hooks user`; a card when a turn finishes only (no approval hook) | [integrations/cursor](../integrations/cursor/README.md) |
+| Cline | `--cline-hooks user`; a card when a task finishes only (no approval hook) | [integrations/cline](../integrations/cline/README.md) |
+| Aider | `--aider`; a card when Aider waits, cleared when it exits or after an hour | [integrations/aider](../integrations/aider/README.md) |
 
 Open sessions load new hooks after a restart.
 

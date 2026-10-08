@@ -140,6 +140,17 @@ Copilot-specific causes:
 - **Another `COPILOT_HOME`.** Copilot then reads `$COPILOT_HOME/hooks/` instead; run the installer and doctor with the same value.
 - **A card stays after Esc.** Cancelling a permission prompt runs no hook in Copilot; the card goes with your next prompt or the end of the session.
 
+## Cursor, Cline and Aider
+
+`needs-you doctor` has `cursor hooks`, `cline hooks` and `aider notifications` lines. None of the three has an approval hook, so **no card when the agent asks to run something**: that's expected, not a fault. The hook finishes in the background in all three, so log to a file (`NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` on the test commands in [cursor.md](cursor.md#check-it-works), [cline.md](cline.md#check-it-works) or [aider.md](aider.md#check-it-works)).
+
+- **Opted in only in your shell.** Cursor and Cline in VS Code start hooks from the app, which doesn't read your shell profile. Put `NEEDS_YOU_AGENT_ALERTS=1` in `~/.config/needs-you/env`.
+- **Cursor: a prompt seems held up.** The hook answers `beforeSubmitPrompt` with `{"continue":true}` before anything else. If you see it held anyway, check `~/.cursor/hooks.json` for a needs-you entry under a permission hook (`preToolUse`, `beforeShellExecution`, …): doctor warns about it; re-run the installer.
+- **Cline: no card in VS Code.** Cline's "Enable Hooks" setting is off, or one of your own hook files took the `TaskComplete` name (doctor says which).
+- **Cline: a card stays after you quit the CLI.** Interactive `cline` sessions run in a background hub process that outlives the terminal; the card goes with your next task, when that process stops, or after 48 hours.
+- **Aider: no card.** A `.aider.conf.yml` in the repo, or `AIDER_NOTIFICATIONS_COMMAND`, overrides the one in your home directory; or `notifications: true` is missing (Aider needs both keys). If the installer printed two lines instead of writing them, add them yourself.
+- **Aider: the card stays while you type.** Aider sends nothing when you answer. It goes when Aider exits (within 5 minutes, by `needs-you flush`) or after `NEEDS_YOU_AIDER_EXPIRY_HOURS`.
+
 ## GitHub poller
 
 - `needs-you-github -v` prints what it saw (notifications, PRs) and any `gh` error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "GitHub alerts stopped on <host>".

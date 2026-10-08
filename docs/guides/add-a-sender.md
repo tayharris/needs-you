@@ -37,7 +37,10 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--gemini-hooks user\|none` | Install the Gemini CLI hooks in `~/.gemini/settings.json`. Default `none`. See [gemini.md](gemini.md). |
 | `--opencode-plugin` | Install the opencode plugin in `~/.config/opencode/plugins/`. See [opencode.md](opencode.md). |
 | `--copilot-hooks user\|none` | Install the GitHub Copilot CLI hooks in `~/.copilot/hooks/`. Default `none`. See [copilot.md](copilot.md). |
-| `--alerts` | Turn the Claude Code, Codex, Gemini CLI, opencode and Copilot CLI hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
+| `--cursor-hooks user\|none` | Install the Cursor hooks in `~/.cursor/hooks.json` (a card when a turn finishes; no approval hook). Default `none`. See [cursor.md](cursor.md). |
+| `--cline-hooks user\|none` | Install the Cline hooks in `~/Documents/Cline/Hooks/` (a card when a task finishes; no approval hook). Default `none`. See [cline.md](cline.md). |
+| `--aider` | Set Aider's notifications command in `~/.aider.conf.yml` (printed instead when that file can't safely be changed). See [aider.md](aider.md). |
+| `--alerts` | Turn the Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Cursor, Cline and Aider hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
 | `--skill` | Install the needs-you skill to `~/.claude/skills/needs-you/`. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day (`NEEDS_YOU_AUTO_UPDATE=1`). Updates come only from this hub. See [Keeping up to date](updates.md). |
 | `--context-alert PCT` | Card suggesting `/compact` or `/clear` once a Claude session's context is PCT% full. Default 80; `0` off. |

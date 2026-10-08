@@ -1,6 +1,6 @@
 # Next agent integrations: Kimi Code, Grok Build, Cline, Cursor, Aider
 
-Status: research, 2026-10-07. Nothing here is built. GitHub Copilot CLI, researched separately, is supported now ([guide](../guides/copilot.md)).
+Status: research, 2026-10-07. GitHub Copilot CLI, researched separately, is supported now ([guide](../guides/copilot.md)), and so are Cursor ([guide](../guides/cursor.md)), Cline ([guide](../guides/cline.md)) and Aider ([guide](../guides/aider.md)), built from this page; their guides say what changed from the plan here. Kimi Code and Grok Build are not built yet.
 
 The existing agent integrations (Claude Code, Codex, Gemini CLI, opencode) all share `integrations/claude-code/needs-you-hook.sh`: a **waiting card** goes up when the agent asks for approval or input or ends its turn (`notify`), and comes down when the person answers or the agent moves on (`resolve`), when a conversation is replaced (`start`), or when the session ends (`end`). There is one card per wait, keyed `agent:<host>:<session id>`. The hook always exits 0, never prints to stdout, and backgrounds itself where the agent waits on hooks. This page checks five more agents against that model, using their docs, their source, and live runs where possible.
 
