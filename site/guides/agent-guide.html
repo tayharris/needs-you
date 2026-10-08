@@ -82,7 +82,9 @@ Code (plus <code>--ssh-alias &lt;name&gt;</code> if the person reaches it from t
 <code>--codex-hooks user</code> for Codex CLI, <code>--gemini-hooks user</code> for Gemini CLI,
 <code>--opencode-plugin</code> for opencode, <code>--copilot-hooks user</code> for GitHub Copilot CLI,
 <code>--orca</code> for Orca automations, <code>--context personal</code> if
-its items are personal.</li>
+its items are personal. Only if the person asks: <code>--agent-instructions codex,gemini,opencode</code>
+(these rules in those agents' own instruction files) and <code>--mcp &lt;agents&gt;</code> (the MCP server,
+registered with <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>opencode</code> or <code>copilot</code>).</li>
 <li>Run <code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes [options]</code>.</li>
 <li>Report the health line (<code>&lt;hub url&gt;  OK  hub=... token=&lt;name&gt; role=sender</code>), never the
 token. Then run <code>~/.local/bin/needs-you doctor</code> (the new <code>PATH</code> reaches new shells only)
@@ -153,7 +155,8 @@ webhook or a notification command instead? <a href="custom-connector.html">Custo
 <h3 id="with-mcp">With MCP <a class="anchor" href="#with-mcp" aria-label="Link to this section">#</a></h3>
 <p>An agent that speaks MCP but has no shell can use the needs-you MCP server
 (<code>integrations/mcp/</code>): tools <code>needs_you_add</code>, <code>needs_you_resolve</code> and <code>needs_you_doctor</code>, with
-these rules in their descriptions. Setup: <a href="mcp.html">MCP server</a>.</p>
+these rules in their descriptions. The invite installer's <code>--mcp &lt;agents&gt;</code> installs and
+registers it. Setup: <a href="mcp.html">MCP server</a>.</p>
 <h3 id="steps-when-the-person-has-to-do-several-things">Steps: when the person has to do several things <a class="anchor" href="#steps-when-the-person-has-to-do-several-things" aria-label="Link to this section">#</a></h3>
 <p>When handling the item takes <strong>more than one action, in order</strong> (rotate a key, then restart a
 job, then confirm in a channel), send them as <code>steps</code>. The Mac shows a numbered checklist,
