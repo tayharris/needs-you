@@ -57,6 +57,22 @@ class SetupSender(HubTestCase):
             self.assertIn("NEEDS_YOU_AGENT_ALERTS=1\n", fh.read())
         self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
 
+    def test_auto_update_on_by_default_and_opt_out_sticks(self):
+        r = self.run_setup("--no-path")
+        self.assertIn("NEEDS_YOU_AUTO_UPDATE=1\n", self.env_text())
+        self.assertIn("daily updates: on", r.stdout)
+        with open(self.cron) as fh:
+            self.assertEqual(fh.read().count("needs-you-flush"), 1)
+        self.run_setup("--no-path", "--no-auto-update")
+        self.assertIn("NEEDS_YOU_AUTO_UPDATE=0\n", self.env_text())
+        self.run_setup("--no-path")                     # no flag: the file's value is kept
+        self.assertIn("NEEDS_YOU_AUTO_UPDATE=0\n", self.env_text())
+        self.run_setup("--no-path", "--auto-update")
+        self.assertEqual(self.env_text().count("NEEDS_YOU_AUTO_UPDATE="), 1)
+        self.assertIn("NEEDS_YOU_AUTO_UPDATE=1\n", self.env_text())
+        r = self.run_setup("--no-path", "--no-schedule")
+        self.assertIn("won't run until you schedule", r.stderr)
+
     def test_schedule_passes_xdg_dirs_on(self):
         # cron runs without the shell's XDG_CONFIG_HOME: the flush found no config
         xdg = os.path.join(self.tmp, "xdg")

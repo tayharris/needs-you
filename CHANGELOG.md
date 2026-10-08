@@ -4,7 +4,16 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Upgrade note
+
+Sender machines now update themselves once a day by default. Machines set up earlier keep what they had (off, unless they used `--auto-update`): run `needs-you update --enable-auto` on each, or re-run its invite one-liner. `needs-you doctor` says so on a machine that is behind its hub.
+
 ### Added
+
+- **"Set up needs-you for me": one prompt for an agent.** Paste it into Claude Code (or Codex, Gemini CLI, any agent that runs shell commands) on the Mac and on each server: the agent looks around read-only (the OS, the app and its version, Tailscale, which agents are installed), explains app, hub and senders, installs or updates the Mac app from the release zip after checking `SHA256SUMS`, connects the agents you pick through an invite's installer, and checks the result with `needs-you doctor` and a test card. It asks you at every choice and never installs Tailscale, logs in, uses `sudo`, turns Gatekeeper off, reads credential files or sees a token. On the site's Install section (with a Copy button), in the README, and in [Set it up with an agent](docs/guides/setup-with-an-agent.md).
+- **Daily sender updates are on by default.** The invite installer and `setup-sender.sh` write `NEEDS_YOU_AUTO_UPDATE=1` unless you pass `--no-auto-update`, and keep a value already in the env file, so an opt-out sticks on a re-run. Re-running also adds the 5-minute flush entry if it's missing. `needs-you update --enable-auto` and `--disable-auto` switch it on a machine that's already set up. The invite's agent prompt and join page say so ([Keeping up to date](docs/guides/updates.md)).
+- **`needs-you update` works without `gh`.** It downloads the release's `SHA256SUMS`, server tarball and `release-manifest.json` from `github.com` over https and makes the same checks as with `gh`, except build provenance, which needs `gh` (the update and `doctor` say it wasn't checked). Before, an automatic update on a machine without `gh` was always refused. If `github.com` can't be reached, an automatic update is still refused.
+- **`needs-you doctor` says how to catch up.** On a machine older than its hub with daily updates off, the `update` line says nothing will update it on its own and gives one command: `needs-you update --enable-auto`.
 
 - **GitHub: a "Merged" FYI when one of your PRs merges.** `needs-you-github` remembers your open PRs between runs; when one leaves the list and GitHub says it merged, it posts one low `done` card, "Merged owner/repo#20: *title*", with a PR link, that expires after a day and isn't counted. A PR closed without merging posts nothing. On by default; `NEEDS_YOU_GITHUB_REASONS=-merged` turns it off. Copy the new `needs-you-github` to `~/.local/bin/` ([GitHub guide](docs/guides/github.md)).
 - **`needs-you doctor` suggests Orca for worktree-heavy repos.** Run in a repo with 3 or more git worktrees on a machine without Orca, doctor adds an `orca` INFO line: Orca runs agents in worktrees, and needs-you cards from its terminals get a Terminal button. Only a tip, never a warning, and doctor still posts nothing. The invite installer also says, when `orca` is on `PATH` and `--orca` wasn't passed, that the flag writes the automation prompt block ([Orca guide](docs/guides/orca.md#check-it-works)).

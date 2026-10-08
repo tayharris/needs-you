@@ -22,7 +22,8 @@ The join URL is safe to open in a browser first: it's Markdown that explains wha
 | Installs the CLI | Downloads `needs-you` from the hub (`/dl/needs-you`), checks it compiles, puts it in `~/.local/bin`, and adds `~/.local/bin` to `PATH` with one line tagged `# added by needs-you` in your shell profile (`~/.zshrc`, `~/.bash_profile` on macOS bash, `~/.bashrc` on Linux bash, else `~/.profile`). `--no-path` prints the line instead. |
 | Redeems the invite | Mints a token for this machine, named `<invite name>-<host>` (just the invite name if that already is the host). One link with `uses: 5` sets up five machines, each with its own token. |
 | Writes the config | `~/.config/needs-you/env`, mode 600: `NEEDS_YOU_URLS` (the hub plus its peers, in failover order), `NEEDS_YOU_URL`, `NEEDS_YOU_TOKEN`, and `NEEDS_YOU_DEFAULT_CONTEXT` with `--context`. Other lines in the file are kept. |
-| Schedules a flush | Every 5 minutes, `needs-you flush` sends anything queued while no hub answered (e.g. the Mac was asleep): a crontab line on Linux, the LaunchAgent `io.needs-you.flush` on macOS. |
+| Schedules a flush | Every 5 minutes, `needs-you flush` sends anything queued while no hub answered (e.g. the Mac was asleep): a crontab line on Linux, the LaunchAgent `io.needs-you.flush` on macOS. Re-running adds it again if it's missing. |
+| Turns on daily updates | `NEEDS_YOU_AUTO_UPDATE=1`: once a day the flush runs `needs-you update` from this hub, checked against the GitHub release ([Keeping up to date](updates.md)). `--no-auto-update` leaves it off; a value already in the env file is kept. |
 | Checks and tests | `needs-you health`, then a test `info` item. An unreachable hub is only a warning: the item queues. |
 
 ### Options
@@ -44,7 +45,7 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--aider` | Set Aider's notifications command in `~/.aider.conf.yml` (printed instead when that file can't safely be changed). See [aider.md](aider.md). |
 | `--alerts` | Turn the Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok, Cursor, Cline and Aider hooks on for every session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). |
 | `--skill` | Install the needs-you skill to `~/.claude/skills/needs-you/`. |
-| `--auto-update` | Let the 5-minute flush run `needs-you update` once a day (`NEEDS_YOU_AUTO_UPDATE=1`). Updates come only from this hub. See [Keeping up to date](updates.md). |
+| `--no-auto-update` | Don't let the 5-minute flush run `needs-you update` once a day. It's on by default (`NEEDS_YOU_AUTO_UPDATE=1`); updates come only from this hub, checked against the GitHub release. A value already in the env file is kept unless you pass this or `--auto-update` (which turns it back on). See [Keeping up to date](updates.md). |
 | `--context-alert PCT` | Card suggesting `/compact` or `/clear` once a Claude session's context is PCT% full. Default 80; `0` off. |
 | `--ssh-alias NAME` | This machine's name in the Mac's `~/.ssh/config`: agent cards get a VS Code Remote-SSH button. |
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links; `none` turns them off. See [claude-code-everywhere.md](claude-code-everywhere.md#buttons). |
@@ -64,7 +65,7 @@ Notes:
 
 - An expired, revoked or unknown link fails with exit 1 and `needs-you install: This invite link is unknown, expired or revoked.` on stderr.
 - After the link expires, remove things by hand (below).
-- Update the CLI, hook, skill and Orca snippet later with `needs-you update` (or add `--auto-update` to the one-liner for a daily update). See [Keeping up to date](updates.md).
+- The CLI, hook, skill and Orca snippet update themselves once a day (unless `--no-auto-update`); `needs-you update` does it at once. See [Keeping up to date](updates.md).
 
 ## Manually (no invite link)
 

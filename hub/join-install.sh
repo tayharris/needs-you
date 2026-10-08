@@ -42,7 +42,7 @@ ORCA_ENV=""
 SSH_ALIAS=""
 CONTEXT_ALERT=""
 SET_PATH=1
-AUTO_UPDATE=""
+AUTO_UPDATE=""     # "" = 1 unless the env file already says (set by an earlier run or by hand)
 MCP="-"            # --mcp AGENTS: register the MCP server with these ("-": not asked for)
 INSTRUCTIONS="-"   # --agent-instructions AGENTS: the rules in their instruction files
 USAGE=0            # --usage: Claude's usage-limit status line helper next to the CLI
@@ -116,8 +116,10 @@ Options:
   --usage                       install ~/.local/bin/needs-you-usage, a Claude Code status
                                 line helper that posts a card when the 5-hour or weekly
                                 limit runs high (you add it to your statusLine yourself)
-  --auto-update                 let `needs-you flush` run `needs-you update` once a day
-                                (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
+  --no-auto-update              don't let `needs-you flush` run `needs-you update` once a
+                                day (it's on by default: NEEDS_YOU_AUTO_UPDATE=1; updates
+                                come only from this hub, checked against the GitHub release)
+  --auto-update                 turn it back on after --no-auto-update
   --context-alert PCT           card suggesting /compact or /clear once a session's
                                 context is PCT% full (default 80; 0 = off)
   --ssh-alias NAME              the name the Mac's ~/.ssh/config (VS Code Remote-SSH)
@@ -188,6 +190,7 @@ while [ $# -gt 0 ]; do
     --no-path) SET_PATH=0; shift ;;
     --alerts) ALERTS=1; shift ;;
     --auto-update) AUTO_UPDATE=1; shift ;;
+    --no-auto-update) AUTO_UPDATE=0; shift ;;
     --context-alert) CONTEXT_ALERT=${2:-}; shift 2 || die "--context-alert needs a percentage" ;;
     --context-alert=*) CONTEXT_ALERT=${1#*=}; shift ;;
     --ssh-alias) SSH_ALIAS=${2:-}; shift 2 || die "--ssh-alias needs a name" ;;
@@ -465,6 +468,16 @@ python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' ||
 [ -n "$HOST_NAME" ] || HOST_NAME=$(hostname -s 2>/dev/null || hostname)
 HOST_NAME=${HOST_NAME%%.*}
 
+# Daily updates are on by default; a value already in the env file (an earlier
+# --no-auto-update, or `needs-you update --disable-auto`) is kept unless a flag says otherwise.
+if [ -z "$AUTO_UPDATE" ]; then
+  if [ -f "$ENV_FILE" ] && grep -Eq '^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_AUTO_UPDATE=' "$ENV_FILE"; then
+    AUTO_UPDATE=""
+  else
+    AUTO_UPDATE=1
+  fi
+fi
+
 HAVE_TOKEN=0
 if [ -f "$ENV_FILE" ] && grep -Eq '^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_TOKEN=.' "$ENV_FILE"; then
   HAVE_TOKEN=1
@@ -478,6 +491,13 @@ say "needs-you: connect $HOST_NAME to $HUB_URL (invite $INVITE_NAME)"
 say "  CLI     -> $CLI"
 say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && printf ' (already set up: keeping the token)')"
 [ "$SCHEDULE" -eq 1 ] && say "  flush   -> every 5 minutes ($([ "$OS" = Darwin ] && echo LaunchAgent || echo crontab))"
+case "$AUTO_UPDATE" in
+  1) say "  update  -> daily, from this hub, run by the flush (--no-auto-update turns it off)" ;;
+  0) say "  update  -> off (needs-you update by hand; --auto-update turns it on)" ;;
+esac
+if [ "$SCHEDULE" -eq 0 ] && [ "$AUTO_UPDATE" != 0 ]; then
+  warn "--no-schedule: daily updates run from the 5-minute flush, so they won't run until you schedule \`needs-you flush\` yourself"
+fi
 [ "$HOOKS" != none ] && say "  hooks   -> Claude Code ($HOOKS level)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$CODEX_HOOKS" != none ] && say "  hooks   -> Codex CLI (${CODEX_HOME:-~/.codex}/hooks.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$OPENCODE" -eq 1 ] && say "  plugin  -> opencode (${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/needs-you.js)"

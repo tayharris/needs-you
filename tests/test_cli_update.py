@@ -773,15 +773,220 @@ class AutoUpdate(UpdateCase):
         self.assertEqual(read(self.cli), read(CLI))   # opted in through the env file
 
 
+class ReleaseOverHttps(UpdateCase):
+    """Without gh, the same release files come from github.com over https (stdlib), so an
+    automatic update works on a box with no gh. Here the download is served from the fake
+    release directory instead of the network."""
+
+    fake_gh = ReleaseCrossCheck.fake_gh     # builds the fake release directory
+    attestation = staticmethod(ReleaseCrossCheck.attestation)
+
+    def load(self, release_dir, unreachable=False):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("needs_you_cli_https", CLI)
+        spec = importlib.util.spec_from_loader("needs_you_cli_https", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        fetched = []
+
+        def fake_get(url, dest, timeout=60.0):
+            fetched.append(url)
+            if unreachable:
+                raise mod._ReleaseUnreachable("Name or service not known")
+            name = url.rsplit("/", 1)[-1]
+            src = os.path.join(release_dir, name)
+            if not os.path.exists(src):
+                raise mod.UpdateRefused("GitHub has no %s for this release (HTTP 404)" % name)
+            shutil.copy(src, dest)
+        mod._release_get = fake_get
+        mod._gh = lambda: None
+        old = os.environ.pop("NEEDS_YOU_GH", None)
+        if old is not None:
+            self.addCleanup(os.environ.__setitem__, "NEEDS_YOU_GH", old)
+        return mod, fetched
+
+    def test_matching_release_without_gh(self):
+        version = "9.8.7"
+        self.fake_gh(current_files(), version)
+        mod, fetched = self.load(os.path.join(self.tmp, "release"))
+        digests, note = mod.release_digests(version, ["needs-you", "SKILL.md"])
+        self.assertEqual(digests["needs-you"], hashlib.sha256(read(CLI)).hexdigest())
+        self.assertIn("without gh", note)
+        self.assertIn("build provenance not checked", note)
+        self.assertEqual(fetched, ["https://github.com/tayharris/needs-you/releases/download/v9.8.7/" + n
+                                   for n in ("SHA256SUMS", "needs-you-server-9.8.7.tar.gz", "release-manifest.json")])
+
+    def test_tampered_tarball_refuses(self):
+        version = "9.8.7"
+        self.fake_gh(current_files(), version)
+        rel = os.path.join(self.tmp, "release")
+        with open(os.path.join(rel, "needs-you-server-9.8.7.tar.gz"), "ab") as fh:
+            fh.write(b"x")
+        mod, _ = self.load(rel)
+        with self.assertRaises(mod.UpdateRefused) as cm:
+            mod.release_digests(version, ["needs-you"])
+        self.assertIn("doesn't match its SHA256SUMS", str(cm.exception))
+
+    def test_manifest_must_list_the_tarball(self):
+        version = "9.8.7"
+        self.fake_gh(current_files(), version, manifest_tarball_sha="0" * 64)
+        mod, _ = self.load(os.path.join(self.tmp, "release"))
+        with self.assertRaises(mod.UpdateRefused) as cm:
+            mod.release_digests(version, ["needs-you"])
+        self.assertIn("doesn't list this", str(cm.exception))
+
+    def test_missing_release_refuses(self):
+        mod, _ = self.load(os.path.join(self.tmp, "nowhere"))
+        with self.assertRaises(mod.UpdateRefused):
+            mod.release_digests("9.8.7", ["needs-you"])
+
+    def test_unreachable_github_is_not_a_match(self):
+        mod, _ = self.load(os.path.join(self.tmp, "nowhere"), unreachable=True)
+        digests, why = mod.release_digests("9.8.7", ["needs-you"])
+        self.assertIsNone(digests)
+        self.assertIn("github.com couldn't be reached", why)
+
+    def cross_check(self, mod, auto, **env):
+        """cross_check with a config file of its own (never the real ~/.config) and env."""
+        conf = os.path.join(self.tmp, "cc-env")
+        open(conf, "w").close()
+        saved = {k: os.environ.get(k) for k in ["NEEDS_YOU_CONFIG", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH"]}
+
+        def restore():
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.addCleanup(restore)
+        os.environ["NEEDS_YOU_CONFIG"] = conf
+        os.environ.pop("NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH", None)
+        os.environ.update(env)
+        files = current_files()
+        manifest = {"version": "9.8.7", "files": {n: {"sha256": hashlib.sha256(d).hexdigest()} for n, d in files.items()}}
+        changes = [{"file": "needs-you"}]
+        return mod.cross_check(mod.Config(), manifest, changes, auto=auto)
+
+    def test_unreachable_github_refuses_automatic_updates(self):
+        mod, _ = self.load(os.path.join(self.tmp, "nowhere"), unreachable=True)
+        with self.assertRaises(mod.UpdateRefused) as cm:
+            self.cross_check(mod, auto=True)
+        self.assertIn("automatic updates need it", str(cm.exception))
+        # A manual update only with the explicit warning, and not at all with =1.
+        self.assertTrue(self.cross_check(mod, auto=False).startswith("WARNING: not checked against the GitHub release"))
+        with self.assertRaises(mod.UpdateRefused):
+            self.cross_check(mod, auto=False, NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH="1")
+
+    def test_matching_https_release_satisfies_the_check_and_says_what_was_skipped(self):
+        self.fake_gh(current_files(), "9.8.7")
+        mod, _ = self.load(os.path.join(self.tmp, "release"))
+        for auto in (True, False):
+            note = self.cross_check(mod, auto=auto, NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH="1")
+            self.assertIn("matches release v9.8.7 on GitHub", note)
+            self.assertIn("build provenance not checked", note)
+
+    def test_hub_file_not_in_the_https_release_refuses(self):
+        files = current_files()
+        self.fake_gh(files, "9.8.7", tamper=True)   # the release's CLI differs from the hub's
+        mod, _ = self.load(os.path.join(self.tmp, "release"))
+        with self.assertRaises(mod.UpdateRefused):
+            self.cross_check(mod, auto=True)
+
+    def test_tls_failure_is_a_refusal_not_unreachable(self):
+        import ssl
+        import urllib.error
+        import urllib.request
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("needs_you_cli_tls", CLI)
+        spec = importlib.util.spec_from_loader("needs_you_cli_tls", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+
+        class Opener:
+            def open(self, *a, **kw):
+                raise urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed"))
+        real = urllib.request.build_opener
+        urllib.request.build_opener = lambda *a: Opener()
+        self.addCleanup(setattr, urllib.request, "build_opener", real)
+        with self.assertRaises(mod.UpdateRefused) as cm:
+            mod._release_get("https://github.com/tayharris/needs-you/releases/download/v1.2.3/SHA256SUMS",
+                             os.path.join(self.tmp, "out"))
+        self.assertIn("TLS", str(cm.exception))
+
+    def test_only_github_urls(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("needs_you_cli_urls", CLI)
+        spec = importlib.util.spec_from_loader("needs_you_cli_urls", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        for url in ("http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x",
+                    "https://github.com:8443/x", "https://evilgithub.com/x", "ftp://github.com/x"):
+            with self.assertRaises(mod.UpdateRefused):
+                mod._release_get(url, os.path.join(self.tmp, "out"))
+
+
+class AutoSwitch(UpdateCase):
+    def env_file(self):
+        return os.path.join(self.home, ".config", "needs-you", "env")
+
+    def test_enable_and_disable_keep_other_lines(self):
+        h = self.hub()
+        os.makedirs(os.path.dirname(self.env_file()))
+        with open(self.env_file(), "w") as fh:
+            fh.write("# mine\nNEEDS_YOU_TOKEN=t\nexport NEEDS_YOU_AUTO_UPDATE=0\nNEEDS_YOU_AGENT_ALERTS=1\n")
+        r = self.run_cli("update", "--disable-auto", urls=["http://127.0.0.1:%d" % free_port()])
+        self.assertEqual(r.returncode, 0, r.stderr)           # no hub needed to turn it off
+        self.assertIn("daily automatic updates off", r.stdout)
+        self.assertEqual(read(self.cli), self.old_cli)         # and nothing updated
+        r = self.run_cli("update", "--enable-auto", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("daily automatic updates on", r.stdout)
+        self.assertEqual(read(self.cli), read(CLI))            # updated now as well
+        with open(self.env_file()) as fh:
+            self.assertEqual(fh.read(), "# mine\nNEEDS_YOU_TOKEN=t\nNEEDS_YOU_AUTO_UPDATE=1\nNEEDS_YOU_AGENT_ALERTS=1\n")
+        self.assertEqual(os.stat(self.env_file()).st_mode & 0o777, 0o600)
+
+    def test_enable_without_an_env_file(self):
+        h = self.hub()
+        r = self.run_cli("update", "--enable-auto", "--check", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(self.env_file()) as fh:
+            self.assertIn("NEEDS_YOU_AUTO_UPDATE=1\n", fh.read())
+
+    def test_both_flags_are_refused(self):
+        r = self.run_cli("update", "--enable-auto", "--disable-auto", urls=["http://127.0.0.1:9"])
+        self.assertEqual(r.returncode, 2)
+
+
 class DoctorUpdate(UpdateCase):
     def test_doctor_reports_versions_against_the_hub(self):
         h = self.hub()
-        r = self.run_cli("doctor", "--json", urls=[h.url])
+        r = self.run_cli("doctor", "--json", urls=[h.url], env={"NEEDS_YOU_AUTO_UPDATE": "1"})
         checks = {c["check"]: c for c in json.loads(r.stdout)["checks"]}
         self.assertEqual(checks["update"]["status"], "WARN")
         self.assertIn("newer on the hub: needs-you", checks["update"]["detail"])
         self.assertEqual(checks["update"]["hint"], "run: needs-you update")
         self.assertEqual(read(self.cli), self.old_cli)   # doctor never changes anything
+
+    def test_older_with_auto_update_off_says_how_to_turn_it_on(self):
+        h = self.hub()
+        r = self.run_cli("doctor", "--json", urls=[h.url])
+        checks = {c["check"]: c for c in json.loads(r.stdout)["checks"]}
+        self.assertEqual(checks["update"]["status"], "WARN")
+        self.assertIn("daily auto-update off", checks["update"]["detail"])
+        self.assertIn("nothing updates this machine on its own", checks["update"]["detail"])
+        self.assertTrue(checks["update"]["hint"].startswith("run: needs-you update --enable-auto"))
+        self.assertEqual(read(self.cli), self.old_cli)
+
+    def test_up_to_date_with_auto_off_is_ok(self):
+        h = self.hub()
+        shutil.copy(CLI, self.cli)
+        r = self.run_cli("doctor", "--json", urls=[h.url])
+        checks = {c["check"]: c for c in json.loads(r.stdout)["checks"]}
+        self.assertEqual(checks["update"]["status"], "OK", checks["update"])
 
 
 class RealHub(HubTestCase):

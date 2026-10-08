@@ -238,7 +238,9 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     /// rules in other agents' instruction files. Same text as the hub's.
     public static let optionalFlags = "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
         + "(claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds "
-        + "the posting rules to their instruction files (codex, gemini, opencode)."
+        + "the posting rules to their instruction files (codex, gemini, opencode). Daily "
+        + "updates are on by default (the 5-minute flush runs needs-you update); add "
+        + "--no-auto-update only if I ask."
 
     /// The end of the agent prompt: check the setup, and what to do when something failed
     /// (doctor prints one next step under each WARN or FAIL). Same text as the hub's.

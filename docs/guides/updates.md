@@ -6,7 +6,7 @@ A release that passed its tests reaches the Mac app on its own, and from the Mac
 tag vX.Y.Z → CI tests → draft release (+ release-manifest.json) → you publish it
   → the Mac app sees it (within 6 h), waits 2 h, verifies, installs when you're away
   → its hub now serves the new CLI, hook, skill and Orca snippet (/dl/manifest.json)
-  → senders run `needs-you update` (by hand, daily with --auto-update, or scripts/rollout.sh)
+  → senders run `needs-you update` (daily on their own by default, by hand, or scripts/rollout.sh)
   → Settings → Updates: "1 of 4 machines out of date"
 ```
 
@@ -57,11 +57,21 @@ needs-you update --rollback  # put back the files the last update replaced
 - talks to it only over https, loopback or the tailnet (a `100.64.0.0/10` or `fd7a:115c:a1e0::/48` address, or a `*.ts.net` name that resolves into them). Plain http to anything else is refused;
 - checks every file against the hub's `/dl/manifest.json` (sha256 and size), and the CLI also compiles;
 - talks to exactly the address it checked: the URL is parsed once (no `user@`, trailing dots, punycode, queries), a `*.ts.net` name is resolved once and the connection goes to that address with the name in the `Host` header, and redirects are never followed;
-- when `gh` is installed, checks every file against the GitHub release of that version (its server tarball, itself checked against `SHA256SUMS`). A mismatch, or a `gh` that fails (no such release, not logged in, a timeout), refuses the whole update. It also downloads the release's `release-manifest.json`, checks that it lists that tarball, and runs `gh attestation verify` on it, pinned to this repository, the release workflow, the version's tag and GitHub-hosted runners, and checks the attested digest is that file's (build provenance; skipped with a note while the repository is private, see [release-signing.md](../security/release-signing.md)). Any check that errors refuses; nothing fails open. Without `gh`, a manual update goes ahead with a warning; an automatic one is refused unless you set `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`, and `=1` refuses manual ones too;
+- checks every file against the GitHub release of that version. When `gh` is installed it does so with `gh` (its server tarball, itself checked against `SHA256SUMS`). A mismatch, or a `gh` that fails (no such release, not logged in, a timeout), refuses the whole update. It also downloads the release's `release-manifest.json`, checks that it lists that tarball, and runs `gh attestation verify` on it, pinned to this repository, the release workflow, the version's tag and GitHub-hosted runners, and checks the attested digest is that file's (build provenance; skipped with a note while the repository is private, see [release-signing.md](../security/release-signing.md)). Any check that errors refuses; nothing fails open;
+- without `gh`, downloads the same `SHA256SUMS`, server tarball and `release-manifest.json` straight from `github.com` over https (the repository is public; no account needed) and makes the same checks, except build provenance: `gh attestation verify` has no stand-in without `gh`, so the update says "build provenance not checked (install gh to check it)" and `needs-you doctor` says so too. Only `https` to `github.com`, `objects.githubusercontent.com` and `release-assets.githubusercontent.com` on port 443, redirects included, at most 64 MB a file; a TLS failure refuses. If `github.com` can't be reached at all, a manual update goes ahead with a warning and an automatic one is refused (and tried again later) unless you set `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`; `=1` refuses manual ones too;
 - never downgrades unless you pass `--allow-downgrade`;
 - keeps the replaced files in `~/.local/state/needs-you/backup/` for `--rollback`.
 
-**Automatic (opt-in).** With `NEEDS_YOU_AUTO_UPDATE=1` in `~/.config/needs-you/env` (the installer's `--auto-update` writes it), the 5-minute `needs-you flush` runs the same update once a day, at a time that differs per machine, quietly and without ever failing the flush. It is off by default: an update is code. It also needs `gh` (logged in, able to read the repo) on the sender for the release cross-check, unless `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`.
+**Automatic (on by default).** With `NEEDS_YOU_AUTO_UPDATE=1` in `~/.config/needs-you/env`, the 5-minute `needs-you flush` runs the same update once a day, at a time that differs per machine, quietly and without ever failing the flush. The invite installer and `setup-sender.sh` write it unless you pass `--no-auto-update`, and keep a value already in the file (so an opt-out sticks when you re-run them). It runs every check above, so it needs the sender to reach `github.com` (or have `gh`); with neither it does nothing, unless `NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0`.
+
+```bash
+needs-you update --enable-auto    # turn it on (writes NEEDS_YOU_AUTO_UPDATE=1), then update now
+needs-you update --disable-auto   # turn it off (NEEDS_YOU_AUTO_UPDATE=0); changes nothing else
+```
+
+Machines set up before this was the default have it off. `needs-you doctor` warns when such a machine is older than its hub ("nothing updates this machine on its own") and prints `needs-you update --enable-auto` as the fix; re-running the invite one-liner turns it on too, and adds the flush schedule if it's missing.
+
+Why it's on: an update is code, but every file must match both the hub's manifest and the GitHub release built by the release workflow, so a hub can't push files of its own. Without `gh` the remaining gap is build provenance (that the release's files came from the release workflow, not from someone with write access to the release); install `gh` on the sender to close it.
 
 **Asked from the Mac (Request update).** In **Settings → Access** (the machine list), a sender
 whose CLI is older than the Mac app, or hasn't reported a version, has a **Request update**

@@ -72,6 +72,8 @@ class Create(InviteCase):
                          "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
                          "(claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds "
                          "the posting rules to their instruction files (codex, gemini, opencode). "
+                         "Daily updates are on by default (the 5-minute flush runs needs-you update); "
+                         "add --no-auto-update only if I ask. "
                          "Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
                          "step printed under it, or tell me if it needs me. If the installer says the link is "
                          "unknown, expired or used up, ask me for a new one."
