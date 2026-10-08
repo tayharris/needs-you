@@ -2532,7 +2532,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._revoke_invite(urllib.parse.unquote(path[len("/v1/invites/"):]))
             if path == "/v1/tokens" and method == "GET":
                 return self._list_tokens()
-            if path.startswith("/v1/tokens/") and path.endswith("/request-update") and method in ("POST", "DELETE"):
+            if (path.startswith("/v1/tokens/") and path[len("/v1/tokens/"):].endswith("/request-update")
+                    and method in ("POST", "DELETE")):  # (a token may be named request-update)
                 return self._request_update(urllib.parse.unquote(path[len("/v1/tokens/"):-len("/request-update")]),
                                             method == "POST")
             if path.startswith("/v1/tokens/") and method == "DELETE":

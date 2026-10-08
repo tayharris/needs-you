@@ -296,6 +296,12 @@ class Revoke(InviteCase):
         self.assertEqual(status, 400)
         self.assertEqual(request("GET", self.hub.url + "/v1/items", OWNER)[0], 200)
 
+    def test_a_token_named_like_the_update_path_revokes_by_name(self):
+        self.hub.store.add_token("request-update", "sender")
+        status, body = request("DELETE", self.hub.url + "/v1/tokens/request-update", OWNER)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["revoked"][0]["name"], "request-update")
+
     def test_owner_revokes_invites(self):
         _, inv = self.invite(uses=3)
         self.assertEqual(request("DELETE", self.hub.url + "/v1/invites/" + inv["id"], self.reader)[0], 403)
