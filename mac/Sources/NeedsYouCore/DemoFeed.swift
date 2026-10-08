@@ -203,9 +203,24 @@ public actor DemoFeed: ItemFeed {
                         ItemQuestionOption(label: "Metrics"),
                         ItemQuestionOption(label: "Tracing", detail: "OpenTelemetry"),
                     ], multiSelect: true),
-                ], answerable: true),
+                ]),
                 source: ItemSource(host: "devbox", agent: "claude-code", project: "acme-web"),
-                createdAt: ago(3), contentUpdatedAtRaw: HubJSON.formatDate(ago(3))
+                createdAt: ago(3)
+            ),
+            // opencode waits for an answer from the card (ADR 0009 B2): its options are buttons.
+            Item(
+                id: "01DEMO00000000000000000008", key: "agent:devbox:ses_demo", context: .work,
+                kind: .needs, priority: .normal,
+                title: "opencode asks \u{201C}Which branch should the release come from?\u{201D}: acme-api",
+                body: "**Branch** · choose one\nWhich branch should the release come from?\n- main — Everything merged today\n- release/1.4 — Only the fixes\n\nPick here or answer in opencode.",
+                question: ItemQuestion(id: "que_demo", items: [
+                    ItemQuestionItem(header: "Branch", text: "Which branch should the release come from?", options: [
+                        ItemQuestionOption(label: "main", detail: "Everything merged today"),
+                        ItemQuestionOption(label: "release/1.4", detail: "Only the fixes"),
+                    ]),
+                ], answerable: true),
+                source: ItemSource(host: "devbox", agent: "opencode", project: "acme-api"),
+                createdAt: ago(2), contentUpdatedAtRaw: HubJSON.formatDate(ago(2))
             ),
             Item(
                 id: "01DEMO00000000000000000005", key: "acme:redo-fixer:run", context: .work,

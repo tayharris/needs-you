@@ -341,7 +341,7 @@ if sys.argv[1:2] == ["answer-wait"]:
         q = json.loads(opt(add, "--question-json"))
         self.assertTrue(q["answerable"])
         self.assertTrue(q["expires_at"].endswith("Z"))
-        self.assertIn("Answer on the card or in opencode.", opt(add, "--body"))
+        self.assertIn("Pick here or answer in opencode.", opt(add, "--body"))
         wait = [c for c in self.calls() if c[0] == "answer-wait"]
         self.assertEqual(wait, [["answer-wait", "--key", opt(add, "--key"), "--timeout", "600"]])
 

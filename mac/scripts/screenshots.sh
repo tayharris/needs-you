@@ -102,12 +102,27 @@ items = [
                           {"label": "DynamoDB", "description": "Managed, but a new dependency."}]},
              {"header": "Extras", "text": "Which extras should it ship with?", "multi_select": True,
               "options": [{"label": "Metrics", "description": ""},
-                          {"label": "Tracing", "description": "OpenTelemetry"}]}],
-             "answerable": True},
-         content_updated_at=ago(3),
-         links=[{"label": "VS Code", "url": "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"},
-                {"label": "Terminal", "url": "needsyou://terminal/focus?app=wezterm&pane=1"}],
+                          {"label": "Tracing", "description": "OpenTelemetry"}]}]},
+         links=[{"label": "VS Code", "url": "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"}],
          source={"host": "devbox", "agent": "claude-code", "project": "acme-api"}),
+    # opencode waits for the card's answer (ADR 0009 B2): its options are buttons (6h, 6i).
+    item(8, 2, key="agent:devbox:ses_shot",
+         title="opencode asks “Which branch should the release come from?” and 1 more: acme-web",
+         body="**Branch** · choose one\nWhich branch should the release come from?\n"
+              "- main — Everything merged today\n- release/1.4 — Only the fixes\n\n"
+              "**Platforms** · choose any\nWhich platforms?\n- macOS\n- Linux\n- Windows\n\n"
+              "Pick here or answer in opencode.",
+         question={"id": "que_01SHOT", "answerable": True, "items": [
+             {"header": "Branch", "text": "Which branch should the release come from?", "multi_select": False,
+              "options": [{"label": "main", "description": "Everything merged today"},
+                          {"label": "release/1.4", "description": "Only the fixes"}]},
+             {"header": "Platforms", "text": "Which platforms?", "multi_select": True,
+              "options": [{"label": "macOS", "description": "arm64 and x64"},
+                          {"label": "Linux", "description": "x64"},
+                          {"label": "Windows", "description": "x64"}]}]},
+         content_updated_at=ago(2),
+         links=[{"label": "Terminal", "url": "needsyou://terminal/focus?app=wezterm&pane=1"}],
+         source={"host": "devbox", "agent": "opencode", "project": "acme-web"}),
     item(6, 25, key="ci:nightly", kind="done", title="Nightly e2e: 214 passed, 0 failed",
          source={"host": "ci", "agent": "github-actions"},
          expires_at=(now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")),

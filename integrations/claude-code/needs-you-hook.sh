@@ -1004,7 +1004,7 @@ def question_card(name, questions, qid="", answerable=False):
     msg = clamp("\n\n".join([p for p in listed if p] + [tail]), QUESTION_BUDGET + 400)
     field_ = question_field(questions, qid, answerable)
     if field_ and field_.get("answerable"):
-        msg = clamp(msg[:-len(tail)] + "Answer on the card or in %s." % name, QUESTION_BUDGET + 400) \
+        msg = clamp(msg[:-len(tail)] + "Pick here or answer in %s." % name, QUESTION_BUDGET + 400) \
             if msg.endswith(tail) else msg
     return what, msg, Asked(field_, choice_steps(name, questions), steps_msg)
 
