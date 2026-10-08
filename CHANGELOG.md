@@ -12,6 +12,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - **`needs-you orca`**: a read-only summary of Orca's worktrees for agents and people, one line each (host, name and branch, workspace status, live terminals, unread, linked PR), from `orca worktree ps --json`; `--all` adds every paired environment, `--json` for agents. Names are cleaned to one line, and a terminal's preview, comments, paths and URLs are never printed. It never posts anything ([Orca guide](docs/guides/orca.md#whats-running-needs-you-orca)).
 - **Mac app: Orca's worktrees in the panel.** With the Orca CLI installed, the open panel ends with a folded **ORCA** section ("ORCA · 2 active of 7"): each worktree's name, status, live terminals and environment, read locally with `orca worktree ps` from this Mac and its paired environments while the panel is open. Plain text, never counted or announced, never sent to a hub; **Settings → Panel → Orca** turns it off ([Mac app guide](docs/guides/mac-app.md#orca-worktrees)).
 
+### Changed
+
+- **Clearer names for the three parts: the app, the hub, senders.** The Needs You app shows your alerts; a hub stores them (built into the app, or on a server you run); senders post them from any machine where agents or jobs run. Settings → **Your inbox** is now **Built-in hub**, in a group called **Hubs and machines**; its How it works lines, Machines (rows now read *Sender*, *Mac, reader*, *Mac, owner*) and Other hubs use the same names, and Other hubs says plainly that server hubs don't replicate with the built-in hub yet. The Words guide is now [App, hubs and senders](docs/guides/concepts.md), with the three places a hub can run; the README and the site's How it works use the same breakdown.
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).
