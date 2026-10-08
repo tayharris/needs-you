@@ -3951,9 +3951,10 @@ def _note_created(path: str, created: bool) -> None:
 
 
 def _read_text(path: str) -> Optional[str]:
-    """The file's text, None when it doesn't exist. OSError/ValueError when it can't be read."""
+    """The file's text, None when it doesn't exist. OSError/ValueError when it can't be read.
+    Line endings as they are (a CRLF file stays CRLF through an install and an uninstall)."""
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8", newline="") as fh:
             return fh.read()
     except FileNotFoundError:
         return None
@@ -3974,7 +3975,7 @@ def _write_config(path: str, old: Optional[str], new: str) -> None:
         mode = os.stat(path).st_mode & 0o777
         bak = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
         fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(old)
     else:
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)

@@ -302,6 +302,27 @@ class InstallInstructions(CliCase):
         self.assertFalse(os.path.exists(self.p(".gemini/GEMINI.md")))
         self.assertFalse(os.path.exists(self.p(".config/opencode/AGENTS.md")))
 
+    def test_crlf_files_come_back_byte_for_byte(self):
+        # Files edited on Windows or synced through it: install then uninstall keeps every \r.
+        rules = b"# My rules\r\n\r\nAlways run the tests.\r\n"
+        toml = b'model = "o3"\r\n\r\n[mcp_servers.docs]\r\ncommand = "docs-mcp"\r\n'
+        for rel, data in ((".codex/AGENTS.md", rules), (".codex/config.toml", toml)):
+            os.makedirs(os.path.dirname(self.p(rel)), exist_ok=True)
+            with open(self.p(rel), "wb") as fh:
+                fh.write(data)
+        self.assertEqual(self.run_cli("install-instructions", "--from", INSTR, "codex").returncode, 0)
+        self.assertEqual(self.run_cli("install-mcp", "codex").returncode, 0)
+        r = self.run_cli("uninstall-hooks", "--instructions", "--mcp")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for rel, data in ((".codex/AGENTS.md", rules), (".codex/config.toml", toml)):
+            with open(self.p(rel), "rb") as fh:
+                self.assertEqual(fh.read(), data, rel)
+            baks = []
+            for bak in self.backups(rel):
+                with open(os.path.join(os.path.dirname(self.p(rel)), bak), "rb") as fh:
+                    baks.append(fh.read())
+            self.assertIn(data, baks, rel)  # the install's backup is the file as it was
+
     def test_symlinked_file_and_broken_block_are_left_alone(self):
         real = self.write("dotfiles/GEMINI.md", "mine\n")
         os.makedirs(self.p(".gemini"))
