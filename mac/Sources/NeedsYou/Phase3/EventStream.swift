@@ -11,7 +11,7 @@ final class EventStream: @unchecked Sendable {
         stop()
         task = Task.detached(priority: .utility) {
             let cfg = HubSession.makeConfiguration(requestTimeout: 600, resourceTimeout: 24 * 3600)  // ephemeral, no URLCache
-            let session = URLSession(configuration: cfg)
+            let session = URLSession(configuration: cfg, delegate: HubSession.RefuseRedirects(), delegateQueue: nil)
             defer { session.invalidateAndCancel() }
 
             var backoff: Double = 2

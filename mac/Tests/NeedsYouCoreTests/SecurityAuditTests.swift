@@ -18,6 +18,7 @@ final class SecurityAuditTests: XCTestCase {
         ("testNewHubCannotRekeyKnownHubs", testNewHubCannotRekeyKnownHubs),
         ("testConnectConfirmationNamesTheHub", testConnectConfirmationNamesTheHub),
         ("testHubURLsRefuseUserInfo", testHubURLsRefuseUserInfo),
+        ("testHubSessionRefusesRedirects", testHubSessionRefusesRedirects),
     ]
 
     /// Scan 2026-10-08: "https://hub-a.example.ts.net@evil.example" reads as the first host
@@ -34,6 +35,18 @@ final class SecurityAuditTests: XCTestCase {
                        "https://evil.example")
     }
 
+    /// Scan 2026-10-08: the shared hub session followed redirects, re-sending the bearer token
+    /// to whatever the Location named.
+    func testHubSessionRefusesRedirects() {
+        XCTAssertTrue(HubSession.shared.delegate is HubSession.RefuseRedirects)
+        let task = HubSession.shared.dataTask(with: URL(string: "http://127.0.0.1:9/")!)
+        let response = HTTPURLResponse(url: URL(string: "http://127.0.0.1:9/")!, statusCode: 302,
+                                       httpVersion: "HTTP/1.1", headerFields: ["Location": "http://203.0.113.9/"])!
+        var next: URLRequest? = URLRequest(url: URL(string: "http://203.0.113.9/")!)
+        HubSession.RefuseRedirects().urlSession(HubSession.shared, task: task, willPerformHTTPRedirection: response,
+                                                newRequest: URLRequest(url: URL(string: "http://203.0.113.9/")!)) { next = $0 }
+        XCTAssertNil(next)
+    }
 
     func testLinkPolicyRejectsSchemeTricks() {
         let rejected = [

@@ -451,7 +451,19 @@ public enum HubSession {
         return cfg
     }
 
-    public static let shared = URLSession(configuration: makeConfiguration())
+    /// Hub requests never follow a redirect: URLSession would re-send the request, bearer
+    /// token included, to whatever the Location names (an http:// IP literal is outside ATS).
+    /// The 3xx comes back as the response, which callers treat as an error.
+    public static let shared = URLSession(configuration: makeConfiguration(), delegate: RefuseRedirects(),
+                                          delegateQueue: nil)
+
+    public final class RefuseRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        public func urlSession(_ session: URLSession, task: URLSessionTask,
+                               willPerformHTTPRedirection response: HTTPURLResponse,
+                               newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
 }
 
 // MARK: - Client
