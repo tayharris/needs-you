@@ -2063,6 +2063,10 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         out["origin_hub"] = _opt_str(rec, "origin_hub") or ""
         out["updated_by"] = _opt_str(rec, "updated_by") or ""
         out["superseded_by"] = _opt_str(rec, "superseded_by")
+        for c in ("id", "token_id", "origin_hub", "updated_by", "superseded_by"):  # ids, not text
+            if out[c] is not None and (len(out[c]) > MAX_KEY or re.search(r"[\x00-\x1f\x7f]", out[c])
+                                       or _SPOOF_RE.search(out[c])):
+                raise ValueError(c)
     except (KeyError, ValueError, TypeError) as e:
         raise ApiError(400, "invalid", "bad item record: %s" % e)
     if out["status"] not in STATUSES:

@@ -270,6 +270,11 @@ class HubAbuse(HubTestCase):
             "key not a key": rec(key="work:x y"),
             "step text too long": rec(steps=[{"text": "s" * 201}]),
             "too many steps": rec(steps=[{"text": "s"}] * 11),
+            "id too long": rec(id="I" * 201),
+            "updated_by too long": rec(updated_by="h" * 201),
+            "origin_hub too long": rec(origin_hub="h" * 201),
+            "token_id too long": rec(token_id="t" * 201),
+            "superseded_by control": rec(superseded_by="a\x00b"),
         }
         st, body = request("POST", self.hub.url + "/v1/replicate", "test-peer-secret-0123456789",
                            {"from_hub": "hub-z", "items": [kept] + list(bad.values())})
@@ -277,7 +282,7 @@ class HubAbuse(HubTestCase):
         skipped = {s["id"] for s in body["skipped"]}
         for name, r in bad.items():
             with self.subTest(name):
-                self.assertIn(r["id"], skipped)
+                self.assertIn(r["id"][:100], skipped)
                 self.assertIsNone(self.hub.store.get_item(r["id"]))
         got = self.hub.store.get_item(kept["id"])
         self.assertEqual(json.loads(got["links"]), [link("https://ok.example"), link("https://c.example")])
