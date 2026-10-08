@@ -2558,8 +2558,13 @@ def _release_get(url: str, dest: str, timeout: float = 60.0) -> None:
     import urllib.request
 
     def allowed(u: str) -> bool:
-        parts = urllib.parse.urlsplit(u)
-        return parts.scheme == "https" and (parts.hostname or "").lower() in RELEASE_HOSTS
+        try:
+            parts = urllib.parse.urlsplit(u)
+            port = parts.port
+        except ValueError:
+            return False
+        return (parts.scheme == "https" and (parts.hostname or "").lower() in RELEASE_HOSTS
+                and port in (None, 443) and not parts.username and not parts.password)
 
     class OnlyGitHub(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
@@ -2579,6 +2584,12 @@ def _release_get(url: str, dest: str, timeout: float = 60.0) -> None:
     except urllib.error.HTTPError as e:
         raise UpdateRefused("GitHub has no %s for this release (HTTP %d)" % (url.rsplit("/", 1)[-1], e.code))
     except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+        import ssl
+        if isinstance(e, ssl.SSLError) or isinstance(getattr(e, "reason", None), ssl.SSLError):
+            # Something answered for github.com without GitHub's certificate: that is not
+            # "offline", it's a refusal (a manual update must not go ahead on the hub's word).
+            raise UpdateRefused("the TLS connection to GitHub failed (%s); not updating anything"
+                                % clean(getattr(e, "reason", None) or type(e).__name__))
         raise _ReleaseUnreachable(clean(getattr(e, "reason", None) or type(e).__name__))
     if len(data) > RELEASE_MAX_BYTES:
         raise UpdateRefused("a GitHub release file is larger than expected; not updating anything")
@@ -2631,7 +2642,7 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
                     if len(p) == 2:
                         sums[p[1].lstrip("*")] = p[0].lower()
             tar_path = os.path.join(tmp, tarball)
-            if _sha256_file(tar_path) != sums.get(tarball):
+            if not sums.get(tarball) or _sha256_file(tar_path) != sums.get(tarball):
                 raise UpdateRefused("the release's %s doesn't match its SHA256SUMS" % tarball)
             if gh:
                 note = release_provenance(gh, v, tarball, sums.get(tarball, ""), tmp)

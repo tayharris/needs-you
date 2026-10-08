@@ -847,6 +847,74 @@ class ReleaseOverHttps(UpdateCase):
         self.assertIsNone(digests)
         self.assertIn("github.com couldn't be reached", why)
 
+    def cross_check(self, mod, auto, **env):
+        """cross_check with a config file of its own (never the real ~/.config) and env."""
+        conf = os.path.join(self.tmp, "cc-env")
+        open(conf, "w").close()
+        saved = {k: os.environ.get(k) for k in ["NEEDS_YOU_CONFIG", "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH"]}
+
+        def restore():
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.addCleanup(restore)
+        os.environ["NEEDS_YOU_CONFIG"] = conf
+        os.environ.pop("NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH", None)
+        os.environ.update(env)
+        files = current_files()
+        manifest = {"version": "9.8.7", "files": {n: {"sha256": hashlib.sha256(d).hexdigest()} for n, d in files.items()}}
+        changes = [{"file": "needs-you"}]
+        return mod.cross_check(mod.Config(), manifest, changes, auto=auto)
+
+    def test_unreachable_github_refuses_automatic_updates(self):
+        mod, _ = self.load(os.path.join(self.tmp, "nowhere"), unreachable=True)
+        with self.assertRaises(mod.UpdateRefused) as cm:
+            self.cross_check(mod, auto=True)
+        self.assertIn("automatic updates need it", str(cm.exception))
+        # A manual update only with the explicit warning, and not at all with =1.
+        self.assertTrue(self.cross_check(mod, auto=False).startswith("WARNING: not checked against the GitHub release"))
+        with self.assertRaises(mod.UpdateRefused):
+            self.cross_check(mod, auto=False, NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH="1")
+
+    def test_matching_https_release_satisfies_the_check_and_says_what_was_skipped(self):
+        self.fake_gh(current_files(), "9.8.7")
+        mod, _ = self.load(os.path.join(self.tmp, "release"))
+        for auto in (True, False):
+            note = self.cross_check(mod, auto=auto, NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH="1")
+            self.assertIn("matches release v9.8.7 on GitHub", note)
+            self.assertIn("build provenance not checked", note)
+
+    def test_hub_file_not_in_the_https_release_refuses(self):
+        files = current_files()
+        self.fake_gh(files, "9.8.7", tamper=True)   # the release's CLI differs from the hub's
+        mod, _ = self.load(os.path.join(self.tmp, "release"))
+        with self.assertRaises(mod.UpdateRefused):
+            self.cross_check(mod, auto=True)
+
+    def test_tls_failure_is_a_refusal_not_unreachable(self):
+        import ssl
+        import urllib.error
+        import urllib.request
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("needs_you_cli_tls", CLI)
+        spec = importlib.util.spec_from_loader("needs_you_cli_tls", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+
+        class Opener:
+            def open(self, *a, **kw):
+                raise urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed"))
+        real = urllib.request.build_opener
+        urllib.request.build_opener = lambda *a: Opener()
+        self.addCleanup(setattr, urllib.request, "build_opener", real)
+        with self.assertRaises(mod.UpdateRefused) as cm:
+            mod._release_get("https://github.com/tayharris/needs-you/releases/download/v1.2.3/SHA256SUMS",
+                             os.path.join(self.tmp, "out"))
+        self.assertIn("TLS", str(cm.exception))
+
     def test_only_github_urls(self):
         import importlib.machinery
         import importlib.util
@@ -854,7 +922,8 @@ class ReleaseOverHttps(UpdateCase):
         spec = importlib.util.spec_from_loader("needs_you_cli_urls", loader)
         mod = importlib.util.module_from_spec(spec)
         loader.exec_module(mod)
-        for url in ("http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x"):
+        for url in ("http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x",
+                    "https://github.com:8443/x", "https://evilgithub.com/x", "ftp://github.com/x"):
             with self.assertRaises(mod.UpdateRefused):
                 mod._release_get(url, os.path.join(self.tmp, "out"))
 
