@@ -552,6 +552,45 @@ class ClaudeAndOrca(DoctorTestCase):
         self.assertIn("NEEDS_YOU_ORCA_ENVIRONMENT=devbox (env file)", detail)
 
 
+    def make_repo(self, worktrees):
+        """A git repo under the temp dir with `worktrees` worktrees in all (the main one included)."""
+        repo = os.path.join(self.tmp, "repo")
+        env = {"HOME": self.home, "PATH": MINIMAL_PATH, "GIT_CONFIG_NOSYSTEM": "1", "LANG": "C"}
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"]
+        subprocess.run(git + ["init", "-q", repo], env=env, check=True, capture_output=True)
+        subprocess.run(git + ["-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], env=env, check=True,
+                       capture_output=True)
+        for i in range(1, worktrees):
+            subprocess.run(git + ["-C", repo, "worktree", "add", "-q", "-b", "wt%d" % i,
+                                  os.path.join(self.tmp, "wt%d" % i)], env=env, check=True, capture_output=True)
+        return repo
+
+    @unittest.skipUnless(shutil.which("git", path=MINIMAL_PATH), "git not in /usr/bin or /bin")
+    def test_orca_tip_with_many_worktrees(self):
+        repo = self.make_repo(3)
+        r, data, checks = self.doctor_json(cwd=os.path.join(self.tmp, "wt2"))
+        self.assertEqual(checks["orca"]["status"], "INFO")  # a tip: never WARN, never changes `ok`
+        self.assertIn("3 git worktrees", checks["orca"]["detail"])
+        self.assertIn("Orca runs agents in worktrees", checks["orca"]["hint"])
+        # Two worktrees, or no repo at all: nothing about Orca.
+        shutil.rmtree(repo)
+        shutil.rmtree(os.path.join(self.tmp, "wt1"))
+        shutil.rmtree(os.path.join(self.tmp, "wt2"))
+        self.make_repo(2)
+        for cwd in (os.path.join(self.tmp, "repo"), self.home):
+            with self.subTest(cwd=cwd):
+                r, data, checks = self.doctor_json(cwd=cwd)
+                self.assertNotIn("orca", checks)
+
+    @unittest.skipUnless(shutil.which("git", path=MINIMAL_PATH), "git not in /usr/bin or /bin")
+    def test_orca_tip_not_shown_when_orca_is_there(self):
+        self.make_repo(4)
+        r, data, checks = self.doctor_json(extra_env={"ORCA_TERMINAL_HANDLE": "term_1"},
+                                           cwd=os.path.join(self.tmp, "repo"))
+        self.assertIn("ORCA_TERMINAL_HANDLE set", checks["orca"]["detail"])
+        self.assertNotIn("worktrees", checks["orca"]["detail"])
+
+
 class Helpers(unittest.TestCase):
     def test_crontab_tag(self):
         cli = load_cli()

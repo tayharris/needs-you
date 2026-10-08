@@ -148,6 +148,7 @@ needs-you done --key "work:redo-fixer:last-run" --title "Redo fixer: 1 ticket ba
 <div class="code" data-copy><pre><code class="language-bash">needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
 needs-you resolve --key "work:orca-test:hello"</code></pre></div>
 <p>Then run one automation by hand (<code>orca automations run ...</code>) and watch for its card.</p>
+<p><code>needs-you doctor</code> prints an <code>orca</code> INFO line in an Orca terminal or wherever <code>orca</code> is on <code>PATH</code> (whether the terminal handle, worktree id and <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> are set). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when <code>orca</code> is on <code>PATH</code> and you didn't pass <code>--orca</code>, that the flag exists.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/orca.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">docs/guides/orca.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

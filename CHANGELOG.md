@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **`needs-you doctor` suggests Orca for worktree-heavy repos.** Run in a repo with 3 or more git worktrees on a machine without Orca, doctor adds an `orca` INFO line: Orca runs agents in worktrees, and needs-you cards from its terminals get a Terminal button. Only a tip, never a warning, and doctor still posts nothing. The invite installer also says, when `orca` is on `PATH` and `--orca` wasn't passed, that the flag writes the automation prompt block ([Orca guide](docs/guides/orca.md#check-it-works)).
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).

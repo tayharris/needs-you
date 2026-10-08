@@ -860,6 +860,10 @@ EOF
     say "For Orca agent terminals, also re-run with --claude-hooks user (Orca sessions"
     say "are opted in automatically)."
   fi
+elif command -v orca >/dev/null 2>&1; then
+  say ""
+  say "Orca is installed here. If its automations should reach you, re-run with --orca:"
+  say "it writes the prompt block they follow to post and resolve cards."
 fi
 
 # ---------------------------------------------------------------- check + test
