@@ -44,6 +44,7 @@
         <li><a href="#duplicate-or-stale-cards">Duplicate or stale cards</a></li>
         <li><a href="#claude-code-hooks">Claude Code hooks</a></li>
         <li><a href="#codex-hooks">Codex hooks</a></li>
+        <li><a href="#copilot-cli-hooks">Copilot CLI hooks</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
@@ -149,6 +150,18 @@ echo '{"session_id":"t1"}' | NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/st
 <li><strong>Hooks turned off.</strong> <code>hooks = false</code> under <code>[features]</code> in <code>~/.codex/config.toml</code> (or a managed <code>requirements.toml</code>) disables every hook; doctor reports the first.</li>
 <li><strong>Another <code>CODEX_HOME</code>.</strong> The installer and doctor follow <code>$CODEX_HOME</code>; run them with the same value Codex uses.</li>
 <li><strong>Every turn makes a card.</strong> That's the <code>Stop</code> hook: Codex finished and is waiting for you. Opt in only where Codex runs unattended, set <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> to keep only approval cards, or turn it off for a session with <code>NEEDS_YOU_AGENT_ALERTS=0</code>.</li>
+</ul>
+<h2 id="copilot-cli-hooks">Copilot CLI hooks <a class="anchor" href="#copilot-cli-hooks" aria-label="Link to this section">#</a></h2>
+<p><code>needs-you doctor</code> has a <code>copilot hooks</code> line. In <code>copilot</code> mode the hook finishes in the background, so log to a file:</p>
+<div class="code" data-copy><pre><code class="language-bash">echo '{"sessionId":"t1","cwd":"'"$PWD"'","notification_type":"permission_prompt","message":"Run command: make test"}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.copilot/hooks/needs-you-hook.sh notify copilot
+sleep 2; cat /tmp/ny-hook.log</code></pre></div>
+<p>Copilot-specific causes:</p>
+<ul>
+<li><strong>Not restarted.</strong> Copilot CLI reads <code>~/.copilot/hooks/*.json</code> when it starts.</li>
+<li><strong>Hooks turned off.</strong> <code>"disableAllHooks": true</code> in <code>~/.copilot/settings.json</code> or <code>config.json</code>; doctor reports it.</li>
+<li><strong>Another <code>COPILOT_HOME</code>.</strong> Copilot then reads <code>$COPILOT_HOME/hooks/</code> instead; run the installer and doctor with the same value.</li>
+<li><strong>A card stays after Esc.</strong> Cancelling a permission prompt runs no hook in Copilot; the card goes with your next prompt or the end of the session.</li>
 </ul>
 <h2 id="github-poller">GitHub poller <a class="anchor" href="#github-poller" aria-label="Link to this section">#</a></h2>
 <ul>

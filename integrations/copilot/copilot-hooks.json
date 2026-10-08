@@ -1,0 +1,24 @@
+{
+  "_needs_you_version": "0.1.3",
+  "version": 1,
+  "hooks": {
+    "notification": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" notify copilot", "matcher": "permission_prompt|elicitation_dialog", "timeoutSec": 10 }
+    ],
+    "agentStop": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" notify copilot", "timeoutSec": 10 }
+    ],
+    "userPromptSubmitted": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" resolve copilot", "timeoutSec": 10 }
+    ],
+    "postToolUse": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" resolve copilot", "timeoutSec": 10 }
+    ],
+    "postToolUseFailure": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" resolve copilot", "timeoutSec": 10 }
+    ],
+    "sessionEnd": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" end copilot", "timeoutSec": 10 }
+    ]
+  }
+}

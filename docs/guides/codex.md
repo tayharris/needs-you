@@ -42,7 +42,7 @@ Sessions in an Orca terminal are on automatically; `NEEDS_YOU_AGENT_ALERTS=0` tu
 | Approval prompt for an MCP tool | **Codex needs permission for linear create_issue: my-repo** |
 | Turn finished, waiting for you | **Codex is waiting for you: my-repo** |
 
-One card per session (key `agent:<host>:<session>`), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), `/clear`, or the end of the session. A Codex process that's killed is cleaned up by the 5-minute `needs-you flush`; any card expires 48 hours after its last post.
+One card per session (key `agent:<host>:<session>`), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), or the end of the session. After `/clear`, or when a Codex window is closed or killed, Codex ends that session within about a minute (its background app-server unloads it), and the card clears then. If Codex itself dies, the 5-minute `needs-you flush` cleans up; any card expires 48 hours after its last post.
 
 Cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders ([details](claude-code-everywhere.md#buttons)).
 

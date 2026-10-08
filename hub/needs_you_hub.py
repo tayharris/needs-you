@@ -146,6 +146,10 @@ DOWNLOADS = {
     "install-opencode-plugin.sh": ("integrations/opencode/install-opencode-plugin.sh",
                                    "text/x-shellscript; charset=utf-8"),
     "needs-you-opencode.js": ("integrations/opencode/needs-you.js", "text/javascript; charset=utf-8"),
+    # GitHub Copilot CLI: the same hook, with its own file in ~/.copilot/hooks/.
+    "install-copilot-hooks.sh": ("integrations/copilot/install-copilot-hooks.sh",
+                                 "text/x-shellscript; charset=utf-8"),
+    "copilot-hooks.json": ("integrations/copilot/copilot-hooks.json", "application/json"),
 }
 # Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
 # the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
@@ -159,10 +163,11 @@ CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
 
 # The invite installer flags for a machine that runs Claude Code: hooks, skill, alerts on.
 CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
-# ...and the flags to add for OpenAI Codex CLI and Gemini CLI (integrations/codex/, gemini/).
+# ...and the flags to add for OpenAI Codex CLI, Gemini CLI, opencode and GitHub Copilot CLI.
 CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
+COPILOT_INSTALL_FLAG = "--copilot-hooks user"
 # The end of every sender invite's agent prompt: verify, and what to do when something failed.
 # The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.
 AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
@@ -2003,9 +2008,9 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
-                               "add %s; Gemini CLI, add %s; opencode, add %s. %s"
+                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s. %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
-                                  OPENCODE_INSTALL_FLAG, AGENT_PROMPT_CHECK))
+                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, AGENT_PROMPT_CHECK))
     return out
 
 
@@ -3150,7 +3155,8 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--codex-hooks user` | This machine runs OpenAI Codex CLI: post an item when a Codex session asks for approval or finishes its turn and waits for you (hooks in `~/.codex/hooks.json`; trust them once with `/hooks` in Codex). Default `none`. |
 | `--gemini-hooks user` | This machine runs Gemini CLI: post an item when a session asks to approve a tool call or finishes its turn and waits for you (hooks in `~/.gemini/settings.json`). Default `none`. |
 | `--opencode-plugin` | This machine runs opencode: install a plugin in `~/.config/opencode/plugins` that posts an item when a session asks for permission or a question, or goes idle waiting for you. |
-| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI and opencode session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
+| `--copilot-hooks user` | This machine runs GitHub Copilot CLI: post an item when a session asks for permission or a question, or finishes its turn and waits for you (hooks in `~/.copilot/hooks/`). Default `none`. |
+| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode and Copilot CLI session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
@@ -3167,7 +3173,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Works until the link expires or is revoked, even with no uses left. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude`,
-`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
+`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
 health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
 
 - The PATH change reaches new shells only: in the shell you ran it from, call

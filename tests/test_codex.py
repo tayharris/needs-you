@@ -210,6 +210,35 @@ class CodexHook(unittest.TestCase):
         # Codex sessions don't leave the Claude model memo behind.
         self.assertEqual([n for n in os.listdir(self.state) if n.startswith(".model-")], [])
 
+    def fake_app_server(self):
+        """A process that looks like Codex's shared app-server daemon (`codex app-server
+        --listen unix:// --managed-daemon`), the parent of every hook since Codex 0.159."""
+        p = subprocess.Popen([BASH, "-c", 'exec -a "codex app-server --listen unix:// --managed-daemon" sleep 60'])
+        self.addCleanup(p.wait)
+        self.addCleanup(p.kill)
+        time.sleep(0.2)
+        return str(p.pid)
+
+    def test_clear_leaves_other_sessions_of_a_shared_app_server_alone(self):
+        # Two Codex TUIs share one app-server daemon, so both sessions' leases name it.
+        # /clear in one of them must not resolve the other's card.
+        daemon = self.fake_app_server()
+        self.run_hook("notify", {"hook_event_name": "Stop", "session_id": "019a-other"}, NY_HOOK_PPID=daemon)
+        other = opt(self.calls()[-1], "--key")
+        self.run_hook("notify", {"hook_event_name": "Stop"}, NY_HOOK_PPID=daemon)
+        n = len(self.calls())
+        with open(os.path.join(self.state, "019a-other")) as fh:
+            self.assertIn("pid=%s\n" % daemon, fh.read())  # flush still reaps them if it dies
+        self.run_hook("start", {"hook_event_name": "SessionStart", "source": "clear", "session_id": "019b-new"},
+                      NY_HOOK_PPID=daemon)
+        time.sleep(0.3)
+        self.assertNotIn(["resolve", "--key", other], self.calls()[n:])
+        self.assertTrue(os.path.exists(os.path.join(self.state, "019a-other")))
+        # Compaction keeps the session id: its own card goes, the other stays.
+        self.run_hook("start", {"hook_event_name": "SessionStart", "source": "compact"}, NY_HOOK_PPID=daemon)
+        self.assertEqual([c[2] for c in self.wait_calls(n + 1)[n:]], [opt(self.calls()[n - 1], "--key")])
+        self.assertTrue(os.path.exists(os.path.join(self.state, "019a-other")))
+
 
 class CodexHooksJson(unittest.TestCase):
     def test_registers_the_events(self):

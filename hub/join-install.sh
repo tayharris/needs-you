@@ -21,6 +21,7 @@ YES=0
 HOOKS=none
 CODEX_HOOKS=none
 GEMINI_HOOKS=none
+COPILOT_HOOKS=none
 OPENCODE=0
 SKILL=0
 ORCA=0
@@ -77,8 +78,12 @@ Options:
                                 (default none)
   --opencode-plugin             opencode plugin in ~/.config/opencode/plugins: post when a
                                 session asks for permission or a question, or goes idle
-  --alerts                      turn the hooks on for every Claude Code, Codex and Gemini
-                                session here (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
+  --copilot-hooks user|none     GitHub Copilot CLI hooks in ~/.copilot/hooks/: post when a
+                                session asks for permission or a question, or finishes
+                                its turn (default none)
+  --alerts                      turn the hooks on for every Claude Code, Codex, Gemini,
+                                opencode and Copilot session here
+                                (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
                                 without it they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
   --auto-update                 let `needs-you flush` run `needs-you update` once a day
@@ -120,6 +125,8 @@ while [ $# -gt 0 ]; do
     --gemini-hooks) GEMINI_HOOKS=${2:-}; shift 2 || die "--gemini-hooks needs user or none" ;;
     --gemini-hooks=*) GEMINI_HOOKS=${1#*=}; shift ;;
     --opencode-plugin) OPENCODE=1; shift ;;
+    --copilot-hooks) COPILOT_HOOKS=${2:-}; shift 2 || die "--copilot-hooks needs user or none" ;;
+    --copilot-hooks=*) COPILOT_HOOKS=${1#*=}; shift ;;
     --skill) SKILL=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
@@ -149,6 +156,7 @@ done
 case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, project or none" ;; esac
 case "$CODEX_HOOKS" in user|none) ;; *) die "--codex-hooks must be user or none" ;; esac
 case "$GEMINI_HOOKS" in user|none) ;; *) die "--gemini-hooks must be user or none" ;; esac
+case "$COPILOT_HOOKS" in user|none) ;; *) die "--copilot-hooks must be user or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
@@ -286,7 +294,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
   schedule_remove
   path_remove
   # The CLI removes every agent's hooks locally (Claude Code user level, this directory's
-  # project and recorded project installs; Codex, Gemini CLI, the opencode plugin). A CLI
+  # project and recorded project installs; Codex, Gemini CLI, the opencode plugin, Copilot CLI). A CLI
   # from before `uninstall-hooks` falls back to the installers from the hub.
   if [ -x "$CLI" ] && "$CLI" uninstall-hooks --help >/dev/null 2>&1; then
     "$CLI" uninstall-hooks || warn "some agent hooks were left in place (see above)"
@@ -319,6 +327,9 @@ if [ "$UNINSTALL" -eq 1 ]; then
     OC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
     rm -f "$OC_DIR/plugins/needs-you.js" "$OC_DIR/hooks/needs-you-hook.sh"
     rmdir "$OC_DIR/plugins" "$OC_DIR/hooks" 2>/dev/null || true
+    CP_DIR="${COPILOT_HOME:-$HOME/.copilot}"
+    rm -f "$CP_DIR/hooks/needs-you.json" "$CP_DIR/hooks/needs-you-hook.sh"
+    rmdir "$CP_DIR/hooks" 2>/dev/null || true
   fi
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
@@ -359,6 +370,7 @@ say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && pr
 [ "$CODEX_HOOKS" != none ] && say "  hooks   -> Codex CLI (${CODEX_HOME:-~/.codex}/hooks.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$OPENCODE" -eq 1 ] && say "  plugin  -> opencode (${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/needs-you.js)"
 [ "$GEMINI_HOOKS" != none ] && say "  hooks   -> Gemini CLI (~/.gemini/settings.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$COPILOT_HOOKS" != none ] && say "  hooks   -> Copilot CLI (${COPILOT_HOME:-~/.copilot}/hooks/needs-you.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
@@ -530,7 +542,7 @@ PY
   fi
 fi
 
-# install_agent_hooks NAME DIR FLAG: Codex or Gemini CLI, the same hook as Claude Code's.
+# install_agent_hooks NAME DIR FLAG: Codex, Gemini CLI or Copilot CLI, the same hook as Claude Code's.
 install_agent_hooks() {
   local f sha="" kv
   for f in "install-$1-hooks.sh" needs-you-hook.sh "$1-hooks.json"; do
@@ -561,6 +573,7 @@ PY
 }
 [ "$CODEX_HOOKS" = user ] && install_agent_hooks codex "${CODEX_HOME:-$HOME/.codex}" --codex-home
 [ "$GEMINI_HOOKS" = user ] && install_agent_hooks gemini "$HOME/.gemini" --gemini-dir
+[ "$COPILOT_HOOKS" = user ] && install_agent_hooks copilot "${COPILOT_HOME:-$HOME/.copilot}" --copilot-home
 if [ "$OPENCODE" -eq 1 ]; then
   for f in install-opencode-plugin.sh needs-you-hook.sh needs-you-opencode.js; do
     fetch "$f" "$TMP/$f" || die "could not download the opencode plugin ($f)"
