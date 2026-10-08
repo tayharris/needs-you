@@ -573,5 +573,58 @@ for _name in dir(test_install.InstallScript):
         setattr(InstallerEnvFile, _name, None)
 
 
+class ClaudeInstallerFiles(unittest.TestCase):
+    """Scan 2026-10-08: install-hooks.sh (Claude Code) and the files it writes."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        self.tmp = os.path.realpath(tempfile.mkdtemp(prefix="ny-sec-claude-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        self.env = {"HOME": self.home, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        self.script = os.path.join(os.path.dirname(CLI), "..", "integrations", "claude-code", "install-hooks.sh")
+
+    def run_install(self, *flags):
+        import subprocess
+        return subprocess.run(["bash", self.script] + list(flags), env=self.env, capture_output=True,
+                              text=True, timeout=60, cwd=self.tmp)
+
+    def test_backup_is_private_and_never_written_through_a_planted_name(self):
+        # The backup took the umask's mode (a settings.json holding an API key in "env" became
+        # world-readable) and followed a symlink a repo could ship under the predictable name;
+        # so did the hook's .tmp copy.
+        proj = os.path.join(self.tmp, "proj")
+        claude = os.path.join(proj, ".claude")
+        os.makedirs(os.path.join(claude, "hooks"))
+        settings = os.path.join(claude, "settings.json")
+        with open(settings, "w") as fh:
+            json.dump({"env": {"ANTHROPIC_API_KEY": "sk-secret"}}, fh)
+        os.chmod(settings, 0o600)
+        victim = os.path.join(self.tmp, "victim")
+        with open(victim, "w") as fh:
+            fh.write("untouched\n")
+        now = time.time()
+        for i in range(-2, 30):
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now + i))
+            os.symlink(victim, settings + ".bak-" + stamp)
+        os.symlink(victim, os.path.join(claude, "hooks", "needs-you-hook.sh.tmp"))
+        old = os.umask(0o022)
+        try:
+            r = self.run_install("--project", proj)
+        finally:
+            os.umask(old)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(victim) as fh:
+            self.assertEqual(fh.read(), "untouched\n")
+        backups = [n for n in os.listdir(claude) if n.startswith("settings.json.bak-")
+                   and not os.path.islink(os.path.join(claude, n))]
+        self.assertEqual(len(backups), 1, os.listdir(claude))
+        self.assertEqual(os.stat(os.path.join(claude, backups[0])).st_mode & 0o777, 0o600)
+        with open(os.path.join(claude, backups[0])) as fh:
+            self.assertIn("sk-secret", fh.read())
+
+
 if __name__ == "__main__":
     unittest.main()
