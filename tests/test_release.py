@@ -33,6 +33,7 @@ class VersionTests(unittest.TestCase):
         self.assertRegex(v, r"^\d+\.\d+\.\d+$")
         self.assertEqual(read_version("hub/needs_you_hub.py"), v)
         self.assertEqual(read_version("cli/needs-you"), v)
+        self.assertEqual(read_version("integrations/mcp/needs_you_mcp.py"), v)
 
     def test_changelog_has_unreleased_or_current_section(self):
         with open(os.path.join(ROOT, "CHANGELOG.md")) as fh:

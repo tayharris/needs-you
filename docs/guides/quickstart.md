@@ -25,7 +25,7 @@ A faint pill appears in a corner of the screen. That's the idle state. Until som
 Make an invite: right-click the pill → **Settings…**, then on the **Connect a machine** page (under **Inbox and machines** in the sidebar; the menu bar menu's **Connect a Machine…** opens it too) keep *A server or agent that sends alerts*, enter a machine name, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and two copy buttons, **Agent prompt** and **Shell one-liner**. The agent prompt reads:
 
 ```
-Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it.
+Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. [...] Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one.
 ```
 
 The link uses the Mac's MagicDNS name while Tailscale is running, and `http://127.0.0.1:8765` when it isn't. Either works for an agent on the Mac itself.

@@ -6,6 +6,10 @@ import importlib.util
 import json
 import os
 import plistlib
+import re
+import shlex
+import shutil
+import subprocess
 import sys
 import time
 import unittest
@@ -228,6 +232,188 @@ class Failures(DoctorTestCase):
         self.assertIn("io.needs-you.flush", checks["flush schedule"]["detail"])
 
 
+class NextSteps(DoctorTestCase):
+    """Every WARN or FAIL says one next step: a command to run, or what to ask the person for."""
+
+    def assert_steps(self, checks, token=None):
+        for c in checks.values():
+            if c["status"] in ("WARN", "FAIL"):
+                self.assertTrue(c["hint"].strip(), "%s has no next step: %s" % (c["check"], c))
+                self.assertNotIn("\n", c["hint"])
+                if token:
+                    self.assertNotIn(token, c["hint"])
+
+    def test_not_set_up(self):
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks)
+        self.assertIn("Connect a machine", checks["config"]["hint"])
+        self.assertTrue(checks["config"]["hint"].endswith(
+            "then run: curl -fsSL <invite link>/install.sh | bash -s -- --yes"), checks["config"]["hint"])
+        self.assertIn("config check above", checks["hubs"]["hint"])
+
+    def test_rejected_token_asks_for_a_new_link(self):
+        bogus = "nyt_bogus_SECRET_VALUE_0123456789abcdef"
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % bogus])
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks, bogus)
+        hint = checks["hub 1"]["hint"]
+        self.assertIn("ask the person for a new invite link", hint)
+        self.assertIn("curl -fsSL <invite link>/install.sh | bash -s -- --yes --force", hint)
+        self.assertEqual(checks["hubs"]["hint"], hint)  # the summary repeats the first hub's step
+
+    def test_reader_token_asks_for_a_sender_link(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.reader])
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks, self.reader)
+        self.assertIn("reader token", checks["hub 1"]["hint"])
+        self.assertIn("sender invite link", checks["hub 1"]["hint"])
+
+    def test_unreachable_and_not_a_hub(self):
+        self.write_env(["NEEDS_YOU_URLS=%s,%s/nothere" % (self.dead, self.hub.url),
+                        "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r, data, checks = self.doctor_json()
+        self.assert_steps(checks, self.sender)
+        want = "open -a NeedsYou" if sys.platform == "darwin" else "systemctl --user start needs-you-hub"
+        self.assertIn(want, checks["hub 1"]["hint"])
+        self.assertIn("curl -sS %s/nothere/v1/health" % self.hub.url, checks["hub 2"]["hint"])
+        self.assertEqual(checks["hubs"]["status"], "FAIL")
+        self.assertEqual(checks["hubs"]["hint"], checks["hub 1"]["hint"])
+
+    def test_only_fallback_points_at_the_first_hub(self):
+        self.write_env(["NEEDS_YOU_URLS=%s,%s" % (self.dead, self.hub.url), "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r, data, checks = self.doctor_json()
+        self.assertEqual(checks["hubs"]["status"], "WARN")
+        self.assertEqual(checks["hubs"]["hint"], checks["hub 1"]["hint"])
+
+    def test_outbox_steps(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        failed = os.path.join(self.outbox, "failed")
+        os.makedirs(failed)
+        with open(os.path.join(failed, "1-1.json"), "w") as fh:
+            fh.write("{}")
+        r, data, checks = self.doctor_json()
+        self.assertIn("cat ~/.local/state/needs-you/outbox/failed/*.json", checks["outbox"]["hint"])
+        self.assertIn("rm ~/.local/state/needs-you/outbox/failed/*.json", checks["outbox"]["hint"])
+        with open(os.path.join(self.outbox, "%020d-00001.json" % time.time_ns()), "w") as fh:
+            fh.write("{}")
+        r, data, checks = self.doctor_json()
+        self.assertTrue(checks["outbox"]["hint"].startswith("run: needs-you flush"), checks["outbox"]["hint"])
+
+    def test_path_and_profile(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r, data, checks = self.doctor_json(extra_env={"SHELL": "/bin/zsh"})
+        hint = checks["path"]["hint"]
+        self.assertIn("ln -sf ", hint)
+        self.assertIn("""echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc""", hint)
+        os.makedirs(os.path.join(self.home, ".local", "bin"))
+        os.symlink(CLI, os.path.join(self.home, ".local", "bin", "needs-you"))
+        r, data, checks = self.doctor_json(extra_env={"SHELL": "/bin/bash"})
+        self.assertIn(">> ~/.bashrc", checks["path"]["hint"])
+        self.assertIn("~/.local/bin/needs-you by its full path", checks["path"]["hint"])
+
+    def test_hooks_rerun_the_installer_with_their_flag(self):
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        self.install_claude(hook_text="#!/bin/bash\nexit 0\n")
+        r, data, checks = self.doctor_json()
+        self.assertIn("bash -s -- --yes --claude-hooks user", checks["claude hooks"]["hint"])
+
+    def test_plain_output_prints_the_step_under_its_line(self):
+        r = self.doctor()
+        lines = r.stdout.splitlines()
+        i = next(n for n, line in enumerate(lines) if line.startswith("FAIL  config"))
+        self.assertIn("-> this machine isn't set up", lines[i + 1])
+
+    def test_unreachable_hint_by_kind_of_url(self):
+        cli = load_cli()
+        d = cli.Doctor(cli.Config())
+        self.assertIn("tailscale ping devbox.example.ts.net", d.unreachable_hint("http://devbox.example.ts.net:8765"))
+        self.assertIn("tailscale ping 100.101.102.103", d.unreachable_hint("http://100.101.102.103:8765"))
+        self.assertIn("curl -sS https://hub.example.com/v1/health", d.unreachable_hint("https://hub.example.com"))
+
+
+class HostileValues(DoctorTestCase):
+    """Hints are commands an agent runs as is: a hub URL or a path from the config must never
+    turn into a second command."""
+
+    def run_hint(self, hint, extra_path=None):
+        self.assertTrue(hint.startswith("run: "), hint)
+        env = {"HOME": self.home, "PATH": (extra_path + ":" if extra_path else "") + MINIMAL_PATH}
+        return subprocess.run(["bash", "-c", hint[len("run: "):]], env=env, cwd=self.tmp,
+                              capture_output=True, text=True, timeout=30)
+
+    def test_hostile_urls_get_no_command(self):
+        pwned = os.path.join(self.tmp, "pwned")
+        for url in ("http://127.0.0.1:9/;touch${IFS}%s" % pwned, "http://x$(touch%%20%s).ts.net:9" % pwned,
+                    "http://127.0.0.1:9/`id`", "http://a b.ts.net:9", "ftp://hub.example.ts.net:21"):
+            with self.subTest(url=url):
+                self.write_env(["NEEDS_YOU_URLS=%s" % url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+                r, data, checks = self.doctor_json()
+                hint = checks["hub 1"]["hint"]
+                self.assertIn("fix NEEDS_YOU_URLS in ~/.config/needs-you/env", hint)
+                for cmd in ("curl", "tailscale", "systemctl", "open -a"):
+                    self.assertNotIn(cmd, hint)
+        self.assertFalse(os.path.exists(pwned))
+
+    def test_plain_urls_are_quoted_in_commands(self):
+        cli = load_cli()
+        d = cli.Doctor(cli.Config())
+        self.assertTrue(cli._safe_url("http://hub-a.example.ts.net:8765"))
+        self.assertTrue(cli._safe_url("https://hub.example.com/needs-you"))
+        self.assertTrue(cli._safe_url("http://[fd7a:115c:a1e0::1]:8765"))
+        for bad in ("http://h:1/?q=1", "http://u@h:1", "http://h:1/a;b", "http://h:1/$(id)", "javascript:x"):
+            self.assertFalse(cli._safe_url(bad), bad)
+            self.assertIn("fix NEEDS_YOU_URLS", d.unreachable_hint(bad))
+
+    def test_paths_are_shell_words(self):
+        cli = load_cli()
+        home = os.path.expanduser("~")
+        for path in (os.path.join(home, "a b", "$(touch x)", "env"), "/opt/it's here/env", "/plain/path"):
+            with self.subTest(path=path):
+                word = cli._sh(path)
+                want = "~" + path[len(home):] if path.startswith(home + "/") else path
+                self.assertEqual(shlex.split(word), [want])
+        self.assertEqual(cli._sh(os.path.join(home, ".config", "needs-you", "env")), "~/.config/needs-you/env")
+
+    def test_chmod_hint_runs_safely_on_an_odd_path(self):
+        d = os.path.join(self.tmp, "odd dir $(touch pwned) it's")
+        os.makedirs(d)
+        env_file = os.path.join(d, "env")
+        with open(env_file, "w") as fh:
+            fh.write("NEEDS_YOU_URLS=%s\nNEEDS_YOU_TOKEN=%s\n" % (self.hub.url, self.sender))
+        os.chmod(env_file, 0o644)
+        r, data, checks = self.doctor_json(extra_env={"NEEDS_YOU_CONFIG": env_file})
+        self.assertEqual(checks["config"]["status"], "WARN")
+        r = self.run_hint(checks["config"]["hint"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.stat(env_file).st_mode & 0o777, 0o600)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "pwned")))
+
+    @unittest.skipIf(sys.platform == "darwin", "macOS uses a LaunchAgent, not cron")
+    def test_crontab_hint_runs_safely_from_an_odd_path(self):
+        bindir = os.path.join(self.tmp, "fakebin")
+        os.makedirs(bindir)
+        written = os.path.join(self.tmp, "crontab.out")
+        with open(os.path.join(bindir, "crontab"), "w") as fh:
+            fh.write('#!/bin/sh\n[ "$1" = "-l" ] && exit 1\ncat > "%s"\n' % written)
+        os.chmod(os.path.join(bindir, "crontab"), 0o755)
+        odd = os.path.join(self.tmp, "bin $(touch pwned) it's")
+        os.makedirs(odd)
+        cli = os.path.join(odd, "needs-you")
+        shutil.copy(CLI, cli)
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        r = self.run_cli("doctor", "--json", urls=None, token=None, cli=cli,
+                         extra_env={"PATH": bindir + ":" + MINIMAL_PATH})
+        checks = {c["check"]: c for c in json.loads(r.stdout)["checks"]}
+        r = self.run_hint(checks["flush schedule"]["hint"], extra_path=bindir)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(written) as fh:
+            line = fh.read().strip()
+        self.assertEqual(shlex.split(line.split(" -q ")[0])[5:], [cli])
+        self.assertTrue(line.endswith("-q flush >/dev/null 2>&1 # needs-you-flush"), line)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "pwned")))
+        self.assertFalse(os.path.exists(os.path.join(odd, "pwned")))
+
+
 class ClaudeAndOrca(DoctorTestCase):
     def setUp(self):
         super().setUp()
@@ -295,6 +481,8 @@ class ClaudeAndOrca(DoctorTestCase):
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertEqual(checks["claude project hooks"]["status"], "WARN")
         self.assertIn("not installed from this machine", checks["claude project hooks"]["detail"])
+        self.assertRegex(checks["claude project hooks"]["hint"],  # macOS: /var is /private/var
+                         r"install-hooks\.sh --project (/private)?%s --local$" % re.escape(proj))
         state = os.path.join(self.home, ".local", "state", "needs-you")
         os.makedirs(state, exist_ok=True)
         with open(os.path.join(state, "claude-projects.json"), "w") as fh:
@@ -309,7 +497,7 @@ class ClaudeAndOrca(DoctorTestCase):
         line = checks["claude project hooks"]
         self.assertEqual(line["status"], "WARN")
         self.assertIn("not executable", line["detail"])
-        self.assertIn("--local", line["hint"])
+        self.assertRegex(line["hint"], r"^run: cd (/private)?%s && needs-you update$" % re.escape(proj))  # recorded
         os.remove(hook)
         r, data, checks = self.doctor_json(cwd=proj)
         self.assertIn("is missing", checks["claude project hooks"]["detail"])

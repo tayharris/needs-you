@@ -17,5 +17,5 @@ needs-you lets you tell a person "I need you for X" when you're blocked on a dec
 - **The contract:** [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md): when to post, stable keys, titles that state the action, links to where the person acts, resolving what you posted, never sending secrets.
 - **Claude Code skill:** [integrations/claude-code/skill/needs-you/SKILL.md](integrations/claude-code/skill/needs-you/SKILL.md). Install with `cp -R integrations/claude-code/skill/needs-you ~/.claude/skills/`.
 - **Hooks** for "agent is waiting" cards: [docs/guides/claude-code.md](docs/guides/claude-code.md).
-- **Setting a machine up:** the person creates an invite in the Mac app (Settings → **Invite a machine**) and hands you a prompt or a one-line command; or see [docs/guides/add-a-sender.md](docs/guides/add-a-sender.md).
+- **Setting a machine up:** the person creates an invite in the Mac app (Settings → **Connect a machine**) and hands you a prompt or a one-line command; or see [docs/guides/add-a-sender.md](docs/guides/add-a-sender.md).
 - **HTTP API**, if you can't use the CLI: [docs/API.md](docs/API.md).
