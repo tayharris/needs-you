@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-08
+
+Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).
+
 ### Added
 
 - **Answer Claude Code's questions from the card.** When Claude asks you something (`AskUserQuestion`), the card's choices are buttons: click one, or pick several and **Send**, and Claude takes it as your answer. Claude's own question stays on screen in the terminal meanwhile, so you can still answer there; the first answer wins and the card clears either way. Only when the card shows every question and choice exactly as Claude wrote them; otherwise the card stays read-only. Permission prompts and plans are never answered from the card, and nothing is answered on its own (no default, nothing when the wait runs out, `NEEDS_YOU_ANSWER_TIMEOUT`, 600 s by default). `NEEDS_YOU_ANSWER_TIMEOUT=0` turns it off. Run `needs-you update` and restart Claude Code sessions: the hooks get a second `PermissionRequest` entry for `AskUserQuestion` ([Claude Code guide](docs/guides/claude-code.md), [ADR 0009](docs/adr/0009-questions-on-cards.md) B3).
