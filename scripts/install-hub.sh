@@ -102,7 +102,8 @@ DEFAULT_BIND="127.0.0.1${TS_IP:+,$TS_IP}"
 for b in "${BINDS[@]+"${BINDS[@]}"}"; do
   case "$b" in 0.0.0.0|::|"[::]") die "refusing to bind to all interfaces; use 127.0.0.1 and the tailnet IP" ;; esac
 done
-[ -n "$HUB_ID" ] || HUB_ID_DEFAULT=$(hostname -s)
+HOST_SHORT=$(hostname -s 2>/dev/null || hostname)
+[ -n "$HUB_ID" ] || HUB_ID_DEFAULT=$HOST_SHORT
 GENERATED=""
 if [ "$GEN_SECRET" -eq 1 ]; then
   GENERATED=$("$PYTHON" -c 'import secrets; print(secrets.token_urlsafe(32))')
@@ -144,7 +145,7 @@ umask 077
 NY_CONF="$CONF" NY_NEW="$NEW_CONFIG" NY_RECONF="$RECONFIGURE" NY_DB="$STATE_DIR/hub.db" \
 NY_BIND="$(IFS=,; echo "${BINDS[*]+"${BINDS[*]}"}")" NY_DEFAULT_BIND="$DEFAULT_BIND" \
 NY_PORT="$PORT" NY_HUB_ID="$HUB_ID" NY_HUB_ID_DEFAULT="${HUB_ID_DEFAULT:-}" \
-NY_PUBLIC_URL="$PUBLIC_URL" NY_TS_NAME="$TS_NAME" NY_SECRET="$PEER_SECRET" \
+NY_PUBLIC_URL="$PUBLIC_URL" NY_TS_NAME="$TS_NAME" NY_HOST="$HOST_SHORT" NY_SECRET="$PEER_SECRET" \
 "$PYTHON" - "${PEERS[@]+"${PEERS[@]}"}" > "$CONF.tmp" <<'PY'
 import json, os, sys
 e = os.environ
@@ -167,7 +168,8 @@ put("port", int(e["NY_PORT"]) if e["NY_PORT"] else None, 8765)
 put("db", None, e["NY_DB"])
 put("hub_id", e["NY_HUB_ID"], e["NY_HUB_ID_DEFAULT"])
 port = cfg.get("port", 8765)
-host = e["NY_TS_NAME"] or e["NY_HUB_ID_DEFAULT"] or "localhost"
+# this machine's name, whatever --hub-id says (that names the hub, not the host)
+host = e["NY_TS_NAME"] or e["NY_HOST"] or "localhost"
 put("public_url", e["NY_PUBLIC_URL"].rstrip("/"), "http://%s:%d" % (host, port))
 put("freebind", None, True)
 if sys.argv[1:]:

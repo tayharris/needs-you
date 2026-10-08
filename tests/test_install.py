@@ -503,5 +503,39 @@ class InstallHubUser(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class InstallHubUserPaths(unittest.TestCase):
+    """install-hub.sh --user on a machine without Tailscale, and with XDG_CONFIG_HOME set."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix="needs-you-ih2-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.home = os.path.join(self.tmp, "home")
+        stub = os.path.join(self.tmp, "stub")
+        os.makedirs(self.home)
+        os.makedirs(stub)
+        with open(os.path.join(stub, "tailscale"), "w") as fh:  # this machine isn't on a tailnet
+            fh.write("#!/bin/sh\nexit 1\n")
+        os.chmod(os.path.join(stub, "tailscale"), 0o755)
+        self.env = {"HOME": self.home, "PATH": stub + ":/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C"}
+        self.script = os.path.join(ROOT, "scripts", "install-hub.sh")
+
+    def install(self, *args, **env):
+        r = subprocess.run([BASH, self.script, "--user", "--no-start", "--no-invite", "--bind", "127.0.0.1"]
+                           + list(args), env=dict(self.env, **env), capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r
+
+    def test_hub_id_without_tailscale_keeps_the_host_name_in_public_url(self):
+        # --hub-id used to drop the host name from the default public_url: every invite link
+        # pointed at http://localhost:8765.
+        self.install("--hub-id", "hub-a")
+        with open(os.path.join(self.home, ".config", "needs-you", "hub.json")) as fh:
+            cfg = json.load(fh)
+        host = subprocess.run(["hostname", "-s"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(cfg["hub_id"], "hub-a")
+        self.assertEqual(cfg["public_url"], "http://%s:8765" % host)
+
+
 if __name__ == "__main__":
     unittest.main()
