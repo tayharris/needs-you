@@ -46,6 +46,8 @@ GROUPS = [START, AGENTS, SENDERS, MORE, RUN, REFERENCE]
 CURATED = [
     (START, "docs/guides/quickstart.md", "quickstart", "Quickstart",
      "The whole setup, step by step: the Mac app, Claude Code on the Mac, servers."),
+    (START, "docs/guides/setup-with-an-agent.md", "setup-with-an-agent", "Set it up with an agent",
+     "One prompt for Claude Code or another agent: it installs the app, connects the agents it finds, and asks you at every choice."),
     (START, "docs/guides/testers.md", "testers", "Testers",
      "Trying needs-you: download, first run, what to try and how to report problems, on one page."),
     (START, "docs/guides/concepts.md", "concepts", "Words",
@@ -354,6 +356,10 @@ class Doc:
             i += 1
         cls = ' class="language-%s"' % esc(lang) if lang else ""
         text = "\n".join(body)
+        if lang == "prompt":  # a prompt to paste into an agent as is: wrapped, with a Copy button
+            out.append('<div class="code prompt" data-copy><pre><code>%s</code></pre></div>'
+                       % html.escape(text, quote=False))
+            return i + 1
         out.append('<div class="code"%s><pre><code%s>%s</code></pre></div>'
                    % (" data-copy" if copyable(lang, text) else "", cls, html.escape(text, quote=False)))
         return i + 1

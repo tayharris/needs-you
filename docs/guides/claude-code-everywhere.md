@@ -8,7 +8,7 @@ You need the Mac app running ([quickstart.md](quickstart.md) step 1). For machin
 
 **On the Mac:** right-click the pill → **Settings…** → **Connect a machine**: *A server or agent that sends alerts*, a name (e.g. `claude`), **Uses** = the number of machines you'll set up, **Create invite**, then **Shell one-liner**. It copies a line like `curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`.
 
-**On each machine where Claude Code runs** (the Mac itself included), paste that line. That's the whole setup (add `--auto-update` to let the machine update itself daily, see [Keeping up to date](updates.md)):
+**On each machine where Claude Code runs** (the Mac itself included), paste that line. That's the whole setup (the machine also updates itself daily from the hub; `--no-auto-update` turns that off, see [Keeping up to date](updates.md)):
 
 ```bash
 curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts

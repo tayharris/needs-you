@@ -16,7 +16,7 @@ sender machine to update. This note records the threat model behind its design. 
 
 ## What the CLI does with it, and nothing else
 
-1. With `NEEDS_YOU_AUTO_UPDATE=1` (the machine's owner opted in at install, `--auto-update`),
+1. With `NEEDS_YOU_AUTO_UPDATE=1` (the installers' default; `--no-auto-update` opts out),
    it runs `[sys.executable, <its own path>, "update", "--auto"]`: a fixed argument list built
    in the CLI, no shell, detached (`start_new_session`, stdio to `/dev/null`, `cwd=/`), at most
    once every 6 hours (state in `~/.local/state/needs-you/update.json`).

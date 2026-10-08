@@ -2,6 +2,8 @@
 
 Your Mac is the hub: machines and agents send alerts to it, and the pill shows them. Senders don't need the app, only the `needs-you` command, which an invite link installs. The words are explained under [Words](#words) at the end.
 
+Rather have an agent do it? Paste the prompt in [Set it up with an agent](setup-with-an-agent.md) into Claude Code on the Mac: it does these steps and asks you at each choice.
+
 Four steps; only the first is required. Every step can be re-run safely until the invite link expires, even after its uses are spent (a machine that's already set up doesn't spend another).
 
 ```
@@ -65,7 +67,7 @@ Each server gets its own token (named `<invite name>-<hostname>`), so you can re
 
 > **macOS firewall:** the first time a server connects, macOS may ask whether `python3` may accept incoming connections. Allow it; that's the app's hub.
 
-**While the Mac sleeps**, servers can't reach it. Their CLI queues items locally (it still exits 0, so jobs never fail), and the installer adds a 5-minute `needs-you flush` (cron on Linux, a LaunchAgent on macOS). Items arrive within about 5 minutes of the Mac waking.
+**While the Mac sleeps**, servers can't reach it. Their CLI queues items locally (it still exits 0, so jobs never fail), and the installer adds a 5-minute `needs-you flush` (cron on Linux, a LaunchAgent on macOS). Items arrive within about 5 minutes of the Mac waking. The same flush updates the machine once a day from the Mac's hub (`--no-auto-update` turns that off; [Keeping up to date](updates.md)).
 
 ## 4. Optional: always-on server hubs
 

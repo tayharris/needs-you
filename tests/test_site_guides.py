@@ -52,7 +52,7 @@ class FreshnessTests(unittest.TestCase):
 
     def test_index_order_for_a_first_time_reader(self):
         names = [name for _, _, name, _, _ in gen.GUIDES]
-        self.assertEqual(names[:3], ["quickstart", "testers", "concepts"])
+        self.assertEqual(names[:4], ["quickstart", "setup-with-an-agent", "testers", "concepts"])
         groups = [g for g, _, _, _, _ in gen.GUIDES]
         self.assertEqual(groups, sorted(groups, key=gen.GROUPS.index))  # sections in GROUPS order
         self.assertLess(names.index("claude-code"), names.index("hub"))
