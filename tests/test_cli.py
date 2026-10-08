@@ -6,6 +6,7 @@ import socket
 import subprocess
 import threading
 import time
+import unittest
 import sys
 
 from support import CLI, HubTestCase, free_port, garbage_server, request
@@ -183,6 +184,33 @@ class Outbox(CliTestCase):
         r = self.run_cli("add", "--key", "a", "--title", "t", urls=None, token=None)
         self.assertEqual(r.returncode, 0)
         self.assertEqual(len(self.queued()), 1)
+
+
+class ReadOnlyOutbox(CliTestCase):
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_flush_with_an_outbox_it_cant_change_does_not_crash(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        self.run_cli("add", "--key", "ro", "--title", "t", urls=[self.dead], token=sender)
+        self.assertEqual(len(self.queued()), 1)
+        os.chmod(self.outbox, 0o500)
+        self.addCleanup(os.chmod, self.outbox, 0o700)
+        for args in (["flush"], ["add", "--key", "ro2", "--title", "t"]):
+            r = self.run_cli(*args, urls=[a.url], token=sender)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")), ["ro", "ro2"])
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_a_direct_send_never_overtakes_the_queue(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        self.run_cli("add", "--key", "K", "--title", "t", urls=[self.dead], token=sender)
+        os.chmod(self.outbox, 0o500)  # the resolve can't be queued behind the add
+        self.addCleanup(os.chmod, self.outbox, 0o700)
+        r = self.run_cli("resolve", "--key", "K", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([i["status"] for i in self.items(a, reader) if i["key"] == "K"], ["resolved"])
 
 
 class Failover(CliTestCase):

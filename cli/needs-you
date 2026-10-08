@@ -939,11 +939,21 @@ QUEUED_PATHS = ("/v1/items", "/v1/items/resolve")  # the only requests the CLI q
 
 def _remove(path: str) -> None:
     """Delete a sent entry. Another invocation's prune() (which runs without the lock) may
-    have dropped it already; that's fine."""
+    have dropped it already; that's fine. An outbox this user can't change (a chmod, a
+    read-only mount) leaves the entry to be sent again: say so once, never crash."""
+    global _REMOVE_WARNED
     try:
         os.remove(path)
     except FileNotFoundError:
         pass
+    except OSError as e:
+        if not _REMOVE_WARNED:
+            _REMOVE_WARNED = True
+            warn("can't delete sent entries from the outbox (%s); fix its permissions (%s)"
+                 % (type(e).__name__, os.path.dirname(path)))
+
+
+_REMOVE_WARNED = False
 
 
 class _Flush:
@@ -1380,6 +1390,15 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     except (OSError, ImportError):
         mine = None  # no usable outbox here: send directly, as there's nothing to keep order with
     if mine is None:
+        if pending():
+            # Ours can't join the queue, so at least don't overtake it: a `resolve K` sent
+            # before a queued `add K` would leave the item open for good.
+            lock = _lock(wait=LOCK_WAIT_SECONDS)
+            if lock is not None:
+                try:
+                    _flush_locked(cfg)
+                finally:
+                    lock.close()
         try:
             result: Any = send(cfg, method, path, body)
             _after_sent(path, body, result[2])
