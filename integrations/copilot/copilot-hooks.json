@@ -1,5 +1,5 @@
 {
-  "_needs_you_version": "0.1.3",
+  "_needs_you_version": "0.1.4",
   "version": 1,
   "hooks": {
     "notification": [

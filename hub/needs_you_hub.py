@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 API_VERSION = "v1"
 
 # ---------------------------------------------------------------------------
