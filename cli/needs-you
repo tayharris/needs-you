@@ -3681,8 +3681,10 @@ def _mcp_remove_one(agent: str, dry_run: bool, say: Any) -> Optional[bool]:
         warn("%s: can't read it (%s); nothing was changed" % (_tilde(path), e))
         return None
     if agent == "codex":
-        new = _without_block(text, CODEX_MCP_BEGIN, CODEX_MCP_END) or ""
-        empty = not new.strip()
+        stripped = _without_block(text, CODEX_MCP_BEGIN, CODEX_MCP_END)
+        if stripped is None:
+            return False
+        new, empty = stripped, not stripped.strip()
     else:
         data = json.loads(text)
         key = _mcp_key(agent)
