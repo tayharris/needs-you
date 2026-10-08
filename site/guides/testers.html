@@ -79,7 +79,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <p>Ignore the other assets (<code>needs-you-server-…</code>, <code>needs-you-cli-…</code>, <code>release-manifest.json</code>): they're for servers and for the app's updater.</p>
 <h2 id="3-install-and-first-launch">3. Install and first launch <a class="anchor" href="#3-install-and-first-launch" aria-label="Link to this section">#</a></h2>
 <ol>
-<li>Open the DMG and drag <code>NeedsYou.app</code> onto the <strong>Applications</strong> link in the same window. Eject the DMG.</li>
+<li>Open the DMG and drag <code>NeedsYou.app</code> onto the <strong>Applications</strong> link in the same window. Eject the DMG. (If you open it straight from the DMG or Downloads instead, <strong>Settings → General → Move to Applications</strong> does the move for you, settings included; <a href="mac-app.html#opened-it-from-downloads-or-the-disk-image">details</a>.)</li>
 <li>Open <code>NeedsYou.app</code> from Applications. The app is <strong>ad-hoc signed, not notarized</strong> (there's no paid Apple Developer ID yet), so macOS blocks the first launch once:
 <ul>
 <li><strong>macOS 15 and later:</strong> macOS says it can't verify that "NeedsYou" is free of malware. Click <strong>Done</strong> (not Move to Trash). Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the <strong>Security</strong> section, where it says <em>"NeedsYou" was blocked</em>, click <strong>Open Anyway</strong>, then confirm with <strong>Open Anyway</strong> and your password or Touch ID.</li>

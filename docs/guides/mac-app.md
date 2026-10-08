@@ -11,6 +11,16 @@ Build, install and signing details live with the code: **[mac/README.md](../../m
 3. The built-in hub needs `/usr/bin/python3` (Apple's Command Line Tools). If **Settings…** says *Python 3 isn't available on this Mac*, run `xcode-select --install`, then quit and reopen the app.
 4. Optional: **Settings… → General → Open at login**.
 
+### Opened it from Downloads or the disk image?
+
+Open at login only works from Applications (macOS ties the login item to where the app is), so while Needs You runs from anywhere else, the toggle is greyed out and says why: *Needs You is running from Downloads. Move it to Applications to open it at login.* Above it, **Settings → General → Move to Applications** copies the app to `/Applications` (or `~/Applications` if you can't write to `/Applications`), opens it from there in the background and quits the old copy. The menu bar menu has **Move to Applications…** too, which opens that page. Nothing pops up on launch: an alert would take focus from what you're typing.
+
+- **Your settings come along.** They're kept under the app's id (`app.needsyou.mac`) and in `~/Library/Application Support/NeedsYou`, not next to the app, so the moved copy has the same hubs, tokens, items and look. The hub on this Mac restarts from the new copy on the same port.
+- **Already have one in Applications?** Settings asks first (**Replace** / **Cancel**, right there on the page); the old one goes to the Bin.
+- **From the disk image:** eject it afterwards. **From Downloads:** the old copy stays where it was; delete it whenever you like.
+- **"A temporary copy macOS made":** macOS runs a quarantined app that wasn't moved with Finder from a hidden, read-only folder (App Translocation). Moving it fixes that; the moved copy drops the quarantine flag so it isn't translocated again (it's the copy that's already running, and its signature is checked after the copy).
+- **Moved it by hand, or from an older build?** If Open at login was on for a copy somewhere else, the copy in Applications takes the login item over at launch. A copy outside Applications never touches it.
+
 ## Its own hub
 
 The app runs a hub itself (`hub/needs_you_hub.py` with the Mac's `/usr/bin/python3`, as a child process that exits with the app). It listens on `127.0.0.1:8765`, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; **Settings… → Your inbox** shows the URL servers use, next to the `127.0.0.1` one). It provisions its own `owner` token, so there's nothing to configure. The first time a server connects, macOS may ask whether `python3` may accept incoming connections: allow it.
@@ -204,7 +214,7 @@ Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a s
 
 <img src="../../site/img/settings-inbox.png" width="380" alt="Settings, Your inbox: How it works in three lines, then Run hub on this Mac, on and Running."> <img src="../../site/img/settings-connect.png" width="380" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite.">
 
-- **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.
+- **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up, and **Move to Applications** when the app runs from anywhere else ([above](#opened-it-from-downloads-or-the-disk-image)).
 - **Your inbox:** three lines on how it works (your machines and agents send alerts, this Mac holds them because it's the hub, the pill shows them), **Run hub on this Mac** (on by default) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
 - **Connect a machine:** pick what it is (*A server or agent that sends alerts*, *Another Mac that shows the same alerts*, or *Another Mac that can also connect machines (advanced)*), a name, uses and expiry, then **Create invite**. See above.
 - **Machines:** every connected machine with its role, open items and, for senders, the CLI version (*version unknown (hasn't posted since updating)* until it reports one), and the open invite links; **Revoke** any of them. Shows only when you have an owner token.

@@ -4,6 +4,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Move to Applications.** Opened Needs You straight from Downloads or the disk image? **Settings → General** now starts with **Move to Applications** (the menu bar menu has **Move to Applications…** too): it copies the app to `/Applications` (or `~/Applications`), opens it from there and quits the old copy. Your settings, hubs, tokens and items come along, since they're kept under the app's id, not next to the app. An existing copy is replaced only after you click **Replace** on the page. Nothing pops up on launch ([Mac app guide](docs/guides/mac-app.md#opened-it-from-downloads-or-the-disk-image)).
+
+### Fixed
+
+- **Open at login can't be turned on from the wrong place any more.** Outside Applications the toggle is greyed out and says why (*Needs You is running from Downloads. Move it to Applications to open it at login.*). If it was turned on for a copy somewhere else, the copy in Applications takes the login item over at launch.
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).
