@@ -119,6 +119,26 @@ class LeaseTests(HubTestCase):
         self.flush()
         self.assertEqual(self.item("agent:testbox:old")["status"], "resolved")
 
+    def test_a_failing_ps_says_nothing_about_a_live_process(self):
+        # ps that can't run properly (sandboxed, a broken PATH entry) prints nothing: the
+        # process is alive (kill 0 says so), so its card stays.
+        os.makedirs(self.leases)
+        request("POST", self.hub.url + "/v1/items", self.sender,
+                {"key": "agent:testbox:live", "title": "Waiting", "context": "work",
+                 "source": {"host": "testbox"}})
+        with open(os.path.join(self.leases, "live"), "w") as fh:
+            fh.write("key=agent:testbox:live\npid=%d\nstart=Thu Jan  1 00:00:00 1970\n" % os.getpid())
+        stubs = os.path.join(self.tmp, "stubs")
+        os.makedirs(stubs)
+        with open(os.path.join(stubs, "ps"), "w") as fh:
+            fh.write("#!/bin/sh\nexit 1\n")
+        os.chmod(os.path.join(stubs, "ps"), 0o755)
+        r = subprocess.run([sys.executable, CLI, "flush"], capture_output=True, text=True, timeout=60,
+                           env=self.env(PATH=stubs + ":" + os.environ.get("PATH", "/usr/bin:/bin")))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.item("agent:testbox:live")["status"], "open")
+        self.assertTrue(os.path.exists(os.path.join(self.leases, "live")))
+
     def test_markers_without_a_lease_are_left_alone(self):
         os.makedirs(self.leases)
         for name, text in (("legacy", ""), ("nokey", "pid=1\nstart=x\n"),

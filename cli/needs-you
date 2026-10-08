@@ -1102,7 +1102,18 @@ def _process_start(pid: int, utc: bool = False) -> Optional[str]:
                            env=dict(os.environ, LC_ALL="C", **({"TZ": "UTC0"} if utc else {})))
     except (OSError, subprocess.SubprocessError):
         return None
-    return " ".join(r.stdout.split())
+    start = " ".join(r.stdout.split())
+    if not start:
+        # ps printed nothing: the process exited just now, or ps itself failed (kill 0 said
+        # it was alive a moment ago). Only the former means "gone".
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return ""
+        except OSError:
+            pass
+        return None
+    return start
 
 
 def reap_leases(cfg: Config, verbose: bool = False) -> int:
