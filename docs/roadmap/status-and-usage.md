@@ -56,11 +56,11 @@ Today the Mac side is covered (OrcaJump tries each paired environment) and each 
 
 ### What the GitHub poller covers today
 
-`integrations/github/needs-you-github` (one machine, `gh`, every 5 min) posts review requests, deploy approvals, failed CI, mentions, assignments, and for **your open PRs**: `merge` (approved, green, mergeable), `changes`, `conflict`, `checks`. A PR that merges simply resolves its `merge` card. There is **no** "merged" or "deployed" FYI. [high]
+`integrations/github/needs-you-github` (one machine, `gh`, every 5 min) posts review requests, deploy approvals, failed CI, mentions, assignments, and for **your open PRs**: `merge` (approved, green, mergeable), `changes`, `conflict`, `checks`, and **`merged`** (built: a `done` FYI when one of your PRs merges, on by default, `-merged` turns it off). There is no "deployed" FYI. [high]
 
 ### Options for "your PR shipped"
 
-1. **Poller reason `merged`** (recommended first): the poller already tracks your open PRs in its state file. When a tracked PR leaves the open list, one GraphQL lookup (`merged`, `mergedAt`) decides it merged, and it posts `done` `<ctx>:gh:owner/repo#20:merged` "Merged owner/repo#20: *title*" (24 h FYI, never counted). Off unless listed in `NEEDS_YOU_GITHUB_REASONS` (`+merged`) or default on: owner decision. No wire change. Cost: small (poller + tests + README table row).
+1. **Poller reason `merged`** (**built**, on by default; `-merged` in `NEEDS_YOU_GITHUB_REASONS` turns it off): the poller already tracks your open PRs in its state file. When a tracked PR leaves the open list, one GraphQL lookup (`merged`, `mergedAt`) decides it merged, and it posts `done` `<ctx>:gh:owner/repo#20:merged` "Merged owner/repo#20: *title*" (24 h FYI, never counted). Off unless listed in `NEEDS_YOU_GITHUB_REASONS` (`+merged`) or default on: owner decision. No wire change. Cost: small (poller + tests + README table row).
 2. **Deploy finished**: `deployment_status` isn't a notification reason, so the poller would need `gh api repos/{o}/{r}/deployments` per watched repo: more calls. Better: CI posts it (`integrations/ci/run-or-alert.sh` style, a `done` at the end of the deploy job). Document as a recipe in `integrations/ci/README.md`. Cost: docs only.
 3. **Agent-side config**: `NEEDS_YOU_PR_SHIPPED=1` read by the skill: "after you open a PR, if this is set, …" can't work, because the agent is long gone when the PR merges. Claude Code's status line input has `pr.number/url/review_state`, and the field disappears once the PR merges or closes [high, status line docs]; the usage helper could note "PR seen → gone" but can't tell merged from closed without `gh`. So agent-side is the wrong place; the poller is the right one. One cheap agent-side piece: the skill could tell agents to add `--link "PR=…"` to their `done` card so the poller's later cards and the agent's cards line up.
 
@@ -109,7 +109,7 @@ Principles: numbers only, read locally by the agent's own machine, never credent
 | # | Item | Value | Cost | Wire/ADR | Owner decision |
 |---|---|---|---|---|---|
 | 1 | Claude usage threshold card (`needs-you-usage`) | medium | small | none | **built**; default thresholds, and whether `--claude-hooks` should install it into `statusLine` (it would wrap any existing one) |
-| 2 | GitHub poller `merged` reason → `done` card | high | small | none | on by default, or opt-in via `+merged` |
+| 2 | GitHub poller `merged` reason → `done` card | high | small | none | **built**, on by default (`-merged` turns it off); the owner can flip the default |
 | 3 | Doctor INFO "many worktrees → Orca" + installer hint | low-medium | small | none | recommend Orca by name/link? |
 | 4 | Codex usage threshold card from session JSONL | medium | small-medium | none (shared hook) | same thresholds as Claude? |
 | 5 | Mac status strip from local Orca (`worktree ps`), all paired environments | high for Orca users | medium | none (app-only) | show it by default when `orca` is present? |

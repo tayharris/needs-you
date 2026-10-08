@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub: a "Merged" FYI when one of your PRs merges.** `needs-you-github` remembers your open PRs between runs; when one leaves the list and GitHub says it merged, it posts one low `done` card, "Merged owner/repo#20: *title*", with a PR link, that expires after a day and isn't counted. A PR closed without merging posts nothing. On by default; `NEEDS_YOU_GITHUB_REASONS=-merged` turns it off. Copy the new `needs-you-github` to `~/.local/bin/` ([GitHub guide](docs/guides/github.md)).
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).

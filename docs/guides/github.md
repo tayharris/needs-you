@@ -1,6 +1,6 @@
 # GitHub
 
-Get a card when GitHub is waiting on you: a review request, a deployment that needs your approval, CI that failed on your branch, a mention, or one of your PRs that is ready to merge, has changes requested, conflicts or failing checks. Each card clears itself once the condition goes away.
+Get a card when GitHub is waiting on you: a review request, a deployment that needs your approval, CI that failed on your branch, a mention, or one of your PRs that is ready to merge, has changes requested, conflicts or failing checks. Each card clears itself once the condition goes away. When one of your PRs merges, you get a low "Merged owner/repo#20: *title*" FYI that expires after a day.
 
 A small poller, `needs-you-github`, does this from **one** machine every 5 minutes, using that machine's `gh` login. Nothing on GitHub changes: no webhook, no app, no public endpoint.
 
@@ -36,7 +36,7 @@ Settings go in `~/.config/needs-you/env`:
 ```bash
 NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's cards are work or personal
 NEEDS_YOU_GITHUB_EXCLUDE=acme/huge-monorepo            # owners or repos to ignore
-NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want)
+NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want); -merged: no "Merged" FYIs
 ```
 
 The full list of cards, keys and settings is in [integrations/github/README.md](../../integrations/github/README.md). If you have many open PRs, `NEEDS_YOU_GITHUB_PR_DAYS` (default 14) skips the ones nobody has touched lately, and at most 20 cards are open at once (`NEEDS_YOU_GITHUB_MAX_CARDS`).
