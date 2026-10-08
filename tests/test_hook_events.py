@@ -149,6 +149,32 @@ class PermissionTests(HookHarness):
         self.assertEqual(self.opt(self.last(), "--title"), "Claude needs permission: my-repo")
 
 
+class PayloadEdgeTests(HookHarness):
+    """Hook input the card must survive: huge tool input, odd bytes, nested look-alike keys."""
+
+    def test_huge_tool_input_still_posts(self):
+        # A Write of a big file: the payload is far past one environment variable's limit
+        # (128 KiB on Linux, ARG_MAX in all on macOS).
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Write",
+                                 "tool_input": {"file_path": "/x/big.txt", "content": "x" * 3000000}})
+        self.assertEqual(len(self.calls()), 1)
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude wants to edit big.txt: my-repo")
+
+    def test_bytes_that_are_not_utf8_become_replacement_characters(self):
+        # The hub refuses unpaired surrogates (400), so a raw \\xff must not reach the CLI as one.
+        raw = (b'{"session_id":"sess-1234-abcd","cwd":"%s","hook_event_name":"Notification",'
+               b'"notification_type":"permission_prompt","message":"bad \xff\xfe bytes"}'
+               % self.cwd.encode())
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux"}
+        r = subprocess.run([BASH, HOOK, "notify"], input=raw, env=env, capture_output=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        body = self.opt(self.last(), "--body")
+        self.assertTrue(body.startswith("bad �� bytes"), body)
+        body.encode("utf-8")  # no lone surrogates
+
+
 class FailureTests(HookHarness):
     def test_stop_failure_card(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",

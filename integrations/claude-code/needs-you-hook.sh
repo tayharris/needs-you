@@ -401,10 +401,12 @@ resolve_marker() {
 run_py() {
   command -v python3 >/dev/null 2>&1 || { log "python3 not found"; return 1; }
   lease
-  NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
+  # The hook input goes in on fd 3, not the environment: a big tool input (a Write of a large
+  # file) is past one variable's limit (128 KiB on Linux), and python3 wouldn't even start.
+  NY_MODE=$1 NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
   NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
-  python3 - 2>/dev/null <<'PY'
+  python3 - 2>/dev/null 3<<<"$input" <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
@@ -415,7 +417,9 @@ AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
             "copilot": "copilot-cli", "grok": "grok", "kimi": "kimi-code", "cursor": "cursor", "cline": "cline",
             "aider": "aider"}.get(AGENT, "claude-code")
 try:
-    data = json.loads(os.environ.get("NY_INPUT") or "{}")
+    with os.fdopen(3, "rb") as _fh:
+        # Bytes that aren't UTF-8 become U+FFFD: the hub refuses unpaired surrogates.
+        data = json.loads(_fh.read().decode("utf-8", "replace").strip() or "{}")
 except Exception:
     data = {}
 if not isinstance(data, dict):
