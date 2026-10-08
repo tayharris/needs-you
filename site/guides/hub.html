@@ -164,6 +164,7 @@ on <code>needs_you_hub.py</code>, so no file is required: the named flags below,
 <tr><td><code>quiet</code></td><td><code>--quiet</code></td><td>false</td><td>No access log.</td></tr>
 <tr><td><code>access_log</code></td><td></td><td>true</td><td>One stderr line per request. Invite codes in <code>/join/</code> paths (and anything shaped like a code or token) are replaced with <code>&lt;code&gt;</code>/<code>&lt;redacted&gt;</code>, and control characters are escaped.</td></tr>
 <tr><td><code>max_open_per_token</code></td><td></td><td>60</td><td>Volume guard.</td></tr>
+<tr><td><code>max_connections</code></td><td></td><td>128</td><td>Connections served at once (kept 64 under the file descriptor limit); more are closed at once.</td></tr>
 <tr><td><code>default_expiry_hours</code></td><td></td><td>24</td><td>Expiry for <code>done</code>/<code>info</code> items without <code>expires_at</code>.</td></tr>
 <tr><td><code>maintenance_seconds</code></td><td></td><td>600</td><td>Purge + WAL checkpoint + incremental vacuum interval.</td></tr>
 <tr><td><code>vacuum_hours</code></td><td></td><td>24</td><td>How often a full <code>VACUUM</code> may run (only when over 25% is free).</td></tr>

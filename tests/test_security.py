@@ -303,6 +303,54 @@ class HubAbuse(HubTestCase):
         hubmod.check_bind({"bind": "0", "hub_id": "h", "allow_any_interface": True})
 
 
+class ConnectionLimit(HubTestCase):
+    """Scan 2026-10-08: every connection got a thread and a file descriptor, without limit.
+    Idle connections (a few hundred on macOS, whose default limit is 256 descriptors) left the
+    hub unable to accept, spinning on EMFILE, until they went away."""
+
+    def test_connections_over_the_limit_are_closed_at_once(self):
+        hub = self.make_hub("hub-a", maintenance_seconds=0, max_connections=4)
+        host, port = hub.server.server_address[:2]
+        idle = []
+        try:
+            for _ in range(4):
+                s = socket.create_connection((host, port), timeout=5)
+                s.sendall(b"GET /v1/health HTTP/1.0\r\n")  # never finishes its request
+                idle.append(s)
+            time.sleep(0.3)
+            extra = socket.create_connection((host, port), timeout=5)
+            t0 = time.time()
+            try:
+                self.assertEqual(extra.recv(100), b"")  # closed, not left waiting
+            except ConnectionResetError:
+                pass
+            finally:
+                extra.close()
+            self.assertLess(time.time() - t0, 3)
+        finally:
+            for s in idle:
+                s.close()
+        ok = False
+        deadline = time.time() + 5
+        while time.time() < deadline and not ok:
+            try:
+                ok = request("GET", hub.url + "/v1/health")[0] == 200
+            except OSError:
+                time.sleep(0.1)
+        self.assertTrue(ok, "the hub answers again once the idle connections are gone")
+
+    def test_default_limit_leaves_descriptors_for_the_hub(self):
+        limit = hubmod.connection_limit({})
+        self.assertGreaterEqual(limit, 8)
+        try:
+            import resource
+            soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        except (ImportError, OSError, ValueError):
+            return
+        if soft != resource.RLIM_INFINITY:
+            self.assertLess(limit, soft)
+
+
 class DatabaseFileModes(HubTestCase):
     def test_db_wal_and_shm_are_private(self):
         # Items and token hashes: the -wal and -shm files hold the same data as the database,

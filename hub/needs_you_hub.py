@@ -116,6 +116,7 @@ QUARANTINE_MAX_BYTES = 256 * 1024  # an unreadable item record bigger than this 
 DEFAULT_MAX_OPEN_PER_TOKEN = 60
 DEFAULT_EXPIRY_HOURS = 24.0
 DEFAULT_PORT = 8765
+DEFAULT_MAX_CONNECTIONS = 128  # served at once (connection_limit)
 LIST_LIMIT_DEFAULT = 500
 LIST_LIMIT_MAX = 2000
 EXPIRY_HUB = "~expiry"  # reserved; never a real hub id
@@ -2940,15 +2941,51 @@ class Handler(BaseHTTPRequestHandler):
                          "invites": [invite_wire(r) for r in invs]})
 
 
+def connection_limit(cfg: Dict[str, Any]) -> int:
+    """How many connections the hub serves at once (`max_connections`, default
+    DEFAULT_MAX_CONNECTIONS), kept well under the process's file descriptor limit (256 by
+    default on macOS) so the database, peers and the listening sockets always have some."""
+    limit = int(cfg.get("max_connections") or DEFAULT_MAX_CONNECTIONS)
+    try:
+        import resource
+        soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        if soft != resource.RLIM_INFINITY and soft > 0:
+            limit = min(limit, max(8, soft - 64))
+    except (ImportError, OSError, ValueError):
+        pass
+    return max(1, limit)
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, addr: Tuple[str, int], handler: Any, freebind: bool = False) -> None:
+    def __init__(self, addr: Tuple[str, int], handler: Any, freebind: bool = False,
+                 max_connections: int = DEFAULT_MAX_CONNECTIONS) -> None:
         self._freebind = freebind
+        # A thread and a descriptor per connection: past the limit a new connection is closed
+        # at once, so idle or slow clients can't exhaust descriptors (accept then fails with
+        # EMFILE in a busy loop) or threads.
+        self._slots = threading.BoundedSemaphore(max(1, int(max_connections)))
         if ":" in addr[0]:
             self.address_family = socket.AF_INET6
         super().__init__(addr, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
     def server_bind(self) -> None:
         if self._freebind and sys.platform.startswith("linux"):
@@ -3008,10 +3045,11 @@ class Hub:
         handler = type("BoundHandler", (Handler,), {"hub": self})
         self.servers: List[_Server] = []
         port = int(cfg["port"])
+        max_connections = connection_limit(cfg)
         for bind in normalise_binds(cfg["bind"]):
             if bind in ANY_INTERFACE:
                 bind = "0.0.0.0"
-            srv = _Server((bind, port), handler, bool(cfg.get("freebind")))
+            srv = _Server((bind, port), handler, bool(cfg.get("freebind")), max_connections)
             port = srv.server_address[1]  # port 0: every address shares the first one's port
             self.servers.append(srv)
         self.server = self.servers[0]
