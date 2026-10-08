@@ -120,6 +120,18 @@ class RenderTests(unittest.TestCase):
         with self.assertRaises(gen.BuildError):
             render('<img src="https://example.com/x.png" width="10" alt="x">')
 
+    def test_screenshot_figures_and_captions(self):
+        # A screenshot line becomes a figure on a stage; a one-line italic paragraph right
+        # after it becomes its caption. Any other paragraph stays a paragraph.
+        img = '<img src="../../site/img/panel.png" width="100" alt="The panel">'
+        out, _ = render(img + "\n\n*Settings → Panel, at the defaults.*\n\nNext.")
+        self.assertIn('<figure class="doc-fig">\n<div class="stage"><img src="../img/panel.png"', out)
+        self.assertIn("<figcaption>Settings → Panel, at the defaults.</figcaption>\n</figure>", out)
+        self.assertIn("<p>Next.</p>", out)
+        out, _ = render(img + "\n\nA plain paragraph.")
+        self.assertNotIn("<figcaption>", out)
+        self.assertIn("<p>A plain paragraph.</p>", out)
+
     def test_headings_get_github_anchors(self):
         out, doc = render("# Title\n\n## 1. Install the Mac app (it runs its own hub)\n\n"
                           "## Start here: `needs-you doctor`\n\n## Options\n\n## Options")

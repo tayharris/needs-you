@@ -307,8 +307,21 @@ class Doc:
                 i = self.list(lines, i, out)
                 continue
             if IMG_LINE.match(line):
-                out.append('<p class="doc-img">%s</p>' % self.images(line))
+                # A screenshot line, and its caption when the next paragraph is one line
+                # of italics ("*Settings → Panel → Opacity, at the defaults.*").
+                imgs = self.images(line)
                 i += 1
+                j = i
+                while j < n and not lines[j].strip():
+                    j += 1
+                cap = CAPTION.match(lines[j]) if j < n else None
+                if cap and (j + 1 >= n or not lines[j + 1].strip()):
+                    caption = "\n<figcaption>%s</figcaption>" % self.inline(cap.group(1))
+                    i = j + 1
+                else:
+                    caption = ""
+                out.append('<figure class="doc-fig">\n<div class="stage">%s</div>%s\n</figure>'
+                           % (imgs, caption))
                 continue
             para = [line.strip()]
             i += 1
@@ -461,6 +474,7 @@ TABLE_SEP = re.compile(r"^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$")
 LIST_ITEM = re.compile(r"^( {0,3})([-*+]|\d{1,9}[.)])( +|$)(.*)$")
 IMG_TAG = re.compile(r"<img\s[^>]*>")
 IMG_LINE = re.compile(r"^\s*(?:<img\s[^>]*>\s*(?:&nbsp;\s*)?)+$")
+CAPTION = re.compile(r"^\s*\*(?!\*)(\S(?:.*\S)?)\*\s*$")
 
 
 # Copy buttons (site.js adds one to a code block marked data-copy) are only for commands a
