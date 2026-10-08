@@ -145,11 +145,12 @@ class HookMode(Base):
 class Plugin(Base):
     DRIVER = r"""
 import { pathToFileURL } from "node:url"
+import { readFileSync } from "node:fs"
 const mod = await import(pathToFileURL(process.argv[2]).href)
 const names = Object.keys(mod)
 if (names.length !== 1 || typeof mod[names[0]] !== "function") throw new Error("exports: " + names)
 const hooks = await mod[names[0]]({ directory: process.argv[3], worktree: process.argv[3] })
-const events = JSON.parse(process.argv[4])
+const events = JSON.parse(readFileSync(process.argv[4], "utf8"))
 const t0 = Date.now()
 for (const e of events) await hooks.event({ event: e })
 await hooks.event({ event: null })              // junk never throws
@@ -166,7 +167,11 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
         # needs to be told (some versions fail, newer ones only warn on stderr).
         with open(os.path.join(self.oc, "plugins", "package.json"), "w") as fh:
             fh.write('{"type": "module"}\n')
-        r = subprocess.run([NODE, driver, plugin, self.cwd, json.dumps(events)], env=self.env(),
+        # The events go in a file: a long command line got node SIGKILLed on the Mac test host.
+        events_file = os.path.join(self.home, "events.json")
+        with open(events_file, "w") as fh:
+            json.dump(events, fh)
+        r = subprocess.run([NODE, driver, plugin, self.cwd, events_file], env=self.env(),
                            capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertLess(json.loads(r.stdout)["ms"], 1000)  # never waits for the hook
