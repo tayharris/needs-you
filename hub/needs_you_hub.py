@@ -1973,14 +1973,30 @@ def safe_text(value: Any, limit: int) -> str:
     return redact_log(str(value))[:limit]
 
 
+def _peer_link(link: Any) -> Optional[Dict[str, str]]:
+    """A replicated link as POST would store it, or None when POST would refuse it."""
+    try:
+        return _validate_link(link, "link")
+    except ApiError:
+        return None
+
+
 def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
     """A replicated step, kept as sent except a link this hub would refuse (dropped, the
-    step stays), like replicated item links. Its text and done must have their types."""
-    if not isinstance(step.get("text"), str) or not isinstance(step.get("done", False), bool):
+    step stays), like replicated item links. Its text must pass POST's rules and done must
+    be a boolean."""
+    if not isinstance(step.get("done", False), bool):
+        raise ValueError("steps")
+    try:
+        _str_field(step, "text", MAX_STEP_TEXT, required=True)
+    except ApiError:
         raise ValueError("steps")
     link = step.get("link")
-    if link is not None and not (isinstance(link, dict) and link_allowed(link.get("url"))):
+    if link is not None:
+        clean = _peer_link(link)
         step = {k: v for k, v in step.items() if k != "link"}
+        if clean is not None:
+            step["link"] = clean
     return step
 
 
@@ -2017,18 +2033,24 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
                 raise ValueError(c)
             out[c] = v
         out["body"] = _opt_str(rec, "body") or ""
-        # Defence in depth: a peer (or an older hub) can't hand us a link this hub would refuse.
+        # Defence in depth: a peer (or an older hub) can't hand us text POST would refuse
+        # (length, control characters), or a link or label it would refuse: readers decode
+        # what we serve, and a label or source field that isn't text fails their whole poll.
+        _str_field(out, "title", MAX_TITLE, required=True)
+        _str_field(out, "body", MAX_BODY, allow_newlines=True)
+        if _str_field(out, "key", MAX_KEY, required=True) is None or not KEY_RE.match(out["key"].strip()):
+            raise ValueError("key")
         links = rec.get("links") or []
-        out["links"] = json.dumps([lk for lk in (links if isinstance(links, list) else [])
-                                   if isinstance(lk, dict) and link_allowed(lk.get("url"))])
+        good = [_peer_link(lk) for lk in (links if isinstance(links, list) else [])]
+        out["links"] = json.dumps([lk for lk in good if lk is not None][:MAX_LINKS])
         steps = rec.get("steps") or []
-        if not isinstance(steps, list):
+        if not isinstance(steps, list) or len(steps) > MAX_STEPS:
             raise ValueError("steps")
         out["steps"] = json.dumps([_peer_step(st) for st in steps if isinstance(st, dict)])
         source = rec.get("source") or {}
         if not isinstance(source, dict):
             raise ValueError("source")
-        out["source"] = json.dumps(source)
+        out["source"] = json.dumps(validate_source(source))
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
         out["content_updated_at"] = parse_ts(rec.get("content_updated_at") or rec["updated_at"])

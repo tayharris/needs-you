@@ -243,6 +243,54 @@ class HubAbuse(HubTestCase):
         got = self.hub.store.get_item(rec["id"])
         self.assertEqual(json.loads(got["links"]), [link("https://ok.example")])
 
+    def test_replicated_items_follow_the_post_rules(self):
+        # Scan 2026-10-08: a peer record's link labels, step text, source fields, title, body and
+        # key were stored as sent. A label or source field that isn't a string made the Mac
+        # app's decoder refuse the whole poll, every item with it.
+        now = hubmod.fmt_ts(self.hub.store.now_ms())
+
+        def rec(**kw):
+            r = {"id": hubmod.new_ulid(), "key": "work:x:" + hubmod.new_ulid(), "context": "work",
+                 "kind": "needs", "priority": "normal", "title": "t", "status": "open",
+                 "created_at": now, "updated_at": now}
+            r.update(kw)
+            return r
+
+        kept = rec(links=[{"label": 5, "url": "https://a.example"}, link("https://ok.example"),
+                          {"label": "‮evil", "url": "https://b.example"},
+                          {"label": "L", "url": "https://c.example", "extra": {"x": [1]}}],
+                   steps=[{"text": "do it", "link": {"label": ["x"], "url": "https://a.example"}}],
+                   source={"host": "devbox", "agent": "claude", "extra": {"deep": [1, 2]}})
+        bad = {
+            "source not text": rec(source={"host": 5}),
+            "source too long": rec(source={"project": "p" * 101}),
+            "title too long": rec(title="t" * 101),
+            "title control": rec(title="a‮b"),
+            "body too long": rec(body="b" * 2001),
+            "key not a key": rec(key="work:x y"),
+            "step text too long": rec(steps=[{"text": "s" * 201}]),
+            "too many steps": rec(steps=[{"text": "s"}] * 11),
+        }
+        st, body = request("POST", self.hub.url + "/v1/replicate", "test-peer-secret-0123456789",
+                           {"from_hub": "hub-z", "items": [kept] + list(bad.values())})
+        self.assertEqual(st, 200, body)
+        skipped = {s["id"] for s in body["skipped"]}
+        for name, r in bad.items():
+            with self.subTest(name):
+                self.assertIn(r["id"], skipped)
+                self.assertIsNone(self.hub.store.get_item(r["id"]))
+        got = self.hub.store.get_item(kept["id"])
+        self.assertEqual(json.loads(got["links"]), [link("https://ok.example"), link("https://c.example")])
+        self.assertEqual(json.loads(got["steps"]), [{"text": "do it"}])
+        self.assertEqual(json.loads(got["source"]), {"host": "devbox", "agent": "claude"})
+        st, listing = request("GET", self.hub.url + "/v1/items", self.reader)
+        self.assertEqual(st, 200)
+        for item in listing["items"]:
+            for lk in item["links"]:
+                self.assertIsInstance(lk["label"], str)
+            for v in item["source"].values():
+                self.assertIsInstance(v, str)
+
     def test_access_log_never_shows_invite_codes(self):
         st, inv = request("POST", self.hub.url + "/v1/invites", OWNER, {"name": "srv"})
         self.assertEqual(st, 201)
