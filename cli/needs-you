@@ -880,8 +880,10 @@ def _prune_dir(d: str, max_files: int, max_age_s: float) -> int:
 
 
 def prune() -> int:
-    max_files = int(_env_number("NEEDS_YOU_OUTBOX_MAX", 500))
-    max_age = _env_number("NEEDS_YOU_OUTBOX_MAX_DAYS", 7) * 86400
+    # At least the request just queued, which goes out next: a cap of 0 (or less) meant every
+    # post was dropped before it was sent, with the hub up.
+    max_files = max(1, int(_env_number("NEEDS_YOU_OUTBOX_MAX", 500)))
+    max_age = max(60.0, _env_number("NEEDS_YOU_OUTBOX_MAX_DAYS", 7) * 86400)
     d = outbox_dir()
     dropped = _prune_dir(d, max_files, max_age)
     _prune_dir(os.path.join(d, "failed"), min(max_files, 100), max_age)

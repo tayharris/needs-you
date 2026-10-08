@@ -380,6 +380,21 @@ class Caps(CliTestCase):
         self.assertIn("dropped", r.stderr)
 
 
+    def test_a_zero_cap_never_drops_the_request_being_made(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        for n, env in enumerate(({"NEEDS_YOU_OUTBOX_MAX": "0"}, {"NEEDS_YOU_OUTBOX_MAX_DAYS": "0"},
+                                 {"NEEDS_YOU_OUTBOX_MAX": "-5"})):
+            key = "cap-%d" % n
+            r = self.run_cli("add", "--key", key, "--title", "t", urls=[a.url], token=sender, extra_env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("created", r.stdout, (env, r.stderr))
+            r = self.run_cli("add", "--key", key + "-q", "--title", "t", urls=[self.dead], token=sender,
+                             extra_env=env)
+            self.assertIn("queued", r.stderr)
+            self.assertEqual(len(self.queued()), 1, env)  # the newest is kept
+            os.remove(os.path.join(self.outbox, self.queued()[0]))
+
 class BackwardCompatible(CliTestCase):
     def test_outbox_and_env_from_the_previous_cli(self):
         """Files exactly as main's CLI (f43bf2f) wrote them: a URL-only env file and an outbox entry."""
