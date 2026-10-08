@@ -88,7 +88,8 @@ class Create(InviteCase):
     def test_validation(self):
         for body in ({"name": "bad name"}, {"role": "admin"}, {"uses": 0}, {"uses": 101},
                      {"uses": "3"}, {"ttl_hours": 0}, {"ttl_hours": 99999},
-                     {"name": "srv\n"}):  # $ matched before a final newline: a token "srv\n-box"
+                     {"name": "srv\n"},  # $ matched before a final newline: a token "srv\n-box"
+                     {"ttl_hours": 1e-9}):  # under a millisecond: dead on arrival
             with self.subTest(body):
                 self.assertEqual(self.invite(**body)[0], 400)
 

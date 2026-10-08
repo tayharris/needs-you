@@ -1386,7 +1386,8 @@ class Store:
         if isinstance(uses, bool) or not isinstance(uses, int) or not 1 <= uses <= INVITE_MAX_USES:
             raise _invalid("uses", "uses must be an integer from 1 to %d" % INVITE_MAX_USES)
         if (isinstance(ttl_hours, bool) or not isinstance(ttl_hours, (int, float))
-                or not 0 < float(ttl_hours) <= INVITE_MAX_TTL_HOURS):
+                or not 1 <= float(ttl_hours) * 3600 * 1000
+                or not float(ttl_hours) <= INVITE_MAX_TTL_HOURS):  # at least 1 ms: alive when made
             raise _invalid("ttl_hours", "ttl_hours must be a number from 0 to %d" % INVITE_MAX_TTL_HOURS)
         code = mint_invite_code()
         with self.tx():
