@@ -76,6 +76,15 @@ class HostCheck(HubTestCase):
             for _ in range(5):
                 self.assertEqual(self.get("evil.example")[0], 421)
             self.assertEqual(len(calls), 1)
+            # A rebinding Host that makes the hub re-read: the names come from this machine
+            # (gethostname) and the config only, never from the request, so it is still 421,
+            # and so is every request after it.
+            self.hub._host_names_read -= hubmod.HOST_NAMES_REREAD_SECONDS + 1
+            for host in ("attacker.example", "attacker.example", "renamed-mac.attacker.example"):
+                st, body = self.get(host)
+                self.assertEqual(st, 421, body)
+            self.assertEqual(len(calls), 2)
+            self.assertNotIn("attacker.example", self.hub.host_names)
 
     def test_missing_host_passes(self):
         # HTTP/1.0 clients may leave it out; a browser always sends one.
