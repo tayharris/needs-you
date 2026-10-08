@@ -191,12 +191,13 @@ section).</li>
 question as <code>answerable</code> and wait for the answer. The person's Mac shows each option as a
 button; their click comes back to you as JSON. Only the labels you offered can come back,
 never free text, and nothing comes back unless the person clicks.</p>
-<div class="code" data-copy><pre><code class="language-bash">needs-you add --key "work:deploy:api-v2.14" --title "Deploy api v2.14 now or after the migration?" \
+<div class="code" data-copy><pre><code class="language-bash">qid="deploy-214-$(date +%s)"   # a new id each time you ask
+needs-you add --key "work:deploy:api-v2.14" --title "Deploy api v2.14 now or after the migration?" \
   --body "Canary is green. The migration runs at 15:00." \
-  --question-json '{"id": "deploy-214", "answerable": true, "items": [{"header": "Deploy",
+  --question-json '{"id": "'"$qid"'", "answerable": true, "items": [{"header": "Deploy",
     "text": "When should v2.14 go out?", "options": [{"label": "Now", "description": "All regions"},
     {"label": "After the migration"}]}]}'
-answer=$(needs-you answer-wait --key "work:deploy:api-v2.14" --timeout 900)
+answer=$(needs-you answer-wait --key "work:deploy:api-v2.14" --question-id "$qid" --timeout 900)
 case $? in
   0) choice=$(printf '%s' "$answer" | python3 -c 'import json,sys; print(json.load(sys.stdin)["answers"][0]["selected"][0])') ;;
   3) choice="" ;;   # no answer in 15 minutes: do nothing rash, ask again later or stop
@@ -211,6 +212,10 @@ when you'll stop waiting, so a late click is refused rather than lost.</li>
 runs out and 4 when no answer will come (the card was resolved or dismissed, the question
 expired, or it isn't answerable). Treat anything but 0 as "no answer": never pick a
 default for the person.</li>
+<li>Give each ask a new question <code>id</code> and pass it to <code>--question-id</code>. Once nothing is open
+under the key, the hub reads back the last item with it, so without the id an earlier
+run's answer (its card already resolved) could come back while this run's post is still
+queued or on another hub. With it, only an answer to this question counts.</li>
 <li>Only the token that posted the question can read its answer. Re-posting the same question
 keeps the answer; changing it clears it.</li>
 <li>The item stays open after the click: resolve it once you've acted.</li>

@@ -813,16 +813,33 @@ MAX_QUESTIONS, MAX_OPTIONS = 4, 8
 MAX_QUESTION_HEADER, MAX_QUESTION_TEXT, MAX_OPTION_LABEL = 30, 500, 80
 _BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f­؜᠎​-‏ -‮"
                         "⁠-⁩﻿]")
+# --- needs-you redaction (begin) ---
+# Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
+# block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
+# integrations/mcp/needs_you_mcp.py and integrations/github/needs-you-github
+# (tests/test_redaction.py checks). Best effort: a secret that looks like a word isn't caught.
+# Every pattern runs in linear time on any input (tests/test_redaction.py times them): each one
+# starts on a literal and never backtracks over a run it has to give back.
+REDACTED = "[redacted]"
 _SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
                          r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|nyi?_[A-Za-z0-9_-]{8,}"
-                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*)")
-_SECRET_KV = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key"
-                        r"|auth|credentials?))(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,})")
+# A JWT: the whole run is taken greedily, then checked (a failed match never rescans the run).
+_JWT_RUN = re.compile(r"\beyJ[\w.-]+")
+_JWT = re.compile(r"eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*")
+# A name ending in a secret's keyword, then its value (`:`, `=`, `=>`, or URL-encoded %3A/%3D).
+# Only the keyword is matched, never the name's prefix (PGPASSWORD, X_API_KEY, client_secret).
+# Keywords other than "password" start a word or follow _ or - (DB_PASS, not bypass).
+_SECRET_KV = re.compile(r"(?i)(password|(?<![a-z0-9])(?:passwd|pwd|pw|pass(?:phrase)?|token|secret"
+                        r"|(?:api|access|secret|private)[_-]?key|auth|credentials?))"
+                        r"([\"']?\s*(?:=>|[:=]|%3[ad])\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+# A command line's --password VALUE (with a space): _flag() checks the keyword ends a --flag.
+_SECRET_FLAG = re.compile(r"(?i)(?<=-)(password|passwd|token|secret|api-key)([ \t]+)(?!-)(\S+)")
 _SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
 _PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
 _LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
 _LONG_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
-REDACTED = "[redacted]"
+_SPACES = re.compile(r"(\s+)")
 
 
 def _long_run(m):
@@ -834,13 +851,50 @@ def _long_run(m):
     return s
 
 
+def _jwt(m):
+    j = _JWT.match(m.group(0))
+    return REDACTED + m.group(0)[j.end():] if j else m.group(0)
+
+
+def _flag(m):
+    i = m.start()
+    while i > 0 and (m.string[i - 1].isalnum() or m.string[i - 1] in "-_"):
+        i -= 1
+    if m.string.startswith("--", i):
+        return m.group(1) + m.group(2) + REDACTED
+    return m.group(0)
+
+
+def _url_creds(word):
+    """scheme://user:<password>@host in one whitespace-free word: the password runs to the last
+    "@" before the query, so one holding "/" or "@" goes whole (a path's "@" may go with it)."""
+    parts = word.split("://")
+    for i in range(1, len(parts)):
+        seg = parts[i]
+        end = len(seg)
+        for c in "?#":
+            k = seg.find(c)
+            if 0 <= k < end:
+                end = k
+        at = seg.rfind("@", 0, end)
+        colon = seg.find(":", 0, at)
+        if at > 0 and 0 <= colon < at - 1 and "/" not in seg[:colon]:
+            parts[i] = seg[:colon + 1] + REDACTED + seg[at:]
+    return "://".join(parts)
+
+
 def redact(text):
     text = _PEM.sub(REDACTED, text)
+    if "://" in text:
+        text = "".join(_url_creds(w) if "://" in w else w for w in _SPACES.split(text))
     text = _SECRET_RAW.sub(REDACTED, text)
+    text = _JWT_RUN.sub(_jwt, text)
     text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _SECRET_FLAG.sub(_flag, text)
     text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
     text = _LONG_HEX.sub(REDACTED, text)
     return _LONG_RUN.sub(_long_run, text)
+# --- needs-you redaction (end) ---
 
 
 def clamp(text, limit):
@@ -948,12 +1002,35 @@ def answerable_as_is(questions, field):
     redacted), so the labels the person clicks are the agent's own."""
     if not field or len(field["items"]) != len(questions):
         return False
-    for (_, _, opts, _), item in zip(questions, field["items"]):
+    for (header, text, opts, _), item in zip(questions, field["items"]):
         if not opts or len(opts) != len(item["options"]):
             return False
         if any(label != o["label"] for (label, _), o in zip(opts, item["options"])):
             return False
+        # Two choices with one label: the answer (labels only) can't say which was clicked.
+        if len(set(label for label, _ in opts)) != len(opts):
+            return False
+        # The question, its header and each choice's description reach the card whole too
+        # (only cleaned): never answered from a card that showed part of what was asked.
+        if not (shown_whole(text, MAX_QUESTION_TEXT, True) and shown_whole(header, MAX_QUESTION_HEADER)
+                and all(shown_whole(desc, MAX_STEP) for _, desc in opts)):
+            return False
     return True
+
+
+def shown_whole(value, limit, block=False):
+    """Is agent text shown on the card as written: nothing redacted, cut or left out?"""
+    if not isinstance(value, str) or not value.strip():
+        return True
+    if redact(value) != value:
+        return False
+    if block:
+        # The card drops fence lines and renders inline markdown, where a link shows only its
+        # text: either would show the person something other than what the agent asked.
+        if re.search(r"(?m)^\s*(```|~~~)", value) or "](" in value:
+            return False
+        return text_block(value, limit) == text_block(value, 1 << 30, 1 << 30)
+    return one_line(value, limit) == one_line(value, 1 << 30)
 
 
 def question_field(questions, qid="", answerable=False):
@@ -1454,6 +1531,9 @@ def claude_answerable(raw):
         if any(not isinstance(l, str) or not l.strip() for l in labels) or len(set(labels)) != len(labels):
             return False
         if q.get("multiSelect") is True and any(", " in l for l in labels):
+            return False
+        # The card says "choose any" for these too, but Claude reads only multiSelect.
+        if q.get("multiSelect") is not True and any(q.get(k) is True for k in ("multi_select", "multiple")):
             return False
         texts.append(q["question"])
     return len(set(texts)) == len(texts)

@@ -168,8 +168,8 @@ class ScrubTail(unittest.TestCase):
         lines = cli.scrub_tail(raw)
         self.assertEqual(len(lines), 3)
         self.assertLessEqual(len(lines[0]), cli.RUN_LINE_MAX)
-        self.assertEqual(lines[1], "use <redacted> here")
-        self.assertEqual(lines[2], "<redacted>")
+        self.assertEqual(lines[1], "use [redacted] here")
+        self.assertEqual(lines[2], "[redacted]")
         self.assertEqual(len(cli.scrub_tail(b"\n".join(b"l%d" % i for i in range(20)))), cli.RUN_TAIL_LINES)
         self.assertEqual(cli.scrub_tail(b"\xff\xfe bad utf8"), ["�� bad utf8"])
 

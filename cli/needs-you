@@ -10,12 +10,14 @@
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
   needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
   needs-you resolve (--key KEY | --id ID)
-  needs-you answer-wait --key KEY [--timeout SECONDS]
+  needs-you answer-wait --key KEY [--question-id ID] [--timeout SECONDS]
                                                      wait for the person's answer to the
                                                      answerable question posted under KEY and
                                                      print it as JSON (exit 0); exit 3 when
                                                      the time runs out, 4 when no answer will
-                                                     come (closed, expired, not answerable)
+                                                     come (closed, expired, not answerable).
+                                                     --question-id: only an answer to the
+                                                     question with that id counts
   needs-you run [--key KEY] [--title TITLE] [--done-after SECONDS] [--no-output] [...] -- CMD [ARGS...]
                                                      run CMD with its output and exit code passed
                                                      through; on failure post a card (exit code and
@@ -1490,11 +1492,14 @@ ANSWER_EXIT_NONE = 4
 ANSWER_POLL_SECONDS = 25  # the hub holds a GET /v1/items/answer at most this long
 
 
-def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
+def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool,
+                question_id: Optional[str] = None) -> int:
     """Long-poll GET /v1/items/answer?key= until the person answers (print the answer as
     JSON, exit 0), the time runs out (3) or no answer will come (4: the item closed, its
     question expired or isn't answerable). A hub that can't be reached, or doesn't know the
     item yet (a post still queued or replicating), is asked again until the time runs out.
+    With `question_id`, an answer to any other question (an earlier one under the same key,
+    which the hub reads back while this post hasn't reached it) is "not there yet" too.
     Never answers anything itself."""
     if not cfg.ok:
         warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s)" % config_path())
@@ -1522,8 +1527,10 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
         if got is not None:
             status, body = got
             if status == 200 and isinstance(body.get("answers"), list):
-                print(json.dumps(body, sort_keys=True))
-                return 0
+                if question_id is None or body.get("question_id") == question_id:
+                    print(json.dumps(body, sort_keys=True))
+                    return 0
+                last_note = "the answer under %r is to another question" % key
             if status == 409:
                 if not quiet:
                     warn("no answer will come: %s" % clean(body.get("message") or body.get("error") or ""))
@@ -1540,6 +1547,8 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool) -> int:
             return ANSWER_EXIT_TIMEOUT
         if got is None or got[0] != 204:
             time.sleep(min(2.0, left))  # unreachable, or not there yet: don't spin
+        if got is not None and got[0] == 200:
+            flush(cfg)  # another question's answer: this post may still be in the outbox
 
 
 def hours_arg(raw: str) -> float:
@@ -1686,6 +1695,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
     ap = sub.add_parser("answer-wait", help="wait for the person's answer to the answerable question "
                         "posted under KEY; print it as JSON (exit 3: timed out, 4: none will come)")
     ap.add_argument("--key", required=True)
+    ap.add_argument("--question-id", metavar="ID",
+                    help="only an answer to the question with this id (its \"id\" in --question-json) counts")
     ap.add_argument("--timeout", type=float, default=600.0, metavar="SECONDS",
                     help="give up after this long (default 600)")
     add_run_parser(sub)
@@ -1800,7 +1811,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
             warn("--timeout must be a number of seconds")
             return 2
         flush(cfg)  # a queued post of this item goes out first
-        return answer_wait(cfg, args.key, args.timeout, args.quiet)
+        return answer_wait(cfg, args.key, args.timeout, args.quiet, args.question_id)
     if args.cmd == "resolve":
         if not (args.key if args.key is not None else args.id).strip():
             warn("resolve: --key/--id must not be empty")
@@ -1851,11 +1862,88 @@ RUN_LINE_MAX = 160
 _ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[@-Z\\-_])")
 _INVISIBLE_RE = re.compile("[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
 # Best effort only: the docs tell people to use --no-output for anything that may print secrets.
-_SECRET_KV_RE = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key))"
-                           r"(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
-_SECRET_AUTH_RE = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{12,}")
-_SECRET_RAW_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}"
-                            r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|ny_[\w-]{20,}|nyi_[\w-]{10,})")
+# --- needs-you redaction (begin) ---
+# Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
+# block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
+# integrations/mcp/needs_you_mcp.py and integrations/github/needs-you-github
+# (tests/test_redaction.py checks). Best effort: a secret that looks like a word isn't caught.
+# Every pattern runs in linear time on any input (tests/test_redaction.py times them): each one
+# starts on a literal and never backtracks over a run it has to give back.
+REDACTED = "[redacted]"
+_SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
+                         r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|nyi?_[A-Za-z0-9_-]{8,}"
+                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,})")
+# A JWT: the whole run is taken greedily, then checked (a failed match never rescans the run).
+_JWT_RUN = re.compile(r"\beyJ[\w.-]+")
+_JWT = re.compile(r"eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*")
+# A name ending in a secret's keyword, then its value (`:`, `=`, `=>`, or URL-encoded %3A/%3D).
+# Only the keyword is matched, never the name's prefix (PGPASSWORD, X_API_KEY, client_secret).
+# Keywords other than "password" start a word or follow _ or - (DB_PASS, not bypass).
+_SECRET_KV = re.compile(r"(?i)(password|(?<![a-z0-9])(?:passwd|pwd|pw|pass(?:phrase)?|token|secret"
+                        r"|(?:api|access|secret|private)[_-]?key|auth|credentials?))"
+                        r"([\"']?\s*(?:=>|[:=]|%3[ad])\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+# A command line's --password VALUE (with a space): _flag() checks the keyword ends a --flag.
+_SECRET_FLAG = re.compile(r"(?i)(?<=-)(password|passwd|token|secret|api-key)([ \t]+)(?!-)(\S+)")
+_SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
+_PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
+_LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
+_LONG_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
+_SPACES = re.compile(r"(\s+)")
+
+
+def _long_run(m):
+    s = m.group(0)
+    # base64-ish: digits and both cases, few separators (not a path or a branch name)
+    if (len(re.findall(r"[-_/]", s)) <= 3 and re.search(r"[0-9]", s) and re.search(r"[a-z]", s)
+            and re.search(r"[A-Z]", s)):
+        return REDACTED
+    return s
+
+
+def _jwt(m):
+    j = _JWT.match(m.group(0))
+    return REDACTED + m.group(0)[j.end():] if j else m.group(0)
+
+
+def _flag(m):
+    i = m.start()
+    while i > 0 and (m.string[i - 1].isalnum() or m.string[i - 1] in "-_"):
+        i -= 1
+    if m.string.startswith("--", i):
+        return m.group(1) + m.group(2) + REDACTED
+    return m.group(0)
+
+
+def _url_creds(word):
+    """scheme://user:<password>@host in one whitespace-free word: the password runs to the last
+    "@" before the query, so one holding "/" or "@" goes whole (a path's "@" may go with it)."""
+    parts = word.split("://")
+    for i in range(1, len(parts)):
+        seg = parts[i]
+        end = len(seg)
+        for c in "?#":
+            k = seg.find(c)
+            if 0 <= k < end:
+                end = k
+        at = seg.rfind("@", 0, end)
+        colon = seg.find(":", 0, at)
+        if at > 0 and 0 <= colon < at - 1 and "/" not in seg[:colon]:
+            parts[i] = seg[:colon + 1] + REDACTED + seg[at:]
+    return "://".join(parts)
+
+
+def redact(text):
+    text = _PEM.sub(REDACTED, text)
+    if "://" in text:
+        text = "".join(_url_creds(w) if "://" in w else w for w in _SPACES.split(text))
+    text = _SECRET_RAW.sub(REDACTED, text)
+    text = _JWT_RUN.sub(_jwt, text)
+    text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _SECRET_FLAG.sub(_flag, text)
+    text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _LONG_HEX.sub(REDACTED, text)
+    return _LONG_RUN.sub(_long_run, text)
+# --- needs-you redaction (end) ---
 
 
 def add_run_parser(sub: Any) -> None:
@@ -1897,9 +1985,7 @@ def scrub_tail(raw: bytes, lines: int = RUN_TAIL_LINES, width: int = RUN_LINE_MA
         line = _ANSI_RE.sub("", line)
         line = line.rsplit("\r", 1)[-1] if "\r" in line.rstrip("\r") else line.rstrip("\r")
         line = _INVISIBLE_RE.sub("", line.replace("\t", "    ")).rstrip()
-        line = _SECRET_RAW_RE.sub("<redacted>", line)
-        line = _SECRET_KV_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", line)
-        line = _SECRET_AUTH_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", line)
+        line = redact(line)
         line = line.replace("```", "'''")
         if line.strip():
             out.append(line if len(line) <= width else line[:width - 1] + "…")

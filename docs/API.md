@@ -390,8 +390,10 @@ request older than `request_read_seconds`), so long polls can't starve the hub.
 | `404` | `not_found` | No such item for this token (yet: a post still in the sender's outbox) |
 | `409` | `not_open`, `not_answerable`, `question_expired` | No answer will come: the item closed, has no answerable question, or the question expired |
 
-`answers` has the shape posted to `POST /v1/items/{id}/answer`. `needs-you answer-wait` wraps
-this (see the [agent guide](AGENT-GUIDE.md)).
+`answers` has the shape posted to `POST /v1/items/{id}/answer`. Check `question_id`: once
+nothing is open under the key, the answer read back is the last item's, which may be an
+earlier question's. `needs-you answer-wait` wraps this (`--question-id` keeps waiting past
+another question's answer; see the [agent guide](AGENT-GUIDE.md)).
 
 ### `GET /v1/items` (reader)
 

@@ -242,7 +242,7 @@ class Tools(McpTestCase):
     def test_redact(self):
         mod = load_server()
         self.assertEqual(mod.redact("token ny_abcdefghijklmnop and nyi_ABCDEFGHIJ, Bearer abc.def-ghi_jkl"),
-                         "token ny_[redacted] and nyi_[redacted], Bearer [redacted]")
+                         "token [redacted] and [redacted], Bearer [redacted]")
         self.assertEqual(mod.redact("work:ny_1:x ny_"), "work:ny_1:x ny_")
 
     def test_no_cli(self):

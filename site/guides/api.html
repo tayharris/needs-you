@@ -393,8 +393,10 @@ request older than <code>request_read_seconds</code>), so long polls can't starv
 <tr><td><code>409</code></td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code></td><td>No answer will come: the item closed, has no answerable question, or the question expired</td></tr>
 </tbody>
 </table></div>
-<p><code>answers</code> has the shape posted to <code>POST /v1/items/{id}/answer</code>. <code>needs-you answer-wait</code> wraps
-this (see the <a href="agent-guide.html">agent guide</a>).</p>
+<p><code>answers</code> has the shape posted to <code>POST /v1/items/{id}/answer</code>. Check <code>question_id</code>: once
+nothing is open under the key, the answer read back is the last item's, which may be an
+earlier question's. <code>needs-you answer-wait</code> wraps this (<code>--question-id</code> keeps waiting past
+another question's answer; see the <a href="agent-guide.html">agent guide</a>).</p>
 <h3 id="get-v1items-reader"><code>GET /v1/items</code> (reader) <a class="anchor" href="#get-v1items-reader" aria-label="Link to this section">#</a></h3>
 <p>Query parameters:</p>
 <div class="table-wrap"><table class="doc-table">

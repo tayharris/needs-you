@@ -94,6 +94,7 @@ function answerable(list) {
   if (!Array.isArray(list) || list.length < 1 || list.length > 4) return false
   return list.every((q) => q && typeof q === "object" && q.custom !== false && str(q.header) !== "Build Agent" &&
     str(q.question).trim() !== "" && Array.isArray(q.options) && q.options.length >= 1 && q.options.length <= 8 &&
+    new Set(q.options.map((o) => str(o && o.label))).size === q.options.length &&
     q.options.every((o) => o && typeof o === "object" && str(o.label).trim() === str(o.label) &&
       str(o.label) !== "" && str(o.label).length <= 80 && !/[\u0000-\u001f\u007f-\u009f]/.test(str(o.label))))
 }

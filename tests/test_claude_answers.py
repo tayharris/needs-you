@@ -193,6 +193,25 @@ class AskMode(unittest.TestCase):
             "no options": qs(q("Which?", [])),
             "an option that isn't an object": {"questions": [{"question": "Which?", "options": ["A", "B"]}]},
             "a question without text": {"questions": [{"header": "H", "options": [{"label": "A"}]}]},
+            # Security review 0.2: the question and the choices' descriptions must reach the
+            # card whole too, or the person answers something they were only partly shown.
+            "a question the card would cut short": qs(q("Delete these?\n" + "\n".join(
+                "- file%d" % i for i in range(12)) + "\nand drop the production database", ["Yes", "No"])),
+            "a question over the card's length": qs(q("Proceed? " + "word " * 120 + "(this deletes prod)",
+                                                      ["Yes", "No"])),
+            "a question it would redact": qs(q("Use ghp_abcdefghijklmnopqrstuvwxyz0123 to push?", ["Yes", "No"])),
+            "a header it would cut": qs(dict(q("Which?", ["A", "B"]), header="H" * 40)),
+            # Parser differentials (security review 0.2): what the card shows must be what
+            # Claude takes. A fence line is dropped from the card; a markdown link shows only
+            # its text there; multi_select/multiple make the card "choose any" while Claude
+            # reads only multiSelect.
+            "a one-line code fence the card drops": qs(q("Run this?\n```rm -rf ~/work```", ["Yes", "No"])),
+            "a markdown link the card shows as its text": qs(q(
+                "Merge [PR 12](https://github.com/acme/app/pull/13)?", ["Yes", "No"])),
+            "multi_select where Claude reads multiSelect": {"questions": [dict(
+                q("Which?", ["A", "B"]), multiSelect=False, multi_select=True)]},
+            "a description it would cut": {"questions": [{"question": "Which?", "header": "H", "options": [
+                {"label": "A", "description": "fine " * 50 + "but wipes the disk"}, {"label": "B"}]}]},
         }
         for name, ti in cases.items():
             with self.subTest(name):
