@@ -16,7 +16,7 @@ import tempfile
 import unittest
 
 from hook_case import choice_texts, fixture, has_opt, posted_item, step_texts
-from support import CLI, ROOT, hubmod
+from support import CLI, ROOT, hubmod, wait_until
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -410,6 +410,63 @@ class PayloadEdgeTests(HookHarness):
         self.assertEqual(len(self.calls()), 2)
         self.assertEqual(self.opt(self.last(), "--key").rsplit(":", 1)[1], "sess-1234-abcd")
         self.assertEqual(self.marker()["kind"], "permission")
+
+
+SLOW_CLI = """#!/usr/bin/env python3
+import json, os, sys, time
+if sys.argv[1:2] == ["add"]:
+    time.sleep(float(os.environ.get("FAKE_ADD_SECONDS", "1.5")))
+with open(os.environ["FAKE_CLI_LOG"], "a") as fh:
+    fh.write(json.dumps(sys.argv[1:]) + "\\n")
+"""
+
+
+class ResolveWhilePostingTests(HookHarness):
+    """A resolve that comes while the card is still being posted (a slow hub; Cursor's and
+    Cline's 2 s wait before a turn-end card) used to find no marker and do nothing, and the
+    marker written after the post kept a card up for a wait that had already ended."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.cli, "w") as fh:
+            fh.write(SLOW_CLI)
+
+    def race(self, notify, resolve, mode="resolve"):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux", "NY_TURN_WAIT": "1"}
+        first = dict({"session_id": "sess-1234-abcd", "cwd": self.cwd}, **notify)
+        proc = subprocess.Popen([BASH, HOOK, "notify"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, env=env, text=True)
+        proc.stdin.write(json.dumps(first))
+        proc.stdin.close()
+        proc.stdin = None
+        # once the hook is under way (it has noted that a card is coming), before the post ends
+        posting = os.path.join(self.state, ".posting-sess-1234-abcd")
+        self.assertTrue(wait_until(lambda: os.path.exists(posting), timeout=20))
+        self.assertEqual(self.calls(), [])
+        second = dict({"session_id": "sess-1234-abcd", "cwd": self.cwd}, **resolve)
+        r = subprocess.run([BASH, HOOK, mode], input=json.dumps(second), env=env, capture_output=True,
+                           text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        out, _ = proc.communicate(timeout=30)
+        self.assertEqual((proc.returncode, out), (0, ""))
+        return [c[0] for c in self.calls()]
+
+    def test_claude_permission_answered_while_posting(self):
+        got = self.race({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                         "tool_input": {"command": "ls"}},
+                        {"hook_event_name": "PostToolUse", "tool_name": "Bash"})
+        self.assertEqual(got[-1], "resolve", got)  # the card goes again once it's posted
+        self.assertIn("add", got)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
+
+    def test_without_a_resolve_the_marker_is_written(self):
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                 "tool_input": {"command": "ls"}}, FAKE_ADD_SECONDS="0")
+        self.assertEqual(self.marker()["kind"], "permission")
+        self.assertEqual([c[0] for c in self.calls()], ["add"])
+        self.assertEqual(sorted(os.listdir(self.state)), ["sess-1234-abcd"])  # no claim left behind
 
 
 class FailureTests(HookHarness):
