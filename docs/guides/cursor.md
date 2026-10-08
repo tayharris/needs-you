@@ -36,7 +36,7 @@ The invite installer's `--alerts` writes that line.
 
 | Agent state | Card |
 |---|---|
-| Turn finished, waiting for you | **Cursor finished: my-repo** |
+| Turn finished, waiting for you | **Cursor finished: my-repo** (Cursor's hook carries no text of the turn, so never a question) |
 | Turn ended on an error | **Cursor stopped on an error: my-repo** |
 | Waiting for your approval | none (Cursor has no hook for it) |
 

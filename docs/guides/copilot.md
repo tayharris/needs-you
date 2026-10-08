@@ -37,7 +37,9 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Permission to fetch a page | **Copilot wants to fetch a page: my-repo** |
 | Any other permission prompt | **Copilot needs your approval: my-repo** |
 | An MCP server asks you something | **Copilot asks “Which Jira project should the issue go to?”: my-repo** |
-| Turn finished, waiting for you | **Copilot is waiting for you: my-repo** |
+| Turn finished, waiting for you | **Copilot finished: my-repo** |
+
+Copilot gives the hook no text of the turn, so its turn card always says finished. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Copilot is waiting for you** card (and no session name).
 
 One card per session, updated in place. Command lines, URLs, prompts and tool output aren't sent: a permission card names at most the program. An MCP server's question (`elicitation_dialog`) is on its card, cleaned, token-shaped text redacted and clamped (`NEEDS_YOU_AGENT_QUESTIONS=0` keeps it off). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
 

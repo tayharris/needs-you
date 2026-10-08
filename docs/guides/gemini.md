@@ -39,9 +39,12 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Approve a web fetch | **Gemini wants to fetch a page: my-repo** |
 | A question (`ask_user`) | **Gemini asks “Which test runner should the new package use?”: my-repo**, its choices listed |
 | A plan to approve | **Gemini wants approval for a plan: my-repo** |
-| Turn finished, waiting for you | **Gemini is waiting for you: my-repo** |
+| Turn finished, waiting for you | **Gemini finished: my-repo** |
+| Turn ended on a question to you | **Gemini asks: Which one should I keep? · my-repo** |
 
-One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in Gemini CLI. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval cards.
+A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: **Gemini asks: Should I push the branch? · my-repo** (cleaned, token-shaped text redacted, clamped). `NEEDS_YOU_TURN_TEXT=0` keeps the old **Gemini is waiting for you** card with no name or question.
+
+One card per session, updated in place. No command lines, diffs, URLs or prompts are sent, and of Gemini's reply only the question it ends on. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in Gemini CLI. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval cards.
 
 **Trusted folders only.** Gemini CLI runs no hooks at all, the needs-you ones included, in a folder you haven't trusted (folder trust is on by default). Trust a project when Gemini asks, or turn folder trust off with `"security": {"folderTrust": {"enabled": false}}` in `~/.gemini/settings.json`.
 

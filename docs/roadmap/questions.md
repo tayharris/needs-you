@@ -233,3 +233,24 @@ Source `aider/io.py` [src, high]: `confirm_ask(question, default, subject, expli
 | Everyone else | none (deny-with-reason only) | | no |
 
 Rules for any answer path: never answer a permission prompt or a plan approval, never pick a default or answer on timeout, only labels the agent offered (no free text from the card), and only after an explicit click on the Mac.
+
+## Turn ends: the last message and the session's name
+
+Research for "finished" vs "asks" turn cards and session names in titles (built: the hook's `turn_card`, `session_name`). Tags as above. A turn card says **<Agent> asks: <question>** only when the hook has the turn's final text and its last line ends with "?" (outside code or a table); otherwise **<Agent> finished**.
+
+| Agent | Turn-end event the card comes from | Final text | Session name |
+|---|---|---|---|
+| Claude Code 2.1.294 | `Notification` `idle_prompt` (about 60 s later; its payload has only `message`, `transcript_path`) | the transcript's last main-thread assistant entry's `text` blocks [live, high]. `Stop` also carries `last_assistant_message` [live, high], but the card isn't posted from `Stop` | `/rename` appends `{"type":"custom-title","customTitle":...}` once [live, high]; the auto title is `{"type":"ai-title","aiTitle":...}`, appended again on later turns [live, high]. `UserPromptSubmit` carries `session_title` after a rename [live, high]; `Stop` and `Notification` don't |
+| Codex CLI 0.161.0 | `Stop` | `last_assistant_message` (nullable) [src `hooks/src/schema.rs`, high] | `/rename` appends `{"id","thread_name","updated_at"}` to `$CODEX_HOME/session_index.jsonl`, newest line wins [src `rollout/src/session_index.rs` + live, high]; `id` is the hook's `session_id` |
+| Gemini CLI 0.65 nightly | `AfterAgent` | `prompt_response` [src, high] | none found [low] |
+| opencode 1.18.35 | `session.idle` / `session.status` idle (plugin) | none in the event; the plugin keeps the latest assistant message's text from `message.updated` (role) and `message.part.updated` (`type: "text"`) [src `sdk/js/src/gen/types.gen.ts`, medium] | `session.updated` `info.title`; the placeholder is `New session - <date>` [src `session/session.ts`, high] |
+| Kimi Code 2.0.0 | `Stop` | none: `stopHookActive` and the session facts only [src `agentExternalHooksService.ts`, high] | `session_title` on every event once the session has one (custom or generated) [live 2.1.1 + src, high] |
+| Copilot CLI 1.0.63 | `agentStop` | none (`stopReason`, `transcriptPath`) [src, high] | none found [low] |
+| Grok Build 1.0.46 | `Notification` `idle_prompt` | none in `idle_prompt`; `Stop` has `lastAssistantMessage` [live], but Stop isn't registered | none found [low] |
+| Cursor | `stop` | none (`status`, `transcript_path` in an undocumented format) [docs, medium] | none [docs] |
+| Cline (VS Code) | `TaskComplete` | `taskComplete.taskMetadata.result` [src, medium] | none found [low] |
+| Aider | the notifications command | none (no payload) [src, high] | none |
+
+Not done, needs more: Grok's question would need a `Stop` registration that stashes it for `idle_prompt`; Copilot's `events.jsonl` and Cursor's transcript may hold the final text but their formats weren't checked.
+
+**Where:** the card's where line adds the terminal app from the environment (`TERM_PROGRAM`: `iTerm.app`, `Apple_Terminal`, `ghostty`, `WezTerm`, `WarpTerminal`, ...; `KITTY_WINDOW_ID`, `ALACRITTY_WINDOW_ID`; inside tmux, `TERM_PROGRAM` is `tmux`, so the outer terminal is guessed from inherited variables; over SSH, `LC_TERMINAL` or `LC_NEEDS_YOU_TERM`). For Claude Code in an editor, the workspace: the VS Code extension sets `CLAUDE_CODE_SSE_PORT`, and Claude Code 2.1.294 reads `workspaceFolders` and `ideName` from `<config dir>/ide/<port>.lock` [bin, medium]; the hook reads those two fields and never the lock's `authToken`. Other agents in a VS Code terminal: the environment doesn't name the workspace.

@@ -38,7 +38,7 @@ Each hook file is a few lines of `sh`, marked `# needs-you:`, that runs `~/.conf
 
 - **Key:** `agent:<short-hostname>:<taskId>`.
 - **Project:** the first of `workspaceRoots`.
-- **Never sent:** the agent's final text (`turn.outputText`, `taskMetadata.result`), prompts, tool input or output.
+- **Never sent:** the agent's final text (`turn.outputText`, `taskMetadata.result`), except the question `taskMetadata.result` ends on (**Cline asks: <question>**, redacted, cleaned and clamped; `NEEDS_YOU_TURN_TEXT=0` turns that off), prompts, tool input or output.
 - **Source:** `--agent cline`.
 - Runs whose `parent_agent_id` is set (subagents) post nothing.
 - Cline in VS Code waits up to 30 seconds for a hook; the hook prints nothing (Cline reads "no JSON" as "go on"), hands the work to a background copy and exits 0 at once.

@@ -58,7 +58,7 @@ class AgentInstructions(unittest.TestCase):
     def test_a_skill_edit_that_breaks_a_rewrite_fails_the_build(self):
         src = read("integrations/claude-code/skill/needs-you/SKILL.md")
         with self.assertRaises(gen.StaleSource):
-            gen.build(src.replace("Claude is waiting for you", "Claude waits for you"))
+            gen.build(src.replace("Claude finished\" card", "Claude done\" card"))
         with self.assertRaises(gen.StaleSource):
             gen.build(src + "\nClaude Code only.\n")
 

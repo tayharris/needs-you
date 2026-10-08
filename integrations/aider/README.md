@@ -41,7 +41,7 @@ Aider also reads `.aider.conf.yml` from the git root and the current directory, 
 
 | When | Hook mode | Action |
 |---|---|---|
-| Aider shows its next prompt or a yes/no question after an LLM reply | `notify aider` | `needs-you add`: **Aider is waiting for you**, `--expires-in` 1 hour |
+| Aider shows its next prompt or a yes/no question after an LLM reply | `notify aider` | `needs-you add`: **Aider finished** (Aider doesn't say whether it asked a yes/no question; the body says it may have; `NEEDS_YOU_TURN_TEXT=0`: **Aider is waiting for you**), `--expires-in` 1 hour |
 | Aider exits | (`needs-you flush`) | resolves it: the lease's process is gone |
 
 - **Key:** `agent:<short-hostname>:aider-<pid>`, the pid of the Aider process (the first ancestor of the hook that isn't a shell; Aider runs the command through `sh -c`).

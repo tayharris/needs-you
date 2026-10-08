@@ -45,8 +45,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Session state | Card |
 |---|---|
 | A permission prompt | **Grok needs permission: my-repo** |
-| Waiting for your next message, a minute after the turn | **Grok is waiting for you: my-repo** |
+| Waiting for your next message, a minute after the turn | **Grok finished: my-repo** |
 | The turn failed on an error | **Grok hit a rate limit: my-repo** (or **Grok stopped on an error**) |
+
+Grok gives the hook no text of the turn, so its turn card always says finished. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Grok is waiting for you** card (and no session name).
 
 One card per session, updated in place. Grok's permission notification doesn't say which tool, so neither does the card. The "waiting" card comes from Grok's `idle_prompt` notification, about 60 seconds after the turn ends, as in Claude Code, and not at all if you type first; an open permission card is kept rather than replaced by it. Commands, prompts, Grok's replies and tool output aren't sent. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and error cards. Subagents post nothing; their waits show in the main session.
 

@@ -72,7 +72,8 @@ echo '{"session_id":"test-1"}' | NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/
 <tr><td>Has a plan ready (plan mode)</td><td><strong>Claude wants approval for a plan: my-repo</strong>, with the plan's first lines</td></tr>
 <tr><td>Asked you a question</td><td><strong>Claude asks “Which database should we use?”: my-repo</strong>, with its choices</td></tr>
 <tr><td>Another permission prompt</td><td><strong>Claude needs permission for github create_issue: my-repo</strong></td></tr>
-<tr><td>Idle, waiting for input</td><td><strong>Claude is waiting for you: my-repo</strong></td></tr>
+<tr><td>Finished its turn</td><td><strong>Claude finished: Login fix (my-repo)</strong> (the <code>/rename</code> name or Claude's auto title)</td></tr>
+<tr><td>Ended its turn on a question to you</td><td><strong>Claude asks: Should I also update the migration? · Login fix (my-repo)</strong></td></tr>
 <tr><td>Stopped on an API error</td><td><strong>Claude hit a rate limit: my-repo</strong>, <strong>Claude stopped on an API error: my-repo</strong>, ...</td></tr>
 <tr><td>Hit its usage limit and won't resume</td><td><strong>Claude hit its usage limit: my-repo</strong></td></tr>
 </tbody>
@@ -83,8 +84,9 @@ echo '{"session_id":"test-1"}' | NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/
 <thead><tr><th>Session runs in</th><th>The body says</th></tr></thead>
 <tbody>
 <tr><td>A tmux pane</td><td><code>tmux `work:2.1` </code> (session:window.pane)</td></tr>
-<tr><td>VS Code's terminal (<code>TERM_PROGRAM=vscode</code>)</td><td><code>VS Code</code></td></tr>
-<tr><td>A plain SSH login (not tmux)</td><td><code>SSH</code></td></tr>
+<tr><td>VS Code's terminal (<code>TERM_PROGRAM=vscode</code>) or the extension</td><td><code>VS Code `acme-web` </code> (the workspace Claude Code is connected to, when it is; <code>Cursor</code> in Cursor)</td></tr>
+<tr><td>A terminal app (iTerm, Terminal, Ghostty, WezTerm, kitty, Alacritty, Warp, ...)</td><td>its name, e.g. <code>Ghostty</code>; inside tmux <code>tmux `work:2.1` in iTerm</code></td></tr>
+<tr><td>A plain SSH login (not tmux)</td><td><code>SSH</code>, or <code>SSH from iTerm</code> when the Mac's terminal is known (<code>LC_TERMINAL</code>, <code>LC_NEEDS_YOU_TERM</code>)</td></tr>
 <tr><td>An Orca terminal</td><td>the Orca worktree and the <code>orca terminal switch</code> command</td></tr>
 </tbody>
 </table></div>

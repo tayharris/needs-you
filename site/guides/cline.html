@@ -60,10 +60,12 @@
 <thead><tr><th>Task state</th><th>Card</th></tr></thead>
 <tbody>
 <tr><td>Task finished, waiting for you</td><td><strong>Cline finished: my-repo</strong></td></tr>
+<tr><td>Task finished on a question to you (VS Code)</td><td><strong>Cline asks: Do you want CI wired up too? · my-repo</strong></td></tr>
 <tr><td>Task ended on an error</td><td><strong>Cline stopped on an error: my-repo</strong></td></tr>
 <tr><td>Waiting for your approval</td><td>none (Cline has no hook for it)</td></tr>
 </tbody>
 </table></div>
+<p>A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: <strong>Cline asks: Should I push the branch? · my-repo</strong> (cleaned, token-shaped text redacted, clamped). <code>NEEDS_YOU_TURN_TEXT=0</code> keeps the old <strong>Cline is waiting for you</strong> card with no name or question.</p>
 <p>One card per task (Cline's <code>taskId</code>). Starting or resuming a task clears the cards of earlier tasks in the same Cline. Cline's final answer, which it hands to the hook, and your prompts aren't sent. Subagent runs post nothing, and neither does a one-shot <code>cline "task"</code>: it has exited, so nobody is waiting. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> turns the finished cards off.</p>
 <p>The <code>cline</code> CLI's interactive sessions run in a background hub process that outlives the terminal, so a card from a session you then quit stays until your next task, the hub process stops, or 48 hours pass.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>

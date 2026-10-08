@@ -156,7 +156,7 @@ Before writing code, list every event your tool can report and decide one action
 | Tool event | Means | Action | Key | Title | Priority |
 |---|---|---|---|---|---|
 | `permission_request` | it waits for the person to allow a tool | post `needs` | `<tool>:<host>:<session>:waiting` | `<Tool> wants to run <first word>: <project>` | `normal` |
-| `waiting_for_input`, turn ended | it finished and waits for the next message | post `needs` | same key | `<Tool> is waiting for you: <project>` | `normal` |
+| `waiting_for_input`, turn ended | it finished and waits for the next message | post `needs` | same key | `<Tool> finished: <project>` (the agent hooks also say `<Tool> asks: <question>` when the turn ended on one) | `normal` |
 | `error` | it stopped on an error the person must fix | post `needs` | same key | `<Tool> stopped on an error: <project>` | `normal` (`urgent` if prod is down) |
 | `long_job_finished` | something they asked for is done | post `done` (expires in 24 h) | `<tool>:<host>:<session>:finished` | `<Tool> finished <task>: <project>` | `low` |
 | `user_prompt`, `permission_granted`, `tool_finished`, `resumed` | the person acted | resolve | `<tool>:<host>:<session>:waiting` | | |

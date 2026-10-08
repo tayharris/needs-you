@@ -63,9 +63,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Aider state</th><th>Card</th></tr></thead>
 <tbody>
-<tr><td>Replied, waiting for your message or a yes/no answer</td><td><strong>Aider is waiting for you: my-repo</strong></td></tr>
+<tr><td>Replied, waiting for your message or a yes/no answer</td><td><strong>Aider finished: my-repo</strong> (the body says it may be a yes/no question: Aider doesn't say which)</td></tr>
 </tbody>
 </table></div>
+<p>Aider gives the hook no text of the turn, so its turn card always says finished. <code>NEEDS_YOU_TURN_TEXT=0</code> keeps the old <strong>Aider is waiting for you</strong> card (and no session name).</p>
 <p>One card per Aider process. Nothing from the chat is sent. <code>NEEDS_YOU_AIDER_EXPIRY_HOURS</code> (default 1) sets how long it lasts without a new wait; <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> turns it off.</p>
 <p>Aider runs the command with your terminal as its input and waits for it, so the hook never reads its input and returns at once.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>

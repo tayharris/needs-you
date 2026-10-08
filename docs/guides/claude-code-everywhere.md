@@ -44,7 +44,8 @@ One card per session, keyed `agent:<host>:<session>` (in Orca, the terminal hand
 | Has a plan ready (plan mode) | **Claude wants approval for a plan: my-repo**, with the plan's first lines |
 | Asked you a question | **Claude asks “Which database should we use?”: my-repo**, with its choices |
 | Another permission prompt | **Claude needs permission for github create_issue: my-repo** |
-| Idle, waiting for input | **Claude is waiting for you: my-repo** |
+| Finished its turn | **Claude finished: Login fix (my-repo)** (the `/rename` name or Claude's auto title) |
+| Ended its turn on a question to you | **Claude asks: Should I also update the migration? · Login fix (my-repo)** |
 | Stopped on an API error | **Claude hit a rate limit: my-repo**, **Claude stopped on an API error: my-repo**, ... |
 | Hit its usage limit and won't resume | **Claude hit its usage limit: my-repo** |
 
@@ -55,8 +56,9 @@ The body has Claude's notification text (or the API error), the working director
 | Session runs in | The body says |
 |---|---|
 | A tmux pane | ``tmux `work:2.1` `` (session:window.pane) |
-| VS Code's terminal (`TERM_PROGRAM=vscode`) | `VS Code` |
-| A plain SSH login (not tmux) | `SSH` |
+| VS Code's terminal (`TERM_PROGRAM=vscode`) or the extension | ``VS Code `acme-web` `` (the workspace Claude Code is connected to, when it is; `Cursor` in Cursor) |
+| A terminal app (iTerm, Terminal, Ghostty, WezTerm, kitty, Alacritty, Warp, ...) | its name, e.g. `Ghostty`; inside tmux ``tmux `work:2.1` in iTerm`` |
+| A plain SSH login (not tmux) | `SSH`, or `SSH from iTerm` when the Mac's terminal is known (`LC_TERMINAL`, `LC_NEEDS_YOU_TERM`) |
 | An Orca terminal | the Orca worktree and the `orca terminal switch` command |
 
 No prompt text, transcript or tool input is sent: a permission card names the tool and at most the program's name or the file's basename, never the command or the content.

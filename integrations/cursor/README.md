@@ -30,7 +30,7 @@ The installer backs `hooks.json` up, removes any needs-you entries (a `command` 
 
 | Cursor event | Hook mode | Action | Prints |
 |---|---|---|---|
-| `stop`, `status: completed` | `notify cursor` | `needs-you add`: **Cursor finished** | `{}` |
+| `stop`, `status: completed` | `notify cursor` | `needs-you add`: **Cursor finished** (no text of the turn in the payload) | `{}` |
 | `stop`, `status: error` | `notify cursor` | `needs-you add`: **Cursor stopped on an error** | `{}` |
 | `stop`, `status: aborted` | `notify cursor` | nothing (you stopped it) | `{}` |
 | `beforeSubmitPrompt` | `resolve cursor` | `needs-you resolve`, only if this chat posted something | `{"continue":true}` |

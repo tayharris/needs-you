@@ -41,7 +41,7 @@ Grok sends camelCase keys plus Claude-style aliases (`hook_event_name`, `session
 | Grok event | Hook mode | Action |
 |---|---|---|
 | `Notification`, matcher `permission_prompt` | `notify grok` | `needs-you add`: **Grok needs permission** (the payload doesn't name the tool) |
-| `Notification`, matcher `idle_prompt` | `notify grok` | `needs-you add`: **Grok is waiting for you**, about 60 s after the turn, and none if you type first. Keeps an open permission card. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns it off |
+| `Notification`, matcher `idle_prompt` | `notify grok` | `needs-you add`: **Grok finished**, about 60 s after the turn (`idle_prompt` carries no text of the turn), and none if you type first. Keeps an open permission card. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns it off |
 | `StopFailure` | `notify grok` | `needs-you add`: **Grok hit a rate limit**, **Grok needs you to sign in again**, **Grok stopped on a billing problem**, else **Grok stopped on an error** (from `error`; `errorDetails` isn't sent) |
 | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `StopCancelled` | `resolve grok` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` | `start grok` | on a resume in the same process, resolves its earlier cards |
