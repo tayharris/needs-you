@@ -250,9 +250,10 @@ until you do, the person gets no "waiting" card from that session. Details:
 
 The hooks post a `needs` item when a session waits on the person (a permission prompt, a plan
 approval, a question, input, or a stop on an API error) and resolve it as soon as the session
-moves again. They're quiet unless the session is opted in (`--alerts`, which writes
-`NEEDS_YOU_AGENT_ALERTS=1`, or a session Orca starts). An agent that posts its own blockers
-doesn't duplicate them.
+moves again. A question card shows the question and the choices the agent offered (redacted
+and clamped; the person answers in the agent), a plan card the plan's first lines. They're
+quiet unless the session is opted in (`--alerts`, which writes `NEEDS_YOU_AGENT_ALERTS=1`, or
+a session Orca starts). An agent that posts its own blockers doesn't duplicate them.
 
 | Agent | Installer flag | Details |
 |---|---|---|

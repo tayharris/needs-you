@@ -4,6 +4,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Questions and choices on agent cards.** When an agent asks you something, its card now says what it asked and which choices it offered, so you can decide from the pill and go answer. The title names the question (**Claude asks “Which database should we use?”: my-repo**, with `and 1 more` for a multi-part question). The body holds each question under its header, and each choice is a read-only step ("Postgres — Relational, robust"), up to 10, with "+N more choices" past that. You still answer in the agent: ticking a step on the Mac answers nothing. A plan to approve is titled **Claude wants approval for a plan** (and **Kimi wants approval for a plan**, with Kimi's plan options as steps) and shows the plan's first lines. This covers Claude Code's `AskUserQuestion` and plans, Codex's Plan-mode questions, Gemini CLI's `ask_user`, opencode's questions, Kimi's `AskUserQuestion` and plans, and the question an MCP server asks through Copilot CLI. Question and plan text is cleaned and clamped, and anything token-shaped (needs-you tokens, `sk-`, `ghp_`, bearer headers, `password=` values, long hex or base64 runs, private keys) becomes `[redacted]`. `NEEDS_YOU_AGENT_QUESTIONS=0` brings back the old cards with no question text. Codex and Gemini each get one new hook entry; run `needs-you update`, and in Codex trust the new entry once in `/hooks`. Answering from the card is a proposal for later ([ADR 0009](docs/adr/0009-questions-on-cards.md)); [what each agent's hooks carry](docs/roadmap/questions.md).
+
+### Changed
+
+- Agent hooks: an MCP server's question (Claude Code `elicitation_dialog`) and an API error message on a card are now redacted the same way.
+
 ## [0.1.5] - 2026-10-08
 
 ### Added

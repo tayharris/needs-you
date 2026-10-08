@@ -36,10 +36,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Permission for a shell command | **Copilot wants to run make: my-repo** |
 | Permission to fetch a page | **Copilot wants to fetch a page: my-repo** |
 | Any other permission prompt | **Copilot needs your approval: my-repo** |
-| A question for you | **Copilot asked you a question: my-repo** |
+| An MCP server asks you something | **Copilot asks “Which Jira project should the issue go to?”: my-repo** |
 | Turn finished, waiting for you | **Copilot is waiting for you: my-repo** |
 
-One card per session, updated in place. Command lines, URLs, questions, prompts and tool output aren't sent: a card names at most the program. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
+One card per session, updated in place. Command lines, URLs, prompts and tool output aren't sent: a permission card names at most the program. An MCP server's question (`elicitation_dialog`) is on its card, cleaned, token-shaped text redacted and clamped (`NEEDS_YOU_AGENT_QUESTIONS=0` keeps it off). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
 
 If you **cancel** a permission prompt with Esc, Copilot runs no hook, so that card stays until your next prompt or the end of the session.
 

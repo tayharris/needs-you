@@ -69,8 +69,8 @@ echo '{"session_id":"test-1"}' | NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/
 <tbody>
 <tr><td>Wants to run a command</td><td><strong>Claude wants to run git: my-repo</strong> (the program's name only)</td></tr>
 <tr><td>Wants to edit a file</td><td><strong>Claude wants to edit config.yml: my-repo</strong> (the file's name only)</td></tr>
-<tr><td>Has a plan ready (plan mode)</td><td><strong>Approve Claude's plan: my-repo</strong></td></tr>
-<tr><td>Asked you a question</td><td><strong>Claude asked you a question: my-repo</strong></td></tr>
+<tr><td>Has a plan ready (plan mode)</td><td><strong>Claude wants approval for a plan: my-repo</strong>, with the plan's first lines</td></tr>
+<tr><td>Asked you a question</td><td><strong>Claude asks “Which database should we use?”: my-repo</strong>, with its choices</td></tr>
 <tr><td>Another permission prompt</td><td><strong>Claude needs permission for github create_issue: my-repo</strong></td></tr>
 <tr><td>Idle, waiting for input</td><td><strong>Claude is waiting for you: my-repo</strong></td></tr>
 <tr><td>Stopped on an API error</td><td><strong>Claude hit a rate limit: my-repo</strong>, <strong>Claude stopped on an API error: my-repo</strong>, ...</td></tr>

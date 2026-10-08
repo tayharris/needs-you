@@ -259,9 +259,10 @@ until you do, the person gets no "waiting" card from that session. Details:
 <h2 id="agent-hooks">Agent hooks <a class="anchor" href="#agent-hooks" aria-label="Link to this section">#</a></h2>
 <p>The hooks post a <code>needs</code> item when a session waits on the person (a permission prompt, a plan
 approval, a question, input, or a stop on an API error) and resolve it as soon as the session
-moves again. They're quiet unless the session is opted in (<code>--alerts</code>, which writes
-<code>NEEDS_YOU_AGENT_ALERTS=1</code>, or a session Orca starts). An agent that posts its own blockers
-doesn't duplicate them.</p>
+moves again. A question card shows the question and the choices the agent offered (redacted
+and clamped; the person answers in the agent), a plan card the plan's first lines. They're
+quiet unless the session is opted in (<code>--alerts</code>, which writes <code>NEEDS_YOU_AGENT_ALERTS=1</code>, or
+a session Orca starts). An agent that posts its own blockers doesn't duplicate them.</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Agent</th><th>Installer flag</th><th>Details</th></tr></thead>
 <tbody>

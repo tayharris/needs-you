@@ -64,11 +64,12 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <tr><td>Approval prompt for a shell command</td><td><strong>Codex wants to run make: my-repo</strong></td></tr>
 <tr><td>Approval prompt for an edit</td><td><strong>Codex wants to edit config.py: my-repo</strong></td></tr>
 <tr><td>Approval prompt for an MCP tool</td><td><strong>Codex needs permission for linear create_issue: my-repo</strong></td></tr>
+<tr><td>A question in Plan mode (<code>request_user_input</code>)</td><td><strong>Codex asks “Which database should the service use?”: my-repo</strong>, each choice a step</td></tr>
 <tr><td>Turn finished, waiting for you</td><td><strong>Codex is waiting for you: my-repo</strong></td></tr>
 </tbody>
 </table></div>
 <p>One card per session (key <code>agent:&lt;host&gt;:&lt;session&gt;</code>), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), or the end of the session. After <code>/clear</code>, or when a Codex window is closed or killed, Codex ends that session within about a minute (its background app-server unloads it), and the card clears then. If Codex itself dies, the 5-minute <code>needs-you flush</code> cleans up; any card expires 48 hours after its last post.</p>
-<p>Cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders (<a href="claude-code-everywhere.html#buttons">details</a>).</p>
+<p>Approval cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Codex; ticking a step on the Mac answers nothing. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders (<a href="claude-code-everywhere.html#buttons">details</a>).</p>
 <p>Only want approval prompts, not a card at the end of every turn?</p>
 <div class="code" data-copy><pre><code class="language-bash">echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' &gt;&gt; ~/.config/needs-you/env</code></pre></div>
 <h2 id="tell-codex-when-to-post-optional">Tell Codex when to post (optional) <a class="anchor" href="#tell-codex-when-to-post-optional" aria-label="Link to this section">#</a></h2>

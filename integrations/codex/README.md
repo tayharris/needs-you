@@ -27,7 +27,7 @@ integrations/codex/install-codex-hooks.sh --uninstall
 
 The installer backs up `hooks.json` first (`hooks.json.bak-<timestamp>`), replaces only its own entries (any command containing `needs-you-hook.sh`), appends them after existing groups so the positions of other hooks (Orca's, your own) don't move, refuses a file that isn't valid JSON or is a symlink (it won't write through one; merge by hand into the file it points to), and doesn't rewrite an unchanged file.
 
-**Trust them once.** Codex runs a hook only after you've reviewed it: start Codex, open `/hooks`, and trust the needs-you entries. Until then Codex skips them with a warning at startup. Re-running the installer keeps the same entries, so they stay trusted. (`codex --dangerously-bypass-hook-trust` skips the check for one run.)
+**Trust them once.** Codex runs a hook only after you've reviewed it: start Codex, open `/hooks`, and trust the needs-you entries (after an update that adds one, such as the `PreToolUse` entry for questions, trust the new one too). Until then Codex skips them with a warning at startup. Re-running the installer keeps the same entries, so they stay trusted. (`codex --dangerously-bypass-hook-trust` skips the check for one run.)
 
 `hooks = false` under `[features]` in `config.toml` turns every hook off; the installer and `needs-you doctor` say so.
 
@@ -40,13 +40,14 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 | Codex event | Hook mode | Action |
 |---|---|---|
 | `PermissionRequest` | `notify codex` | `needs-you add`: **Codex wants to run make**, **Codex wants to edit config.py** (`apply_patch`; "2 files" for more), **Codex needs permission for linear create_issue** (MCP) |
-| `Stop` | `notify codex` | `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval cards |
+| `PreToolUse`, matcher `request_user_input` | `notify codex` | `needs-you add`: **Codex asks “<question>”**, the questions in the body and each choice as a read-only step (Plan mode; this tool has no `PermissionRequest`) |
+| `Stop` | `notify codex` | resolves a question card first (outside Plan mode Codex refuses the question after `PreToolUse` ran), then `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval and question cards |
 | `UserPromptSubmit`, `PostToolUse`, `Interrupt` | `resolve codex` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before. Codex 0.159+ runs every session's hooks from one shared app-server daemon, so there it resolves only this session's card; after `/clear` the old session's card clears with its `SessionEnd`, which the daemon sends when it unloads the thread (about a minute later) |
 | `SessionEnd` | `end codex` | resolves the session's card |
 
 - **Key:** `agent:<short-hostname>:<id>`, `<id>` being `$ORCA_TERMINAL_HANDLE` or the Codex `session_id`. One card per session, updated in place.
-- **Title** names the tool and at most the program (the first word of a shell command that isn't `VAR=value`, a flag or a wrapper) or a file's basename from the patch header. Never the command line, the patch, `tool_input.description`, the prompt or Codex's last message: they can hold secrets.
+- **Title** names the tool and at most the program (the first word of a shell command that isn't `VAR=value`, a flag or a wrapper) or a file's basename from the patch header. Never the command line, the patch, `tool_input.description`, the prompt or Codex's last message: they can hold secrets. A question card is the exception: the question's own text and choices, cleaned, token-shaped text redacted and clamped (`NEEDS_YOU_AGENT_QUESTIONS=0` turns that off).
 - **Source:** `--agent codex --project <basename of cwd>`.
 - The `PermissionRequest`, `Stop`, `UserPromptSubmit`, `PostToolUse` and `SessionStart` entries are `"async": true`, so Codex never waits on the network and the hook can't approve or deny anything. `SessionEnd` and `Interrupt` always run synchronously in Codex with a 1-3 s limit: the hook drops its marker and starts the resolve in the background, then exits.
 - Every mode exits 0 and prints nothing (Codex would add plain stdout to the model's context).
