@@ -11,6 +11,8 @@ import Foundation
 //                            (Bearer owner) list and revoke
 //   POST|DELETE /v1/tokens/<id>/request-update
 //                            (Bearer owner) ask a sender machine to update, or withdraw it
+//   POST /v1/invites {role: "peer"}, GET /v1/peers, DELETE /v1/peers/<hub_id>
+//                            (Bearer owner) always-on hubs (Peers.swift, ADR 0010)
 
 /// A token's role on the hub. `owner` = reader + may create invites.
 public enum HubRole: String, Codable, CaseIterable, Sendable {
@@ -516,6 +518,35 @@ public struct InviteClient: Sendable {
         let data = try await ownerRequest("GET", path: "v1/tokens", hub: hub, token: token)
         guard let body = try? JSONDecoder().decode(Body.self, from: data) else { throw ConnectError.invalidResponse }
         return body.tokens
+    }
+
+    /// POST /v1/invites with role "peer": a one-use link for an always-on hub to join this
+    /// one (ADR 0010). The response's `hubInstallCommand` is what to run on the server.
+    public func createPeerInvite(_ invite: PeerInviteRequest, hub: URL, token: String) async throws -> InviteResponse {
+        guard HubTransportPolicy.allows(hub) else { throw ConnectError.httpNotAllowed(host: hub.host ?? hub.absoluteString) }
+        let body = try JSONEncoder().encode(invite)
+        let request = HubClient.makeRequest(url: hub.appendingPathComponent("v1/invites"), method: "POST", token: token, body: body)
+        let data = try await send(request, hub: hub, notFound: .http(status: 404, message: "this hub doesn't support invites yet"))
+        guard let response = try? JSONDecoder().decode(InviteResponse.self, from: data) else { throw ConnectError.invalidResponse }
+        return response
+    }
+
+    /// GET /v1/peers with an owner token.
+    public func listPeers(hub: URL, token: String) async throws -> [PeerSummary] {
+        struct Body: Decodable { var peers: [PeerSummary] }
+        let data = try await ownerRequest("GET", path: "v1/peers", hub: hub, token: token,
+                                          notFound: .http(status: 404, message: "this hub can't list peers yet; update it"))
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { throw ConnectError.invalidResponse }
+        return body.peers
+    }
+
+    /// DELETE /v1/peers/<hub id>: stop replicating with a hub a peer invite added.
+    public func removePeer(hubID: String, hub: URL, token: String) async throws {
+        guard !hubID.isEmpty, hubID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "._-".contains($0)) }) else {
+            throw ConnectError.http(status: 400, message: "not a hub id")
+        }
+        _ = try await ownerRequest("DELETE", path: "v1/peers/" + hubID, hub: hub, token: token,
+                                   notFound: .http(status: 404, message: "already removed, or not on this hub"))
     }
 
     /// DELETE /v1/invites/<id>.

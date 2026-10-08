@@ -181,9 +181,17 @@ public struct LocalHubPlan: Equatable, Sendable {
     public var tailnetIP: String?
     public var magicDNSName: String?
     public var parentPID: Int32
+    /// Hand-set peers (other hubs' public URLs) that share a mesh secret, read from
+    /// `peerSecretPath`. Peers added by a peer invite need neither: the hub keeps them, each
+    /// with its own secret, in its database (ADR 0010).
+    public var peers: [String]
+    /// The mesh secret's file (`~/Library/Application Support/NeedsYou/peer-secret`, mode
+    /// 600). Only its path is ever on the command line, never the secret.
+    public var peerSecretPath: String?
 
     public init(script: String, dbPath: String, ownerTokenPath: String, hubID: String,
-                tailnetIP: String?, magicDNSName: String?, parentPID: Int32) {
+                tailnetIP: String?, magicDNSName: String?, parentPID: Int32,
+                peers: [String] = [], peerSecretPath: String? = nil) {
         self.script = script
         self.dbPath = dbPath
         self.ownerTokenPath = ownerTokenPath
@@ -191,6 +199,34 @@ public struct LocalHubPlan: Equatable, Sendable {
         self.tailnetIP = tailnetIP
         self.magicDNSName = magicDNSName
         self.parentPID = parentPID
+        self.peers = peers
+        self.peerSecretPath = peerSecretPath
+    }
+
+    /// Hand-set peer URLs as the hub takes them: http(s)://host[:port], no user, path, query
+    /// or fragment, lowercased, deduped, in order; anything else dropped.
+    public static func normalizedPeers(_ raw: [String]) -> [String] {
+        var out: [String] = []
+        for s in raw {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let c = URLComponents(string: t), let scheme = c.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let host = c.host?.lowercased(), !host.isEmpty,
+                  c.user == nil, c.password == nil, c.query == nil, c.fragment == nil,
+                  c.path.isEmpty || c.path == "/",
+                  !t.contains(where: { $0.isWhitespace })
+            else { continue }
+            let url = "\(scheme)://\(host)" + (c.port.map { ":\($0)" } ?? "")
+            if !out.contains(url) { out.append(url) }
+        }
+        return out
+    }
+
+    /// The peers passed to the hub: only with a secret file, since the hub refuses peers
+    /// without a secret (and would not start).
+    public var effectivePeers: [String] {
+        guard let path = peerSecretPath, !path.isEmpty else { return [] }
+        return Self.normalizedPeers(peers).filter { $0 != publicURL }
     }
 
     /// The URL other machines are told to use: MagicDNS name, else the tailnet IP, else
@@ -225,12 +261,20 @@ public struct LocalHubPlan: Equatable, Sendable {
             "--owner-token-file", ownerTokenPath,
             "--parent-pid", String(parentPID),
         ]
+        let peers = effectivePeers
+        if !peers.isEmpty, let path = peerSecretPath {
+            args += ["--peer-secret-file", path]
+            for p in peers { args += ["--peer", p] }
+        }
         return args
     }
 
-    /// Restart when the network identity changes (new tailnet IP or MagicDNS name).
+    /// Restart when the network identity changes (new tailnet IP or MagicDNS name), or the
+    /// hand-set peers do.
     public func needsRestart(comparedTo other: LocalHubPlan) -> Bool {
         bindAddresses != other.bindAddresses || publicURL != other.publicURL
+            || effectivePeers != other.effectivePeers
+            || (!effectivePeers.isEmpty && peerSecretPath != other.peerSecretPath)
     }
 }
 
@@ -327,6 +371,19 @@ public enum PythonProbe: Equatable, Sendable {
         if importStatus == 0 { return .ok }
         let line = stderr.split(separator: "\n").last.map(String.init) ?? "exit \(importStatus)"
         return .broken(line)
+    }
+}
+
+// MARK: - Peer secret (hand-set peers only)
+
+public enum PeerSecretFile {
+    /// True when the file holds a usable secret (16+ characters, as the hub requires). The
+    /// secret itself is never returned, logged or shown.
+    public static func usable(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url),
+              let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+        return s.count >= 16
     }
 }
 
