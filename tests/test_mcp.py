@@ -117,6 +117,17 @@ class Protocol(McpTestCase):
         server = load_server().Server()
         self.assertEqual(server.handle([rpc(1, "ping")])["error"]["code"], -32600)
 
+    def test_deeply_nested_line_is_a_parse_error(self):
+        # Scan 2026-10-08: json.loads raised RecursionError (not a ValueError) and the server
+        # exited, so the agent lost its tools for the rest of the session.
+        import io
+        inp = io.BytesIO(b"[" * 200000 + b"\n" + json.dumps(rpc(7, "ping")).encode() + b"\n")
+        out = io.BytesIO()
+        self.assertEqual(load_server().serve(inp, out), 0)
+        res = self.by_id([json.loads(l) for l in out.getvalue().splitlines()])
+        self.assertEqual(res[None]["error"]["code"], -32700)
+        self.assertEqual(res[7]["result"], {})
+
     def test_exits_cleanly_on_sigterm(self):
         p = subprocess.Popen([sys.executable, SERVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, env=self.env())
