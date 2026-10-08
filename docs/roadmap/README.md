@@ -22,6 +22,7 @@ Mostly plans. Each file's status line says what exists; `ci-cd.md` phases 1–2 
 | [human-gates.md](human-gates.md) | Which agent-workflow events deserve a card (Claude Code `PermissionRequest` and plan approval, GitHub notifications and my PRs, long jobs) and showing cards on the work display |
 | [focus-tiers.md](focus-tiers.md) | Delivery tiers (interrupt, ambient, later), in-app focus and macOS Focus filters, bypass rules, banners vs. the pill |
 | [integrations-next.md](integrations-next.md) | Research for the next agent hooks (Kimi Code, Grok Build, Cline, Cursor, Aider): config, events, payloads, mapping to the shared hook, ranking; Grok and Cursor already run the Claude hooks |
+| [questions.md](questions.md) | What each agent's hooks carry when it asks a question (text, choices, plan) and whether a hook can answer; phase A of [ADR 0009](../adr/0009-questions-on-cards.md) is built from it |
 
 Related decision in progress: [ADR 0004: an always-on hub](../adr/0004-always-on-hub.md) (Proposed). The phone widget and GitHub webhooks both depend on it.
 
