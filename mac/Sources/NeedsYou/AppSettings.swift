@@ -13,6 +13,8 @@ import NeedsYouCore
 ///   NEEDS_YOU_EXPAND=1               start expanded (never takes focus)
 ///   NEEDS_YOU_SNAPSHOT_DIR=dir       debug: write PNGs of the panel's states and some Settings
 ///                                    pages (no global shortcut is registered)
+///   NEEDS_YOU_LAUNCH_SNAPSHOT_DIR=dir debug: PNGs of the panel just after launch and after
+///                                    the launch open closes (no global shortcut either)
 ///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
 ///   NEEDS_YOU_DEFAULTS_SUITE=name    use this UserDefaults suite instead of the app's domain
 @MainActor
@@ -34,6 +36,7 @@ final class AppSettings: ObservableObject {
         static let urgentShowsHiddenPanel = "urgentShowsHiddenPanel"
         static let panelHidden = "panelHidden"
         static let snapToCorners = "snapToCorners"
+        static let openPanelAtLaunch = "openPanelAtLaunch"
         static let hotKey = "hotKey"
         static let allowFocusLinks = "allowFocusLinks"
         static let terminalAppleScript = "terminalAppleScript"
@@ -135,6 +138,12 @@ final class AppSettings: ObservableObject {
         return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
     }
 
+    /// NEEDS_YOU_LAUNCH_SNAPSHOT_DIR: launch-test.sh's PNGs of the launch open.
+    nonisolated static var launchSnapshotDirectory: URL? {
+        guard let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_LAUNCH_SNAPSHOT_DIR"], !dir.isEmpty else { return nil }
+        return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+    }
+
     /// The app's defaults, or the NEEDS_YOU_DEFAULTS_SUITE suite (test instances).
     nonisolated static func makeDefaults(environment: [String: String] = ProcessInfo.processInfo.environment) -> UserDefaults {
         if let suite = environment["NEEDS_YOU_DEFAULTS_SUITE"], !suite.isEmpty, let d = UserDefaults(suiteName: suite) {
@@ -195,6 +204,11 @@ final class AppSettings: ObservableObject {
     @Published var snapToCorners: Bool {
         didSet { defaults.set(snapToCorners, forKey: Key.snapToCorners) }
     }
+    /// Settings → Panel → Open the panel when Needs You starts. Default on: a launch by the
+    /// person (not at login, not an update's relaunch) opens the panel once (LaunchOpen).
+    @Published var openPanelAtLaunch: Bool {
+        didSet { defaults.set(openPanelAtLaunch, forKey: Key.openPanelAtLaunch) }
+    }
     /// Remote hubs were configured when tokens moved out of the Keychain (PrefsMigrator 3).
     @Published var tokensNeedReconnect: Bool {
         didSet { defaults.set(tokensNeedReconnect, forKey: PrefsMigrator.reconnectKey) }
@@ -213,6 +227,7 @@ final class AppSettings: ObservableObject {
             Key.urgentShowsHiddenPanel: false,
             Key.panelHidden: false,
             Key.snapToCorners: false,
+            Key.openPanelAtLaunch: true,
             Key.allowFocusLinks: false,
             Key.terminalAppleScript: false,
             Key.showSetupTips: true,
@@ -232,6 +247,7 @@ final class AppSettings: ObservableObject {
         urgentShowsHiddenPanel = defaults.bool(forKey: Key.urgentShowsHiddenPanel)
         tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
         snapToCorners = defaults.bool(forKey: Key.snapToCorners)
+        openPanelAtLaunch = defaults.bool(forKey: Key.openPanelAtLaunch)
         ui = UIPrefs.load(from: defaults)
         delivery = DeliveryDefaults.load(from: defaults)
         bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))

@@ -19,6 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// needsyou:// URLs that arrived before launch finished.
     private var pendingURLs: [URL] = []
     private var launched = false
+    /// The launch's open-application Apple event said "launched as a login item". Read in
+    /// applicationWillFinishLaunching, while that event is still the current one.
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedAsLoginItem = LaunchContext.appleEventSaysLoginItem()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -100,6 +107,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // up, the pill shows a "set up" state; clicking it is what opens Settings.
         if let dir = AppSettings.snapshotDirectory {
             runSnapshotTour(into: dir)
+        }
+        openPanelIfLaunchedByPerson()
+    }
+
+    /// LaunchOpen: started by the person, the panel opens once (after the first poll, or
+    /// LaunchOpen.firstPollWait at most) so they see their items and where the pill is. At
+    /// login or right after an update relaunch, only the pill. Never key, never activates.
+    private func openPanelIfLaunchedByPerson() {
+        let attempt = updates.updatesDirectory.appendingPathComponent(UpdatePaths.attemptFile)
+        let kind = LaunchOpen.kind(appleEventSaysLogin: launchedAsLoginItem,
+                                   secondsSinceLogin: LaunchContext.secondsSinceConsoleLogin(),
+                                   updateAttemptAge: LaunchContext.age(ofFileAt: attempt))
+        let open = LaunchOpen.shouldOpen(kind: kind, settingOn: settings.openPanelAtLaunch,
+                                         panelHidden: model.visibility == .hidden,
+                                         snapshotTour: AppSettings.snapshotDirectory != nil)
+        let sinceLogin = LaunchContext.secondsSinceConsoleLogin().map { "\(Int($0)) s" } ?? "unknown"
+        NSLog("NeedsYou: launch \(kind.rawValue) (login-item event: \(launchedAsLoginItem), since console login: \(sinceLogin)); \(open ? "opening the panel once" : "pill only")")
+        Task { @MainActor [weak self] in
+            let deadline = Date().addingTimeInterval(LaunchOpen.firstPollWait)
+            while open, let model = self?.model, model.lastCheck == nil, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard let self else { return }
+            if open { self.model.openAtLaunch() }
+            // Once the panel has its new shape (the sync runs on the next turn).
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            self.panel.logPlacement()
+            // Debug aid (NEEDS_YOU_LAUNCH_SNAPSHOT_DIR, mac/scripts/launch-test.sh): the panel
+            // just after launch and once the launch open has closed by itself.
+            if let dir = AppSettings.launchSnapshotDirectory {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self.panel.writeSnapshot(to: dir.appendingPathComponent("launch-1-open.png"))
+                try? await Task.sleep(nanoseconds: UInt64(LaunchOpen.seconds + 3) * 1_000_000_000)
+                self.panel.writeSnapshot(to: dir.appendingPathComponent("launch-2-after.png"))
+                self.panel.logPlacement()
+            }
         }
     }
 

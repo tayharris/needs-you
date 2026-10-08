@@ -152,6 +152,11 @@ final class AppModel: ObservableObject {
     private var tickTimer: Timer?
     private var feedHubCount = 0
     private var digestTask: Task<Void, Never>?
+    /// The panel was opened by the launch (LaunchOpen), not by the person: a click
+    /// elsewhere closes it whatever Collapse when clicking elsewhere says, and it closes by
+    /// itself (launchOpenTask) once the pointer has been away for a while.
+    private(set) var openedAtLaunch = false
+    private var launchOpenTask: Task<Void, Never>?
     /// Holds a sender that interrupts more than 6 times an hour to ambient.
     private var noisyGuard = NoisySenderGuard()
 
@@ -827,6 +832,7 @@ final class AppModel: ObservableObject {
             focus(on: target)
         }
         expandedByUser = byUser
+        endLaunchOpen()
         previewItem = nil
         digest = nil
         if visibility.isHidden(at: Date()) && !peeking {
@@ -841,6 +847,36 @@ final class AppModel: ObservableObject {
         refreshOrca()
         markVisibleSeen()
         settings.pillLastOpenedAt = Date()   // the pill's "N new" starts over
+    }
+
+    /// The person started the app (LaunchOpen): open the panel once so they see their items
+    /// and where the pill is. An automatic expansion like the morning summary, so it never
+    /// makes the panel key or activates the app, and a hidden panel stays hidden. It closes
+    /// like an arrival peek: after LaunchOpen.seconds with the pointer away, held while the
+    /// pointer is over it, 2 s after the pointer leaves; or at a click elsewhere.
+    func openAtLaunch() {
+        guard !isExpanded, isPanelVisible else { return }
+        expand()
+        guard isExpanded else { return }
+        openedAtLaunch = true
+        launchOpenTask = Task { [weak self] in
+            var countdown = PeekCountdown(seconds: LaunchOpen.seconds)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled, let self, self.openedAtLaunch, self.isExpanded else { return }
+                if countdown.advance(by: 0.25, hovering: self.hovering) {
+                    NSLog("NeedsYou: the panel opened at launch closed by itself")
+                    self.collapse()
+                    return
+                }
+            }
+        }
+    }
+
+    private func endLaunchOpen() {
+        openedAtLaunch = false
+        launchOpenTask?.cancel()
+        launchOpenTask = nil
     }
 
     /// Scroll the open list to a card and highlight it for a moment.
@@ -866,6 +902,7 @@ final class AppModel: ObservableObject {
 
     func collapse() {
         if isExpanded { settings.pillLastOpenedAt = Date() }   // what arrived while open was seen
+        endLaunchOpen()
         isExpanded = false
         summarySince = nil
         peeking = false

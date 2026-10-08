@@ -61,6 +61,7 @@ let entries =
     + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
     + testEntries(AppLocationTests.self, AppLocationTests.allTests)
+    + testEntries(LaunchBehaviorTests.self, LaunchBehaviorTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
