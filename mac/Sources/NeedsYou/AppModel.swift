@@ -865,6 +865,7 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 guard !Task.isCancelled, let self, self.openedAtLaunch, self.isExpanded else { return }
                 if countdown.advance(by: 0.25, hovering: self.hovering) {
+                    NSLog("NeedsYou: the panel opened at launch closed by itself")
                     self.collapse()
                     return
                 }

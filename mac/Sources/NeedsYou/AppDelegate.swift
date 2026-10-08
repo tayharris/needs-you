@@ -122,7 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = LaunchOpen.shouldOpen(kind: kind, settingOn: settings.openPanelAtLaunch,
                                          panelHidden: model.visibility == .hidden,
                                          snapshotTour: AppSettings.snapshotDirectory != nil)
-        NSLog("NeedsYou: launch \(kind.rawValue) (login-item event: \(launchedAsLoginItem)); \(open ? "opening the panel once" : "pill only")")
+        let sinceLogin = LaunchContext.secondsSinceConsoleLogin().map { "\(Int($0)) s" } ?? "unknown"
+        NSLog("NeedsYou: launch \(kind.rawValue) (login-item event: \(launchedAsLoginItem), since console login: \(sinceLogin)); \(open ? "opening the panel once" : "pill only")")
         Task { @MainActor [weak self] in
             let deadline = Date().addingTimeInterval(LaunchOpen.firstPollWait)
             while open, let model = self?.model, model.lastCheck == nil, Date() < deadline {
@@ -131,6 +132,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             if open { self.model.openAtLaunch() }
             self.panel.logPlacement()
+            // Debug aid (NEEDS_YOU_LAUNCH_SNAPSHOT_DIR, mac/scripts/launch-test.sh): the panel
+            // just after launch and once the launch open has closed by itself.
+            if let dir = AppSettings.launchSnapshotDirectory {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self.panel.writeSnapshot(to: dir.appendingPathComponent("launch-1-open.png"))
+                try? await Task.sleep(nanoseconds: UInt64(LaunchOpen.seconds + 3) * 1_000_000_000)
+                self.panel.writeSnapshot(to: dir.appendingPathComponent("launch-2-after.png"))
+                self.panel.logPlacement()
+            }
         }
     }
 

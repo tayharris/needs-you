@@ -401,7 +401,7 @@ final class PanelController {
         let index = PanelGeometry.bestScreen(for: panel.frame, screens: screens.map(\.frame))
         let which = index.map { $0 == 0 ? "the main display" : "display \($0 + 1) of \(screens.count)" } ?? "no display"
         let corner = placement?.corner.rawValue ?? "topRight (default)"
-        NSLog("NeedsYou: pill on \(which), \(corner), frame \(NSStringFromRect(panel.frame)), visible \(panel.isVisible)")
+        NSLog("NeedsYou: pill on \(which), \(corner), frame \(NSStringFromRect(panel.frame)), visible \(panel.isVisible), alpha \(String(format: "%.2f", panel.alphaValue)), display \(model.display == .expanded ? "open panel" : "pill")")
     }
 
     private func screensChanged() {

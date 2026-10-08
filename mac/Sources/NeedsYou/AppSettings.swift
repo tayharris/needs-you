@@ -13,6 +13,8 @@ import NeedsYouCore
 ///   NEEDS_YOU_EXPAND=1               start expanded (never takes focus)
 ///   NEEDS_YOU_SNAPSHOT_DIR=dir       debug: write PNGs of the panel's states and some Settings
 ///                                    pages (no global shortcut is registered)
+///   NEEDS_YOU_LAUNCH_SNAPSHOT_DIR=dir debug: PNGs of the panel just after launch and after
+///                                    the launch open closes (no global shortcut either)
 ///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
 ///   NEEDS_YOU_DEFAULTS_SUITE=name    use this UserDefaults suite instead of the app's domain
 @MainActor
@@ -133,6 +135,12 @@ final class AppSettings: ObservableObject {
     /// NEEDS_YOU_SNAPSHOT_DIR: the snapshot tour (a debug aid) writes its PNGs here.
     nonisolated static var snapshotDirectory: URL? {
         guard let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_DIR"], !dir.isEmpty else { return nil }
+        return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+    }
+
+    /// NEEDS_YOU_LAUNCH_SNAPSHOT_DIR: launch-test.sh's PNGs of the launch open.
+    nonisolated static var launchSnapshotDirectory: URL? {
+        guard let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_LAUNCH_SNAPSHOT_DIR"], !dir.isEmpty else { return nil }
         return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
     }
 
