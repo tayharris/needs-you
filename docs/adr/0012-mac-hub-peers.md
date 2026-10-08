@@ -1,6 +1,6 @@
 # 0012. The Mac's hub peers with always-on hubs, set up by a peer invite
 
-- Status: Proposed
+- Status: Accepted by the owner (2026-10-08), in effect once merged
 - Date: 2026-10-08
 - Builds [0004](0004-always-on-hub.md) phases 1–2 on [0003](0003-peer-replication.md)
 
@@ -33,7 +33,7 @@ no focus and gets nothing new (rule 2 of the app).
   defaults to 1 and may be at most 24;
 - is **local to the hub that made it**. It names that hub, so it isn't replicated (an older
   hub would also fail closed on the unknown role and hold replication, see API.md);
-- has a `join_url` and an `install_command` (`install-hub.sh --user --join '<join_url>'`), no
+- has a `join_url` and an `install_command` (`curl -fsSL <hub>/dl/install-hub.sh | sudo bash -s -- --join '<join_url>'`), no
   `needsyou://` link, and its `/join/<code>` page says what to run on the server. Its
   `/join/<code>/install.sh` is the failing script (exit 1, "use install-hub.sh --join").
 
@@ -153,9 +153,17 @@ only; nothing in the panel.
   server B. Anti-entropy is transitive, so items still converge through the Mac (or through B,
   when B and C are joined too).
 
-## Owner decisions left
+## Owner decisions (2026-10-08)
 
-- `retention_days` on a server joined to a Mac: keep 7 or raise it (say 30) so a long sleep
-  doesn't leave stale open items on the Mac (section 3).
-- A `curl … | bash` one-liner for `install-hub.sh --join` would need the hub to serve its own
-  code under `/dl/`. Until then the command runs from a checkout or the release tarball.
+- **Accepted**, with [0004](0004-always-on-hub.md) phases 1–2, once merged.
+- **One-liner, yes.** The hub serves `install-hub.sh` and the hub's own code under `/dl/`, and
+  `/dl/manifest.json` gives each file's repo `path`. Without a checkout, `install-hub.sh
+  --join` fetches them from the hub the link names, checks every sha256 before installing
+  anything (integrity, as for senders), installs and pairs: `curl -fsSL <hub>/dl/install-hub.sh
+  | sudo bash -s -- --join '<link>'`. It never prints the secret. The Mac app bundles the files.
+- **Plain http only on the tailnet.** `peer.url` stays https, or http to `*.ts.net`, a tailnet
+  address or loopback; LAN names are refused.
+- **Less retention, not more.** Instead of a longer `retention_days`, a resolved item's text
+  goes soon after it closes and a small tombstone (no text) stays long enough for a long-asleep
+  Mac to learn it was resolved (section 3's known limit). Built on a follow-up branch,
+  `tay/short-retention`.
