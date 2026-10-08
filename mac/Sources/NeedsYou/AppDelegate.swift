@@ -161,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // An answerable question: options are buttons; picks wait for Send.
                 guard let item = model.needsItems.first(where: { $0.question?.answerable == true }),
                       let q = item.question else { return }
+                model.scrollTarget = item.id  // the whole card, Send included, in view
                 for (i, qi) in q.items.enumerated() {
                     if let label = qi.options.first?.label { model.pickOption(item, question: i, label: label) }
                     if qi.multiSelect, qi.options.count > 1 { model.pickOption(item, question: i, label: qi.options[1].label) }
@@ -170,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Send: the demo feed takes it like a hub, and the card shows the answer.
                 if let item = model.needsItems.first(where: { $0.question?.answerable == true }) {
                     model.sendPickedAnswer(item)
+                    model.scrollTarget = item.id
                 }
             }),
             ("7-summary", { [weak self] model in
