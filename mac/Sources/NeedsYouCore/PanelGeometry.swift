@@ -61,12 +61,8 @@ public enum PanelGeometry {
     /// way the anchor corner stays fixed as the size changes (so the panel grows away from
     /// the nearest edges), and the result is clamped into `bounds` so it can't be lost.
     public static func frame(size: CGSize, placement: PanelPlacement, in bounds: CGRect, margin: CGFloat = margin) -> CGRect {
-        let offset = placement.offset ?? CGSize(width: margin, height: margin)
-        let corner = placement.corner
-        let x = corner.isLeft ? bounds.minX + offset.width : bounds.maxX - offset.width - size.width
-        let y = corner.isTop ? bounds.maxY - offset.height - size.height : bounds.minY + offset.height
-        return clamp(CGRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height), to: bounds,
-                     prefer: corner)
+        clamp(unclampedFrame(size: size, placement: placement, in: bounds, margin: margin), to: bounds,
+              prefer: placement.corner)
     }
 
     /// Move `frame` (not resize it) so it lies inside `bounds`. When it is larger than
