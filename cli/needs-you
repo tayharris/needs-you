@@ -1323,6 +1323,8 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
     try:
         name = _note_name(key)
         base = session_items_dir()
+        if expires_in is not None and expires_in <= 0:
+            open_ = False  # posted already expired: nothing waits on it
         if not open_:  # resolved, or now done/info: no session waits on it any more
             for note in _session_notes(name):
                 try:

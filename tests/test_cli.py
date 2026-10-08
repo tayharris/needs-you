@@ -590,6 +590,19 @@ class SessionItemById(CliTestCase):
         self.assertIn("queued", r.stderr)
         self.assertEqual(self.notes(), [])
 
+    def test_an_item_born_expired_keeps_no_note(self):
+        # --expires-in 0 (or less) makes an item that is already gone: no session waits on it,
+        # so the "waiting" card must not be held back for the note's 48 hours.
+        hub = self.make_hub("hub-a")
+        sender, _ = self.tokens(hub)
+        self.add([hub.url], sender)
+        self.assertEqual(len(self.notes()), 1)
+        for hours in ("0", "-1"):
+            r = self.run_cli("add", "--key", "work:ACME-1:decide", "--title", "Choose", "--expires-in", hours,
+                             urls=[hub.url], token=sender, extra_env=self.SESSION)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self.notes(), [], hours)
+
     def test_queued_add_learns_its_id_when_sent(self):
         self.assertIsNone(self.add([self.dead], "t"))
         self.assertEqual(len(self.notes()), 1)
