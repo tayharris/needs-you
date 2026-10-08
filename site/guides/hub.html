@@ -57,7 +57,7 @@ built in, which is all most setups need. This page is about the other place a hu
 </ul>
 <p>A hub is one Python file (<code>hub/needs_you_hub.py</code>, standard library and SQLite only) on stock
 <code>python3</code> 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Hubs replicate every write to each other,
-the Mac's own hub included once a server <a href="#with-the-macs-own-hub">joins it</a>, so a sender, the
+the app's built-in hub included once a server <a href="#with-the-apps-built-in-hub">joins it</a>, so a sender, the
 Mac or an invite link can use any of them. The wire contract is in <a href="api.html">API</a>.</p>
 <h2 id="two-hubs-in-10-minutes">Two hubs in 10 minutes <a class="anchor" href="#two-hubs-in-10-minutes" aria-label="Link to this section">#</a></h2>
 <p>You need two always-on Linux machines with systemd and Tailscale (MagicDNS on), called
@@ -94,11 +94,11 @@ at its next start once it can read them. The hub's log names each one. A non-nul
 means a <strong>token or invite</strong> record (a revocation, say) one side can't read: those are never
 skipped, so replication in that direction waits for it (the log says <code>BLOCKED</code>). Upgrade the
 older hub; replication then resumes by itself.</p>
-<h3 id="with-the-macs-own-hub">With the Mac's own hub <a class="anchor" href="#with-the-macs-own-hub" aria-label="Link to this section">#</a></h3>
-<p>A server joins the Mac's own hub with a <strong>peer invite</strong>: a one-use link the Mac makes, which
+<h3 id="with-the-apps-built-in-hub">With the app's built-in hub <a class="anchor" href="#with-the-apps-built-in-hub" aria-label="Link to this section">#</a></h3>
+<p>A server joins the app's built-in hub with a <strong>peer invite</strong>: a one-use link the Mac makes, which
 the server redeems for the pair's own replication secret. Nothing to copy by hand, and the
 secret never shows on a screen (<a data-repo="/blob/main/docs/adr/0012-mac-hub-peers.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0012-mac-hub-peers.md">ADR 0012</a>).</p>
-<p><strong>1. On the Mac</strong>, make the link: **Settings → Your inbox → Always-on hub → Add an always-on
+<p><strong>1. On the Mac</strong>, make the link: **Settings → Built-in hub → Always-on hub → Add an always-on
 hub** shows the command to run on the server (and copies it). The Mac must be on the tailnet;
 the link lasts an hour. From a terminal on the Mac instead:</p>
 <div class="code"><pre><code class="language-bash">python3 /Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py \
@@ -157,7 +157,7 @@ close it. Raise <code>retention_days</code> on the server if your Mac is often a
 <tr><td><code>--peer-secret-file F</code></td><td></td><td>The shared replication secret, from a file.</td></tr>
 <tr><td><code>--peer-secret S</code></td><td></td><td>The same, inline (visible in <code>ps</code>; prefer the file).</td></tr>
 <tr><td><code>--generate-peer-secret</code></td><td></td><td>Make a new secret and print it once.</td></tr>
-<tr><td><code>--join LINK</code></td><td></td><td>Pair with the hub that made this peer invite (<a href="#with-the-macs-own-hub">above</a>). No owner invite is printed.</td></tr>
+<tr><td><code>--join LINK</code></td><td></td><td>Pair with the hub that made this peer invite (<a href="#with-the-apps-built-in-hub">above</a>). No owner invite is printed.</td></tr>
 <tr><td><code>--reconfigure</code></td><td>off</td><td>Rebuild the config from defaults + flags (keeps the secret).</td></tr>
 <tr><td><code>--no-start</code></td><td>off</td><td>Install files and config only.</td></tr>
 <tr><td><code>--no-invite</code></td><td>off</td><td>Don't print the first owner invite.</td></tr>

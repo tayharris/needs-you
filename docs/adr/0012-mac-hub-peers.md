@@ -140,7 +140,7 @@ hub and runs it; the `api-change` skill gains a step to update it.
 
 `LocalHubPlan` gains `peers` and a `peer-secret` file path (`~/Library/Application
 Support/NeedsYou/peer-secret`, mode 600) for hand-set peers; invite-made links need neither
-(they live in the hub's database). Settings → Your inbox → Always-on hub makes the peer invite,
+(they live in the hub's database). Settings → Built-in hub → Always-on hub makes the peer invite,
 shows the server command, and lists each peer's state from `GET /v1/peers`. Settings window
 only; nothing in the panel.
 

@@ -365,7 +365,8 @@ fi
 # 5. first owner invite, so the Mac can connect
 if [ "$INVITE" -eq 1 ] && [ "$NEW_CONFIG" -eq 1 ]; then
   echo
-  echo "Connect your Mac to this hub (or, if the Mac app runs its own hub, add this hub as a peer instead):"
+  echo "Connect a Mac to this hub with this link. (To pair this hub with a Mac app's built-in hub instead,"
+  echo "make a link in its Settings -> Built-in hub -> Always-on hub and re-run this with --join <link>.)"
   "$ADMIN_BIN" invite create mac --role owner --uses 1 --ttl 72 | sed 's/^/  /'
 fi
 if [ -n "$JOINED" ]; then

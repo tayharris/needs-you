@@ -2,7 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Your inbox → Always-on hub (ADR 0012): make a peer invite for a server, show
+/// Settings → Built-in hub → Always-on hub (ADR 0012): make a peer invite for a server, show
 /// the command to run there, and each peer's replication state. Settings window only; the
 /// panel shows nothing of it. Peer secrets never reach the app (the hubs keep them).
 @MainActor

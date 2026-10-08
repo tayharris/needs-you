@@ -10,7 +10,7 @@ built in, which is all most setups need. This page is about the other place a hu
 
 A hub is one Python file (`hub/needs_you_hub.py`, standard library and SQLite only) on stock
 `python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Hubs replicate every write to each other,
-the Mac's own hub included once a server [joins it](#with-the-macs-own-hub), so a sender, the
+the app's built-in hub included once a server [joins it](#with-the-apps-built-in-hub), so a sender, the
 Mac or an invite link can use any of them. The wire contract is in [API.md](API.md).
 
 ## Two hubs in 10 minutes
@@ -75,11 +75,11 @@ older hub; replication then resumes by itself.
 
 ### With the app's built-in hub
 
-A server joins the Mac's own hub with a **peer invite**: a one-use link the Mac makes, which
+A server joins the app's built-in hub with a **peer invite**: a one-use link the Mac makes, which
 the server redeems for the pair's own replication secret. Nothing to copy by hand, and the
 secret never shows on a screen ([ADR 0012](adr/0012-mac-hub-peers.md)).
 
-**1. On the Mac**, make the link: **Settings → Your inbox → Always-on hub → Add an always-on
+**1. On the Mac**, make the link: **Settings → Built-in hub → Always-on hub → Add an always-on
 hub** shows the command to run on the server (and copies it). The Mac must be on the tailnet;
 the link lasts an hour. From a terminal on the Mac instead:
 
@@ -150,7 +150,7 @@ Options:
 | `--peer-secret-file F` | | The shared replication secret, from a file. |
 | `--peer-secret S` | | The same, inline (visible in `ps`; prefer the file). |
 | `--generate-peer-secret` | | Make a new secret and print it once. |
-| `--join LINK` | | Pair with the hub that made this peer invite ([above](#with-the-macs-own-hub)). No owner invite is printed. |
+| `--join LINK` | | Pair with the hub that made this peer invite ([above](#with-the-apps-built-in-hub)). No owner invite is printed. |
 | `--reconfigure` | off | Rebuild the config from defaults + flags (keeps the secret). |
 | `--no-start` | off | Install files and config only. |
 | `--no-invite` | off | Don't print the first owner invite. |

@@ -63,7 +63,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .machines:
             return "Every sender and Mac connected to your hub, and open invite links. Revoke any of them."
         case .otherHubs:
-            return "Optional. Use an always-on server hub, join a hub someone else runs, or add one by URL."
+            return "Optional. Join a hub someone else runs, or add one by URL. Always-on server hubs are added in Built-in hub."
         case .panel:
             return "How the floating pill and its cards look, where they show, and the shortcut."
         case .appearance:
