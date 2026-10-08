@@ -150,6 +150,12 @@ DOWNLOADS = {
     "install-copilot-hooks.sh": ("integrations/copilot/install-copilot-hooks.sh",
                                  "text/x-shellscript; charset=utf-8"),
     "copilot-hooks.json": ("integrations/copilot/copilot-hooks.json", "application/json"),
+    # Kimi Code CLI: the same hook, a marked block of [[hooks]] in ~/.kimi-code/config.toml.
+    "install-kimi-hooks.sh": ("integrations/kimi/install-kimi-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    "kimi-hooks.toml": ("integrations/kimi/kimi-hooks.toml", "text/plain; charset=utf-8"),
+    # Grok Build: the same hook, with its own file in ~/.grok/hooks/.
+    "install-grok-hooks.sh": ("integrations/grok/install-grok-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    "grok-hooks.json": ("integrations/grok/grok-hooks.json", "application/json"),
     # The MCP server (installed next to the CLI as needs-you-mcp) and the skill's text for
     # Codex, Gemini CLI and opencode's instruction files: the installer's --mcp and
     # --agent-instructions.
@@ -168,11 +174,14 @@ CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
 
 # The invite installer flags for a machine that runs Claude Code: hooks, skill, alerts on.
 CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
-# ...and the flags to add for OpenAI Codex CLI, Gemini CLI, opencode and GitHub Copilot CLI.
+# ...and the flags to add for OpenAI Codex CLI, Gemini CLI, opencode, GitHub Copilot CLI,
+# Kimi Code CLI and Grok Build.
 CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
 COPILOT_INSTALL_FLAG = "--copilot-hooks user"
+KIMI_INSTALL_FLAG = "--kimi-hooks user"
+GROK_INSTALL_FLAG = "--grok-hooks user"
 # Opt-in, only when the person asks: the MCP server and the skill's text for other agents.
 OPTIONAL_INSTALL_FLAGS = ("Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
                           "(claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds "
@@ -2062,9 +2071,11 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
-                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s. %s %s"
+                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s; "
+                               "Kimi Code, add %s; Grok Build, add %s. %s %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
-                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, OPTIONAL_INSTALL_FLAGS,
+                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, KIMI_INSTALL_FLAG, GROK_INSTALL_FLAG,
+                                  OPTIONAL_INSTALL_FLAGS,
                                   AGENT_PROMPT_CHECK))
     return out
 
@@ -3221,7 +3232,9 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--gemini-hooks user` | This machine runs Gemini CLI: post an item when a session asks to approve a tool call or finishes its turn and waits for you (hooks in `~/.gemini/settings.json`). Default `none`. |
 | `--opencode-plugin` | This machine runs opencode: install a plugin in `~/.config/opencode/plugins` that posts an item when a session asks for permission or a question, or goes idle waiting for you. |
 | `--copilot-hooks user` | This machine runs GitHub Copilot CLI: post an item when a session asks for permission or a question, or finishes its turn and waits for you (hooks in `~/.copilot/hooks/`). Default `none`. |
-| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode and Copilot CLI session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
+| `--kimi-hooks user` | This machine runs Kimi Code CLI (`kimi`): post an item when a session asks for approval or a question, or finishes its turn and waits for you (a marked block of `[[hooks]]` in `~/.kimi-code/config.toml`). Default `none`. |
+| `--grok-hooks user` | This machine runs Grok Build (`grok`): post an item when a session asks for permission or has waited a minute for your next message (hooks in `~/.grok/hooks/`; the Claude Code hooks, which Grok also runs, then step aside in Grok). Default `none`. |
+| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code and Grok session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--agent-instructions AGENTS` | The skill's rules for other agents, comma-separated from `codex`, `gemini`, `opencode`: a marked block appended to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing; the file keeps a backup). Only when the user asks for it. |
 | `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
@@ -3240,7 +3253,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--uninstall` | Remove the CLI, its config, the flush schedule, the skill, user-level hooks, the MCP server and the instruction blocks. Works until the link expires or is revoked, even with no uses left. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude`,
-`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
+`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, `~/.kimi-code` or `kimi` on PATH, `~/.grok` or `grok` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
 health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
 
 - The PATH change reaches new shells only: in the shell you ran it from, call

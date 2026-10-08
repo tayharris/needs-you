@@ -39,6 +39,7 @@ invite**; on a server hub: `needs-you-admin invite create`). It looks like
    Code (plus `--ssh-alias <name>` if the person reaches it from the Mac over SSH),
    `--codex-hooks user` for Codex CLI, `--gemini-hooks user` for Gemini CLI,
    `--opencode-plugin` for opencode, `--copilot-hooks user` for GitHub Copilot CLI,
+   `--kimi-hooks user` for Kimi Code CLI, `--grok-hooks user` for Grok Build,
    `--orca` for Orca automations, `--context personal` if
    its items are personal. Only if the person asks: `--agent-instructions codex,gemini,opencode`
    (these rules in those agents' own instruction files) and `--mcp <agents>` (the MCP server,
@@ -232,7 +233,7 @@ A sender that runs on a schedule passes `--expires-in` of about twice its interv
 renews the expiry, so a run that crashed before its resolve doesn't leave a card forever.
 
 **One card per wait.** When an agent posts a `needs` item with the CLI from inside its session
-(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI only in Orca), the CLI notes the key for that
+(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI, Kimi Code and Grok only in Orca), the CLI notes the key for that
 session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
 ended" card for that session. Permission prompts, questions and errors still post. The CLI
 finds the session from `$ORCA_TERMINAL_HANDLE`, the agent's own id (`$CLAUDE_CODE_SESSION_ID`,
@@ -259,6 +260,8 @@ doesn't duplicate them.
 | Gemini CLI | `--gemini-hooks user`; only in folders you trust | [integrations/gemini](../integrations/gemini/README.md) |
 | opencode | `--opencode-plugin` | [integrations/opencode](../integrations/opencode/README.md) |
 | GitHub Copilot CLI | `--copilot-hooks user` | [integrations/copilot](../integrations/copilot/README.md) |
+| Kimi Code CLI | `--kimi-hooks user`; check with `kimi doctor` | [integrations/kimi](../integrations/kimi/README.md) |
+| Grok Build | `--grok-hooks user`; without it Grok runs the Claude Code hooks, which then post for it | [integrations/grok](../integrations/grok/README.md) |
 
 Open sessions load new hooks after a restart.
 

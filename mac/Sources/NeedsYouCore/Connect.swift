@@ -220,12 +220,14 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     /// The installer flags for a machine that runs Claude Code: hooks, skill, alerts on
     /// (docs/guides/claude-code-everywhere.md). The join page lists the rest.
     public static let claudeFlags = "--claude-hooks user --skill --alerts"
-    /// The flags to add on a machine that runs OpenAI Codex CLI, Gemini CLI, opencode or
-    /// GitHub Copilot CLI.
+    /// The flags to add on a machine that runs OpenAI Codex CLI, Gemini CLI, opencode,
+    /// GitHub Copilot CLI, Kimi Code CLI or Grok Build.
     public static let codexFlag = "--codex-hooks user"
     public static let geminiFlag = "--gemini-hooks user"
     public static let opencodeFlag = "--opencode-plugin"
     public static let copilotFlag = "--copilot-hooks user"
+    public static let kimiFlag = "--kimi-hooks user"
+    public static let grokFlag = "--grok-hooks user"
     /// Opt-in extras the agent adds only when the person asks: the MCP server and the skill's
     /// rules in other agents' instruction files. Same text as the hub's.
     public static let optionalFlags = "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
@@ -247,7 +249,8 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         return "Set up needs-you alerts on this machine: read \(joinURL) and follow it. "
             + "If this machine runs Claude Code, use \(Self.claudeFlags). "
             + "If it runs OpenAI Codex CLI, add \(Self.codexFlag); Gemini CLI, add \(Self.geminiFlag); "
-            + "opencode, add \(Self.opencodeFlag); GitHub Copilot CLI, add \(Self.copilotFlag). "
+            + "opencode, add \(Self.opencodeFlag); GitHub Copilot CLI, add \(Self.copilotFlag); "
+            + "Kimi Code, add \(Self.kimiFlag); Grok Build, add \(Self.grokFlag). "
             + Self.optionalFlags + " " + Self.agentPromptCheck
     }
     /// What to run on the new machine: the full Claude Code setup.

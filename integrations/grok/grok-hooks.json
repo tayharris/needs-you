@@ -1,0 +1,62 @@
+{
+  "_needs_you_version": "0.1.4",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt",
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" notify grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" notify grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" resolve grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" resolve grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" resolve grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "StopCancelled": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" resolve grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" start grok", "timeout": 10 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh\" end grok", "timeout": 2 }
+        ]
+      }
+    ]
+  }
+}
