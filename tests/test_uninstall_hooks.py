@@ -58,6 +58,22 @@ class UninstallHooks(unittest.TestCase):
         with open(path) as fh:
             return "needs-you-hook.sh" in fh.read()
 
+    def test_project_install_in_home_is_the_user_level(self):
+        # The invite one-liner run right after ssh-ing in: the "project" is $HOME, whose .claude
+        # is the user level. Project commands ($CLAUDE_PROJECT_DIR/...) there broke every hook
+        # in every other project.
+        for args in (["--project"], ["--project", self.home], ["--project", ".", "--local"]):
+            r = subprocess.run([BASH, INSTALL_HOOKS] + args, env=self.env, capture_output=True, text=True,
+                               timeout=60, cwd=self.home)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("user level", r.stderr)
+            text = json.dumps(self.settings(self.user_settings()))
+            self.assertIn("$HOME/.claude/hooks/needs-you-hook.sh", text)
+            self.assertNotIn("CLAUDE_PROJECT_DIR", text)
+            self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "settings.local.json")))
+            self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you",
+                                                         "claude-projects.json")))
+
     def test_default_removes_everything_offline(self):
         self.setup_all()
         r = self.cli()
