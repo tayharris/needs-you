@@ -44,6 +44,7 @@
       </ul>
     </nav>
 <p>Three parts: <strong>the Needs You app</strong> on your Mac shows alerts in the pill; <strong>a hub</strong> stores them (the app has one built in, so there's nothing else to run); <strong>senders</strong>, the <code>needs-you</code> command and the agent hooks built on it, post them from any machine where agents or jobs run. Senders don't need the app; an invite link installs them. The words are explained under <a href="#words">Words</a> at the end.</p>
+<p>Rather have an agent do it? Paste the prompt in <a href="setup-with-an-agent.html">Set it up with an agent</a> into Claude Code on the Mac: it does these steps and asks you at each choice.</p>
 <p>Four steps; only the first is required. Every step can be re-run safely until the invite link expires, even after its uses are spent (a machine that's already set up doesn't spend another).</p>
 <div class="code"><pre><code> Claude Code / Orca on the Mac ──► 127.0.0.1 ──┐
                                                ├──► NeedsYou.app (pill + built-in hub)
@@ -75,7 +76,7 @@ needs-you resolve --key "personal:test:hello"</code></pre></div>
 <blockquote>
 <p><strong>macOS firewall:</strong> the first time a server connects, macOS may ask whether <code>python3</code> may accept incoming connections. Allow it; that's the app's built-in hub.</p>
 </blockquote>
-<p><strong>While the Mac sleeps</strong>, servers can't reach it. Their CLI queues items locally (it still exits 0, so jobs never fail), and the installer adds a 5-minute <code>needs-you flush</code> (cron on Linux, a LaunchAgent on macOS). Items arrive within about 5 minutes of the Mac waking.</p>
+<p><strong>While the Mac sleeps</strong>, servers can't reach it. Their CLI queues items locally (it still exits 0, so jobs never fail), and the installer adds a 5-minute <code>needs-you flush</code> (cron on Linux, a LaunchAgent on macOS). Items arrive within about 5 minutes of the Mac waking. The same flush updates the machine once a day from the Mac's hub (<code>--no-auto-update</code> turns that off; <a href="updates.html">Keeping up to date</a>).</p>
 <h2 id="4-optional-a-server-hub">4. Optional: a server hub <a class="anchor" href="#4-optional-a-server-hub" aria-label="Link to this section">#</a></h2>
 <p>If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: <a href="hub.html">Server hubs</a>. The Mac makes a one-use peer invite (<strong>Settings… → Built-in hub → Always-on hub</strong>) and the server runs the one command it shows (<code>curl -fsSL https://github.com/…/install-hub.sh | sudo bash -s -- --join &lt;link&gt;</code>, the installer of the app's release). From then on the two hubs replicate every item both ways, and invites made on the Mac list the server too, so senders fail over to it while the Mac sleeps (<a href="hub.html#with-the-apps-built-in-hub">Server hubs</a>).</p>
 <h2 id="done">Done <a class="anchor" href="#done" aria-label="Link to this section">#</a></h2>
