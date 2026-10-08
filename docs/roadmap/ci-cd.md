@@ -1,6 +1,6 @@
 # CI/CD plan
 
-Status: phases 1 and 2 exist as `.github/workflows/ci.yml` and `release.yml` (not yet run on GitHub). Phase 3 is a plan. Differences from the plan below: the site is checked by `tests/test_site.py` inside the Python jobs instead of a separate `site` job, and no version stamping (see Versioning).
+Status (2026-10-08): phases 1 and 2 are built and run on GitHub on every push (`ci.yml`, `release.yml`; the jobs use self-hosted runners through the variables below, and fork pull requests use GitHub's images). Releases 0.1.2–0.1.5 were cut this way: the tag drafts the release with build-provenance attestations, and the owner publishes it. Phase 3 (signing and notarization) is a plan; it waits on a Developer ID. Differences from the plan below: the site is checked by `tests/test_site.py` inside the Python jobs instead of a separate `site` job, and a separate `site.yml` can deploy the site ([site-deploy.md](site-deploy.md)).
 
 Goal: every push and PR runs the same suites a contributor runs locally (`test-all` skill), and pushing a `vX.Y.Z` tag produces a GitHub Release with the Mac app, the server tarball and the CLI, checksummed, after the tests pass. Signing comes in a later phase because it needs paid-account secrets.
 
@@ -90,6 +90,6 @@ sudo -iu ghrunner bash -c 'mkdir actions-runner && cd actions-runner && curl -fs
 ## Open decisions
 
 1. Keep the system-python jobs only, or add a `setup-python` 3.9–3.13 matrix too?
-2. Draft releases (a human publishes) or publish automatically?
-3. Checksum signing: minisign key, Sigstore keyless, or none at first?
-4. Apple Developer account: personal, or an org account for the eventual non-profit?
+2. Apple Developer account: personal, or an org account for the eventual non-profit?
+
+Settled: releases stay drafts that a person publishes; downloads are checked with `SHA256SUMS` plus GitHub build provenance (Sigstore), and an optional Ed25519 signature over `release-manifest.json` once the owner adds the key ([release-signing.md](../security/release-signing.md)).

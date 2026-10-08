@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""needs-you-usage: a low-noise card when Claude's 5-hour or weekly limit runs high.
+
+Claude Code's status line command gets the session as JSON on stdin, and for claude.ai
+Pro and Max subscribers that JSON carries `rate_limits.five_hour` and
+`rate_limits.seven_day` (`used_percentage`, `resets_at`). This script reads only those
+numbers: no credentials, no transcript, no network of its own. When a window reaches the
+threshold it posts one `info` card (low, never counted as waiting) that expires when the
+window resets, re-posts it only when the percentage moved 5 points, and resolves it when
+usage is back under the line.
+
+Off unless NEEDS_YOU_USAGE_ALERT_PCT is set. Use it as the status line command, wrapping
+the status line you already have (its output is passed through unchanged):
+
+    "statusLine": {"type": "command",
+                   "command": "~/.local/bin/needs-you-usage -- ~/.claude/statusline.sh"}
+
+Or with no status line of your own, `needs-you-usage --print` shows "5h 23% · 7d 41%".
+
+Config, in the environment or ~/.config/needs-you/env:
+
+  NEEDS_YOU_USAGE_ALERT_PCT         5-hour threshold in percent; unset or 0: off
+  NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT  weekly threshold (default: the 5-hour one; 0: off)
+  NEEDS_YOU_USAGE_ACCOUNT           a label for this account (letters, digits, . _ -), for
+                                    machines with more than one Claude login
+  NEEDS_YOU_AGENT_CONTEXT           work | personal (default: the CLI's)
+  NEEDS_YOU_BIN                     path to the needs-you CLI
+
+It always exits 0 on its own account (with `--`, it exits with the wrapped command's
+status) and never waits on the hub: the post runs detached.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from typing import Dict, List, Optional
+
+WINDOWS = (("five_hour", "5h", "5-hour", 5.0), ("seven_day", "7d", "weekly", 24.0))
+STEP = 5  # re-post only when the percentage moved this many points
+
+
+def env_file() -> str:
+    return (os.environ.get("NEEDS_YOU_ENV_FILE") or os.environ.get("NEEDS_YOU_CONFIG")
+            or os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+                            "needs-you", "env"))
+
+
+def load_settings(names: List[str]) -> Dict[str, str]:
+    out = {n: os.environ[n] for n in names if os.environ.get(n) is not None}
+    missing = [n for n in names if n not in out]
+    if not missing:
+        return out
+    try:
+        with open(env_file(), encoding="utf-8") as fh:
+            lines = fh.read(256 * 1024).splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        m = re.match(r"^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$", line)
+        if m and m.group(1) in missing:
+            v = m.group(2).strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                v = v[1:-1]
+            out[m.group(1)] = v  # the last line wins, as in the shell
+    return out
+
+
+def pct_setting(raw: Optional[str]) -> float:
+    try:
+        v = float(raw or 0)
+    except ValueError:
+        return 0.0
+    return v if 0 < v <= 100 else 0.0
+
+
+def cli_path(settings: Dict[str, str]) -> Optional[str]:
+    p = settings.get("NEEDS_YOU_BIN") or shutil.which("needs-you")
+    if not p:
+        p = os.path.expanduser("~/.local/bin/needs-you")
+    return p if os.path.isfile(p) and os.access(p, os.X_OK) else None
+
+
+def state_path(account: str) -> str:
+    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    return os.path.join(base, "needs-you", "usage", "claude%s.json" % ("-" + account if account else ""))
+
+
+def read_state(path: str) -> Dict[str, dict]:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(path: str, state: Dict[str, dict]) -> None:
+    if not state:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(state, fh)
+    os.replace(tmp, path)
+
+
+def spawn(args: List[str]) -> None:
+    """Run the CLI detached: Claude Code cancels a status line command that is still running
+    when the next update comes, and the CLI queues in its outbox when no hub answers."""
+    subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+
+
+def reset_text(resets_at: int, now: float) -> str:
+    if resets_at <= now:
+        return ""
+    t = time.localtime(resets_at)
+    fmt = "%H:%M" if resets_at - now < 20 * 3600 else "%a %H:%M"
+    return time.strftime(fmt, t)
+
+
+def windows(data: dict) -> Dict[str, dict]:
+    rl = data.get("rate_limits")
+    out = {}
+    if not isinstance(rl, dict):
+        return out
+    for name, short, _, _ in WINDOWS:
+        w = rl.get(name)
+        if not isinstance(w, dict):
+            continue
+        try:
+            pct = float(w.get("used_percentage"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            resets = int(w.get("resets_at") or 0)
+        except (TypeError, ValueError):
+            resets = 0
+        out[short] = {"pct": max(0, min(100, int(pct))), "resets_at": resets}
+    return out
+
+
+def check(data: dict, now: float) -> None:
+    settings = load_settings(["NEEDS_YOU_USAGE_ALERT_PCT", "NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT",
+                              "NEEDS_YOU_USAGE_ACCOUNT", "NEEDS_YOU_AGENT_CONTEXT", "NEEDS_YOU_BIN"])
+    account = settings.get("NEEDS_YOU_USAGE_ACCOUNT") or ""
+    if not re.match(r"^[A-Za-z0-9._-]{0,40}$", account):
+        account = ""
+    path = state_path(account)
+    five = pct_setting(settings.get("NEEDS_YOU_USAGE_ALERT_PCT"))
+    weekly_raw = settings.get("NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT")
+    weekly = five if weekly_raw in (None, "") else pct_setting(weekly_raw)
+    thresholds = {"5h": five, "7d": weekly}
+    state = read_state(path)
+    if not five and not weekly and not state:
+        return  # off, and nothing of ours to clear: the common case costs one stat
+    cli = cli_path(settings)
+    if not cli:
+        return
+    host = re.sub(r"[^A-Za-z0-9._-]", "_", socket.gethostname().split(".")[0])[:40] or "host"
+    seen = windows(data)
+    changed = False
+    for _, short, label, fallback_h in WINDOWS:
+        key = "agent:%s:claude-usage%s:%s" % (host, ":" + account if account else "", short)
+        prior = state.get(short)
+        cur = seen.get(short)
+        thr = thresholds[short]
+        if cur is None and thr:
+            continue  # no data this time (API key login, or before the first response)
+        if not thr or cur is None or cur["pct"] < thr:
+            if prior is not None:
+                spawn([cli, "resolve", "--key", key])
+                state.pop(short, None)
+                changed = True
+            continue
+        if (isinstance(prior, dict) and prior.get("resets_at") == cur["resets_at"]
+                and abs(int(prior.get("pct", -100)) - cur["pct"]) < STEP):
+            continue
+        when = reset_text(cur["resets_at"], now)
+        title = "Claude %s limit %d%% used%s" % (label, cur["pct"], ": resets " + when if when else "")
+        if account:
+            title += " (%s)" % account
+        body = ("This Claude account has used %d%% of its %s limit across every session, as "
+                "Claude Code's status line reports it. Pace the work, move it to a smaller model, "
+                "or plan around the reset%s." % (cur["pct"], label, " at " + when if when else ""))
+        hours = (cur["resets_at"] - now) / 3600.0 if cur["resets_at"] > now else fallback_h
+        args = [cli, "add", "--kind", "info", "--priority", "low", "--key", key,
+                "--title=" + title, "--body=" + body, "--agent", "claude-code",
+                "--expires-in", "%.2f" % max(0.05, hours)]
+        if settings.get("NEEDS_YOU_AGENT_CONTEXT") in ("work", "personal"):
+            args += ["--context", settings["NEEDS_YOU_AGENT_CONTEXT"]]
+        spawn(args)
+        state[short] = cur
+        changed = True
+    if changed:
+        write_state(path, state)
+
+
+def meter(data: dict) -> str:
+    seen = windows(data)
+    return " · ".join("%s %d%%" % (short, seen[short]["pct"]) for _, short, _, _ in WINDOWS
+                      if short in seen)
+
+
+def main(argv: List[str]) -> int:
+    wrapped: List[str] = []
+    if "--" in argv:
+        i = argv.index("--")
+        argv, wrapped = argv[:i], argv[i + 1:]
+    if argv and argv[0] in ("-h", "--help"):
+        sys.stdout.write(__doc__ or "")
+        return 0
+    show = "--print" in argv
+    raw = b""
+    try:
+        raw = sys.stdin.buffer.read(4 * 1024 * 1024)
+    except Exception:
+        pass
+    data: dict = {}
+    try:
+        d = json.loads(raw.decode("utf-8", "replace") or "{}")
+        data = d if isinstance(d, dict) else {}
+    except ValueError:
+        pass
+    try:
+        check(data, time.time())
+    except Exception:
+        pass  # a status line helper never breaks the status line
+    rc = 0
+    if wrapped:
+        try:
+            sys.stdout.flush()
+            rc = subprocess.run(wrapped, input=raw).returncode
+        except Exception:
+            rc = 0
+    if show:
+        line = meter(data)
+        if line:
+            sys.stdout.write(line + "\n")
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

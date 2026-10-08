@@ -111,6 +111,8 @@ case "$SCOPE" in
     SETTINGS_DIR=$(cd "$(dirname "$SETTINGS")" 2>/dev/null && pwd) || die "no such directory: $(dirname "$SETTINGS")"
     SETTINGS="$SETTINGS_DIR/$(basename "$SETTINGS")"
     HOOKS_DIR="$SETTINGS_DIR/hooks"
+    # The path goes into the hook command line, which a shell runs: no quoting tricks.
+    case "$HOOKS_DIR" in *[\"\\\`\$]*) die "--settings can't be in a directory whose path has quotes, backslashes, \` or \$" ;; esac
     CMD_PREFIX="\"$HOOKS_DIR/needs-you-hook.sh\""
     ;;
 esac
@@ -246,8 +248,20 @@ if dry_run:
 real = os.path.realpath(settings_path)
 os.makedirs(os.path.dirname(real), exist_ok=True)
 if original_text is not None:
+    # 0600 (settings can hold API keys in "env"), and O_EXCL: a backup name that already
+    # exists (or is a symlink a repo planted) is never written.
     backup = "%s.bak-%s" % (real, time.strftime("%Y%m%d-%H%M%S"))
-    with open(backup, "w", encoding="utf-8") as f:
+    n = 0
+    while True:
+        try:
+            bfd = os.open(backup if not n else "%s.%d" % (backup, n),
+                          os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            break
+        except FileExistsError:
+            n += 1
+    if n:
+        backup = "%s.%d" % (backup, n)
+    with os.fdopen(bfd, "w", encoding="utf-8") as f:
         f.write(original_text)
     print("settings: backed up to %s" % backup)
     mode = os.stat(real).st_mode & 0o777
@@ -270,9 +284,11 @@ if [ "$ACTION" = "install" ]; then
     echo "hook: already up to date"
   else
     mkdir -p "$HOOKS_DIR"
-    cp "$HOOK_SRC" "$HOOKS_DIR/needs-you-hook.sh.tmp"
-    chmod 755 "$HOOKS_DIR/needs-you-hook.sh.tmp"
-    mv -f "$HOOKS_DIR/needs-you-hook.sh.tmp" "$HOOKS_DIR/needs-you-hook.sh"
+    # A fresh temp name (never a fixed one a repo could ship as a symlink), renamed over.
+    hook_tmp=$(mktemp "$HOOKS_DIR/.needs-you-hook.XXXXXX") || die "can't write in $HOOKS_DIR"
+    cat "$HOOK_SRC" >"$hook_tmp"
+    chmod 755 "$hook_tmp"
+    mv -f "$hook_tmp" "$HOOKS_DIR/needs-you-hook.sh"
     echo "hook: installed"
   fi
   ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"

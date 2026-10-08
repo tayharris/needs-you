@@ -90,6 +90,7 @@ import re
 import shlex
 import socket
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -2071,9 +2072,9 @@ def _valid_cli(data: bytes) -> bool:
 def _write_atomic(path: str, data: bytes, mode: int) -> None:
     real = os.path.realpath(path)
     d = os.path.dirname(real)
-    tmp = os.path.join(d, ".%s.%d.tmp" % (os.path.basename(real), os.getpid()))
+    # mkstemp: a fresh name, O_EXCL, so nothing planted in the directory is written through.
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".%s." % os.path.basename(real), suffix=".tmp")
     try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         os.chmod(tmp, mode)

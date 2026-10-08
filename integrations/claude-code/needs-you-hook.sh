@@ -196,16 +196,44 @@ else
   input=$(cat 2>/dev/null)
 fi
 
+# A plain string field at the top level of the hook JSON (ids and fixed words). A flat
+# payload (one object) is read with a sed grab, which avoids a python start-up on every
+# event. One with nested objects (tool_input, an MCP tool's arguments) can carry the same
+# key inside: python reads the top-level fields once, so a nested session_id never becomes
+# the session.
+top_fields=
+top_read=0
+json_str() {
+  case "$input" in
+    *'{'*'{'*)
+      if [ "$top_read" = 0 ]; then
+        top_read=1
+        top_fields=$(printf '%s' "$input" | python3 -c 'import json, re, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+for k, v in (d.items() if isinstance(d, dict) else ()):
+    if isinstance(v, str) and re.match(r"^[A-Za-z0-9_]+$", k):
+        print("%s=%s" % (k, re.sub(r"[\x00-\x1f\x7f]", " ", v)))' 2>/dev/null)
+      fi
+      printf '%s\n' "$top_fields" | sed -n "s/^$1=//p" | head -n 1 ;;
+    *)
+      printf '%s\n' "$input" |
+        sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1 ;;
+  esac
+}
+
 # Cursor runs the Claude Code hooks from ~/.claude/settings.json as well (Stop,
 # UserPromptSubmit, SessionStart, SessionEnd). Its payloads carry cursor_version and
 # conversation_id, which Claude Code's never do. The cursor hooks handle Cursor; here a Stop
 # would clear the card they just posted (same conversation id), so step aside.
-if [ "$agent" = claude ] && printf '%s' "$input" | grep -Eq '"(cursor_version|conversation_id)"[[:space:]]*:'; then
+if [ "$agent" = claude ] && [ -n "$(json_str cursor_version)$(json_str conversation_id)" ]; then
   exit 0
 fi
 
 # A Grok subagent's session is the parent session's work: its waits show up there.
-if [ "$agent" = grok ] && printf '%s' "$input" | grep -q '"subagentType"[[:space:]]*:[[:space:]]*"'; then
+if [ "$agent" = grok ] && [ -n "$(json_str subagentType)" ]; then
   exit 0
 fi
 
@@ -254,14 +282,8 @@ log() {
   printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*" >>"$NEEDS_YOU_HOOK_LOG" 2>/dev/null
 }
 
-sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
-
-# A plain string field from the hook JSON. A sed grab avoids a python start-up
-# on every event; the values read this way are ids and fixed words.
-json_str() {
-  printf '%s\n' "$input" |
-    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
-}
+# A name for a file (markers, the card key): never "." or "..", so a leading dot becomes _.
+sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80 | sed 's/^\./_/'; }
 
 session_id=$(json_str session_id)
 [ -n "$session_id" ] || session_id=$(json_str sessionId)  # Copilot CLI
@@ -448,7 +470,10 @@ event = field("hook_event_name")
 ntype = field("notification_type") or field("notificationType")  # Grok: camelCase only
 cwd = field("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
-project = os.path.basename(project_dir.rstrip("/")) or "claude"
+# Text the hub refuses (control and bidi characters, a source field over 100 characters)
+# would lose the card: a folder name can hold anything.
+_UNPRINTABLE_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+project = _UNPRINTABLE_RE.sub("", os.path.basename(project_dir.rstrip("/")))[:100].strip() or "claude"
 session = field("session_id")
 handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
 # <repoId>::<path>; the path is the readable part.
@@ -474,6 +499,7 @@ def where_lines():
     """Where the session runs, so a card from a tmux pane on a VM says which one."""
     home = os.path.expanduser("~")
     short_cwd = "~" + cwd[len(home):] if cwd.startswith(home + "/") or cwd == home else cwd
+    short_cwd = _UNPRINTABLE_RE.sub("", short_cwd.replace("\t", " "))
     lines, where = [], []
     pane = os.environ.get("TMUX_PANE", "")
     tmux_target = ""

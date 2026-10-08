@@ -415,7 +415,7 @@ def serve(inp: Any = None, out: Any = None) -> int:
             continue
         try:
             msg = json.loads(line.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):  # RecursionError: "[[[[..."
             response: Optional[Any] = error(None, -32700, "parse error")
         else:
             if isinstance(msg, list):

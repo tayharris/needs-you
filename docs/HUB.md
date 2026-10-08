@@ -6,8 +6,9 @@ The Mac app runs its own hub, which is all most setups need. Add always-on serve
 - you run many servers, or senders that can't wait (CI with short-lived runners).
 
 A hub is one Python file (`hub/needs_you_hub.py`, standard library and SQLite only) on stock
-`python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Hubs replicate every write to each other,
-so a sender, the Mac or an invite link can use any of them. The wire contract is in
+`python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Server hubs replicate every write to each other
+(not yet with the Mac's own hub, [below](#with-the-macs-own-hub)), so a sender, the Mac or an
+invite link can use any of them. The wire contract is in
 [API.md](API.md).
 
 ## Two hubs in 10 minutes
@@ -72,11 +73,19 @@ older hub; replication then resumes by itself.
 
 ### With the Mac's own hub
 
-To make server hubs and the Mac's hub one mesh, give all of them the same peer secret and list
-each other as peers (servers use `--peer http://my-mac.example.ts.net:8765`; on the Mac, see
-[mac/README.md](../mac/README.md) for how the app passes peers and the secret to its hub). The Mac's `this-mac` owner token then replicates
-to the servers, so the app can read from them while its own hub restarts. Without peering, the
-Mac simply connects to each server hub as a client through an owner invite.
+Today the Mac's own hub doesn't replicate with server hubs: the app starts it without peers,
+so server hubs replicate only with each other. Invites made on the Mac list only the Mac's URL,
+so the senders they set up post only to the Mac. To use server hubs:
+
+- Make the sender invites on a server hub (`needs-you-admin invite create my-servers --role sender`),
+  so senders get every server hub's URL and fail over between them.
+- Connect the Mac to a server hub with an owner invite from it (**Settings → Other hubs (advanced)**).
+  The app reads one hub at a time, this Mac's first, so items posted to the server hubs show
+  while the Mac's own hub is down. To read the server hubs all the time, turn off **Run hub on
+  this Mac**.
+
+Peering the Mac's hub with server hubs is planned ([ADR 0004](adr/0004-always-on-hub.md),
+[next-big-item.md](roadmap/next-big-item.md)).
 
 ## What `install-hub.sh --user` sets up
 
@@ -151,6 +160,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `quiet` | `--quiet` | false | No access log. |
 | `access_log` | | true | One stderr line per request. Invite codes in `/join/` paths (and anything shaped like a code or token) are replaced with `<code>`/`<redacted>`, and control characters are escaped. |
 | `max_open_per_token` | | 60 | Volume guard. |
+| `max_connections` / `request_read_seconds` | | 128 / 10 | Connections served at once, across all binds (kept 64 under the file descriptor limit). When full, a connection open longer than `request_read_seconds` (a slow request, or an answer its client stopped reading; never a reader's `/v1/stream`) is closed to make room; otherwise new ones are closed at once. |
 | `default_expiry_hours` | | 24 | Expiry for `done`/`info` items without `expires_at`. |
 | `maintenance_seconds` | | 600 | Purge + WAL checkpoint + incremental vacuum interval. |
 | `vacuum_hours` | | 24 | How often a full `VACUUM` may run (only when over 25% is free). |

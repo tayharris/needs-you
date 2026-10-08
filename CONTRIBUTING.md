@@ -7,7 +7,7 @@ Thanks for helping. needs-you is small on purpose: a standard-library-only Pytho
 - **Bugs:** open an issue with the bug template (component, version, steps). `needs-you doctor` output helps; it never prints the token.
 - **Anything bigger than a fix:** open an issue first so we can agree on the shape. Changes to the wire contract, a new dependency or a new integration usually need a short design note; architecture decisions go in [docs/adr/](docs/adr/).
 - **Security problems:** never in a public issue; see [SECURITY.md](SECURITY.md).
-- The repository is private for now, so contributions come from invited collaborators. Once it's public, fork it and open a pull request from a branch.
+- Fork the repository and open a pull request from a branch.
 
 ## License
 

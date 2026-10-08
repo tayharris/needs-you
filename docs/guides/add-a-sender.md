@@ -108,6 +108,14 @@ To connect an agent or tool that has hooks, webhooks, plugins or a notification 
 
 ## Cron, systemd, CI
 
+For one command, wrap it in `needs-you run`:
+
+```bash
+needs-you run --key "personal:devbox:nightly-backup" --title "Nightly backup failed" -- ./backup.sh
+```
+
+It runs the command (no shell) and passes its output and exit code through. On failure it posts a `needs` card with the exit code and the last 5 lines of stderr (obvious tokens redacted; `--no-output` leaves them out). On success it resolves the key, and if the run took at least `--done-after` seconds (default 300) it posts a `done` FYI, so a long build you were waiting on says it finished. `needs-you run --help` lists the options; [AGENT-GUIDE.md](../AGENT-GUIDE.md#wrapping-a-command-needs-you-run) has the rules.
+
 Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a wrapper that alerts on failure and resolves on success, an `OnFailure=` systemd template, and a GitHub Actions step that joins the tailnet.
 
 ## Removing a sender
