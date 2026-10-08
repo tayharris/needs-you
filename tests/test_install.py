@@ -370,6 +370,30 @@ class InstallScript(HubTestCase):
         self.assertFalse(os.path.exists(os.path.join(oc, "plugins", "needs-you.js")))
         self.assertFalse(os.path.exists(os.path.join(oc, "hooks", "needs-you-hook.sh")))
 
+    def test_a_broken_agent_config_skips_that_agent_only(self):
+        # Gemini allows // comments in settings.json, which the merge can't read: the install
+        # used to stop there (exit 2), before the opencode plugin, the skill and the summary.
+        gemini = os.path.join(self.home, ".gemini")
+        os.makedirs(gemini)
+        broken = '{\n  // my settings\n  "theme": "dark"\n}\n'
+        with open(os.path.join(gemini, "settings.json"), "w") as fh:
+            fh.write(broken)
+        inv = self.invite(uses=3)
+        r = self.install(inv, "--yes", "--gemini-hooks", "user", "--opencode-plugin", "--skill",
+                         "--host", "box6", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".config", "opencode", "plugins", "needs-you.js")))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".claude", "skills", "needs-you", "SKILL.md")))
+        self.assertIn("Done.", r.stdout)
+        self.assertIn("Not set up: Gemini CLI hooks", r.stdout + r.stderr)
+        with open(os.path.join(gemini, "settings.json")) as fh:
+            self.assertEqual(fh.read(), broken)  # untouched
+        # Nothing of what was asked for could be set up: exit 3 (documented in --help)
+        r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box6", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("Not set up: Gemini CLI hooks", r.stdout + r.stderr)
+        self.assertTrue(os.access(os.path.join(self.home, ".local", "bin", "needs-you"), os.X_OK))
+
     def test_gemini_hooks(self):
         inv = self.invite(uses=1)
         r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box4", STUB_UNAME="Linux")

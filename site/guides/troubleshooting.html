@@ -94,6 +94,7 @@ tailscale status | head                          # is this machine on the tailne
 <tr><td><code>curl: (22) ... 404</code> and no other output</td><td>A hub older than this release (it 404s dead links, and bash runs the empty script)</td><td>Make a new link; update the hub</td></tr>
 <tr><td>"kept the existing token"</td><td>The machine was already set up</td><td>Expected. <code>--force</code> redeems again and replaces the token</td></tr>
 <tr><td>Installer says no hub answered</td><td>The hub is asleep or unreachable right now</td><td>The setup still completed; the test item is queued</td></tr>
+<tr><td><code>Not set up: Gemini CLI hooks ...</code> (or Codex, Claude Code, opencode, the skill) at the end; exit 3 if nothing you asked for was set up</td><td>That agent's config couldn't be changed (unreadable JSON such as comments in <code>settings.json</code>, a symlink, a failed download); the message above it says which</td><td>Fix the file it names, then re-run the one-liner with the flag the line gives. The CLI and token are already set up</td></tr>
 </tbody>
 </table></div>
 <h2 id="setup-sendersh-manual-setup">setup-sender.sh (manual setup) <a class="anchor" href="#setup-sendersh-manual-setup" aria-label="Link to this section">#</a></h2>

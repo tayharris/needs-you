@@ -59,6 +59,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 | `curl: (22) ... 404` and no other output | A hub older than this release (it 404s dead links, and bash runs the empty script) | Make a new link; update the hub |
 | "kept the existing token" | The machine was already set up | Expected. `--force` redeems again and replaces the token |
 | Installer says no hub answered | The hub is asleep or unreachable right now | The setup still completed; the test item is queued |
+| `Not set up: Gemini CLI hooks ...` (or Codex, Claude Code, opencode, the skill) at the end; exit 3 if nothing you asked for was set up | That agent's config couldn't be changed (unreadable JSON such as comments in `settings.json`, a symlink, a failed download); the message above it says which | Fix the file it names, then re-run the one-liner with the flag the line gives. The CLI and token are already set up |
 
 ## setup-sender.sh (manual setup)
 

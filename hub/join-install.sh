@@ -107,6 +107,11 @@ Needs bash, curl and python3 3.9+. Writes only under $HOME (plus your crontab on
 Linux, or a LaunchAgent on macOS, for the flush, and one tagged PATH line in your
 shell profile). Re-running is safe and keeps the token; it works until the link
 expires, even with no uses left. Settings you don't pass again are kept.
+
+An agent whose config can't be changed (unreadable JSON, a symlink, a failed
+download) is skipped with a warning and listed as "Not set up:" at the end; the
+rest still installs. Exit 0 when the CLI is set up; 3 when it is but none of the
+hooks, plugin or skill you asked for could be; 1 when nothing was installed.
 EOF
 }
 
@@ -527,12 +532,23 @@ PY
 [ "$SCHEDULE" -eq 1 ] && schedule_install
 path_setup
 
-if [ "$HOOKS" != none ]; then
+# One agent's problem (a config file it can't read, a symlink it won't write through, a
+# download that failed) skips that agent with a warning; the rest still installs, and the
+# summary at the end lists what was skipped. Exit 3 if none of what was asked for installed.
+ASKED=0
+SKIPPED=()
+skipped() {  # skipped "Gemini CLI hooks" "--gemini-hooks user"
+  SKIPPED+=("$1 (fix what the message above says, then re-run with $2)")
+  warn "skipping the $1; the rest of the install goes on"
+}
+
+claude_hooks() {
+  local f
   for f in install-hooks.sh needs-you-hook.sh hooks.json; do
-    fetch "$f" "$TMP/$f" || die "could not download the Claude Code hooks ($f)"
+    fetch "$f" "$TMP/$f" || { warn "could not download the Claude Code hooks ($f)"; return 1; }
   done
   if [ "$HOOKS" = user ]; then
-    NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --user
+    NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --user || return 1
     # Record which hooks.json the settings were merged from, as `needs-you update` does, so
     # `needs-you doctor` doesn't report the hooks we just installed as out of date.
     hj=""
@@ -557,17 +573,21 @@ os.replace(p + ".tmp", p)
 PY
     fi
   else
-    NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --project "$PWD"
+    NEEDS_YOU_INSTALLER=1 bash "$TMP/install-hooks.sh" --project "$PWD" || return 1
   fi
+}
+if [ "$HOOKS" != none ]; then
+  ASKED=$((ASKED + 1))
+  claude_hooks || skipped "Claude Code hooks" "--claude-hooks $HOOKS"
 fi
 
 # install_agent_hooks NAME DIR FLAG: Codex or Gemini CLI, the same hook as Claude Code's.
 install_agent_hooks() {
   local f sha="" kv
   for f in "install-$1-hooks.sh" needs-you-hook.sh "$1-hooks.json"; do
-    fetch "$f" "$TMP/$f" || die "could not download the $1 hooks ($f)"
+    fetch "$f" "$TMP/$f" || { warn "could not download the $1 hooks ($f)"; return 1; }
   done
-  NEEDS_YOU_INSTALLER=1 bash "$TMP/install-$1-hooks.sh" "$3" "$2"
+  NEEDS_YOU_INSTALLER=1 bash "$TMP/install-$1-hooks.sh" "$3" "$2" || return 1
   # As for Claude: record the snippet merged, so `needs-you doctor` and `update` don't call
   # these fresh entries out of date.
   for kv in $SHA256S; do [ "${kv%%=*}" = "$1-hooks.json" ] && sha=${kv#*=}; done
@@ -590,21 +610,34 @@ with os.fdopen(fd, "w", encoding="utf-8") as fh:
 os.replace(p + ".tmp", p)
 PY
 }
-[ "$CODEX_HOOKS" = user ] && install_agent_hooks codex "${CODEX_HOME:-$HOME/.codex}" --codex-home
-[ "$GEMINI_HOOKS" = user ] && install_agent_hooks gemini "$HOME/.gemini" --gemini-dir
-if [ "$OPENCODE" -eq 1 ]; then
+if [ "$CODEX_HOOKS" = user ]; then
+  ASKED=$((ASKED + 1))
+  install_agent_hooks codex "${CODEX_HOME:-$HOME/.codex}" --codex-home || skipped "Codex hooks" "--codex-hooks user"
+fi
+if [ "$GEMINI_HOOKS" = user ]; then
+  ASKED=$((ASKED + 1))
+  install_agent_hooks gemini "$HOME/.gemini" --gemini-dir || skipped "Gemini CLI hooks" "--gemini-hooks user"
+fi
+opencode_plugin() {
+  local f
   for f in install-opencode-plugin.sh needs-you-hook.sh needs-you-opencode.js; do
-    fetch "$f" "$TMP/$f" || die "could not download the opencode plugin ($f)"
+    fetch "$f" "$TMP/$f" || { warn "could not download the opencode plugin ($f)"; return 1; }
   done
-  bash "$TMP/install-opencode-plugin.sh"
+  bash "$TMP/install-opencode-plugin.sh" || return 1
+}
+if [ "$OPENCODE" -eq 1 ]; then
+  ASKED=$((ASKED + 1))
+  opencode_plugin || skipped "opencode plugin" "--opencode-plugin"
 fi
 
 if [ "$SKILL" -eq 1 ]; then
-  mkdir -p "$SKILL_DIR"
-  fetch SKILL.md "$TMP/SKILL.md" || die "could not download the skill"
-  chmod 644 "$TMP/SKILL.md"
-  mv -f "$TMP/SKILL.md" "$SKILL_DIR/SKILL.md"
-  say "installed the needs-you skill in $SKILL_DIR"
+  ASKED=$((ASKED + 1))
+  if mkdir -p "$SKILL_DIR" && fetch SKILL.md "$TMP/SKILL.md" && chmod 644 "$TMP/SKILL.md" &&
+     mv -f "$TMP/SKILL.md" "$SKILL_DIR/SKILL.md"; then
+    say "installed the needs-you skill in $SKILL_DIR"
+  else
+    skipped "needs-you skill" "--skill"
+  fi
 fi
 
 if [ "$ORCA" -eq 1 ]; then
@@ -646,3 +679,9 @@ say "  $NY doctor"
 say "Then post a test item and resolve it:"
 say "  $NY add --key \"personal:test:$HOST_NAME\" --context personal --title \"Hello from $HOST_NAME\""
 say "  $NY resolve --key \"personal:test:$HOST_NAME\""
+if [ "${#SKIPPED[@]}" -gt 0 ]; then
+  say ""
+  for s in "${SKIPPED[@]}"; do say "Not set up: $s"; done
+  # The CLI and its token are set up either way; exit 3 only if nothing else asked for was.
+  [ "${#SKIPPED[@]}" -lt "$ASKED" ] || exit 3
+fi

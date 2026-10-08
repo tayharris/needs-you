@@ -44,6 +44,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - CLI: a `--body-file` that can't be read (missing, not UTF-8) and an `--expires-in` that isn't a finite number of hours (`nan`, `inf`, `1e300`) are usage errors (exit 2, one line) instead of a Python traceback with exit 1.
 - CLI: with no hub configured and an outbox it can't write, `needs-you add` crashed with exit 1, failing the job that called it. It now says the post was dropped and exits 0, as it already did with a hub configured.
 - Senders: a relative `setup-sender.sh --bin-dir` (or `NEEDS_YOU_BIN_DIR` for the invite installer) went into the crontab line and the shell profile as it was, where it pointed nowhere. It is made absolute first.
+- Invite installer: **one agent's broken config no longer stops the whole install.** A Gemini `settings.json` with comments, a symlinked Codex `hooks.json` or a failed download used to end the run with an error, before the other hooks, the plugin, the skill and the closing summary. That agent is now skipped with a warning and listed as **Not set up:** at the end, with how to retry; the rest installs. The installer exits 3 only when none of the hooks, plugin or skill you asked for could be set up (the CLI and its token are still installed).
 
 ## [0.1.3] - 2026-10-07
 
