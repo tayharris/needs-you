@@ -159,8 +159,11 @@ final class AnswerPolicyTests: XCTestCase {
         XCTAssertEqual(try HubClient.answerOutcome(status: 409, body: Data(#"{"error":"already_answered"}"#.utf8)),
                        .refused(code: "already_answered"))
         XCTAssertEqual(try HubClient.answerOutcome(status: 429, body: Data("not json".utf8)), .refused(code: "http_429"))
-        XCTAssertThrowsError(try HubClient.answerOutcome(status: 403, body: Data()))
-        XCTAssertThrowsError(try HubClient.answerOutcome(status: 503, body: Data()))
+        for status in [403, 503] {  // a refused token and a hub error throw (no XCTAssertThrowsError in MiniXCTest)
+            var threw = false
+            do { _ = try HubClient.answerOutcome(status: status, body: Data()) } catch { threw = true }
+            XCTAssertTrue(threw, "\(status)")
+        }
     }
 
     func testDemoFeedAnswers() async throws {
