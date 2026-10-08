@@ -1,0 +1,15 @@
+{
+  "_needs_you_version": "0.1.4",
+  "version": 1,
+  "hooks": {
+    "stop": [
+      { "command": "./hooks/needs-you-hook.sh notify cursor", "timeout": 10 }
+    ],
+    "beforeSubmitPrompt": [
+      { "command": "./hooks/needs-you-hook.sh resolve cursor", "timeout": 10 }
+    ],
+    "sessionEnd": [
+      { "command": "./hooks/needs-you-hook.sh end cursor", "timeout": 10 }
+    ]
+  }
+}

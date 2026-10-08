@@ -21,7 +21,7 @@ integrations/claude-code/
 └── skill/needs-you/SKILL.md
 ```
 
-The same hook serves OpenAI Codex CLI, Gemini CLI, opencode, GitHub Copilot CLI, Kimi Code CLI and Grok Build when started with a `codex`, `gemini`, `opencode`, `copilot`, `kimi` or `grok` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md), [integrations/gemini](../gemini/README.md), [integrations/opencode](../opencode/README.md), [integrations/copilot](../copilot/README.md), [integrations/kimi](../kimi/README.md) and [integrations/grok](../grok/README.md).
+The same hook serves OpenAI Codex CLI, Gemini CLI, opencode, GitHub Copilot CLI, Kimi Code CLI, Grok Build, Cursor, Cline and Aider when started with a `codex`, `gemini`, `opencode`, `copilot`, `kimi`, `grok`, `cursor`, `cline` or `aider` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md), [integrations/gemini](../gemini/README.md), [integrations/opencode](../opencode/README.md), [integrations/copilot](../copilot/README.md), [integrations/kimi](../kimi/README.md), [integrations/grok](../grok/README.md), [integrations/cursor](../cursor/README.md), [integrations/cline](../cline/README.md) and [integrations/aider](../aider/README.md). Cursor also runs these Claude Code hooks from `~/.claude/settings.json`; given a Cursor payload they exit at once.
 
 ## Hooks
 

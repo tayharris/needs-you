@@ -40,6 +40,7 @@ invite**; on a server hub: `needs-you-admin invite create`). It looks like
    `--codex-hooks user` for Codex CLI, `--gemini-hooks user` for Gemini CLI,
    `--opencode-plugin` for opencode, `--copilot-hooks user` for GitHub Copilot CLI,
    `--kimi-hooks user` for Kimi Code CLI, `--grok-hooks user` for Grok Build,
+   `--cursor-hooks user` for Cursor, `--cline-hooks user` for Cline, `--aider` for Aider,
    `--orca` for Orca automations, `--context personal` if
    its items are personal. Only if the person asks: `--agent-instructions codex,gemini,opencode`
    (these rules in those agents' own instruction files) and `--mcp <agents>` (the MCP server,
@@ -262,6 +263,9 @@ doesn't duplicate them.
 | GitHub Copilot CLI | `--copilot-hooks user` | [integrations/copilot](../integrations/copilot/README.md) |
 | Kimi Code CLI | `--kimi-hooks user`; check with `kimi doctor` | [integrations/kimi](../integrations/kimi/README.md) |
 | Grok Build | `--grok-hooks user`; without it Grok runs the Claude Code hooks, which then post for it | [integrations/grok](../integrations/grok/README.md) |
+| Cursor | `--cursor-hooks user`; a card when a turn finishes only (no approval hook) | [integrations/cursor](../integrations/cursor/README.md) |
+| Cline | `--cline-hooks user`; a card when a task finishes only (no approval hook) | [integrations/cline](../integrations/cline/README.md) |
+| Aider | `--aider`; a card when Aider waits, cleared when it exits or after an hour | [integrations/aider](../integrations/aider/README.md) |
 
 Open sessions load new hooks after a restart.
 

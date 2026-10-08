@@ -47,6 +47,7 @@
         <li><a href="#copilot-cli-hooks">Copilot CLI hooks</a></li>
         <li><a href="#kimi-code-hooks">Kimi Code hooks</a></li>
         <li><a href="#grok-build-hooks">Grok Build hooks</a></li>
+        <li><a href="#cursor-cline-and-aider">Cursor, Cline and Aider</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
@@ -191,6 +192,16 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li><strong>Not restarted, or switched off.</strong> Grok reads <code>~/.grok/hooks/*.json</code> when it starts; an entry switched off in <code>/hooks</code> stays off (<code>~/.grok/disabled-hooks</code>), and an organization policy with <code>allow_managed_hooks_only</code> turns off every user hook. Doctor reports both.</li>
 <li><strong>Cards say Grok but come from the Claude Code hooks.</strong> Without needs-you's own Grok hooks, Grok runs the Claude Code ones, which post for it. With both installed, only the Grok ones post.</li>
 <li><strong>Another <code>GROK_HOME</code>.</strong> Grok then reads <code>$GROK_HOME/hooks/</code>; run the installer and doctor with the same value.</li>
+</ul>
+<h2 id="cursor-cline-and-aider">Cursor, Cline and Aider <a class="anchor" href="#cursor-cline-and-aider" aria-label="Link to this section">#</a></h2>
+<p><code>needs-you doctor</code> has <code>cursor hooks</code>, <code>cline hooks</code> and <code>aider notifications</code> lines. None of the three has an approval hook, so <strong>no card when the agent asks to run something</strong>: that's expected, not a fault. The hook finishes in the background in all three, so log to a file (<code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> on the test commands in <a href="cursor.html#check-it-works">Cursor</a>, <a href="cline.html#check-it-works">Cline</a> or <a href="aider.html#check-it-works">Aider</a>).</p>
+<ul>
+<li><strong>Opted in only in your shell.</strong> Cursor and Cline in VS Code start hooks from the app, which doesn't read your shell profile. Put <code>NEEDS_YOU_AGENT_ALERTS=1</code> in <code>~/.config/needs-you/env</code>.</li>
+<li><strong>Cursor: a prompt seems held up.</strong> The hook answers <code>beforeSubmitPrompt</code> with <code>{"continue":true}</code> before anything else. If you see it held anyway, check <code>~/.cursor/hooks.json</code> for a needs-you entry under a permission hook (<code>preToolUse</code>, <code>beforeShellExecution</code>, …): doctor warns about it; re-run the installer.</li>
+<li><strong>Cline: no card in VS Code.</strong> Cline's "Enable Hooks" setting is off, or one of your own hook files took the <code>TaskComplete</code> name (doctor says which).</li>
+<li><strong>Cline: a card stays after you quit the CLI.</strong> Interactive <code>cline</code> sessions run in a background hub process that outlives the terminal; the card goes with your next task, when that process stops, or after 48 hours.</li>
+<li><strong>Aider: no card.</strong> A <code>.aider.conf.yml</code> in the repo, or <code>AIDER_NOTIFICATIONS_COMMAND</code>, overrides the one in your home directory; or <code>notifications: true</code> is missing (Aider needs both keys). If the installer printed two lines instead of writing them, add them yourself.</li>
+<li><strong>Aider: the card stays while you type.</strong> Aider sends nothing when you answer. It goes when Aider exits (within 5 minutes, by <code>needs-you flush</code>) or after <code>NEEDS_YOU_AIDER_EXPIRY_HOURS</code>.</li>
 </ul>
 <h2 id="github-poller">GitHub poller <a class="anchor" href="#github-poller" aria-label="Link to this section">#</a></h2>
 <ul>

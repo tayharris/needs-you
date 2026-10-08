@@ -2,7 +2,7 @@
 
 needs-you works with anything that can run a command or make an HTTP request when something happens: an agent's hooks, a plugin system, a webhook, a "notification command" setting. This page is all you need to connect one: when to post, the exact item format, how to map your tool's events to cards, three worked examples, how to test, and how to share what you built.
 
-Built-in connectors already exist for [Claude Code](claude-code.md), [Codex](codex.md), [Gemini CLI](gemini.md), [opencode](opencode.md), [GitHub Copilot CLI](copilot.md), [Kimi Code](kimi.md), [Grok Build](grok.md), [Orca](orca.md), [GitHub](github.md) and [cron, systemd and CI](../../integrations/ci/README.md). Use those where they fit.
+Built-in connectors already exist for [Claude Code](claude-code.md), [Codex](codex.md), [Gemini CLI](gemini.md), [opencode](opencode.md), [GitHub Copilot CLI](copilot.md), [Kimi Code](kimi.md), [Grok Build](grok.md), [Cursor](cursor.md), [Cline](cline.md), [Aider](aider.md), [Orca](orca.md), [GitHub](github.md) and [cron, systemd and CI](../../integrations/ci/README.md). Use those where they fit.
 
 ## Copy this into your agent
 

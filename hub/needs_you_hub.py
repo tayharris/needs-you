@@ -150,6 +150,14 @@ DOWNLOADS = {
     "install-copilot-hooks.sh": ("integrations/copilot/install-copilot-hooks.sh",
                                  "text/x-shellscript; charset=utf-8"),
     "copilot-hooks.json": ("integrations/copilot/copilot-hooks.json", "application/json"),
+    # Cursor: the same hook, merged into ~/.cursor/hooks.json.
+    "install-cursor-hooks.sh": ("integrations/cursor/install-cursor-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    "cursor-hooks.json": ("integrations/cursor/cursor-hooks.json", "application/json"),
+    # Cline: hook files in ~/Documents/Cline/Hooks/ that start the same hook.
+    "install-cline-hooks.sh": ("integrations/cline/install-cline-hooks.sh", "text/x-shellscript; charset=utf-8"),
+    # Aider: its notifications command, set in ~/.aider.conf.yml.
+    "install-aider-notifications.sh": ("integrations/aider/install-aider-notifications.sh",
+                                       "text/x-shellscript; charset=utf-8"),
     # Kimi Code CLI: the same hook, a marked block of [[hooks]] in ~/.kimi-code/config.toml.
     "install-kimi-hooks.sh": ("integrations/kimi/install-kimi-hooks.sh", "text/x-shellscript; charset=utf-8"),
     "kimi-hooks.toml": ("integrations/kimi/kimi-hooks.toml", "text/plain; charset=utf-8"),
@@ -180,6 +188,10 @@ CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
 COPILOT_INSTALL_FLAG = "--copilot-hooks user"
+# ...Cursor, Cline and Aider (a card when a turn or task finishes: they have no approval hook).
+CURSOR_INSTALL_FLAG = "--cursor-hooks user"
+CLINE_INSTALL_FLAG = "--cline-hooks user"
+AIDER_INSTALL_FLAG = "--aider"
 KIMI_INSTALL_FLAG = "--kimi-hooks user"
 GROK_INSTALL_FLAG = "--grok-hooks user"
 # Opt-in, only when the person asks: the MCP server and the skill's text for other agents.
@@ -2072,10 +2084,10 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
                                "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s; "
-                               "Kimi Code, add %s; Grok Build, add %s. %s %s"
+                               "Kimi Code, add %s; Grok Build, add %s; Cursor, add %s; Cline, add %s; Aider, add %s. %s %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
                                   OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, KIMI_INSTALL_FLAG, GROK_INSTALL_FLAG,
-                                  OPTIONAL_INSTALL_FLAGS,
+                                  CURSOR_INSTALL_FLAG, CLINE_INSTALL_FLAG, AIDER_INSTALL_FLAG, OPTIONAL_INSTALL_FLAGS,
                                   AGENT_PROMPT_CHECK))
     return out
 
@@ -3234,7 +3246,10 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--copilot-hooks user` | This machine runs GitHub Copilot CLI: post an item when a session asks for permission or a question, or finishes its turn and waits for you (hooks in `~/.copilot/hooks/`). Default `none`. |
 | `--kimi-hooks user` | This machine runs Kimi Code CLI (`kimi`): post an item when a session asks for approval or a question, or finishes its turn and waits for you (a marked block of `[[hooks]]` in `~/.kimi-code/config.toml`). Default `none`. |
 | `--grok-hooks user` | This machine runs Grok Build (`grok`): post an item when a session asks for permission or has waited a minute for your next message (hooks in `~/.grok/hooks/`; the Claude Code hooks, which Grok also runs, then step aside in Grok). Default `none`. |
-| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code and Grok session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
+| `--cursor-hooks user` | This machine runs Cursor: post an item when a Cursor agent finishes its turn and waits for you (hooks in `~/.cursor/hooks.json`). Cursor has no hook for approval prompts, so there is no card for those. Default `none`. |
+| `--cline-hooks user` | This machine runs Cline (VS Code or the CLI): post an item when a task finishes (hook files in `~/Documents/Cline/Hooks/`). Cline has no hook for approval prompts. Default `none`. |
+| `--aider` | This machine runs Aider: post an item when Aider waits for you after a reply (`notifications-command` in `~/.aider.conf.yml`; printed instead when that file can't safely be changed). |
+| `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok, Cursor, Cline and Aider session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--agent-instructions AGENTS` | The skill's rules for other agents, comma-separated from `codex`, `gemini`, `opencode`: a marked block appended to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing; the file keeps a backup). Only when the user asks for it. |
 | `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
@@ -3253,7 +3268,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--uninstall` | Remove the CLI, its config, the flush schedule, the skill, user-level hooks, the MCP server and the instruction blocks. Works until the link expires or is revoked, even with no uses left. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude`,
-`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, `~/.kimi-code` or `kimi` on PATH, `~/.grok` or `grok` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
+`~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, `~/.kimi-code` or `kimi` on PATH, `~/.grok` or `grok` on PATH, `~/.cursor` or `cursor`/`cursor-agent` on PATH, `~/Documents/Cline` or `cline` on PATH, `aider` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
 health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Never print the token.
 
 - The PATH change reaches new shells only: in the shell you ran it from, call

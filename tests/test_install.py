@@ -468,6 +468,53 @@ class InstallScript(HubTestCase):
         with open(os.path.join(kimi, "config.toml")) as fh:
             self.assertEqual(fh.read(), "hooks = []\n")
 
+    def test_cursor_cline_aider(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--cursor-hooks", "user", "--cline-hooks", "user", "--aider", "--alerts",
+                         "--host", "box7", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for label in ("Cursor (~/.cursor/hooks.json; finished turns only)", "Cline (", "Aider ("):
+            self.assertIn(label, r.stdout)
+        with open(os.path.join(self.home, ".cursor", "hooks.json")) as fh:
+            self.assertEqual(sorted(json.load(fh)["hooks"]), ["beforeSubmitPrompt", "sessionEnd", "stop"])
+        self.assertTrue(os.access(os.path.join(self.home, ".cursor", "hooks", "needs-you-hook.sh"), os.X_OK))
+        self.assertTrue(os.access(os.path.join(self.home, "Documents", "Cline", "Hooks", "TaskComplete"), os.X_OK))
+        with open(os.path.join(self.home, ".aider.conf.yml")) as fh:
+            self.assertIn("notifications-command:", fh.read())
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")))  # Claude untouched
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        for name in ("cursor hooks", "cline hooks", "aider notifications"):
+            self.assertEqual(checks[name]["status"], "OK", checks[name])
+            self.assertIn("alerts on", checks[name]["detail"])
+        self.assertEqual(checks["update"]["status"], "OK", checks["update"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".cursor", "hooks", "needs-you-hook.sh")))
+        cline = os.path.join(self.home, "Documents", "Cline", "Hooks")
+        self.assertEqual(os.listdir(cline) if os.path.isdir(cline) else [], [])
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".aider.conf.yml")))
+        for flag in ("--cursor-hooks", "--cline-hooks"):
+            r = self.install(inv, "--yes", flag, "project")
+            self.assertIn("%s must be user or none" % flag, r.stderr)
+
+    def test_aider_config_not_safe_to_change(self):
+        # Aider's own notifications-command: not replaced; the lines are printed, and with
+        # nothing else asked for the installer exits 3.
+        mine = "model: gpt-4o\nnotifications-command: say done\n"
+        with open(os.path.join(self.home, ".aider.conf.yml"), "w") as fh:
+            fh.write(mine)
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--aider", "--host", "box8", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("Not set up: Aider notifications", r.stdout + r.stderr)
+        self.assertIn("notifications: true\nnotifications-command: '\"$HOME/.config/needs-you/aider/hooks/"
+                      "needs-you-hook.sh\" notify aider'", r.stdout)
+        with open(os.path.join(self.home, ".aider.conf.yml")) as fh:
+            self.assertEqual(fh.read(), mine)
+
     def test_gemini_hooks(self):
         inv = self.invite(uses=1)
         r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box4", STUB_UNAME="Linux")

@@ -82,6 +82,7 @@ Code (plus <code>--ssh-alias &lt;name&gt;</code> if the person reaches it from t
 <code>--codex-hooks user</code> for Codex CLI, <code>--gemini-hooks user</code> for Gemini CLI,
 <code>--opencode-plugin</code> for opencode, <code>--copilot-hooks user</code> for GitHub Copilot CLI,
 <code>--kimi-hooks user</code> for Kimi Code CLI, <code>--grok-hooks user</code> for Grok Build,
+<code>--cursor-hooks user</code> for Cursor, <code>--cline-hooks user</code> for Cline, <code>--aider</code> for Aider,
 <code>--orca</code> for Orca automations, <code>--context personal</code> if
 its items are personal. Only if the person asks: <code>--agent-instructions codex,gemini,opencode</code>
 (these rules in those agents' own instruction files) and <code>--mcp &lt;agents&gt;</code> (the MCP server,
@@ -271,6 +272,9 @@ doesn't duplicate them.</p>
 <tr><td>GitHub Copilot CLI</td><td><code>--copilot-hooks user</code></td><td><a data-repo="/blob/main/integrations/copilot/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/copilot/README.md">integrations/copilot</a></td></tr>
 <tr><td>Kimi Code CLI</td><td><code>--kimi-hooks user</code>; check with <code>kimi doctor</code></td><td><a data-repo="/blob/main/integrations/kimi/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/kimi/README.md">integrations/kimi</a></td></tr>
 <tr><td>Grok Build</td><td><code>--grok-hooks user</code>; without it Grok runs the Claude Code hooks, which then post for it</td><td><a data-repo="/blob/main/integrations/grok/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/grok/README.md">integrations/grok</a></td></tr>
+<tr><td>Cursor</td><td><code>--cursor-hooks user</code>; a card when a turn finishes only (no approval hook)</td><td><a data-repo="/blob/main/integrations/cursor/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/cursor/README.md">integrations/cursor</a></td></tr>
+<tr><td>Cline</td><td><code>--cline-hooks user</code>; a card when a task finishes only (no approval hook)</td><td><a data-repo="/blob/main/integrations/cline/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/cline/README.md">integrations/cline</a></td></tr>
+<tr><td>Aider</td><td><code>--aider</code>; a card when Aider waits, cleared when it exits or after an hour</td><td><a data-repo="/blob/main/integrations/aider/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/aider/README.md">integrations/aider</a></td></tr>
 </tbody>
 </table></div>
 <p>Open sessions load new hooks after a restart.</p>

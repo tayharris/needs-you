@@ -228,6 +228,10 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     public static let copilotFlag = "--copilot-hooks user"
     public static let kimiFlag = "--kimi-hooks user"
     public static let grokFlag = "--grok-hooks user"
+    /// ...and Cursor, Cline and Aider (a card when a turn or task finishes).
+    public static let cursorFlag = "--cursor-hooks user"
+    public static let clineFlag = "--cline-hooks user"
+    public static let aiderFlag = "--aider"
     /// Opt-in extras the agent adds only when the person asks: the MCP server and the skill's
     /// rules in other agents' instruction files. Same text as the hub's.
     public static let optionalFlags = "Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
@@ -250,7 +254,8 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
             + "If this machine runs Claude Code, use \(Self.claudeFlags). "
             + "If it runs OpenAI Codex CLI, add \(Self.codexFlag); Gemini CLI, add \(Self.geminiFlag); "
             + "opencode, add \(Self.opencodeFlag); GitHub Copilot CLI, add \(Self.copilotFlag); "
-            + "Kimi Code, add \(Self.kimiFlag); Grok Build, add \(Self.grokFlag). "
+            + "Kimi Code, add \(Self.kimiFlag); Grok Build, add \(Self.grokFlag); "
+            + "Cursor, add \(Self.cursorFlag); Cline, add \(Self.clineFlag); Aider, add \(Self.aiderFlag). "
             + Self.optionalFlags + " " + Self.agentPromptCheck
     }
     /// What to run on the new machine: the full Claude Code setup.

@@ -20,12 +20,13 @@
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
   needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--copilot]
-                            [--kimi] [--grok] [--mcp] [--instructions] [--dry-run]
-                                                     remove the agent hooks: by default Claude
+                            [--cursor] [--cline] [--aider] [--kimi] [--grok] [--mcp] [--instructions]
+                            [--dry-run]              remove the agent hooks: by default Claude
                                                      Code's user level, this directory's project,
                                                      every recorded project install, and the Codex,
-                                                     Gemini CLI, opencode, Copilot CLI, Kimi Code
-                                                     and Grok Build installs, the MCP server and
+                                                     Gemini CLI, opencode, Copilot CLI, Cursor,
+                                                     Cline, Aider, Kimi Code and Grok Build
+                                                     installs, the MCP server and
                                                      the instruction blocks; offline
   needs-you install-mcp AGENTS [--dry-run]           register needs-you-mcp (next to this CLI)
                                                      with claude,codex,gemini,opencode,copilot
@@ -329,6 +330,10 @@ def _without_hook_entries(settings: Dict[str, Any]) -> Dict[str, Any]:
             continue
         kept_groups = []
         for group in groups:
+            # Cursor's entries are flat ({"command": ...}), not groups of hooks.
+            if (isinstance(group, dict) and not isinstance(group.get("hooks"), list)
+                    and HOOK_FILE in str(group.get("command", ""))):
+                continue
             if isinstance(group, dict) and isinstance(group.get("hooks"), list):
                 kept = [h for h in group["hooks"]
                         if not (isinstance(h, dict) and HOOK_FILE in str(h.get("command", "")))]
@@ -451,7 +456,7 @@ def _delete_files(paths: List[str], dry_run: bool, say: Any) -> None:
             pass
 
 
-UNINSTALL_AGENTS = ("codex", "gemini", "opencode", "copilot", "kimi", "grok")
+UNINSTALL_AGENTS = ("codex", "gemini", "opencode", "copilot", "cursor", "cline", "aider", "kimi", "grok")
 
 
 def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], dry_run: bool,
@@ -460,9 +465,9 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
     files and delete the copied hook script (and the opencode plugin), with no hub and no
     download. With no scope: Claude Code's user level, the project covering the current
     directory, every recorded project install, and the Codex, Gemini CLI, opencode, Copilot
-    CLI, Kimi Code and Grok Build installs. --user, --project, --codex, --gemini, --opencode,
-    --copilot, --kimi, --grok pick some. Exit 1 if a file couldn't be changed (unreadable
-    JSON, a symlink where needs-you would write)."""
+    CLI, Cursor, Cline, Aider, Kimi Code and Grok Build installs. --user, --project and one
+    flag per agent pick some. Exit 1 if a file couldn't be changed (unreadable JSON, a symlink
+    where needs-you would write)."""
     say = (lambda msg: None) if quiet else print  # noqa: E731
     everything = not (user or project is not None or agents)
     dirs: List[str] = []
@@ -562,6 +567,38 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
             if not dry_run and os.path.isfile(files[0]):
                 removed += 1
             _delete_files(files, dry_run, say)
+    # Cline: the hook files it wrote (marked) in Cline's hooks directory, and its hook copy.
+    if everything or "cline" in agents:
+        d = cline_hooks_dir()
+        hook = os.path.join(cline_home(), "hooks", HOOK_FILE)
+        stubs = [os.path.join(d, e) for e in CLINE_EVENTS]
+        links = [x for x in [d, os.path.dirname(hook), hook] + stubs if os.path.islink(x)]
+        if links:
+            warn("%s is a symlink; not touching the Cline hooks (remove them by hand)" % _tilde(links[0]))
+            failed = True
+        else:
+            mine = [f for f in stubs if _cline_stub(f)]
+            if mine and not dry_run:
+                removed += 1
+            _delete_files(mine + [hook], dry_run, say)
+            _rmdir_quiet(cline_home(), dry_run)
+    # Aider: the marked block in ~/.aider.conf.yml, and its hook copy.
+    if everything or "aider" in agents:
+        conf, hook = aider_conf(), os.path.join(aider_home(), "hooks", HOOK_FILE)
+        links = [x for x in (conf, os.path.dirname(hook), hook) if os.path.islink(x)]
+        if links:
+            warn("%s is a symlink; not touching the Aider setup (remove the needs-you lines by hand)"
+                 % _tilde(links[0]))
+            failed = True
+        else:
+            done = _strip_aider_block(conf, dry_run, say)
+            if done is None:
+                failed = True
+            else:
+                if done and not dry_run:
+                    removed += 1
+                _delete_files([hook], dry_run, say)
+                _rmdir_quiet(aider_home(), dry_run)
     # The MCP server and the instruction blocks (--mcp, --instructions).
     if everything or "mcp" in agents or "instructions" in agents:
         n, bad = uninstall_extras(everything or "mcp" in agents, everything or "instructions" in agents, dry_run, say)
@@ -599,6 +636,98 @@ def grok_home() -> str:
 
 def kimi_home() -> str:
     return os.environ.get("KIMI_CODE_HOME") or _home(".kimi-code")
+
+
+def cursor_dir() -> str:
+    return _home(".cursor")
+
+
+def _ny_conf_dir() -> str:
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or _home(".config"), "needs-you")
+
+
+def cline_home() -> str:
+    """Where install-cline-hooks.sh keeps its copy of the hook (in hooks/)."""
+    return os.path.join(_ny_conf_dir(), "cline")
+
+
+def cline_hooks_dir() -> str:
+    return _home("Documents", "Cline", "Hooks")
+
+
+def aider_home() -> str:
+    """Where install-aider-notifications.sh keeps its copy of the hook (in hooks/)."""
+    return os.path.join(_ny_conf_dir(), "aider")
+
+
+def aider_conf() -> str:
+    return _home(".aider.conf.yml")
+
+
+# The Cline hook files install-cline-hooks.sh writes, one per event.
+CLINE_EVENTS = ("TaskComplete", "TaskError", "UserPromptSubmit", "TaskCancel", "TaskStart", "TaskResume",
+                "SessionShutdown")
+AIDER_BEGIN = "# needs-you (managed by install-aider-notifications.sh; do not edit between these markers)"
+AIDER_END = "# end needs-you"
+
+
+def _cline_stub(path: str) -> bool:
+    """A Cline hook file install-cline-hooks.sh wrote (never one of the person's own)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read(4096)
+    except OSError:
+        return False
+    return "\n# needs-you: " in text and HOOK_FILE in text
+
+
+def _rmdir_quiet(path: str, dry_run: bool) -> None:
+    if not dry_run:
+        try:
+            os.rmdir(path)
+        except OSError:
+            pass
+
+
+def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
+    """Take the needs-you block out of an Aider config file. True when it removed (or would
+    remove) it, False when there was none, None when it couldn't."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeDecodeError) as e:
+        warn("%s: can't read it (%s); nothing was changed" % (_tilde(path), e))
+        return None
+    out, inside, found = [], False, False
+    for line in text.splitlines(keepends=True):
+        s = line.rstrip("\n")
+        if s == AIDER_BEGIN:
+            inside = found = True
+        elif inside:
+            inside = s != AIDER_END
+        else:
+            out.append(line)
+    if not found:
+        return False
+    if inside:
+        warn("%s: the needs-you block has no end marker; remove it by hand" % _tilde(path))
+        return None
+    if dry_run:
+        say("would remove the needs-you lines from %s" % _tilde(path))
+        return True
+    new = "".join(out)
+    try:
+        if new.strip():
+            _write_atomic(path, new.encode("utf-8"), os.stat(path).st_mode & 0o777)
+        else:
+            os.remove(path)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    say("removed the needs-you lines from %s" % _tilde(path))
+    return True
 
 
 def cli_path() -> str:
@@ -1402,7 +1531,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
         up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
     uh = sub.add_parser("uninstall-hooks", help="remove the agent hooks: Claude Code, Codex, Gemini CLI, "
-                        "opencode, Copilot CLI, Kimi Code, Grok Build (offline; no hub needed)")
+                        "opencode, Copilot CLI, Cursor, Cline, Aider, Kimi Code, Grok Build (offline; no hub needed)")
     uh.add_argument("--user", action="store_true", help="Claude Code's user level (~/.claude)")
     uh.add_argument("--project", nargs="?", const=".", metavar="DIR",
                     help="the Claude Code project covering DIR (default: the current directory)")
@@ -1708,6 +1837,10 @@ RELEASE_PATHS = {
     "needs-you-opencode.js": "integrations/opencode/needs-you.js",
     "install-copilot-hooks.sh": "integrations/copilot/install-copilot-hooks.sh",
     "copilot-hooks.json": "integrations/copilot/copilot-hooks.json",
+    "install-cursor-hooks.sh": "integrations/cursor/install-cursor-hooks.sh",
+    "cursor-hooks.json": "integrations/cursor/cursor-hooks.json",
+    "install-cline-hooks.sh": "integrations/cline/install-cline-hooks.sh",
+    "install-aider-notifications.sh": "integrations/aider/install-aider-notifications.sh",
     "install-kimi-hooks.sh": "integrations/kimi/install-kimi-hooks.sh",
     "kimi-hooks.toml": "integrations/kimi/kimi-hooks.toml",
     "install-grok-hooks.sh": "integrations/grok/install-grok-hooks.sh",
@@ -1731,6 +1864,7 @@ OTHER_AGENTS = (
     ("codex", "Codex", codex_home, "hooks.json", "codex-hooks.json", "install-codex-hooks.sh", "--codex-home"),
     ("gemini", "Gemini", gemini_home, "settings.json", "gemini-hooks.json", "install-gemini-hooks.sh",
      "--gemini-dir"),
+    ("cursor", "Cursor", cursor_dir, "hooks.json", "cursor-hooks.json", "install-cursor-hooks.sh", "--cursor-dir"),
     # Kimi Code: a marked block of [[hooks]] in config.toml, replaced by its installer.
     ("kimi", "Kimi", kimi_home, "config.toml", "kimi-hooks.toml", "install-kimi-hooks.sh", "--kimi-home"),
 )
@@ -1739,6 +1873,7 @@ OTHER_AGENTS = (
 # Every agent directory that keeps its own copy of needs-you-hook.sh in <dir>/hooks/.
 HOOK_COPIES = (("codex", "Codex", codex_home), ("gemini", "Gemini", gemini_home),
                ("opencode", "opencode", opencode_dir), ("copilot", "Copilot", copilot_home),
+               ("cursor", "Cursor", cursor_dir), ("cline", "Cline", cline_home), ("aider", "Aider", aider_home),
                ("kimi", "Kimi", kimi_home), ("grok", "Grok", grok_home))
 
 
@@ -2720,7 +2855,8 @@ class Doctor:
     def run(self) -> List[Dict[str, str]]:
         for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
                      self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.copilot_hooks,
-                     self.kimi_hooks, self.grok_hooks, self.skill,
+                     self.cursor_hooks, self.cline_hooks, self.aider_notifications, self.kimi_hooks,
+                     self.grok_hooks, self.skill,
                      self.agent_instructions, self.mcp, self.orca, self.schedule, self.update):
             try:
                 step()
@@ -3265,6 +3401,132 @@ class Doctor:
         if alerts.lower() in _ON:
             return "alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where)
         return "alerts off until opted in"
+
+    def _hook_copy_problems(self, hook: str, marker: str, label: str) -> List[str]:
+        if not os.path.isfile(hook):
+            return ["%s is missing" % _tilde(hook)]
+        problems = []
+        if not os.access(hook, os.X_OK):
+            problems.append("%s is not executable" % _tilde(hook))
+        try:
+            with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                if marker not in fh.read():
+                    problems.append("old hook (no %s support)" % label)
+        except OSError:
+            pass
+        return problems
+
+    # -- Cursor hooks ------------------------------------------------------
+    def cursor_hooks(self) -> None:
+        import shutil
+        home = os.path.join(self.home, ".cursor")
+        conf = os.path.join(home, "hooks.json")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        installer = _rerun("--cursor-hooks user")
+        if not os.path.isdir(home) and not (shutil.which("cursor") or shutil.which("cursor-agent")):
+            return
+        doc: Any = {}
+        try:
+            with open(conf, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            referenced = "needs-you-hook.sh" in text
+            try:
+                doc = json.loads(text) if text.strip() else {}
+            except ValueError:
+                doc = None
+        except OSError:
+            referenced = False
+        if not referenced and not os.path.isfile(hook):
+            self.add("cursor hooks", "INFO", "not installed (optional: a card when a Cursor agent finishes its turn)",
+                     "to install: " + _installer("--cursor-hooks user --alerts"))
+            return
+        problems = []
+        if doc is None:
+            problems.append("%s isn't valid JSON, so Cursor loads none of its hooks" % _tilde(conf))
+        elif not referenced:
+            problems.append("%s doesn't reference the hook" % _tilde(conf))
+        problems += self._hook_copy_problems(hook, "cursor_card", "Cursor")
+        # Cursor blocks the action when a permission hook prints nothing: never one of ours there.
+        hooks = doc.get("hooks") if isinstance(doc, dict) else None
+        for ev in ("preToolUse", "beforeShellExecution", "beforeMCPExecution", "beforeReadFile",
+                   "beforeTabFileRead", "subagentStart"):
+            entries = hooks.get(ev) if isinstance(hooks, dict) else None
+            if isinstance(entries, list) and any("needs-you-hook.sh" in json.dumps(e) for e in entries):
+                problems.append("a needs-you entry under %s, which would block every %s" % (ev, ev))
+        parts = [_tilde(conf), self._alerts_part()]
+        if problems:
+            self.add("cursor hooks", "WARN", "; ".join(problems + parts), installer)
+            return
+        hint = "Cursor has no approval hook: cards come when a turn finishes, not when it asks"
+        if parts[-1] == "alerts off until opted in":
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
+        self.add("cursor hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- Cline hooks -------------------------------------------------------
+    def cline_hooks(self) -> None:
+        import shutil
+        d = os.path.join(self.home, "Documents", "Cline", "Hooks")
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        hook = os.path.join(base, "needs-you", "cline", "hooks", "needs-you-hook.sh")
+        installer = _rerun("--cline-hooks user")
+        if not os.path.isdir(os.path.dirname(d)) and not shutil.which("cline"):
+            return
+        mine = [e for e in CLINE_EVENTS if _cline_stub(os.path.join(d, e))]
+        if not mine and not os.path.isfile(hook):
+            self.add("cline hooks", "INFO", "not installed (optional: a card when a Cline task finishes)",
+                     "to install: " + _installer("--cline-hooks user --alerts"))
+            return
+        problems = []
+        complete = os.path.join(d, "TaskComplete")
+        if "TaskComplete" not in mine:
+            problems.append("%s isn't the needs-you hook" % _tilde(complete) if os.path.exists(complete)
+                            else "%s is missing" % _tilde(complete))
+        elif not os.access(complete, os.X_OK):
+            problems.append("%s is not executable" % _tilde(complete))
+        problems += self._hook_copy_problems(hook, "cline_card", "Cline")
+        parts = [_tilde(d), self._alerts_part()]
+        if problems:
+            self.add("cline hooks", "WARN", "; ".join(problems + parts), installer)
+            return
+        hint = "Cline has no approval hook: cards come when a task finishes, not when it asks"
+        if parts[-1] == "alerts off until opted in":
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
+        self.add("cline hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- Aider notifications -----------------------------------------------
+    def aider_notifications(self) -> None:
+        import shutil
+        conf = os.path.join(self.home, ".aider.conf.yml")
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        hook = os.path.join(base, "needs-you", "aider", "hooks", "needs-you-hook.sh")
+        installer = _rerun("--aider")
+        try:
+            with open(conf, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            text = ""
+        block = AIDER_BEGIN in text
+        if not block and not os.path.isfile(hook):
+            if shutil.which("aider") or os.path.isfile(conf):
+                self.add("aider notifications", "INFO",
+                         "not installed (optional: a card when Aider waits for you)",
+                         "to install: " + _installer("--aider --alerts"))
+            return
+        problems = []
+        if not block and "needs-you-hook.sh" not in text:  # (set by hand is fine)
+            problems.append("%s doesn't run the hook (no notifications-command for it)" % _tilde(conf))
+        problems += self._hook_copy_problems(hook, "aider_card", "Aider")
+        parts = [_tilde(conf), self._alerts_part()]
+        if problems:
+            self.add("aider notifications", "WARN", "; ".join(problems + parts), installer)
+            return
+        hint = ("Aider names no event when you answer: the card goes when Aider exits or after "
+                "NEEDS_YOU_AIDER_EXPIRY_HOURS (1)")
+        if os.environ.get("AIDER_NOTIFICATIONS_COMMAND"):
+            hint += "; AIDER_NOTIFICATIONS_COMMAND is set in this shell and overrides the file"
+        if parts[-1] == "alerts off until opted in":
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
+        self.add("aider notifications", "OK", "installed in " + "; ".join(parts), hint)
 
     # -- Kimi Code CLI hooks -----------------------------------------------
     def kimi_hooks(self) -> None:
