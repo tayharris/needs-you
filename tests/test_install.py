@@ -916,6 +916,51 @@ class InstallHubJoin(HubTestCase):
         (link,) = self.mac.store.peer_links()
         self.assertEqual(link["hub_id"], "srv")
 
+    def test_piped_run_never_takes_code_from_the_directory_around_it(self):
+        """Under `curl | sudo bash` $0 is "bash": the script used to treat the parent of the
+        current directory as a checkout, so a hub/ planted there was installed and run."""
+        _, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        planted = os.path.join(self.tmp, "shared")
+        os.makedirs(os.path.join(planted, "hub"))
+        os.makedirs(os.path.join(planted, "work"))
+        with open(os.path.join(planted, "hub", "needs_you_hub.py"), "w") as fh:
+            fh.write("PLANTED = True\n")
+        with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as fh:
+            script = fh.read()
+        r = subprocess.run(["bash", "-s", "--", "--user", "--no-start", "--bind", "127.0.0.1",
+                            "--port", str(self.port), "--hub-id", "srv",
+                            "--public-url", "http://127.0.0.1:%d" % self.port, "--join", inv["join_url"]],
+                           input=script, cwd=os.path.join(planted, "work"), env=self.env, executable=BASH,
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("fetching the hub's code", r.stdout)
+        with open(os.path.join(self.home, ".local", "share", "needs-you", "hub", "needs_you_hub.py")) as fh:
+            self.assertNotIn("PLANTED", fh.read())
+
+    def test_a_checkout_others_can_write_is_refused_when_run_as_root(self):
+        """As root, a checkout (or its files) writable by others, or owned by someone other
+        than root or the sudo user, is refused. Forced here by the check's test switch."""
+        src = os.path.join(self.tmp, "checkout")
+        for d in ("hub", "cli", "deploy", "scripts", "integrations"):
+            shutil.copytree(os.path.join(ROOT, d), os.path.join(src, d),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+        for d, _dirs, files in os.walk(src):  # whatever the umask: only the owner may write
+            for p in [d] + [os.path.join(d, f) for f in files]:
+                os.chmod(p, os.stat(p).st_mode & ~0o022)
+        os.chmod(os.path.join(src, "hub", "needs_you_hub.py"), 0o666)
+        r = subprocess.run([BASH, os.path.join(src, "scripts", "install-hub.sh"), "--user", "--no-start",
+                            "--no-invite", "--bind", "127.0.0.1", "--hub-id", "srv"],
+                           env=dict(self.env, NEEDS_YOU_INSTALL_CHECK_OWNERSHIP="1"),
+                           capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("writable by others", r.stderr)
+        os.chmod(os.path.join(src, "hub", "needs_you_hub.py"), 0o644)
+        r = subprocess.run([BASH, os.path.join(src, "scripts", "install-hub.sh"), "--user", "--no-start",
+                            "--no-invite", "--bind", "127.0.0.1", "--hub-id", "srv"],
+                           env=dict(self.env, NEEDS_YOU_INSTALL_CHECK_OWNERSHIP="1"),
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_curl_without_join_or_from_an_old_hub_fails_loudly(self):
         with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as fh:
             script = fh.read()

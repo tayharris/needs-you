@@ -79,8 +79,38 @@ PYTHON=/usr/bin/python3
 "$PYTHON" -c 'import sys, sqlite3; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
   || die "python3 >= 3.9 with the sqlite3 module is required"
 
-SRC=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || true)
-if [ ! -f "$SRC/hub/needs_you_hub.py" ]; then
+# A checkout only when this script was run from a real file: piped (`curl ... | bash`), $0 is
+# "bash" and the directory around the caller must never be taken for one (a hub/ planted in
+# the parent of the current directory would be installed and run as root).
+SRC=""
+SELF=${BASH_SOURCE[0]:-}
+if [ -n "$SELF" ] && [ -f "$SELF" ] && [ ! -L "$SELF" ]; then
+  SRC=$(cd "$(dirname "$SELF")/.." 2>/dev/null && pwd -P || true)
+  [ -f "$SRC/hub/needs_you_hub.py" ] || SRC=""
+fi
+if [ -n "$SRC" ] && { [ "$(id -u)" -eq 0 ] || [ "${NEEDS_YOU_INSTALL_CHECK_OWNERSHIP:-}" = 1 ]; }; then
+  # As root, install only code that only root or the sudo user could have changed.
+  "$PYTHON" - "$SRC" "${SUDO_UID:-$(id -u)}" <<'PY' || die "refusing to install as root from $SRC (above)"
+import os, stat, sys
+src, uid = sys.argv[1], int(sys.argv[2])
+ok_owners = {0, uid}
+bad = []
+for top in ("", "hub", "cli", "deploy", "scripts", "integrations"):
+    root = os.path.join(src, top)
+    walk = [(root, [], [])] if top == "" else os.walk(root)
+    for d, _dirs, files in walk:
+        for p in [d] + [os.path.join(d, f) for f in files]:
+            st = os.lstat(p)
+            if st.st_uid not in ok_owners:
+                bad.append("%s is owned by uid %d" % (p, st.st_uid))
+            elif stat.S_IMODE(st.st_mode) & 0o022:
+                bad.append("%s is writable by others" % p)
+if bad:
+    sys.stderr.write("install-hub: %s%s\n" % ("; ".join(bad[:5]), " ..." if len(bad) > 5 else ""))
+    sys.exit(1)
+PY
+fi
+if [ -z "$SRC" ]; then
   # No checkout (curl ... | bash): fetch the code from the hub the --join link names. Its
   # /dl/manifest.json lists each file with its repo path and sha256; every file must match.
   # This is integrity, not authenticity: the code comes from the hub you are joining anyway.
