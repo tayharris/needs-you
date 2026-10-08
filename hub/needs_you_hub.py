@@ -322,7 +322,7 @@ def sanitize_host(host: Any) -> str:
 # Validation
 # ---------------------------------------------------------------------------
 
-KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+\Z")
+KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+$")  # (keys are stripped first: no final newline)
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # Bidi embedding/override/isolate controls (and the C1 range): they can make a label or title
 # read differently from what it is (e.g. reverse "moc.live" into "evil.com"). Ordinary RTL text
