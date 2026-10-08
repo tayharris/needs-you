@@ -165,3 +165,5 @@ needs-you resolve --key "work:orca-test:hello"
 ```
 
 Then run one automation by hand (`orca automations run ...`) and watch for its card.
+
+`needs-you doctor` prints an `orca` INFO line in an Orca terminal or wherever `orca` is on `PATH` (whether the terminal handle, worktree id and `NEEDS_YOU_ORCA_ENVIRONMENT` are set). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when `orca` is on `PATH` and you didn't pass `--orca`, that the flag exists.

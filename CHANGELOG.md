@@ -7,6 +7,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Added
 
 - **GitHub: a "Merged" FYI when one of your PRs merges.** `needs-you-github` remembers your open PRs between runs; when one leaves the list and GitHub says it merged, it posts one low `done` card, "Merged owner/repo#20: *title*", with a PR link, that expires after a day and isn't counted. A PR closed without merging posts nothing. On by default; `NEEDS_YOU_GITHUB_REASONS=-merged` turns it off. Copy the new `needs-you-github` to `~/.local/bin/` ([GitHub guide](docs/guides/github.md)).
+- **`needs-you doctor` suggests Orca for worktree-heavy repos.** Run in a repo with 3 or more git worktrees on a machine without Orca, doctor adds an `orca` INFO line: Orca runs agents in worktrees, and needs-you cards from its terminals get a Terminal button. Only a tip, never a warning, and doctor still posts nothing. The invite installer also says, when `orca` is on `PATH` and `--orca` wasn't passed, that the flag writes the automation prompt block ([Orca guide](docs/guides/orca.md#check-it-works)).
 
 ## [0.2.1] - 2026-10-08
 

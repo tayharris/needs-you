@@ -3017,6 +3017,23 @@ def _safe_url(url: str) -> bool:
     return bool(_SAFE_URL_RE.match(url))
 
 
+ORCA_TIP_WORKTREES = 3  # doctor suggests Orca from this many git worktrees in the current repo
+
+
+def git_worktree_count(cwd: str) -> int:
+    """How many worktrees `git worktree list` shows for the repo at cwd; 0 outside a repo or
+    without git. Read-only, 5 s at most."""
+    import subprocess
+    try:
+        r = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=cwd, stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    if r.returncode != 0:
+        return 0
+    return sum(1 for line in r.stdout.splitlines() if line.startswith("worktree "))
+
+
 class Doctor:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
@@ -3897,6 +3914,12 @@ class Doctor:
         import shutil
         handle = os.environ.get("ORCA_TERMINAL_HANDLE")
         if not handle and not shutil.which("orca"):
+            n = git_worktree_count(os.getcwd())
+            if n >= ORCA_TIP_WORKTREES:
+                # A tip, never a WARN: Orca is optional, and doctor never posts anything.
+                self.add("orca", "INFO", "%d git worktrees in this repo, and Orca isn't installed" % n,
+                         "optional: Orca runs agents in worktrees and switches between them, and needs-you "
+                         "cards from its terminals get a Terminal button (see the Orca guide, docs/guides/orca.md)")
             return
         parts = ["ORCA_TERMINAL_HANDLE %s" % ("set" if handle else "not set (not an Orca terminal)"),
                  "ORCA_WORKTREE_ID %s" % ("set" if os.environ.get("ORCA_WORKTREE_ID") else "not set")]

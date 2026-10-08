@@ -279,6 +279,25 @@ class InstallScript(HubTestCase):
         with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
             self.assertEqual(fh.read().strip(), "")
 
+    def test_orca_on_path_without_the_flag_gets_a_hint(self):
+        inv = self.invite(uses=2)
+        hint = "Orca is installed here. If its automations should reach you, re-run with --orca"
+        r = self.install(inv, "--yes", "--host", "box3", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn(hint, r.stdout)  # no orca on PATH
+        orca = os.path.join(self.stubs, "orca")
+        with open(orca, "w") as fh:
+            fh.write(STUB)
+        os.chmod(orca, 0o755)
+        r = self.install(inv, "--yes", "--host", "box3", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(hint, r.stdout)
+        self.assertNotIn("orca", self.stub_calls())  # only looked up on PATH, never run
+        r = self.install(inv, "--yes", "--host", "box3", "--orca", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn(hint, r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.home, ".config", "needs-you", "orca-snippet.md")))
+
     def test_schedule_keeps_the_rest_of_the_crontab_as_it_was(self):
         mine = "MAILTO=me\n\n# backups\n0 3 * * * /usr/local/bin/backup\n\n# end\n"
         with open(self.cron, "w") as fh:

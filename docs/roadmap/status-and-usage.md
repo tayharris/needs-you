@@ -110,7 +110,7 @@ Principles: numbers only, read locally by the agent's own machine, never credent
 |---|---|---|---|---|---|
 | 1 | Claude usage threshold card (`needs-you-usage`) | medium | small | none | **built**; default thresholds, and whether `--claude-hooks` should install it into `statusLine` (it would wrap any existing one) |
 | 2 | GitHub poller `merged` reason → `done` card | high | small | none | **built**, on by default (`-merged` turns it off); the owner can flip the default |
-| 3 | Doctor INFO "many worktrees → Orca" + installer hint | low-medium | small | none | recommend Orca by name/link? |
+| 3 | Doctor INFO "many worktrees → Orca" + installer hint | low-medium | small | none | **built** (3+ git worktrees in the current repo; names Orca and the needs-you Orca guide, no outside link). Open: recommend Orca by name/link? The join page sentence isn't done |
 | 4 | Codex usage threshold card from session JSONL | medium | small-medium | none (shared hook) | same thresholds as Claude? |
 | 5 | Mac status strip from local Orca (`worktree ps`), all paired environments | high for Orca users | medium | none (app-only) | show it by default when `orca` is present? |
 | 6 | `needs-you orca` read-only summary for agents | low-medium | small | none | — |
