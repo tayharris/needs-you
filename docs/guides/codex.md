@@ -52,6 +52,16 @@ Only want approval prompts, not a card at the end of every turn?
 echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' >> ~/.config/needs-you/env
 ```
 
+## Tell Codex when to post (optional)
+
+The hooks cover "Codex is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add `--agent-instructions codex` to the invite's one line.
+
+```bash
+curl -fsSL <join_url>/install.sh | bash -s -- --yes --agent-instructions codex
+```
+
+It appends a marked block (`<!-- needs-you:begin ... -->` to `<!-- needs-you:end -->`) to `~/.codex/AGENTS.md` (or `$CODEX_HOME/AGENTS.md`). Codex reads `AGENTS.override.md` instead when that file has text in it, and then ignores the block; `needs-you doctor` warns about that. The file is created if it's missing, backed up before it changes, and never written through a symlink. The text is generated from the skill, so the two say the same. `needs-you update` keeps the block current, and `needs-you uninstall-hooks --instructions` takes exactly the block out again (and deletes the file if nothing else is in it). To give Codex the needs-you tools over MCP as well, see [MCP server](mcp.md).
+
 ## Check it works
 
 ```bash

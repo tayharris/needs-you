@@ -400,7 +400,7 @@ token. Codes are <code>nyi_</code> plus 192 random bits (URL-safe base64); hubs 
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}</code></pre></div>
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user. Only if I ask for them: --mcp &lt;agents&gt; registers the needs-you MCP server (claude, codex, gemini, opencode, copilot) and --agent-instructions &lt;agents&gt; adds the posting rules to their instruction files (codex, gemini, opencode). Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}</code></pre></div>
 <p><code>install_command</code> and <code>agent_prompt</code> are only present for <code>sender</code> invites. Both set up Claude
 Code alerts (<code>--claude-hooks user --skill --alerts</code>); the join page lists the other options.
 The prompt ends by having the agent run <code>needs-you doctor</code> and act on, or relay, the next step
@@ -504,6 +504,8 @@ empty script and exit 0, which reads as success.</p>
 <tr><td><code>hooks.json</code></td><td><code>integrations/claude-code/hooks.json</code></td></tr>
 <tr><td><code>SKILL.md</code></td><td><code>integrations/claude-code/skill/needs-you/SKILL.md</code></td></tr>
 <tr><td><code>orca-snippet.md</code></td><td><code>integrations/orca/snippet.md</code> (the Orca automation rules; prompts point at the installed copy)</td></tr>
+<tr><td><code>needs_you_mcp.py</code></td><td><code>integrations/mcp/needs_you_mcp.py</code> (the MCP server; the installer's <code>--mcp</code>)</td></tr>
+<tr><td><code>agent-instructions.md</code></td><td><code>integrations/agent-instructions/needs-you.md</code> (the skill's rules for Codex, Gemini CLI and opencode; <code>--agent-instructions</code>)</td></tr>
 <tr><td><code>manifest.json</code></td><td>generated: see below</td></tr>
 </tbody>
 </table></div>
@@ -517,7 +519,7 @@ empty script and exit 0, which reads as success.</p>
            "SKILL.md": {"sha256": "...", "size": 9876, "version": "0.1.2"},
            "orca-snippet.md": {"sha256": "...", "size": 3456, "version": "0.1.2"}}}</code></pre></div>
 <p><code>version</code> at the top is the hub's; a file's <code>version</code> is its stamp (<code>needs-you-version: X.Y.Z</code>
-in a comment, <code>"_needs_you_version"</code> in <code>hooks.json</code>, <code>VERSION = "X.Y.Z"</code> in the CLI), absent
+in a comment, <code>"_needs_you_version"</code> in <code>hooks.json</code>, <code>VERSION = "X.Y.Z"</code> in the CLI and the MCP server), absent
 when the file has none. Files the hub doesn't have are left out. The checksums guard a sender
 against truncated or mixed-version downloads; they don't make the hub more trustworthy than
 it already is (it minted the sender's token and served its installer).</p>

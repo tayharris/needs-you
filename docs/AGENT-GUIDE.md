@@ -40,7 +40,9 @@ invite**; on a server hub: `needs-you-admin invite create`). It looks like
    `--codex-hooks user` for Codex CLI, `--gemini-hooks user` for Gemini CLI,
    `--opencode-plugin` for opencode, `--copilot-hooks user` for GitHub Copilot CLI,
    `--orca` for Orca automations, `--context personal` if
-   its items are personal.
+   its items are personal. Only if the person asks: `--agent-instructions codex,gemini,opencode`
+   (these rules in those agents' own instruction files) and `--mcp <agents>` (the MCP server,
+   registered with `claude`, `codex`, `gemini`, `opencode` or `copilot`).
 3. Run `curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]`.
 4. Report the health line (`<hub url>  OK  hub=... token=<name> role=sender`), never the
    token. Then run `~/.local/bin/needs-you doctor` (the new `PATH` reaches new shells only)
@@ -133,7 +135,8 @@ webhook or a notification command instead? [guides/custom-connector.md](guides/c
 
 An agent that speaks MCP but has no shell can use the needs-you MCP server
 (`integrations/mcp/`): tools `needs_you_add`, `needs_you_resolve` and `needs_you_doctor`, with
-these rules in their descriptions. Setup: [guides/mcp.md](guides/mcp.md).
+these rules in their descriptions. The invite installer's `--mcp <agents>` installs and
+registers it. Setup: [guides/mcp.md](guides/mcp.md).
 
 ### Steps: when the person has to do several things
 

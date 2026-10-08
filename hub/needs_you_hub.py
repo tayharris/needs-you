@@ -150,6 +150,11 @@ DOWNLOADS = {
     "install-copilot-hooks.sh": ("integrations/copilot/install-copilot-hooks.sh",
                                  "text/x-shellscript; charset=utf-8"),
     "copilot-hooks.json": ("integrations/copilot/copilot-hooks.json", "application/json"),
+    # The MCP server (installed next to the CLI as needs-you-mcp) and the skill's text for
+    # Codex, Gemini CLI and opencode's instruction files: the installer's --mcp and
+    # --agent-instructions.
+    "needs_you_mcp.py": ("integrations/mcp/needs_you_mcp.py", "text/x-python; charset=utf-8"),
+    "agent-instructions.md": ("integrations/agent-instructions/needs-you.md", "text/markdown; charset=utf-8"),
 }
 # Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
 # the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
@@ -168,6 +173,10 @@ CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
 COPILOT_INSTALL_FLAG = "--copilot-hooks user"
+# Opt-in, only when the person asks: the MCP server and the skill's text for other agents.
+OPTIONAL_INSTALL_FLAGS = ("Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
+                          "(claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds "
+                          "the posting rules to their instruction files (codex, gemini, opencode).")
 # The end of every sender invite's agent prompt: verify, and what to do when something failed.
 # The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.
 AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
@@ -2053,9 +2062,10 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
-                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s. %s"
+                               "add %s; Gemini CLI, add %s; opencode, add %s; GitHub Copilot CLI, add %s. %s %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
-                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, AGENT_PROMPT_CHECK))
+                                  OPENCODE_INSTALL_FLAG, COPILOT_INSTALL_FLAG, OPTIONAL_INSTALL_FLAGS,
+                                  AGENT_PROMPT_CHECK))
     return out
 
 
@@ -3213,6 +3223,8 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--copilot-hooks user` | This machine runs GitHub Copilot CLI: post an item when a session asks for permission or a question, or finishes its turn and waits for you (hooks in `~/.copilot/hooks/`). Default `none`. |
 | `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode and Copilot CLI session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
+| `--agent-instructions AGENTS` | The skill's rules for other agents, comma-separated from `codex`, `gemini`, `opencode`: a marked block appended to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing; the file keeps a backup). Only when the user asks for it. |
+| `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
 | `--ssh-alias NAME` | This machine is reached from the Mac over SSH: NAME is its host alias in the Mac's `~/.ssh/config` (VS Code Remote-SSH), so cards get a link that opens the session's folder there. |
@@ -3225,7 +3237,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--no-schedule` | Don't add the 5-minute flush. |
 | `--no-path` | Don't edit the shell profile; print the PATH line to add instead. |
 | `--force` | Redeem again and replace an existing token. Without it, a machine that's already set up keeps its token. |
-| `--uninstall` | Remove the CLI, its config, the flush schedule, the skill and user-level hooks. Works until the link expires or is revoked, even with no uses left. |
+| `--uninstall` | Remove the CLI, its config, the flush schedule, the skill, user-level hooks, the MCP server and the instruction blocks. Works until the link expires or is revoked, even with no uses left. |
 
 If you are an agent: pick the options that match this machine (look for `~/.claude`,
 `~/.codex` or `codex` on PATH, `~/.gemini` or `gemini` on PATH, `~/.config/opencode` or `opencode` on PATH, `~/.copilot` or `copilot` on PATH, and `orca` on PATH), say which ones you chose, run the one line, and report the output of the
@@ -3246,8 +3258,9 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 - If the installer exits 1 saying the link is unknown, expired or revoked, or that the hub
   refused the invite (no uses left), stop and ask the user for a new link.
 - Re-running on a machine that's already set up is safe and keeps its token, until the link
-  expires (even with no uses left). `needs-you update` updates the CLI, hook, skill and Orca
-  snippet later without a link.
+  expires (even with no uses left). `needs-you update` updates the CLI, hook, skill, Orca
+  snippet, MCP server and instruction blocks later without a link.
+- If you added `--mcp`, open agent sessions load the MCP server after a restart.
 - On the hub's own machine, the installer lists `http://127.0.0.1:<port>` first, so local
   agents don't depend on the network.
 

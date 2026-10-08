@@ -5,6 +5,11 @@ speaks MCP can post to the needs-you inbox without a shell. One file, Python 3.9
 library only. Status: [ADR 0008](../../docs/adr/0008-mcp-server.md) (Accepted). Setup guide:
 [docs/guides/mcp.md](../../docs/guides/mcp.md).
 
+Install: the invite installer's `--mcp claude,codex,gemini,opencode,copilot` (any of them)
+downloads it from the hub's `/dl/needs_you_mcp.py` (sha256-checked), installs it as
+`~/.local/bin/needs-you-mcp` and registers it with each agent (`needs-you install-mcp`);
+`needs-you update` keeps it current and `needs-you uninstall-hooks --mcp` removes it.
+
 ## Tools
 
 | Tool | Arguments | Runs |

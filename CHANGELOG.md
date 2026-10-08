@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **The MCP server through the invite installer.** `--mcp claude,codex,gemini,opencode,copilot` (any of them) installs it as `~/.local/bin/needs-you-mcp` (from the hub's `/dl/needs_you_mcp.py`, sha256-checked) and registers it as `needs-you` in each agent's user config (Claude Code through `claude mcp add-json --scope user`; `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`, `~/.copilot/mcp-config.json`), backing up each file and never writing through a symlink. `needs-you update` keeps it current, `needs-you doctor` has an `mcp server` line and `needs-you uninstall-hooks --mcp` takes out exactly what was added. Guide: [MCP server](docs/guides/mcp.md).
+- **The skill's rules for Codex, Gemini CLI and opencode.** `--agent-instructions codex,gemini,opencode` on the invite's one line appends a marked needs-you block to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing, backed up otherwise): when to post, when not, keys, titles, links, resolving. The text is generated from the Claude Code skill (`scripts/build_agent_instructions.py`; a test fails if they drift) and served as `/dl/agent-instructions.md`. `needs-you update` keeps the block current, `needs-you doctor` has an `agent instructions` line (it warns when Codex reads an `AGENTS.override.md` instead), and `needs-you uninstall-hooks --instructions` removes exactly the block. The invite's agent prompt mentions both flags as opt-in.
+
 ## [0.1.4] - 2026-10-08
 
 ### Added
