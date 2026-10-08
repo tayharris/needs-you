@@ -95,7 +95,10 @@ private struct AlertSamplePill: View {
     let count: Int
     let basePulses: Int
     @State private var glow: Double = 0
-    @State private var playing = false
+    @State private var ripple: Double = 0
+    @State private var motion: Double = 0
+    /// The arrival playing, if any.
+    @State private var active: ArrivalPlan?
 
     var body: some View {
         let m = settings.ui.metrics
@@ -108,10 +111,13 @@ private struct AlertSamplePill: View {
                 .foregroundStyle(Theme.text.opacity(0.95))
                 .frame(width: m.countWidth(digits: 1), height: m.countHeight)
                 .background(color.opacity(look.fillOpacity))
+                .background(Theme.tint)
                 .background(Theme.raised)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(color.opacity(look.ringOpacity), lineWidth: look.ringWidth))
-                .background(GlowEdge(shape: shape, color: color, glow: glow, look: look))
+                .background(GlowEdge(shape: shape, color: color, glow: glow, look: active?.look ?? look))
+                .background(RippleEdge(shape: shape, color: color, progress: ripple, plan: active ?? .idle(look)))
+                .modifier(ArrivalMotionEffect(plan: active, value: motion))
                 .padding(AlertStyle.maxGlowRadius)
                 .contentShape(Rectangle())
                 .onTapGesture { play() }
@@ -121,18 +127,25 @@ private struct AlertSamplePill: View {
         }
         .environment(\.colorScheme, Theme.colorScheme)
         .onChange(of: settings.ui.alertIntensity(for: priority)) { _, _ in play() }
+        .onChange(of: settings.ui.arrivalAnimation(for: priority)) { _, _ in play() }
+        .onChange(of: settings.ui.arrivalSpeed) { _, _ in play() }
+        .onChange(of: settings.ui.arrivalRepeats) { _, _ in play() }
         .onChange(of: settings.ui.panelSize) { _, _ in play() }
     }
 
     private func play() {
-        guard !playing else { return }
-        var look = settings.ui.alertLook(for: priority, basePulses: basePulses)
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { look = look.reducedMotion() }
-        guard look.pulses > 0 else { return }
-        playing = true
+        guard active == nil else { return }
+        let plan = settings.ui.arrivalPlan(for: priority, basePulses: basePulses,
+                                           reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        guard !plan.isEmpty else { return }
+        active = plan
         Task { @MainActor in
-            await PulseRunner.run(look) { glow = $0 }
-            playing = false
+            switch plan.animation {
+            case .glow: await ArrivalRunner.run(plan) { glow = $0 }
+            case .ripple: await ArrivalRunner.run(plan) { ripple = $0 }
+            default: await ArrivalRunner.run(plan) { motion = $0 }
+            }
+            active = nil
         }
     }
 }

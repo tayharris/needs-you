@@ -9,6 +9,8 @@ struct RootView: View {
     @State private var glow: Double = 0
     @State private var glowColor: Color = Theme.normal
     @State private var glowLook = AlertStyle.look(.normal, priority: .normal)
+    @State private var ripple: Double = 0
+    @State private var ripplePlan = ArrivalPlan.idle(AlertStyle.look(.normal, priority: .normal))
 
     var body: some View {
         let display = model.display
@@ -25,6 +27,10 @@ struct RootView: View {
             .background(
                 // Soft glow outside the edge; only visible while a pulse runs.
                 GlowEdge(shape: shape(display), color: glowColor, glow: glow, look: glowLook)
+            )
+            .background(
+                // Arrival animation → Ripple: a ring spreading into the padding.
+                RippleEdge(shape: shape(display), color: glowColor, progress: ripple, plan: ripplePlan)
             )
             .padding(PanelController.glowPadding)
             .environment(\.colorScheme, model.palette.isDark ? .dark : .light)
@@ -140,16 +146,21 @@ struct RootView: View {
     }
 
     private func runPulse(_ request: PulseRequest) {
-        // Ambient arrivals (delivery tiers) get one soft brighten at most.
-        var look = request.ambient
-            ? AlertStyle.ambientLook(model.settings.ui.alertIntensity(for: request.priority), priority: request.priority)
-            : model.alertLook(request.priority, basePulses: request.times)
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { look = look.reducedMotion() }
-        guard look.pulses > 0 else { return }   // Alerts → Off (never for urgent: it has a floor)
+        // Settings → Alerts → Arrival animation. Glow and ripple are drawn here, in the
+        // panel's padding; bounce, shake and slide move the whole panel content
+        // (PanelController.playArrival). Ambient arrivals are one soft glow at most.
+        let plan = model.arrivalPlan(request)
+        guard !plan.isEmpty else { return }   // Alerts → Off (never for urgent: it has a floor)
         glowColor = Theme.color(request.priority)
-        glowLook = look
-        Task { @MainActor in
-            await PulseRunner.run(look) { glow = $0 }
+        switch plan.animation {
+        case .glow:
+            glowLook = plan.look
+            Task { @MainActor in await ArrivalRunner.run(plan) { glow = $0 } }
+        case .ripple:
+            ripplePlan = plan
+            Task { @MainActor in await ArrivalRunner.run(plan) { ripple = $0 } }
+        default:
+            break
         }
     }
 }

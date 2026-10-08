@@ -325,7 +325,7 @@ struct SettingsView: View {
             extra[.appearance]
         case .alerts:
             alertStyleSection
-            ArrivalSettingsSection(settings: settings)
+            ArrivalSettingsSection(model: model, settings: settings)
             DeliverySection(settings: settings)
             breakthroughSection
             BypassRulesSection(settings: settings)
@@ -875,7 +875,7 @@ struct SettingsView: View {
         } header: {
             Text("New items")
         } footer: {
-            Text("How loud a new item is: the glow, how many times it pulses, and the ring on the count. Bright also tints the pill. With Reduce Motion on, pulses are gentler.")
+            Text("How loud a new item is: the glow, how many times it pulses (and how far it moves), and the ring on the count. Bright also tints the pill. Arrivals below picks the animation.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -954,7 +954,7 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             HStack {
-                LabelWithDetail("Look and alerts", "The pill, the cards' size and text, theme, opacity and alert styles, back to how they started.")
+                LabelWithDetail("Look and alerts", "The pill, the cards' size and text, theme, opacity, alert styles and arrival animations, back to how they started.")
                 Spacer()
                 Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
                     .disabled(settings.ui == UIPrefs.defaults)

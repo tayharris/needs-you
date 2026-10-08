@@ -85,15 +85,75 @@ struct GlowEdge<S: Shape>: View {
     }
 }
 
-/// Runs an alert look's pulses by animating `set(1)` / `set(0)`.
+/// Plays an ArrivalPlan's frames by animating `set(value)` (Settings → Alerts → Arrival
+/// animation; the timing is in NeedsYouCore's ArrivalMotion).
 @MainActor
-enum PulseRunner {
-    static func run(_ look: AlertLook, set: @escaping (Double) -> Void) async {
-        for _ in 0..<look.pulses {
-            withAnimation(.easeOut(duration: look.riseSeconds)) { set(1) }
-            try? await Task.sleep(nanoseconds: UInt64(look.holdSeconds * 1_000_000_000))
-            withAnimation(.easeIn(duration: look.fallSeconds)) { set(0) }
-            try? await Task.sleep(nanoseconds: UInt64(look.gapSeconds * 1_000_000_000))
+enum ArrivalRunner {
+    static func run(_ plan: ArrivalPlan, set: @escaping (Double) -> Void) async {
+        for frame in plan.frames {
+            if frame.curve == .instant || frame.seconds <= 0 {
+                var jump = Transaction()
+                jump.disablesAnimations = true
+                withTransaction(jump) { set(frame.value) }
+                // Let the jump draw before the next frame animates away from it.
+                try? await Task.sleep(nanoseconds: 16_000_000)
+                continue
+            }
+            withAnimation(animation(frame)) { set(frame.value) }
+            try? await Task.sleep(nanoseconds: UInt64(frame.seconds * 1_000_000_000))
+        }
+    }
+
+    static func animation(_ frame: ArrivalFrame) -> Animation {
+        switch frame.curve {
+        case .easeOut: return .easeOut(duration: frame.seconds)
+        case .easeIn: return .easeIn(duration: frame.seconds)
+        case .easeInOut: return .easeInOut(duration: frame.seconds)
+        case .linear, .instant: return .linear(duration: frame.seconds)
+        }
+    }
+}
+
+/// The ripple: a ring that spreads out from the shape's edge into the panel's padding and
+/// fades (`progress` 0...1). Animatable, so the ring is drawn at every step in between.
+struct RippleEdge<S: InsettableShape>: View, Animatable {
+    let shape: S
+    let color: Color
+    var progress: Double
+    let plan: ArrivalPlan
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let ring = ArrivalMotion.ripple(progress: progress, plan: plan)
+        shape
+            .inset(by: -CGFloat(ring.outset))
+            .stroke(color.opacity(ring.opacity), lineWidth: max(1.5, plan.look.strokeWidth))
+    }
+}
+
+/// Bounce, shake and slide drawn with SwiftUI (the Settings samples; the panel moves its
+/// whole window content instead, PanelController.playArrival). Inactive without a plan.
+struct ArrivalMotionEffect: ViewModifier {
+    let plan: ArrivalPlan?
+    let value: Double
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let amp = CGFloat(plan?.amplitude ?? 0)
+        let v = CGFloat(value)
+        switch plan?.animation {
+        case .bounce?:
+            content.offset(y: -v * amp)
+        case .shake?:
+            content.offset(x: v * amp)
+        case .slide?:
+            content.offset(y: -(1 - v) * amp).opacity(Double(v))
+        default:
+            content
         }
     }
 }

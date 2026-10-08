@@ -58,7 +58,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastError: String?
     /// Short name of the hub the last successful poll came from ("hub2").
     @Published private(set) var activeHub: String?
-    @Published private(set) var pulse: PulseRequest?
+    @Published private(set) var pulse: PulseRequest? {
+        didSet {
+            // The repeat reminder counts from the last urgent arrival or reminder.
+            if let pulse, pulse.priority == .urgent, !pulse.ambient { lastUrgentAlertAt = Date() }
+        }
+    }
+    /// When urgent last played its arrival (UrgentReminder).
+    private var lastUrgentAlertAt: Date?
     @Published var showRecent = false
     /// The Later section in the expanded panel is open.
     @Published var showLater = false
@@ -541,6 +548,7 @@ final class AppModel: ObservableObject {
             if resolved == .work { releaseLater(.startOfDay) }
         }
         onTick?(now)
+        remindAboutUrgent(at: now)
         var pruned = store
         let expired = pruned.prune(now: now)
         if !expired.isEmpty || pruned.snoozedCardCount != store.snoozedCardCount {
@@ -699,6 +707,40 @@ final class AppModel: ObservableObject {
 
     func requestPulse(times: Int, priority: ItemPriority) {
         pulse = PulseRequest(times: times, priority: priority)
+    }
+
+    /// The arrival to play for a pulse (Settings → Alerts → Arrival animation and timing).
+    /// Ambient arrivals stay one soft glow whatever the animation.
+    func arrivalPlan(_ request: PulseRequest) -> ArrivalPlan {
+        let ui = settings.ui
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if request.ambient {
+            let look = AlertStyle.ambientLook(ui.alertIntensity(for: request.priority), priority: request.priority)
+            return ArrivalMotion.plan(.glow, look: look, speed: ui.arrivalSpeed, reduceMotion: reduceMotion)
+        }
+        return ui.arrivalPlan(for: request.priority, basePulses: request.times, reduceMotion: reduceMotion)
+    }
+
+    /// Settings → Alerts → Remind about unseen urgent items: plays urgent's arrival again
+    /// every N minutes while an urgent item that came in since the panel was last open waits
+    /// (UrgentReminder decides). Called from the 15 s tick.
+    private func remindAboutUrgent(at date: Date) {
+        let minutes = settings.ui.urgentReminderMinutes
+        guard minutes > 0 else { return }
+        let since = settings.pillLastOpenedAt
+        let unseen = needsItems.filter { item in
+            item.priority == .urgent && since.map { store.freshAt(item) > $0 } == true
+        }
+        guard let top = unseen.first else { return }
+        if lastUrgentAlertAt == nil { lastUrgentAlertAt = date }   // e.g. after a relaunch
+        let interrupts = DeliveryPolicy.decide(top, state: deliveryState(at: date)).tier == .interrupt
+        let input = UrgentReminder.Input(intervalMinutes: minutes, unseenUrgent: unseen.count,
+                                         panelShown: !visibility.isHidden(at: date), expanded: isExpanded,
+                                         peekShowing: previewItem != nil || digest != nil,
+                                         urgentWouldInterrupt: interrupts, lastAlertAt: lastUrgentAlertAt, now: date)
+        if UrgentReminder.isDue(input) {
+            pulse = PulseRequest(times: 2, priority: .urgent)
+        }
     }
 
     // MARK: Expand / collapse

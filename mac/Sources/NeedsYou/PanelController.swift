@@ -123,6 +123,10 @@ final class PanelController {
         model.$palette
             .sink { [weak self] palette in self?.applyPalette(palette) }
             .store(in: &cancellables)
+        model.$pulse
+            .compactMap { $0 }
+            .sink { [weak self] request in self?.scheduleArrival(request) }
+            .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .sink { [weak self] _ in self?.screensChanged() }
@@ -478,6 +482,61 @@ final class PanelController {
     private func endResize() {
         resizeStartMouseY = nil
         liveListHeight = nil
+    }
+
+    // MARK: Arrival motion
+
+    /// Bounce, shake and slide (Settings → Alerts → Arrival animation) move the glass and
+    /// the content together. Bounce and shake start once a preview has sprung out (the
+    /// shape change takes 0.28 s), so they play on the settled shape. Glow and ripple are drawn
+    /// by RootView. Nothing here touches key status or activation.
+    private func scheduleArrival(_ request: PulseRequest) {
+        let plan = model.arrivalPlan(request)
+        guard plan.animation.movesPanel, !plan.isEmpty else { return }
+        // Slide in starts at once (it is the arrival); the others wait for the spring.
+        let delay = plan.animation == .slide ? 0 : 0.3
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.playArrival(plan)
+        }
+    }
+
+    private func playArrival(_ plan: ArrivalPlan) {
+        guard panel.isVisible, let layer = container.layer else { return }
+        let keys = ArrivalMotion.keyframes(plan)
+        guard keys.times.count > 1 else { return }
+        let amp = CGFloat(plan.amplitude)
+        let transforms: [NSValue] = keys.values.map { value in
+            let v = CGFloat(value)
+            switch plan.animation {
+            case .bounce: return NSValue(caTransform3D: CATransform3DMakeTranslation(0, v * amp, 0))   // up
+            case .shake: return NSValue(caTransform3D: CATransform3DMakeTranslation(v * amp, 0, 0))
+            case .slide: return NSValue(caTransform3D: CATransform3DMakeTranslation(0, (1 - v) * amp, 0))
+            default: return NSValue(caTransform3D: CATransform3DIdentity)
+            }
+        }
+        let move = CAKeyframeAnimation(keyPath: "sublayerTransform")
+        move.values = transforms
+        move.keyTimes = keys.times.map { NSNumber(value: $0) }
+        move.timingFunctions = keys.curves.map(Self.timing(for:))
+        move.duration = plan.totalSeconds
+        layer.add(move, forKey: "arrivalMove")
+        if plan.animation == .slide {
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = keys.values.map { NSNumber(value: $0) }
+            fade.keyTimes = move.keyTimes
+            fade.timingFunctions = move.timingFunctions
+            fade.duration = plan.totalSeconds
+            layer.add(fade, forKey: "arrivalFade")
+        }
+    }
+
+    private static func timing(for curve: ArrivalCurve) -> CAMediaTimingFunction {
+        switch curve {
+        case .easeOut: return CAMediaTimingFunction(name: .easeOut)
+        case .easeIn: return CAMediaTimingFunction(name: .easeIn)
+        case .easeInOut: return CAMediaTimingFunction(name: .easeInEaseOut)
+        case .linear, .instant: return CAMediaTimingFunction(name: .linear)
+        }
     }
 
     /// Settings → Appearance → Theme: dark glass (the original) or light glass.
