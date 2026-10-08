@@ -270,6 +270,22 @@ class InstallScript(HubTestCase):
         with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
             self.assertEqual(fh.read().strip(), "")
 
+    def test_schedule_keeps_the_rest_of_the_crontab_as_it_was(self):
+        mine = "MAILTO=me\n\n# backups\n0 3 * * * /usr/local/bin/backup\n\n# end\n"
+        with open(self.cron, "w") as fh:
+            fh.write(mine)
+        inv = self.invite(uses=2)
+        r = self.install(inv, "--yes", "--host", "box8", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.cron) as fh:
+            cron = fh.read()
+        self.assertTrue(cron.startswith(mine), cron)
+        self.assertEqual(cron.count("needs-you-flush"), 1)
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.cron) as fh:
+            self.assertEqual(fh.read(), mine)
+
     def test_flush_schedule_finds_xdg_config_and_state(self):
         # cron and launchd run the flush without the shell's XDG_CONFIG_HOME / XDG_STATE_HOME:
         # it found no config and silently sent nothing, every 5 minutes.

@@ -65,6 +65,16 @@ class SetupSender(HubTestCase):
         with open(self.cron) as fh:
             self.assertIn("*/5 * * * * XDG_CONFIG_HOME='%s' \"%s\" -q flush" % (xdg, cli), fh.read())
 
+    def test_schedule_keeps_the_rest_of_the_crontab_as_it_was(self):
+        mine = "MAILTO=me\n\n# backups\n0 3 * * * /usr/local/bin/backup\n\n# end\n"
+        with open(self.cron, "w") as fh:
+            fh.write(mine)
+        self.run_setup("--no-path")
+        with open(self.cron) as fh:
+            cron = fh.read()
+        self.assertTrue(cron.startswith(mine), cron)  # blank lines and all
+        self.assertEqual(cron.count("needs-you-flush"), 1)
+
     def test_settings_schedule_path_and_rerun(self):
         bashrc = os.path.join(self.home, ".bashrc")
         with open(bashrc, "w") as fh:

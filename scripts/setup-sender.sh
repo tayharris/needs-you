@@ -491,7 +491,8 @@ EOF
     if printf '%s\n' "$current" | grep -qxF "$line"; then
       info "flush: crontab entry already present"
     else
-      { printf '%s\n' "$current" | { grep -vF "$CRON_TAG" || true; } | sed '/^$/d'; printf '%s\n' "$line"; } | crontab -
+      # The rest of the crontab as it was, blank lines too (none for an empty one).
+      { [ -z "$current" ] || printf '%s\n' "$current" | { grep -vF "$CRON_TAG" || true; }; printf '%s\n' "$line"; } | crontab -
       info "flush: crontab runs 'needs-you flush' every 5 minutes"
     fi
   else

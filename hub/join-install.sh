@@ -249,7 +249,8 @@ EOF
     if printf '%s\n' "$current" | grep -qxF "$line"; then
       say "flush: crontab entry already present"
     else
-      { printf "%s\n" "$current" | { grep -vF "$CRON_TAG" || true; } | sed "/^$/d"; printf "%s\n" "$line"; } | crontab -
+      # The rest of the crontab as it was, blank lines too (none for an empty one).
+      { [ -z "$current" ] || printf "%s\n" "$current" | { grep -vF "$CRON_TAG" || true; }; printf "%s\n" "$line"; } | crontab -
       say "flush: crontab runs \`needs-you flush\` every 5 minutes"
     fi
   else
@@ -264,7 +265,7 @@ schedule_remove() {
   elif command -v crontab >/dev/null 2>&1; then
     current=$(crontab -l 2>/dev/null || true)
     if printf '%s\n' "$current" | grep -qF "$CRON_TAG"; then
-      printf "%s\n" "$current" | { grep -vF "$CRON_TAG" || true; } | sed "/^$/d" | crontab -
+      printf "%s\n" "$current" | { grep -vF "$CRON_TAG" || true; } | crontab -
     fi
   fi
 }
