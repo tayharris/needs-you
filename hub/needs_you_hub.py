@@ -211,7 +211,9 @@ GROK_INSTALL_FLAG = "--grok-hooks user"
 # Opt-in, only when the person asks: the MCP server and the skill's text for other agents.
 OPTIONAL_INSTALL_FLAGS = ("Only if I ask for them: --mcp <agents> registers the needs-you MCP server "
                           "(claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds "
-                          "the posting rules to their instruction files (codex, gemini, opencode).")
+                          "the posting rules to their instruction files (codex, gemini, opencode). Daily "
+                          "updates are on by default (the 5-minute flush runs needs-you update); add "
+                          "--no-auto-update only if I ask.")
 # The end of every sender invite's agent prompt: verify, and what to do when something failed.
 # The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.
 AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
@@ -3719,8 +3721,9 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes
 It downloads the `needs-you` CLI from the hub into `~/.local/bin`, redeems this invite for a
 token of its own, writes `~/.config/needs-you/env` (mode 600), adds a 5-minute
 `needs-you flush` (cron on Linux, a LaunchAgent on macOS) so items queued while the hub is
-asleep or unreachable get delivered, puts `~/.local/bin` on PATH in your shell profile (one
-tagged line), checks health, and posts a test `info` item.
+asleep or unreachable get delivered, turns on daily updates from this hub (run by that
+flush; `--no-auto-update` leaves them off), puts `~/.local/bin` on PATH in your shell profile
+(one tagged line), checks health, and posts a test `info` item.
 
 For Claude Code alerts from every session on this machine, the whole setup is:
 
@@ -3747,7 +3750,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--agent-instructions AGENTS` | The skill's rules for other agents, comma-separated from `codex`, `gemini`, `opencode`: a marked block appended to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing; the file keeps a backup). Only when the user asks for it. |
 | `--usage` | This machine runs Claude Code on a Pro or Max plan: install `~/.local/bin/needs-you-usage`, a status line helper that posts a low card when the 5-hour or weekly limit passes `NEEDS_YOU_USAGE_ALERT_PCT`. It changes no settings: it prints the `statusLine` line to add. Only when the user asks for it. |
 | `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot`, `cursor` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
-| `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
+| `--no-auto-update` | Don't let the 5-minute flush run `needs-you update` once a day. It's on by default: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked against its manifest and the GitHub release; https, loopback or tailnet only). A value already in the env file is kept; `--auto-update` turns it back on. Only when the user asks for it. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |
 | `--ssh-alias NAME` | This machine is reached from the Mac over SSH: NAME is its host alias in the Mac's `~/.ssh/config` (VS Code Remote-SSH), so cards get a link that opens the session's folder there. |
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links (`{cwd}`, `{host}`, `{session}`, `{handle}`); `none` turns editor links off. |
