@@ -17,7 +17,23 @@ final class SecurityAuditTests: XCTestCase {
         ("testOrcaJumpArgumentsAreFixed", testOrcaJumpArgumentsAreFixed),
         ("testNewHubCannotRekeyKnownHubs", testNewHubCannotRekeyKnownHubs),
         ("testConnectConfirmationNamesTheHub", testConnectConfirmationNamesTheHub),
+        ("testHubURLsRefuseUserInfo", testHubURLsRefuseUserInfo),
     ]
+
+    /// Scan 2026-10-08: "https://hub-a.example.ts.net@evil.example" reads as the first host
+    /// and is the second; it was stored, shown and used as the token key with the user@ in it.
+    func testHubURLsRefuseUserInfo() {
+        for raw in ["https://hub-a.example.ts.net@evil.example", "http://user:pw@100.64.1.2:8765",
+                    "https://@evil.example"] {
+            XCTAssertNil(ConnectLink.normalizedHubURL(raw), raw)
+            let link = "needsyou://connect?hub=" + raw.addingPercentEncoding(withAllowedCharacters: .alphanumerics)! + "&code=nyi_abc"
+            XCTAssertNil(ConnectLink.parse(link), link)
+        }
+        XCTAssertNotNil(ConnectLink.normalizedHubURL("https://hub-a.example.ts.net:8765"))
+        XCTAssertEqual(ConnectLink.parse("https://hub-a.example.ts.net@evil.example/join/nyi_abc")?.hub.absoluteString,
+                       "https://evil.example")
+    }
+
 
     func testLinkPolicyRejectsSchemeTricks() {
         let rejected = [

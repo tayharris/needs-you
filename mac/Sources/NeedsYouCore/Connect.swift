@@ -85,12 +85,14 @@ public struct ConnectLink: Equatable, Sendable {
         return code.unicodeScalars.allSatisfy(allowed.contains)
     }
 
-    /// http(s)://host[:port][/path], no query/fragment, no trailing slash.
+    /// http(s)://host[:port][/path], no query/fragment, no trailing slash, no user@ (a
+    /// "https://hub-a.example.ts.net@evil.example" reads as one host and is another).
     public static func normalizedHubURL(_ string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var c = URLComponents(string: trimmed),
               let scheme = c.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              let host = c.host, !host.isEmpty
+              let host = c.host, !host.isEmpty,
+              c.percentEncodedUser == nil, c.percentEncodedPassword == nil
         else { return nil }
         c.scheme = scheme
         c.query = nil
