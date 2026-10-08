@@ -359,6 +359,134 @@ class Failover(CliTestCase):
         self.assertEqual([i["kind"] for i in self.items(a, reader, "open")], ["info"])
 
 
+class ResolveEveryHub(CliTestCase):
+    """Hubs that don't replicate to each other (the Mac's built-in hub has no peers yet) each
+    hold only what was posted to them. A card that went to hub B while A was down must still
+    be resolved when A is back: a resolve that finds nothing open goes on to the next hub."""
+
+    def two_hubs(self):
+        a = self.make_hub("hub-a", port=free_port())
+        b = self.make_hub("hub-b")
+        sender, reader_a = self.tokens(a)
+        b.store.ensure_token("sender-shared", "sender", sender)
+        _, reader_b = self.tokens(b)
+        return a, b, sender, reader_a, reader_b
+
+    def restart(self, hub):
+        """The same hub (port, database) started again after hub.stop()."""
+        return self.make_hub(hub.hub_id, port=hub.cfg["port"], db=hub.cfg["db"])
+
+    def post_while_a_is_down(self, a, b, key, sender):
+        a.stop()
+        r = self.run_cli("add", "--key", key, "--title", "waiting", urls=[a.url, b.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(b.url, r.stdout)
+        return self.restart(a)  # A is back, and doesn't have the card
+
+    def test_card_on_the_second_hub_is_resolved(self):
+        a, b, sender, reader_a, reader_b = self.two_hubs()
+        a = self.post_while_a_is_down(a, b, "agent:testbox:s1", sender)
+        r = self.run_cli("resolve", "--key", "agent:testbox:s1", urls=[a.url, b.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("resolved", r.stdout)
+        self.assertEqual(self.items(b, reader_b, "open"), [])
+        self.assertEqual(self.queued(), [])
+
+    def test_stops_at_the_first_hub_that_resolves(self):
+        a, b, sender, reader_a, reader_b = self.two_hubs()
+        for hub in (a, b):
+            self.run_cli("add", "--key", "k", "--title", "t", urls=[hub.url], token=sender)
+        r = self.run_cli("resolve", "--key", "k", urls=[a.url, b.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.items(a, reader_a, "open"), [])
+        self.assertEqual([i["key"] for i in self.items(b, reader_b, "open")], ["k"])
+
+    def test_nothing_open_anywhere_is_still_ok(self):
+        a, b, sender, _, _ = self.two_hubs()
+        r = self.run_cli("resolve", "--key", "never", urls=[a.url, b.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("nothing open", r.stdout)
+        self.assertEqual(self.queued(), [])
+
+    def test_a_hub_down_at_resolve_time_gets_it_on_flush(self):
+        port = free_port()
+        a = self.make_hub("hub-a")
+        sender, reader_a = self.tokens(a)
+        b = self.make_hub("hub-b", port=port)
+        b.store.ensure_token("sender-shared", "sender", sender)
+        _, reader_b = self.tokens(b)
+        url_b = b.url
+        self.run_cli("add", "--key", "agent:testbox:s2", "--title", "waiting", urls=[url_b], token=sender)
+        b.stop()
+        # A: nothing open; B: down. Exit 0 (rule 8), the resolve kept for B.
+        r = self.run_cli("resolve", "--key", "agent:testbox:s2", urls=[a.url, url_b], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.queued(), [])  # the outbox proper isn't held up by it
+        b2 = self.make_hub("hub-b", port=port, db=b.cfg["db"])
+        r = self.run_cli("flush", urls=[a.url, url_b], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.items(b2, reader_b, "open"), [])
+        # sent: nothing left to retry
+        r = self.run_cli("flush", urls=[a.url, url_b], token=sender)
+        self.assertNotIn("resolve", r.stderr)
+
+    def test_a_new_card_of_the_key_cancels_the_kept_resolve(self):
+        port = free_port()
+        a = self.make_hub("hub-a")
+        sender, _ = self.tokens(a)
+        b = self.make_hub("hub-b", port=port)
+        b.store.ensure_token("sender-shared", "sender", sender)
+        _, reader_b = self.tokens(b)
+        url_b = b.url
+        self.run_cli("add", "--key", "k3", "--title", "old", urls=[url_b], token=sender)
+        b.stop()
+        self.run_cli("resolve", "--key", "k3", urls=[a.url, url_b], token=sender)
+        b2 = self.make_hub("hub-b", port=port, db=b.cfg["db"])
+        # The next wait's card (same key) goes out first: the old resolve must not close it.
+        self.run_cli("add", "--key", "k3", "--title", "new", urls=[url_b], token=sender)
+        self.run_cli("flush", urls=[a.url, url_b], token=sender)
+        self.assertEqual([i["title"] for i in self.items(b2, reader_b, "open")], ["new"])
+
+    def test_lease_reaping_reaches_the_second_hub(self):
+        a, b, sender, _, reader_b = self.two_hubs()
+        a = self.post_while_a_is_down(a, b, "agent:testbox:s4", sender)
+        leases = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks")
+        os.makedirs(leases)
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        with open(os.path.join(leases, "s4"), "w") as fh:
+            fh.write("key=agent:testbox:s4\npid=%d\nstart=Thu Jan  1 00:00:00 1970\n" % dead.pid)
+        r = self.run_cli("flush", urls=[a.url, b.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.items(b, reader_b, "open"), [])
+
+    def test_the_claude_hooks_resolve_reaches_the_second_hub(self):
+        # The hook's own resolve goes through the CLI: an idle card posted while A was down
+        # is closed by the reply once A is back.
+        a, b, sender, _, reader_b = self.two_hubs()
+        hook_sh = os.path.join(os.path.dirname(CLI), "..", "integrations", "claude-code", "needs-you-hook.sh")
+        cli = os.path.join(self.tmp, "needs-you")
+        with open(cli, "w") as fh:
+            fh.write("#!/bin/sh\nexec %s %s \"$@\"\n" % (sys.executable, CLI))
+        os.chmod(cli, 0o755)
+        env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
+               "NEEDS_YOU_URLS": "%s,%s" % (a.url, b.url), "NEEDS_YOU_TOKEN": sender, "NEEDS_YOU_BIN": cli,
+               "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux"}
+
+        def hook(mode, event, **extra):
+            payload = dict({"session_id": "s5", "cwd": self.tmp, "hook_event_name": event}, **extra)
+            r = subprocess.run(["bash", hook_sh, mode], input=json.dumps(payload), env=env, capture_output=True,
+                               text=True, timeout=60, cwd=self.tmp)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+        a.stop()
+        hook("notify", "Notification", notification_type="idle_prompt")
+        self.assertEqual(len(self.items(b, reader_b, "open")), 1)
+        self.restart(a)
+        hook("resolve", "UserPromptSubmit", prompt="go on")
+        self.assertEqual(self.items(b, reader_b, "open"), [])
+
+
 class Caps(CliTestCase):
     def test_outbox_is_capped_by_count_and_age(self):
         os.makedirs(self.outbox)

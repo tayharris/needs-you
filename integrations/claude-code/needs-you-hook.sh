@@ -438,6 +438,43 @@ resolve_marker() {
   log "resolve $k -> $?"
 }
 
+# A card being posted. The marker is written once the post is done, so a reply in the terminal
+# while the CLI is still posting (a slow or hanging hub, the 2 s wait before a turn-end card)
+# would find no marker, and the card would arrive after the reply and stay. So `notify` and
+# `ask` leave $state_dir/.pending.<id>.<pid> while they post, every resolve removes them, and a
+# post that finds its own gone resolves the card it just made.
+pending=
+begin_post() {
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  pending="$state_dir/.pending.$id.$$"
+  printf 'event=%s\n' "$(json_str hook_event_name)" >"$pending" 2>/dev/null || { pending=; return 0; }
+  trap '[ -n "$pending" ] && rm -f "$pending"' EXIT
+}
+# cancel_posts [stop]: the person answered. A Stop keeps a StopFailure card being posted (it
+# stays until the next prompt).
+cancel_posts() {
+  local f
+  for f in "$state_dir/.pending.$id".*; do
+    [ -f "$f" ] || continue
+    [ "${1:-}" = stop ] && grep -qs '^event=StopFailure$' "$f" && continue
+    rm -f "$f"
+  done
+}
+# end_post: after the marker is written. A resolve that came while posting found no marker:
+# resolve the card now. (A resolve after the marker write finds the marker itself.)
+end_post() {
+  [ -n "$pending" ] || return 1
+  if [ ! -e "$pending" ]; then
+    pending=
+    log "$mode $key: answered while the card was posting"
+    resolve_marker "$marker" "$key"
+    return 0
+  fi
+  rm -f "$pending"
+  pending=
+  return 1
+}
+
 # How long to wait for an answer from the card, in seconds: NEEDS_YOU_ANSWER_TIMEOUT (default
 # 600), within 30..3600 (the python side gives the question the same expiry).
 answer_timeout() {
@@ -720,6 +757,21 @@ def base_args(key, title, body, priority):
 
 QUESTION_POSTED = [None]  # the `question` field the last post carried (None: the steps form)
 
+# The variables by which the CLI tells it runs inside an agent's session (its agent_session),
+# and notes a `needs` item it posts as that agent's own blocker. The hook's card isn't one:
+# noted, it would hold back the next waiting card (own_item_open) whenever it is closed other
+# than by this hook's resolve (from the Mac, by expiry). Claude Code gives its hooks
+# CLAUDECODE and CLAUDE_CODE_SESSION_ID.
+SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_THREAD_ID",
+                "NEEDS_YOU_AGENT_SESSION", "GEMINI_CLI", "ORCA_TERMINAL_HANDLE")
+
+
+def cli_env():
+    env = {k: v for k, v in os.environ.items() if k not in SESSION_VARS}
+    if env.get("TERM") == "dumb":  # Kimi's commands (the CLI takes it for one)
+        del env["TERM"]
+    return env
+
 
 def post(args, links, steps=None, asked=None, steps_body=None):
     """Post the card. With `asked` (a question card): with its `question` field, and if the
@@ -740,7 +792,7 @@ def post(args, links, steps=None, asked=None, steps_body=None):
         try:
             return subprocess.run(args + [a for l in ls for a in ("--link", l)],
                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, timeout=15).returncode
+                                  stderr=subprocess.DEVNULL, timeout=15, env=cli_env()).returncode
         except Exception:
             return 1
     rc = run(links)
@@ -1895,11 +1947,13 @@ case "$mode" in
   resolve)
     # Codex's Interrupt hook is synchronous with a 1-3 s limit: don't wait on the hub.
     [ "$agent" = codex ] && resolve_bg=1
+    cancel_posts
     resolve_marker "$marker" "$key"
     ;;
 
   stop)
     # A StopFailure card stays until the next prompt: the turn ended on an error.
+    cancel_posts stop
     grep -qs '^kind=failure$' "$marker" || resolve_marker "$marker" "$key"
     [ "$agent" = grok ] && exit 0  # its transcript isn't Claude's: no context card
     case "${NEEDS_YOU_CONTEXT_ALERT_PCT:-}" in
@@ -1945,6 +1999,7 @@ case "$mode" in
     ;;
 
   end)
+    cancel_posts
     if [ "$agent" = codex ]; then
       # Codex runs SessionEnd synchronously with a 1-3 s limit: resolve in the
       # background (the CLI queues if no hub answers; flush reaps the lease if
@@ -1983,11 +2038,14 @@ case "$mode" in
     # is printed on a timeout, an error or an answer that doesn't fit the question.
     [ "$agent" = claude ] || exit 0
     lease
+    begin_post
     posted=$(run_py ask)
     rc=$?
     log "ask $key -> $rc ${posted%% *}"
-    [ "$rc" -eq 0 ] || exit 0
+    case "$rc" in 0|1) ;; *) exit 0 ;; esac  # 1: maybe posted (see notify)
     write_marker "$marker" "$key" "kind=permission"
+    end_post && exit 0  # answered in the terminal meanwhile: nothing to wait for
+    [ "$rc" -eq 0 ] || exit 0
     case "$posted" in "answerable "?*) ;; *) exit 0 ;; esac
     NY_QID=${posted#answerable }
     NY_ANSWER=$("$cli" answer-wait --key "$key" --timeout "$(answer_timeout)" </dev/null 2>/dev/null)
@@ -1999,6 +2057,7 @@ case "$mode" in
     ;;
 
   notify)
+    begin_post
     # One card for one wait: when the agent has posted its own blocker from this session (the
     # skill), the generic "waiting for input" card would only repeat it. Permission prompts,
     # questions and errors still post: they are a different thing to act on.
@@ -2071,8 +2130,13 @@ case "$mode" in
     rc=$?
     log "notify $key -> $rc"
     # The CLI queues offline and exits 0, so a down hub still leaves a marker
-    # and the later resolve is queued behind the add.
-    [ "$rc" -eq 0 ] && write_marker "$marker" "$key" "kind=${kind:-notify}"
+    # and the later resolve is queued behind the add. A post that didn't finish (1: the CLI
+    # cut off at the hook's limit, its request maybe on the hub already or still in the
+    # outbox, to go out with the next run) leaves one too: resolving a card that never came
+    # costs a request, a card nobody resolves stays for days.
+    case "$rc" in
+      0|1) write_marker "$marker" "$key" "kind=${kind:-notify}"; end_post ;;
+    esac
     ;;
 esac
 

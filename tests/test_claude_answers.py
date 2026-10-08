@@ -261,7 +261,10 @@ class AskMode(unittest.TestCase):
             fh.write("#!/bin/sh\necho \"$@\" >> \"$FAKE_CLI_LOG\"\nexit 1\n")
         os.chmod(failing, 0o755)
         self.assertEqual(self.ask(ans=answer(["SQLite"], ["Auth"]), NEEDS_YOU_BIN=failing), "")
-        self.assertFalse(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
+        with open(self.log) as fh:  # (this CLI logs plain words)
+            self.assertNotIn("answer-wait", fh.read())
+        # The post may have gone out (a CLI cut off mid-way): the marker stays for the resolve.
+        self.assertTrue(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
 
 
 class HooksJson(unittest.TestCase):

@@ -89,7 +89,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env
 | `PermissionRequest` (every tool but `AskUserQuestion`: matcher `^(?!AskUserQuestion$)`) | `notify` | `needs-you add` with a title per tool: plan approval (`ExitPlanMode`), the program a `Bash` call runs, the file an `Edit`/`Write` changes, else the tool's name |
 | `PermissionRequest` for `AskUserQuestion` (matcher `AskUserQuestion`, synchronous) | `ask` | `needs-you add` with the question; when the card can answer it exactly, posted answerable, then `needs-you answer-wait` and the person's click printed as Claude's decision (below) |
 | `StopFailure` | `notify` | `needs-you add`, titled by `error_type` (rate limit, sign-in, billing, API error, ...) |
-| `UserPromptSubmit`, `PostToolUse` | `resolve` | `needs-you resolve`, only if this session posted something |
+| `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` | `resolve` | `needs-you resolve`, only if this session posted something. A reply that comes while a card is still being posted (a slow hub) resolves it once it's up |
 | `Stop` | `stop` | the same resolve (except an API-error card), then the context check below |
 | `SessionStart` | `start` | remembers the model; after `/clear`, compaction or `/resume`, resolves this Claude process's earlier cards |
 | `SessionEnd` | `end` | resolves the session's card and its context card |

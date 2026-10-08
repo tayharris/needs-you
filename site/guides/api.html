@@ -746,8 +746,11 @@ the older active version. An active name must be unique on the hub where it's ad
 <li>LWW uses wall clocks. Keep hubs on NTP; a hub whose clock runs far ahead wins concurrent
 edits to the same item.</li>
 <li>A resolve by key on hub B for an item that hasn't replicated to B yet resolves nothing. The
-CLI sends to the first reachable hub in a fixed order, so in practice a sender's add and
-resolve land on the same hub.</li>
+CLI sends to the first reachable hub in a fixed order, and a resolve that resolves nothing
+there goes on to the next hubs until one resolves something: an add that went to a later hub
+while the first was down (or to a hub that doesn't replicate with the others, such as the
+Mac's built-in hub today) is still resolved. A hub it couldn't reach then gets the resolve
+from <code>needs-you flush</code> (kept up to 48 h, dropped if the same key is posted again).</li>
 <li>A resolve on one hub concurrent with a re-post on another is decided by LWW: the later write
 wins.</li>
 <li>First answer wins on each hub. Two clicks on different hubs within the replication delay can

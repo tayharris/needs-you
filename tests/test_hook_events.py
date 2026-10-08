@@ -525,7 +525,9 @@ class FailureTests(HookHarness):
             hooks = json.load(fh)["hooks"]
         modes = {ev: g[0]["hooks"][0]["command"].split()[-1] for ev, g in hooks.items()}
         self.assertEqual(modes, {"Notification": "notify", "PermissionRequest": "notify", "StopFailure": "notify",
-                                 "UserPromptSubmit": "resolve", "PostToolUse": "resolve", "Stop": "stop",
+                                 "UserPromptSubmit": "resolve", "PostToolUse": "resolve",
+                                 # an approved tool that fails fires only PostToolUseFailure (2.1.294)
+                                 "PostToolUseFailure": "resolve", "Stop": "stop",
                                  "SessionStart": "start", "SessionEnd": "end"})
         self.assertIn("quota_auto_resume_disabled", hooks["Notification"][0]["matcher"])
         for groups in hooks.values():
