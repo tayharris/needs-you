@@ -748,6 +748,21 @@ class AutoUpdate(UpdateCase):
         self.assertNotIn("auto_ok_at", self.state())
         self.assertIn("auto_tried_at", self.state())   # retried after an hour, not every flush
 
+    def test_not_http_is_a_failed_check_not_a_traceback(self):
+        """Another service on the hub's port (http.client.HTTPException isn't an OSError)."""
+        from support import garbage_server
+        bad = garbage_server(self, b"SSH-2.0-OpenSSH_9.6\r\n")
+        r = self.run_cli("update", urls=[bad])
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertNotEqual(r.returncode, 0)
+        r = self.run_cli("--json", "update", urls=[bad])
+        self.assertNotIn("Traceback", r.stderr)
+        json.loads(r.stdout)
+        r = self.run_cli("update", "--auto", urls=[bad])
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(r.returncode, 0)   # --auto never fails
+        self.assertEqual(read(self.cli), self.old_cli)
+
     def test_opt_in_in_the_env_file(self):
         h = self.hub()
         conf = os.path.join(self.home, ".config", "needs-you")

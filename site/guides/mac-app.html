@@ -170,9 +170,16 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <tr><td>The <code>2 new</code> badge</td><td>Panel → Collapsed pill → <strong>New since last opened</strong></td><td>On, Off</td></tr>
 <tr><td>Cards about what isn't set up yet (<a href="#setup-tips">Setup tips</a>)</td><td>Panel → Setup tips → <strong>Show setup tips</strong></td><td>On, Off</td></tr>
 <tr><td>The global shortcut</td><td>Panel → Keyboard</td><td>Control-Option-Space (⌃⌥Space), or record your own (it must use Control, Option or Command)</td></tr>
+<tr><td>The panel's colours</td><td>Appearance → <strong>Theme</strong></td><td>Default (the original dark glass), Match system (Default or Paper with macOS's light or dark), Graphite, Midnight, Paper (light), High contrast (dark or light with macOS), Ocean, Sunset</td></tr>
+<tr><td>Colour of ticked steps, links in card text and small badges</td><td>Appearance → <strong>Accent colour</strong></td><td>Theme's own, Blue, Purple, Pink, Orange, Green, Teal, Graphite, Custom (any colour; made lighter or darker if it wouldn't read)</td></tr>
 <tr><td>How loud urgent items are</td><td>Alerts → <strong>Urgent items</strong></td><td>Normal, Off, Subtle, Bright (urgent never goes below Subtle)</td></tr>
 <tr><td>How loud normal and low items are</td><td>Alerts → <strong>Normal and low items</strong></td><td>Normal, Off, Subtle, Bright</td></tr>
 <tr><td>How long a new item's preview stays out (also the "3 waited" Later peek)</td><td>Alerts → Arrivals → <strong>Show new items for</strong></td><td>14 s, 5 s, 10 s, 20 s, 30 s, Until I click or point at it (pointing at it always holds it)</td></tr>
+<tr><td>How an urgent item arrives on the pill</td><td>Alerts → Arrivals → <strong>Urgent items arrive with</strong></td><td>Glow pulse, Bounce, Shake, Slide in, Ripple (never None)</td></tr>
+<tr><td>How normal and low items arrive</td><td>Alerts → Arrivals → <strong>Normal and low items arrive with</strong></td><td>Glow pulse, Bounce, Shake, Slide in, Ripple, None</td></tr>
+<tr><td>How many times the arrival plays</td><td>Alerts → Arrivals → <strong>Plays</strong></td><td>Automatic (urgent twice, others once, one more at Bright), Once, Twice, 3, 5 times (Slide in plays once)</td></tr>
+<tr><td>How fast it plays</td><td>Alerts → Arrivals → <strong>Speed</strong></td><td>Normal, Slow, Fast</td></tr>
+<tr><td>Play urgent's arrival again while nobody has looked</td><td>Alerts → Arrivals → <strong>Remind about unseen urgent items</strong></td><td>Off, every 2, 5, 10, 15, 30 min, every hour</td></tr>
 <tr><td>How normal / low / done and info / other-context items arrive</td><td>Alerts → <strong>Delivery</strong></td><td>Interrupt, Ambient, Ambient, Later (see <a href="#focus-heads-down-except-what-you-choose">Focus</a>)</td></tr>
 <tr><td>Urgent items break through Focus</td><td>Alerts → Delivery</td><td>On, Off</td></tr>
 <tr><td>Focus links from other apps apply without asking</td><td>Alerts → Delivery</td><td>Off (ask), On</td></tr>
@@ -181,7 +188,13 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <tr><td>Edge glow</td><td>Alerts → On the work screen</td><td>Off, Urgent arrivals</td></tr>
 </tbody>
 </table></div>
-<p>The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. <strong>Advanced → Reset to defaults</strong> puts the look and alerts back.</p>
+<p>The Panel and Appearance pages show a sample card as you change things, and the Alerts page plays each alert. <strong>Alerts → Arrivals → Preview on the pill</strong> (<strong>Urgent</strong> or <strong>Normal</strong>) plays your choice on the real pill without posting anything; like everything on the pill, it never takes focus. <strong>Advanced → Reset to defaults</strong> puts the look, theme and alerts back.</p>
+<h3 id="themes">Themes <a class="anchor" href="#themes" aria-label="Link to this section">#</a></h3>
+<p>Every theme keeps urgent red and easy to read: the text, the secondary text and the urgent colour are checked against each theme's background for contrast (WCAG 4.5:1 or better; 7:1 for urgent in High contrast), and urgent stays clearly different from normal and low. <strong>Match system</strong> and <strong>High contrast</strong> switch between dark and light glass when macOS does; the others always look the same. Light themes use a light layer behind the glass instead of a dark one, so <strong>Background darkness</strong> lightens it. High contrast keeps that layer at 60% or more.</p>
+<h3 id="arrival-animations">Arrival animations <a class="anchor" href="#arrival-animations" aria-label="Link to this section">#</a></h3>
+<p><strong>Glow pulse</strong> is the original: the priority colour glows around the pill and fades. <strong>Bounce</strong> hops the pill up and lets it land, <strong>Shake</strong> shakes it side to side, <strong>Slide in</strong> slides it down into place as it fades in (once), and <strong>Ripple</strong> sends a ring out from its edge. Each moves a few points at most, inside the pill's own margin, and the alert loudness (Off, Subtle, Normal, Bright) still sets how strong it is: Off for normal and low means no animation at all. Urgent can't be set to None or Off; it always moves at least once.</p>
+<p>With <strong>Reduce Motion</strong> on (System Settings → Accessibility → Display), every animation plays as a gentle glow fade instead.</p>
+<p>The repeat reminder plays urgent's arrival again every few minutes while an urgent item that came in since you last opened the panel is still open. It stops when you open the panel, and doesn't play while the panel is hidden or snoozed, while a preview is out, or in a focus that holds urgent items.</p>
 <figure class="doc-fig">
 <div class="stage"><img src="../img/settings-opacity.png" width="530" height="352" alt="Settings, Panel, Opacity: Background darkness 30%, Collapsed pill 85%, Collapsed pill pointer over it 100%, Open panel 100%, Open panel pointer over it 100%, each with a one-line explanation." loading="lazy" decoding="async"></div>
 <figcaption>Settings → Panel → Opacity, at the defaults.</figcaption>
@@ -221,7 +234,8 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <li><strong>Machines:</strong> every connected machine with its role, open items and, for senders, the CLI version (<em>version unknown (hasn't posted since updating)</em> until it reports one), and the open invite links; <strong>Revoke</strong> any of them. Shows only when you have an owner token.</li>
 <li><strong>Other hubs (advanced):</strong> you don't need it with the hub on this Mac. <strong>Join a hub with a link</strong>: paste a <code>needsyou://connect?...</code> or <code>/join/...</code> link that someone made for this Mac, and it joins their hub. The link comes from another Mac's <strong>Settings → Connect a machine</strong> (<em>Another Mac that shows the same alerts</em>) or from a server hub's admin (<code>needs-you-admin invite create my-mac --role owner</code>). If the clipboard already holds such a link when the page opens, it's filled in for you; <strong>Paste</strong> does the same by hand. Opening a <code>needsyou://connect</code> link does all of this by itself, after asking. <strong>Always-on server hubs</strong> explains them and links to <a href="hub.html">Server hubs</a> (they're set up from the command line). <strong>Hubs by URL and token</strong>: hubs added by hand, tried in order; the <em>This Mac (your inbox)</em> row shows its Tailscale URL too.</li>
 <li><strong>Panel:</strong> look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.</li>
-<li><strong>Alerts:</strong> how loud new items are, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.</li>
+<li><strong>Appearance:</strong> the theme and the accent colour, with a sample (<a href="#themes">Themes</a>).</li>
+<li><strong>Alerts:</strong> how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.</li>
 <li><strong>Integrations:</strong> <strong>Jump to iTerm2 and Terminal tabs</strong> (<a href="#terminal-button">Terminal button</a>).</li>
 <li><strong>Updates</strong> (<a href="updates.html">guide</a>) and <strong>Advanced</strong> (reset the look and alerts).</li>
 </ul>

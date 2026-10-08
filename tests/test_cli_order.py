@@ -64,6 +64,37 @@ class Order(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.item(hub, reader, "K")["status"], "resolved")
 
+    def test_own_entry_handled_by_another_run_reports_its_outcome(self):
+        """A run whose entry was sent or refused by another run's flush (between queueing it and
+        getting the lock) must say what happened: a refusal is exit 2, as when it sends itself."""
+        from support import wait_until
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
+               "NEEDS_YOU_HOST": "testbox", "NEEDS_YOU_GH": "none", "NEEDS_YOU_URL": hub.url,
+               "NEEDS_YOU_TOKEN": sender}
+        for outcome in ("refused", "sent"):
+            with self.subTest(outcome):
+                lock = self.hold_lock()  # the other run, flushing
+                p = subprocess.Popen([sys.executable, CLI, "add", "--key", "K-" + outcome, "--title", "t"],
+                                     env=env, cwd=self.tmp, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     text=True)
+                self.assertTrue(wait_until(lambda: len(self.queued()) == 1, timeout=10))
+                entry = os.path.join(self.outbox, self.queued()[0])
+                if outcome == "refused":
+                    os.makedirs(os.path.join(self.outbox, "failed"), exist_ok=True)
+                    os.replace(entry, os.path.join(self.outbox, "failed", os.path.basename(entry)))
+                else:
+                    os.remove(entry)
+                lock.close()
+                out, err = p.communicate(timeout=30)
+                if outcome == "refused":
+                    self.assertEqual(p.returncode, 2, err)
+                    self.assertIn("rejected", err)
+                else:
+                    self.assertEqual(p.returncode, 0, err)
+                    self.assertIn("another needs-you run", err)
+
     def test_concurrent_runs_keep_add_before_resolve(self):
         """Many add/resolve pairs from parallel runs while the outbox drains: every key ends
         resolved."""

@@ -18,7 +18,7 @@ struct ResizeGrip: View {
         ZStack {
             Color.clear
             Capsule()
-                .fill(Color.white.opacity(hovering ? 0.5 : 0.2))
+                .fill(Theme.text.opacity(hovering ? 0.5 : 0.2))
                 .frame(width: hovering ? 44 : 32, height: 4)
         }
         .frame(maxWidth: .infinity)

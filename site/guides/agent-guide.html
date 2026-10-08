@@ -278,11 +278,12 @@ Resolving is idempotent; any sender token of the inbox can resolve any of its it
 (hourly: <code>3</code>, daily: <code>48</code>) and re-posts on every run that still sees the blocker; each re-post
 renews the expiry, so a run that crashed before its resolve doesn't leave a card forever.</p>
 <p><strong>One card per wait.</strong> When an agent posts a <code>needs</code> item with the CLI from inside its session
-(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI, Kimi Code and Grok only in Orca), the CLI notes the key for that
+(Claude Code, Codex, Gemini CLI, opencode, Kimi Code, or an Orca terminal; Copilot CLI and Grok only in Orca), the CLI notes the key for that
 session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
 ended" card for that session. Permission prompts, questions and errors still post. The CLI
 finds the session from <code>$ORCA_TERMINAL_HANDLE</code>, the agent's own id (<code>$CLAUDE_CODE_SESSION_ID</code>,
-<code>$CODEX_SESSION_ID</code>), or <code>$NEEDS_YOU_AGENT_SESSION</code>, which any connector can set for its
+<code>$CODEX_SESSION_ID</code>), the agent process (Gemini CLI, and Kimi Code's Bash tool), or
+<code>$NEEDS_YOU_AGENT_SESSION</code>, which any connector can set for its
 agent's commands to the same id its hook sees (<a href="custom-connector.html#one-card-for-one-wait">custom connector
 guide</a>). Resolving the item (<code>--key</code> or
 <code>--id</code>), a <code>done</code>/<code>info</code> with the same key, the item's <code>--expires-in</code> (at most 48 hours) or the

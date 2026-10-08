@@ -354,6 +354,64 @@ class OddNameTests(HookHarness):
                 self.assertEqual([n for n in os.listdir(os.path.dirname(self.state)) if n.startswith(".")], [])
 
 
+class PayloadEdgeTests(HookHarness):
+    """Hook input the card must survive: huge tool input, odd bytes, nested look-alike keys."""
+
+    def test_huge_tool_input_still_posts(self):
+        # A Write of a big file: the payload is far past one environment variable's limit
+        # (128 KiB on Linux, ARG_MAX in all on macOS).
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Write",
+                                 "tool_input": {"file_path": "/x/big.txt", "content": "x" * 3000000}})
+        self.assertEqual(len(self.calls()), 1)
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude wants to edit big.txt: my-repo")
+
+    def test_bytes_that_are_not_utf8_become_replacement_characters(self):
+        # The hub refuses unpaired surrogates (400), so a raw \\xff must not reach the CLI as one.
+        raw = (b'{"session_id":"sess-1234-abcd","cwd":"%s","hook_event_name":"Notification",'
+               b'"notification_type":"permission_prompt","message":"bad \xff\xfe bytes"}'
+               % self.cwd.encode())
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux"}
+        r = subprocess.run([BASH, HOOK, "notify"], input=raw, env=env, capture_output=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+        body = self.opt(self.last(), "--body")
+        self.assertTrue(body.startswith("bad �� bytes"), body)
+        body.encode("utf-8")  # no lone surrogates
+
+    def test_closed_stdin_returns_at_once(self):
+        # With fd 0 closed, $(cat) gets its own pipe's read end as stdin and waits on itself
+        # forever: the agent's hook never returns.
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux", "HOOK": HOOK}
+        for agent in ("claude", "gemini"):
+            with self.subTest(agent):
+                p = subprocess.Popen([BASH, "-c", 'exec 0<&-; exec "$0" "$HOOK" notify "$1"', BASH, agent],
+                                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                     start_new_session=True)
+                try:
+                    _, err = p.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(p.pid, 9)
+                    p.communicate()
+                    self.fail("the hook hung with stdin closed")
+                self.assertEqual(p.returncode, 0, err)
+
+    def test_tool_input_keys_are_not_the_payloads(self):
+        # An MCP tool whose arguments are named like Cursor's or Claude's own fields: still
+        # Claude's card, keyed by Claude's session.
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "mcp__chat__send",
+                                 "tool_input": {"conversation_id": "C1", "cursor_version": "1"}})
+        self.assertEqual(len(self.calls()), 1)
+        self.assertEqual(self.opt(self.last(), "--key").rsplit(":", 1)[1], "sess-1234-abcd")
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "mcp__db__query",
+                                 "tool_input": {"session_id": "other-999", "hook_event_name": "Stop"}})
+        self.assertEqual(len(self.calls()), 2)
+        self.assertEqual(self.opt(self.last(), "--key").rsplit(":", 1)[1], "sess-1234-abcd")
+        self.assertEqual(self.marker()["kind"], "permission")
+
+
 class FailureTests(HookHarness):
     def test_free_text_on_cards_is_redacted(self):
         # Scan 2026-10-08: error_message and a notification's message are free text from the
@@ -885,6 +943,55 @@ class OwnItemTests(HookHarness):
         # outside Gemini nothing is noted for the process
         self.real_cli("add", "--key", "work:ACME-10:x", "--title", "t")
         self.assertTrue(self.agent_turn_ended("gemini", "AfterAgent"))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "a process named kimi from a symlink: Linux names it so")
+    def test_kimi_outside_orca_by_process(self):
+        # Kimi Code's Bash tool gives commands no session id, only TERM=dumb: the CLI notes the
+        # key for the kimi process, which the hook's lease names too. A stand-in "kimi" (python
+        # under that name) runs both, as the real one does.
+        kimi = os.path.join(self.home, "bin", "kimi")
+        os.makedirs(os.path.dirname(kimi))
+        os.symlink(sys.executable, kimi)
+        # One kimi process for the whole session: it reads [mode, payload] lines and runs each.
+        driver = (
+            "import json, os, subprocess, sys\n"
+            "cli, hook = sys.argv[1:3]\n"
+            "for line in sys.stdin:\n"
+            "    mode, payload = json.loads(line)\n"
+            "    if mode.startswith('add'):\n"
+            "        env = dict(os.environ, TERM='dumb' if mode == 'add' else 'xterm')\n"
+            "        subprocess.run(['/bin/sh', '-c', '\"$0\" \"$1\" add --key work:ACME-11:x --title t',"
+            " os.environ['PY'], cli], env=env, stdin=subprocess.DEVNULL, capture_output=True)\n"
+            "    else:\n"
+            "        subprocess.run(['bash', hook, mode, 'kimi'], input=payload.encode(), capture_output=True)\n"
+            "    print('done', flush=True)\n")
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
+               "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux",
+               "NY_HOOK_BG": "1", "NY_KIMI_TURN_WAIT": "0", "PY": sys.executable,
+               "NEEDS_YOU_URLS": "http://127.0.0.1:9", "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1"}
+        proc = subprocess.Popen([kimi, "-c", driver, CLI, HOOK], env=env, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, text=True, cwd=self.home)
+        self.addCleanup(lambda: (proc.stdin.close(), proc.wait(), proc.stdout.close()))
+
+        def under_kimi(mode, event="Stop", **data):
+            before = len(self.calls())
+            payload = dict({"session_id": "kimi-sess-1", "cwd": self.cwd, "hook_event_name": event}, **data)
+            proc.stdin.write(json.dumps([mode, json.dumps(payload)]) + "\n")
+            proc.stdin.flush()
+            self.assertEqual(proc.stdout.readline().strip(), "done")
+            return len(self.calls()) > before
+
+        self.assertTrue(under_kimi("notify"))
+        under_kimi("add")
+        self.assertFalse(under_kimi("notify"))  # its own card is up: no second one
+        # an approval prompt is another thing to act on
+        self.assertTrue(under_kimi("notify", "PermissionRequest", tool_name="Bash", tool_input={"command": "ls"}))
+        # the session ending forgets it
+        under_kimi("end", "SessionEnd")
+        self.assertTrue(under_kimi("notify"))
+        # a command that isn't Kimi's Bash tool (no TERM=dumb) notes nothing for the process
+        under_kimi("add-plain")
+        self.assertTrue(under_kimi("notify"))
 
     def agent_end(self, agent):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,

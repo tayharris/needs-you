@@ -441,6 +441,7 @@ class Installer(unittest.TestCase):
 
     def test_refuses_what_it_cant_append_to(self):
         for bad in ('hooks = []\n', '[hooks]\nx = 1\n', '[hooks.Stop]\ncommand = "x"\n',
+                    'matrix = [\n  [1, 2],\n  ["a"],\n]\nhooks = []\n',  # rows of a root array aren't tables
                     START + "\n[[hooks]]\n"):  # a block with no end marker
             self.write_conf(bad)
             r = self.run_installer()

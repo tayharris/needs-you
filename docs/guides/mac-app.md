@@ -138,9 +138,16 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | The `2 new` badge | Panel → Collapsed pill → **New since last opened** | On, Off |
 | Cards about what isn't set up yet ([Setup tips](#setup-tips)) | Panel → Setup tips → **Show setup tips** | On, Off |
 | The global shortcut | Panel → Keyboard | Control-Option-Space (⌃⌥Space), or record your own (it must use Control, Option or Command) |
+| The panel's colours | Appearance → **Theme** | Default (the original dark glass), Match system (Default or Paper with macOS's light or dark), Graphite, Midnight, Paper (light), High contrast (dark or light with macOS), Ocean, Sunset |
+| Colour of ticked steps, links in card text and small badges | Appearance → **Accent colour** | Theme's own, Blue, Purple, Pink, Orange, Green, Teal, Graphite, Custom (any colour; made lighter or darker if it wouldn't read) |
 | How loud urgent items are | Alerts → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
 | How loud normal and low items are | Alerts → **Normal and low items** | Normal, Off, Subtle, Bright |
 | How long a new item's preview stays out (also the "3 waited" Later peek) | Alerts → Arrivals → **Show new items for** | 14 s, 5 s, 10 s, 20 s, 30 s, Until I click or point at it (pointing at it always holds it) |
+| How an urgent item arrives on the pill | Alerts → Arrivals → **Urgent items arrive with** | Glow pulse, Bounce, Shake, Slide in, Ripple (never None) |
+| How normal and low items arrive | Alerts → Arrivals → **Normal and low items arrive with** | Glow pulse, Bounce, Shake, Slide in, Ripple, None |
+| How many times the arrival plays | Alerts → Arrivals → **Plays** | Automatic (urgent twice, others once, one more at Bright), Once, Twice, 3, 5 times (Slide in plays once) |
+| How fast it plays | Alerts → Arrivals → **Speed** | Normal, Slow, Fast |
+| Play urgent's arrival again while nobody has looked | Alerts → Arrivals → **Remind about unseen urgent items** | Off, every 2, 5, 10, 15, 30 min, every hour |
 | How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
 | Urgent items break through Focus | Alerts → Delivery | On, Off |
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
@@ -148,7 +155,19 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 
-The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. **Advanced → Reset to defaults** puts the look and alerts back.
+The Panel and Appearance pages show a sample card as you change things, and the Alerts page plays each alert. **Alerts → Arrivals → Preview on the pill** (**Urgent** or **Normal**) plays your choice on the real pill without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back.
+
+### Themes
+
+Every theme keeps urgent red and easy to read: the text, the secondary text and the urgent colour are checked against each theme's background for contrast (WCAG 4.5:1 or better; 7:1 for urgent in High contrast), and urgent stays clearly different from normal and low. **Match system** and **High contrast** switch between dark and light glass when macOS does; the others always look the same. Light themes use a light layer behind the glass instead of a dark one, so **Background darkness** lightens it. High contrast keeps that layer at 60% or more.
+
+### Arrival animations
+
+**Glow pulse** is the original: the priority colour glows around the pill and fades. **Bounce** hops the pill up and lets it land, **Shake** shakes it side to side, **Slide in** slides it down into place as it fades in (once), and **Ripple** sends a ring out from its edge. Each moves a few points at most, inside the pill's own margin, and the alert loudness (Off, Subtle, Normal, Bright) still sets how strong it is: Off for normal and low means no animation at all. Urgent can't be set to None or Off; it always moves at least once.
+
+With **Reduce Motion** on (System Settings → Accessibility → Display), every animation plays as a gentle glow fade instead.
+
+The repeat reminder plays urgent's arrival again every few minutes while an urgent item that came in since you last opened the panel is still open. It stops when you open the panel, and doesn't play while the panel is hidden or snoozed, while a preview is out, or in a focus that holds urgent items.
 
 <img src="../../site/img/settings-opacity.png" width="530" alt="Settings, Panel, Opacity: Background darkness 30%, Collapsed pill 85%, Collapsed pill pointer over it 100%, Open panel 100%, Open panel pointer over it 100%, each with a one-line explanation.">
 
@@ -191,7 +210,8 @@ Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a s
 - **Machines:** every connected machine with its role, open items and, for senders, the CLI version (*version unknown (hasn't posted since updating)* until it reports one), and the open invite links; **Revoke** any of them. Shows only when you have an owner token.
 - **Other hubs (advanced):** you don't need it with the hub on this Mac. **Join a hub with a link**: paste a `needsyou://connect?...` or `/join/...` link that someone made for this Mac, and it joins their hub. The link comes from another Mac's **Settings → Connect a machine** (*Another Mac that shows the same alerts*) or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`). If the clipboard already holds such a link when the page opens, it's filled in for you; **Paste** does the same by hand. Opening a `needsyou://connect` link does all of this by itself, after asking. **Always-on server hubs** explains them and links to [HUB.md](../HUB.md) (they're set up from the command line). **Hubs by URL and token**: hubs added by hand, tried in order; the *This Mac (your inbox)* row shows its Tailscale URL too.
 - **Panel:** look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.
-- **Alerts:** how loud new items are, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
+- **Appearance:** the theme and the accent colour, with a sample ([Themes](#themes)).
+- **Alerts:** how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
 - **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
 - **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts).
 

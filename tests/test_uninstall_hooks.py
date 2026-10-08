@@ -91,6 +91,59 @@ class UninstallHooks(unittest.TestCase):
         r = self.cli()
         self.assertIn("no needs-you hooks found", r.stdout)
 
+    def test_an_enclosing_home_is_never_a_project(self):
+        # A temp HOME made under a real home (a sandbox, a test): the real ~/.claude above it is
+        # that account's user level, not a project, and neither uninstall nor doctor may touch it.
+        self.install("--user")
+        before = self.text(self.user_settings())
+        inner = os.path.join(self.home, "tmp", "inner")
+        os.makedirs(inner)
+        env = dict(self.env, HOME=inner)
+        for args in (["uninstall-hooks"], ["uninstall-hooks", "--project"], ["doctor"]):
+            r = subprocess.run([sys.executable, CLI] + args, env=env, capture_output=True, text=True,
+                               timeout=60, cwd=inner)
+            self.assertNotIn(self.user_settings(), r.stdout + r.stderr, args)
+            self.assertNotIn("project hooks", r.stdout.lower(), args)
+        self.assertEqual(self.text(self.user_settings()), before)
+
+    def test_every_backup_is_kept_within_one_second(self):
+        # The JSON is rewritten (re-indented), so a backup is the only exact copy of the file as
+        # it was: an uninstall right after the install must not overwrite the install's backup.
+        os.makedirs(os.path.join(self.home, ".claude"))
+        mine = b'{\r\n\t"model": "keep"\r\n}\r\n'
+        with open(self.user_settings(), "wb") as fh:
+            fh.write(mine)
+        self.install("--user")
+        self.install("--user", "--uninstall")
+        d = os.path.join(self.home, ".claude")
+        baks = []
+        for n in sorted(os.listdir(d)):
+            if n.startswith("settings.json.bak-"):
+                with open(os.path.join(d, n), "rb") as fh:
+                    baks.append(fh.read())
+        self.assertEqual(len(baks), 2, baks)
+        self.assertIn(mine, baks)
+
+    def test_uninstall_with_nothing_installed_leaves_the_file_alone(self):
+        # Empty events or an empty "hooks" of the person's own aren't ours to tidy away: with
+        # no needs-you hook in the file, uninstall must not rewrite (or back up) anything.
+        for rel, installer in ((".claude/settings.json", INSTALL_HOOKS),
+                               (".codex/hooks.json", os.path.join(ROOT, "integrations", "codex",
+                                                                  "install-codex-hooks.sh")),
+                               (".gemini/settings.json", os.path.join(ROOT, "integrations", "gemini",
+                                                                      "install-gemini-hooks.sh"))):
+            for text in ('{"hooks": {"Stop": []}}', '{\n\t"hooks": {}\n}\n'):
+                with self.subTest(installer=os.path.basename(installer), text=text):
+                    path = os.path.join(self.home, rel)
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w") as fh:
+                        fh.write(text)
+                    r = subprocess.run([BASH, installer, "--uninstall"], env=self.env, capture_output=True,
+                                       text=True, timeout=60, cwd=self.tmp)
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                    self.assertEqual(self.text(path), text)
+                    self.assertEqual([n for n in os.listdir(os.path.dirname(path)) if ".bak-" in n], [])
+
     def test_project_only_from_inside_it(self):
         self.setup_all()
         r = self.cli("--project", cwd=os.path.join(self.proj, "src"))

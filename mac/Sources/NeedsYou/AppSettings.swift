@@ -52,7 +52,15 @@ final class AppSettings: ObservableObject {
     /// Look and feel: panel size, text size, alerts, and so on (UIPrefs; defaults are the
     /// original look). Each change writes only the keys that changed.
     @Published var ui: UIPrefs {
-        didSet { if ui != oldValue { ui.save(to: defaults, previous: oldValue) } }
+        didSet {
+            guard ui != oldValue else { return }
+            ui.save(to: defaults, previous: oldValue)
+            // Before anything redraws, so the Settings samples show the new theme at once
+            // (AppModel publishes the palette for the panel).
+            if ui.theme != oldValue.theme || ui.accent != oldValue.accent {
+                Theme.palette = ui.palette(systemIsDark: Theme.systemIsDark)
+            }
+        }
     }
 
     /// Settings → Alerts → Delivery: the tier per priority and kind with no focus, and

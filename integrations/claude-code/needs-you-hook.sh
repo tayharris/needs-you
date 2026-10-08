@@ -192,8 +192,11 @@ if [ "$agent" = aider ]; then
   else
     exit 0
   fi
-else
+elif { : 3<&0; } 2>/dev/null; then  # (not `<&0`: bash takes 0<&0 as a no-op)
   input=$(cat 2>/dev/null)
+else
+  # stdin closed: $(cat) would get its own pipe's read end as fd 0 and wait on itself forever.
+  input=
 fi
 
 # A plain string field at the top level of the hook JSON (ids and fixed words). A flat
@@ -445,8 +448,9 @@ AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
             "copilot": "copilot-cli", "grok": "grok", "kimi": "kimi-code", "cursor": "cursor", "cline": "cline",
             "aider": "aider"}.get(AGENT, "claude-code")
 try:
-    with os.fdopen(3, encoding="utf-8", errors="replace") as _fh:
-        data = json.loads(_fh.read(16 * 1024 * 1024) or "{}")
+    with os.fdopen(3, "rb") as _fh:
+        # Bytes that aren't UTF-8 become U+FFFD: the hub refuses unpaired surrogates.
+        data = json.loads(_fh.read(16 * 1024 * 1024).decode("utf-8", "replace").strip() or "{}")
 except Exception:
     data = {}
 if not isinstance(data, dict):
@@ -1592,7 +1596,7 @@ case "$mode" in
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
     case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
-    if [ "$agent" = gemini ] && [ -d "$items_base" ]; then
+    if { [ "$agent" = gemini ] || [ "$agent" = kimi ]; } && [ -d "$items_base" ]; then
       lease
       [ -n "$lease_pid" ] && rm -rf "$items_base/pid-$lease_pid"
     fi

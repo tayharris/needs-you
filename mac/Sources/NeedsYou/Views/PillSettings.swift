@@ -67,12 +67,13 @@ private struct PillSettingsPreview: View {
                 }
                 Spacer(minLength: 0)
             }
+            .id(Theme.palette)
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.11)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface))
         }
         .padding(.vertical, 4)
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, Theme.colorScheme)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .animation(.easeInOut(duration: 0.2), value: settings.ui)
@@ -86,7 +87,7 @@ private struct PillSettingsPreview: View {
         VStack(spacing: 4) {
             PillContentView(content: content, metrics: m)
                 .frame(width: size.width, height: size.height)
-                .background(Color(white: 0.18))
+                .background(Theme.raised)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Theme.urgent.opacity(look.ringOpacity), lineWidth: look.ringWidth))
             if let caption {

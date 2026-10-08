@@ -12,7 +12,7 @@ Prerequisite: the agent's MCP client runs on a machine you set up (or are settin
 curl -fsSL <invite link>/install.sh | bash -s -- --yes --mcp claude,codex
 ```
 
-`--mcp` takes a comma-separated list of `claude`, `codex`, `gemini`, `opencode` and `copilot`. The installer downloads the server from the hub (checked against the sha256 on the invite page), installs it as `~/.local/bin/needs-you-mcp` next to the CLI, and registers it under the name `needs-you` in each agent's user-level config:
+`--mcp` takes a comma-separated list of `claude`, `codex`, `gemini`, `opencode`, `copilot` and `cursor`. The installer downloads the server from the hub (checked against the sha256 on the invite page), installs it as `~/.local/bin/needs-you-mcp` next to the CLI, and registers it under the name `needs-you` in each agent's user-level config:
 
 | Agent | Where | Entry |
 |---|---|---|
@@ -21,6 +21,7 @@ curl -fsSL <invite link>/install.sh | bash -s -- --yes --mcp claude,codex
 | Gemini CLI | `~/.gemini/settings.json` | `mcpServers.needs-you`: `command`, `args` |
 | opencode | `~/.config/opencode/opencode.json` | `mcp.needs-you`: `{"type": "local", "command": ["<python3>", "<server>"], "enabled": true}` |
 | GitHub Copilot CLI | `~/.copilot/mcp-config.json` (or `$COPILOT_HOME`) | `mcpServers.needs-you`: `type` `local`, `command`, `args`, `tools: ["*"]` |
+| Cursor | `~/.cursor/mcp.json` (its global MCP config) | `mcpServers.needs-you`: `{"type": "stdio", "command": "<python3>", "args": ["<server>"]}` |
 
 As with the hooks: a config file is backed up (`<file>.bak-<time>`) before it changes, nothing changes when the entry is already right, a symlinked config or one that isn't valid JSON is left alone with a warning (that agent is listed under "Not set up:" and the rest still installs), and a `needs-you` server that isn't this one is never replaced. Claude Code is registered only through its own `claude` command; without it on PATH, the installer prints the command to run. opencode's `opencode.jsonc` isn't edited: the installer prints the entry to add.
 

@@ -22,7 +22,7 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertEqual(SettingsSidebarGroup.allCases.map { $0.pages(canInvite: true) }, [
             [.general],
             [.inbox, .connect, .machines, .otherHubs],
-            [.panel, .alerts, .integrations, .updates, .advanced],
+            [.panel, .appearance, .alerts, .integrations, .updates, .advanced],
         ])
         XCTAssertNil(SettingsSidebarGroup.start.title)
         XCTAssertEqual(SettingsSidebarGroup.hubs.title, "Inbox and machines")

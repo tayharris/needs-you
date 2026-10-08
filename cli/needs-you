@@ -36,7 +36,7 @@
                                                      installs, the MCP server and
                                                      the instruction blocks; offline
   needs-you install-mcp AGENTS [--dry-run]           register needs-you-mcp (next to this CLI)
-                                                     with claude,codex,gemini,opencode,copilot
+                                                     with claude,codex,gemini,opencode,copilot,cursor
   needs-you install-instructions --from FILE AGENTS  the needs-you rules as a marked block in
                                                      codex,gemini,opencode's instruction files
                                                      (the invite installer runs these two)
@@ -115,7 +115,17 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 VERSION = "0.1.5"
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A hub never redirects. Following one would send the token to another origin and turn
+    a POST into a GET: a 3xx is an HTTPError, and send() moves on to the next hub."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        return None
+
+
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
 # ---------------------------------------------------------------------------
@@ -287,15 +297,24 @@ def _references_hook(path: str) -> bool:
 def project_claude_dir(start: Optional[str] = None) -> Optional[str]:
     """The project-level .claude directory with needs-you hooks that covers `start` (default:
     the current directory): the nearest one at or above it whose settings.json or
-    settings.local.json references the hook. ~/.claude is the user level, never a project."""
+    settings.local.json references the hook. ~/.claude is the user level, never a project, and
+    so is the .claude of any directory holding $HOME (a temp HOME made under a real home: the
+    real ~/.claude above it) and of the account's own home directory."""
     user = os.path.realpath(_home(".claude"))
+    homes = {os.path.realpath(os.path.expanduser("~"))}
+    try:
+        import pwd
+        homes.add(os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir))
+    except (ImportError, KeyError, OSError):
+        pass
     try:
         d = os.path.realpath(start or os.getcwd())
     except OSError:
         return None
     while True:
         c = os.path.join(d, ".claude")
-        if (os.path.realpath(c) != user and plain_project_dir(c)
+        holds_home = any(h == d or h.startswith(d.rstrip("/") + "/") for h in homes)
+        if (not holds_home and os.path.realpath(c) != user and plain_project_dir(c)
                 and any(_references_hook(os.path.join(c, n)) for n in SETTINGS_NAMES)):
             return c
         parent = os.path.dirname(d)
@@ -712,7 +731,7 @@ def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
     """Take the needs-you block out of an Aider config file. True when it removed (or would
     remove) it, False when there was none, None when it couldn't."""
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8", newline="") as fh:  # CRLF stays CRLF
             text = fh.read()
     except FileNotFoundError:
         return False
@@ -721,7 +740,7 @@ def _strip_aider_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
         return None
     out, inside, found = [], False, False
     for line in text.splitlines(keepends=True):
-        s = line.rstrip("\n")
+        s = line.rstrip("\r\n")
         if s == AIDER_BEGIN:
             inside = found = True
         elif inside:
@@ -880,8 +899,10 @@ def _prune_dir(d: str, max_files: int, max_age_s: float) -> int:
 
 
 def prune() -> int:
-    max_files = int(_env_number("NEEDS_YOU_OUTBOX_MAX", 500))
-    max_age = _env_number("NEEDS_YOU_OUTBOX_MAX_DAYS", 7) * 86400
+    # At least the request just queued, which goes out next: a cap of 0 (or less) meant every
+    # post was dropped before it was sent, with the hub up.
+    max_files = max(1, int(_env_number("NEEDS_YOU_OUTBOX_MAX", 500)))
+    max_age = max(60.0, _env_number("NEEDS_YOU_OUTBOX_MAX_DAYS", 7) * 86400)
     d = outbox_dir()
     dropped = _prune_dir(d, max_files, max_age)
     _prune_dir(os.path.join(d, "failed"), min(max_files, 100), max_age)
@@ -939,11 +960,21 @@ QUEUED_PATHS = ("/v1/items", "/v1/items/resolve")  # the only requests the CLI q
 
 def _remove(path: str) -> None:
     """Delete a sent entry. Another invocation's prune() (which runs without the lock) may
-    have dropped it already; that's fine."""
+    have dropped it already; that's fine. An outbox this user can't change (a chmod, a
+    read-only mount) leaves the entry to be sent again: say so once, never crash."""
+    global _REMOVE_WARNED
     try:
         os.remove(path)
     except FileNotFoundError:
         pass
+    except OSError as e:
+        if not _REMOVE_WARNED:
+            _REMOVE_WARNED = True
+            warn("can't delete sent entries from the outbox (%s); fix its permissions (%s)"
+                 % (type(e).__name__, os.path.dirname(path)))
+
+
+_REMOVE_WARNED = False
 
 
 class _Flush:
@@ -1102,7 +1133,18 @@ def _process_start(pid: int, utc: bool = False) -> Optional[str]:
                            env=dict(os.environ, LC_ALL="C", **({"TZ": "UTC0"} if utc else {})))
     except (OSError, subprocess.SubprocessError):
         return None
-    return " ".join(r.stdout.split())
+    start = " ".join(r.stdout.split())
+    if not start:
+        # ps printed nothing: the process exited just now, or ps itself failed (kill 0 said
+        # it was alive a moment ago). Only the former means "gone".
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return ""
+        except OSError:
+            pass
+        return None
+    return start
 
 
 def reap_leases(cfg: Config, verbose: bool = False) -> int:
@@ -1163,9 +1205,10 @@ def _session_name(raw: str) -> str:
     return sess if sess.strip(".") else ""
 
 
-def _agent_process() -> Tuple[int, str]:
+def _agent_process(want: str = "") -> Tuple[int, str]:
     """(pid, start) of the agent that ran this command, found as the hook finds its lease: the
-    first ancestor that isn't a shell. (0, "") when it can't be told."""
+    first ancestor that isn't a shell. (0, "") when it can't be told, or (with `want`) when that
+    ancestor's command name isn't `want`."""
     import subprocess
 
     def ps(field: str, pid: int) -> str:
@@ -1182,6 +1225,8 @@ def _agent_process() -> Tuple[int, str]:
         if not comm or not ppid.isdigit():
             return 0, ""
         if comm not in _LEASE_SKIP:
+            if want and comm != want:
+                return 0, ""
             start = _process_start(pid)
             return (pid, start) if start else (0, "")
         pid, hops = int(ppid), hops + 1
@@ -1194,8 +1239,9 @@ def agent_session() -> Tuple[str, str]:
     (the root session, which its hooks get; before Codex had it, $CODEX_THREAD_ID);
     $NEEDS_YOU_AGENT_SESSION, which any connector can set for its agent's commands (the
     needs-you opencode plugin does, through shell.env); or, in Gemini CLI
-    ($GEMINI_CLI=1), "pid-<pid>" of the Gemini process with its start time. ("", "") outside
-    any of these."""
+    ($GEMINI_CLI=1), "pid-<pid>" of the Gemini process with its start time; the same for Kimi
+    Code, whose Bash tool gives its commands no session id either, only TERM=dumb (the hook's
+    lease names the kimi process). ("", "") outside any of these."""
     env = os.environ
     raw = env.get("ORCA_TERMINAL_HANDLE") or ""
     if not raw and env.get("CLAUDECODE"):
@@ -1203,8 +1249,8 @@ def agent_session() -> Tuple[str, str]:
     raw = raw or env.get("CODEX_SESSION_ID") or env.get("CODEX_THREAD_ID") or env.get("NEEDS_YOU_AGENT_SESSION") or ""
     if raw:
         return _session_name(raw), ""
-    if env.get("GEMINI_CLI") == "1":
-        pid, start = _agent_process()
+    if env.get("GEMINI_CLI") == "1" or env.get("TERM") == "dumb":
+        pid, start = _agent_process("" if env.get("GEMINI_CLI") == "1" else "kimi")
         if pid:
             return "pid-%d" % pid, start
     return "", ""
@@ -1302,6 +1348,8 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
     try:
         name = _note_name(key)
         base = session_items_dir()
+        if expires_in is not None and expires_in <= 0:
+            open_ = False  # posted already expired: nothing waits on it
         if not open_:  # resolved, or now done/info: no session waits on it any more
             for note in _session_notes(name):
                 try:
@@ -1369,6 +1417,15 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     except (OSError, ImportError):
         mine = None  # no usable outbox here: send directly, as there's nothing to keep order with
     if mine is None:
+        if pending():
+            # Ours can't join the queue, so at least don't overtake it: a `resolve K` sent
+            # before a queued `add K` would leave the item open for good.
+            lock = _lock(wait=LOCK_WAIT_SECONDS)
+            if lock is not None:
+                try:
+                    _flush_locked(cfg)
+                finally:
+                    lock.close()
         try:
             result: Any = send(cfg, method, path, body)
             _after_sent(path, body, result[2])
@@ -1391,6 +1448,14 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
         if result is None:
             if os.path.exists(mine):
                 warn("no hub reachable (%s); queued %s" % (out.unreachable, os.path.basename(mine)))
+                return 0
+            # Another run's flush took our entry between queue() and the lock: it moves a
+            # refused one to outbox/failed/ and deletes a sent one.
+            if os.path.exists(os.path.join(os.path.dirname(mine), "failed", os.path.basename(mine))):
+                warn("hub rejected the request (sent by another needs-you run); it is in outbox/failed/")
+                return 2
+            if not quiet:
+                warn("sent by another needs-you run that was sending the outbox")
             return 0
     if isinstance(result, Rejected):
         e = result
@@ -2132,6 +2197,9 @@ def pinned_get(t: UpdateTarget, path: str, timeout: float, token: str = "") -> b
         if len(data) > MAX_UPDATE_BYTES:
             raise UpdateRefused("%s sent more than %d bytes for %s" % (t.url, MAX_UPDATE_BYTES, path))
         return data
+    except http.client.HTTPException as e:
+        # Not HTTP (another service on that port) or cut short: not an OSError, so say so as one.
+        raise ConnectionError("bad HTTP response (%s)" % type(e).__name__)
     finally:
         conn.close()
 
@@ -3004,12 +3072,15 @@ class Doctor:
             if status == "OK":
                 status, hint = "WARN", ("unset NEEDS_YOU_ENV_FILE (and remove it from your shell profile) so "
                                         "the hooks read %s like the CLI" % shown)
-        urls, where = self.setting("NEEDS_YOU_URLS")
-        if not urls:
-            urls, where = self.setting("NEEDS_YOU_URL")
-            name = "NEEDS_YOU_URL"
-        else:
-            name = "NEEDS_YOU_URLS"
+        # The CLI's precedence (Config): either name in the environment beats the env file.
+        name, where = "NEEDS_YOU_URLS", ""
+        for cand, src, val in (("NEEDS_YOU_URLS", "env", os.environ.get("NEEDS_YOU_URLS")),
+                               ("NEEDS_YOU_URL", "env", os.environ.get("NEEDS_YOU_URL")),
+                               ("NEEDS_YOU_URLS", "env file", self.file.get("NEEDS_YOU_URLS")),
+                               ("NEEDS_YOU_URL", "env file", self.file.get("NEEDS_YOU_URL"))):
+            if val:
+                name, where = cand, src
+                break
         if self.cfg.urls:
             parts.append("%s: %d hub URL%s (%s)" % (name, len(self.cfg.urls),
                                                     "" if len(self.cfg.urls) == 1 else "s", where))
@@ -3088,7 +3159,9 @@ class Doctor:
             hub_v = clean(body.get("version") or "?")
             base = "%s hub=%s version %s" % (url, clean(body.get("hub_id", "?")), hub_v)
             vhint = ""
-            if hub_v not in ("?", VERSION):
+            hub_t, cli_t = _vtuple(hub_v), _vtuple(VERSION)
+            if hub_v not in ("?", VERSION) and (hub_t is None or cli_t is None or hub_t > cli_t):
+                # (update never downgrades: against an older hub it would change nothing)
                 vhint = "CLI is %s; to match the hub, run: needs-you update" % VERSION
             tok = body.get("token")
             if body.get("token_error") or not isinstance(tok, dict):
@@ -3919,9 +3992,9 @@ Doctor.update = _doctor_update  # type: ignore[attr-defined]
 MCP_NAME = "needs-you"      # the server's name in every client's config (Gemini: no "_" in it)
 MCP_FILE = "needs-you-mcp"  # /dl/needs_you_mcp.py, installed next to the CLI
 MCP_DL = "needs_you_mcp.py"
-MCP_AGENTS = ("claude", "codex", "gemini", "opencode", "copilot")
+MCP_AGENTS = ("claude", "codex", "gemini", "opencode", "copilot", "cursor")
 AGENT_LABELS = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "opencode",
-                "copilot": "Copilot CLI"}
+                "copilot": "Copilot CLI", "cursor": "Cursor"}
 CODEX_MCP_BEGIN = "# >>> needs-you MCP server"
 CODEX_MCP_END = "# <<< needs-you MCP server"
 INSTR_DL = "agent-instructions.md"
@@ -3941,7 +4014,9 @@ def mcp_config_path(agent: str) -> str:
             "codex": os.path.join(codex_home(), "config.toml"),
             "gemini": os.path.join(gemini_home(), "settings.json"),
             "opencode": os.path.join(opencode_dir(), "opencode.json"),
-            "copilot": os.path.join(copilot_home(), "mcp-config.json")}[agent]
+            "copilot": os.path.join(copilot_home(), "mcp-config.json"),
+            # Cursor's global MCP config (cursor.com/docs/context/mcp, "Global Configuration")
+            "cursor": os.path.join(cursor_dir(), "mcp.json")}[agent]
 
 
 def instructions_path(agent: str) -> str:
@@ -3958,7 +4033,7 @@ def _mcp_python() -> str:
 
 def mcp_entry(agent: str, server: str) -> Dict[str, Any]:
     py = _mcp_python()
-    if agent == "claude":
+    if agent in ("claude", "cursor"):
         return {"type": "stdio", "command": py, "args": [server]}
     if agent == "opencode":
         return {"type": "local", "command": [py, server], "enabled": True}
@@ -3995,9 +4070,10 @@ def _note_created(path: str, created: bool) -> None:
 
 
 def _read_text(path: str) -> Optional[str]:
-    """The file's text, None when it doesn't exist. OSError/ValueError when it can't be read."""
+    """The file's text, None when it doesn't exist. OSError/ValueError when it can't be read.
+    Line endings as they are (a CRLF file stays CRLF through an install and an uninstall)."""
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8", newline="") as fh:
             return fh.read()
     except FileNotFoundError:
         return None
@@ -4018,7 +4094,7 @@ def _write_config(path: str, old: Optional[str], new: str) -> None:
         mode = os.stat(path).st_mode & 0o777
         bak = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
         fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(old)
     else:
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
@@ -4077,8 +4153,30 @@ def _codex_block(server: str) -> str:
     ]) + "\n"
 
 
-_CODEX_OTHER_RE = re.compile(r'^\s*(?:\[\s*mcp_servers\s*\.\s*"?%s"?\s*[\].]|mcp_servers\s*=|mcp_servers\s*\.\s*"?%s"?)'
-                             % (re.escape(MCP_NAME), re.escape(MCP_NAME)), re.M)
+_TOML_NAME = r'''(?:"%s"|'%s'|%s)''' % ((re.escape(MCP_NAME),) * 3)
+_CODEX_HEADER_RE = re.compile(r"^\s*\[(?!\[)\s*([^\]]*?)\s*\]")
+_CODEX_OURS_TABLE_RE = re.compile(r"^mcp_servers\s*\.\s*%s\s*(?:\.|$)" % _TOML_NAME)
+_CODEX_ROOT_RE = re.compile(r"^\s*mcp_servers\s*(?:=|\.\s*%s\s*[.=])" % _TOML_NAME)
+_CODEX_IN_TABLE_RE = re.compile(r"^\s*%s\s*[.=]" % _TOML_NAME)
+
+
+def _codex_other(text: str) -> bool:
+    """Whether config.toml already defines mcp_servers.needs-you in any TOML spelling (a table
+    header, quoted or not; a dotted key at the root; a key inside [mcp_servers]), or an inline
+    mcp_servers table: adding ours would declare it twice, and Codex refuses the whole file."""
+    table = None  # None: the root table
+    for line in text.splitlines():
+        m = _CODEX_HEADER_RE.match(line)
+        if m:
+            table = re.sub(r"\s*\.\s*", ".", m.group(1))
+            if _CODEX_OURS_TABLE_RE.match(table):
+                return True
+            continue
+        if table is None and _CODEX_ROOT_RE.match(line):
+            return True
+        if table == "mcp_servers" and _CODEX_IN_TABLE_RE.match(line):
+            return True
+    return False
 
 
 def _mcp_status(agent: str) -> Tuple[str, Any]:
@@ -4097,7 +4195,7 @@ def _mcp_status(agent: str) -> Tuple[str, Any]:
             return "unreadable", str(e)
         if parts:
             return "ours", parts[1]
-        return ("other", None) if _CODEX_OTHER_RE.search(text) else ("absent", None)
+        return ("other", None) if _codex_other(text) else ("absent", None)
     try:
         data = json.loads(text) if text.strip() else {}
         if not isinstance(data, dict):
@@ -4174,7 +4272,7 @@ def _mcp_install_one(agent: str, server: str, dry_run: bool, say: Any) -> Option
         if parts and parts[1] == block:
             say("the needs-you MCP server is already registered with Codex")
             return False
-        if not parts and _CODEX_OTHER_RE.search(text or ""):
+        if not parts and _codex_other(text or ""):
             warn("%s already has an MCP server named %s (or an inline mcp_servers table); left it alone"
                  % (_tilde(path), MCP_NAME))
             return None
@@ -4509,7 +4607,7 @@ def _doctor_mcp(self: "Doctor") -> None:
             problems.append("%s runs %s, which doesn't exist" % (AGENT_LABELS[agent], _tilde(target)))
     if not registered:
         homes = {"claude": _home(".claude"), "codex": codex_home(), "gemini": gemini_home(),
-                 "opencode": opencode_dir(), "copilot": copilot_home()}
+                 "opencode": opencode_dir(), "copilot": copilot_home(), "cursor": cursor_dir()}
         here = [a for a in MCP_AGENTS if _detected(a, homes[a])]
         if here:
             self.add("mcp server", "INFO", "not registered (optional: agents post through MCP tools, no shell needed)",

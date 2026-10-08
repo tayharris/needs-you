@@ -56,6 +56,8 @@ let entries =
     + testEntries(SettingsPagesTests.self, SettingsPagesTests.allTests)
     + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
+    + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
+    + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

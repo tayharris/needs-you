@@ -6,6 +6,7 @@ import socket
 import subprocess
 import threading
 import time
+import unittest
 import sys
 
 from support import CLI, HubTestCase, free_port, garbage_server, request
@@ -185,6 +186,33 @@ class Outbox(CliTestCase):
         self.assertEqual(len(self.queued()), 1)
 
 
+class ReadOnlyOutbox(CliTestCase):
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_flush_with_an_outbox_it_cant_change_does_not_crash(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        self.run_cli("add", "--key", "ro", "--title", "t", urls=[self.dead], token=sender)
+        self.assertEqual(len(self.queued()), 1)
+        os.chmod(self.outbox, 0o500)
+        self.addCleanup(os.chmod, self.outbox, 0o700)
+        for args in (["flush"], ["add", "--key", "ro2", "--title", "t"]):
+            r = self.run_cli(*args, urls=[a.url], token=sender)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")), ["ro", "ro2"])
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_a_direct_send_never_overtakes_the_queue(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        self.run_cli("add", "--key", "K", "--title", "t", urls=[self.dead], token=sender)
+        os.chmod(self.outbox, 0o500)  # the resolve can't be queued behind the add
+        self.addCleanup(os.chmod, self.outbox, 0o700)
+        r = self.run_cli("resolve", "--key", "K", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([i["status"] for i in self.items(a, reader) if i["key"] == "K"], ["resolved"])
+
+
 class Failover(CliTestCase):
     def test_tries_hubs_in_order(self):
         a = self.make_hub("hub-a")
@@ -255,6 +283,54 @@ class Failover(CliTestCase):
         self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")),
                          ["g-not", "g-tru", "q-not", "q-tru"])
 
+    def test_redirect_is_not_followed(self):
+        """A hub URL that answers 3xx (a captive portal, a proxy, a moved host) must not get
+        the item turned into a GET, nor the token sent to wherever it points: next hub."""
+        import http.server
+        import threading
+        seen = []
+
+        class Catch(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append((self.command, self.headers.get("Authorization")))
+                body = b'{"id":"FAKE","created":true}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            do_POST = do_GET
+
+            def log_message(self, *a):
+                pass
+
+        catch = http.server.HTTPServer(("127.0.0.1", 0), Catch)
+        target = "http://127.0.0.1:%d" % catch.server_address[1]
+
+        class Moved(Catch):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", target + self.path)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            do_POST = do_GET
+
+        moved = http.server.HTTPServer(("127.0.0.1", 0), Moved)
+        for srv in (catch, moved):
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            self.addCleanup(srv.server_close)
+            self.addCleanup(srv.shutdown)
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        url = "http://127.0.0.1:%d" % moved.server_address[1]
+        r = self.run_cli("add", "--key", "r1", "--title", "t", urls=[url, a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(a.url, r.stdout)
+        r = self.run_cli("add", "--key", "r2", "--title", "t", urls=[url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("queued", r.stderr)
+        self.assertEqual(seen, [])
+        self.assertEqual([i["key"] for i in self.items(a, reader, "open")], ["r1"])
+
     def test_urls_precedence(self):
         a = self.make_hub("hub-a")
         sender, reader = self.tokens(a)
@@ -303,6 +379,21 @@ class Caps(CliTestCase):
         self.assertEqual(bodies, ["k2", "k3", "k4"])  # the oldest were dropped
         self.assertIn("dropped", r.stderr)
 
+
+    def test_a_zero_cap_never_drops_the_request_being_made(self):
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        for n, env in enumerate(({"NEEDS_YOU_OUTBOX_MAX": "0"}, {"NEEDS_YOU_OUTBOX_MAX_DAYS": "0"},
+                                 {"NEEDS_YOU_OUTBOX_MAX": "-5"})):
+            key = "cap-%d" % n
+            r = self.run_cli("add", "--key", key, "--title", "t", urls=[a.url], token=sender, extra_env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("created", r.stdout, (env, r.stderr))
+            r = self.run_cli("add", "--key", key + "-q", "--title", "t", urls=[self.dead], token=sender,
+                             extra_env=env)
+            self.assertIn("queued", r.stderr)
+            self.assertEqual(len(self.queued()), 1, env)  # the newest is kept
+            os.remove(os.path.join(self.outbox, self.queued()[0]))
 
 class BackwardCompatible(CliTestCase):
     def test_outbox_and_env_from_the_previous_cli(self):
@@ -612,6 +703,19 @@ class SessionItemById(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("queued", r.stderr)
         self.assertEqual(self.notes(), [])
+
+    def test_an_item_born_expired_keeps_no_note(self):
+        # --expires-in 0 (or less) makes an item that is already gone: no session waits on it,
+        # so the "waiting" card must not be held back for the note's 48 hours.
+        hub = self.make_hub("hub-a")
+        sender, _ = self.tokens(hub)
+        self.add([hub.url], sender)
+        self.assertEqual(len(self.notes()), 1)
+        for hours in ("0", "-1"):
+            r = self.run_cli("add", "--key", "work:ACME-1:decide", "--title", "Choose", "--expires-in", hours,
+                             urls=[hub.url], token=sender, extra_env=self.SESSION)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self.notes(), [], hours)
 
     def test_queued_add_learns_its_id_when_sent(self):
         self.assertIsNone(self.add([self.dead], "t"))

@@ -445,7 +445,8 @@ its `updated_at` is older than the cursor.
 `next` (hubs after 0.1.2) is `<database epoch>.<seq>.<expiry position>`: the hub's per-write
 sequence number, so a page always moves past what it returned and never holds more than
 `limit` items, however many writes share a millisecond. Clients must not parse it. A hub
-answers a `cursor` from another database (it was replaced) or one it can't read by serving
+answers a `cursor` from another database (it was replaced, or restored from a backup older
+than the cursor) or one it can't read by serving
 `since` instead when that was sent, and with `400 invalid` (`"field": "cursor"`) when it
 wasn't; drop the cursor and do a full poll then. Sending both is also what keeps an older hub,
 which ignores `cursor`, working. `next` is in every response except a `since`-only page with
@@ -506,7 +507,7 @@ Response `201`:
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp <agents> registers the needs-you MCP server (claude, codex, gemini, opencode, copilot) and --agent-instructions <agents> adds the posting rules to their instruction files (codex, gemini, opencode). Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp <agents> registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds the posting rules to their instruction files (codex, gemini, opencode). Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
 ```
 
 `install_command` and `agent_prompt` are only present for `sender` invites. Both set up Claude

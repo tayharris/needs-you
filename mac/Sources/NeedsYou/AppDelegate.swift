@@ -188,11 +188,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.settings.ui.pillSplit = .none
                 model.settings.ui.pillDetail = .topItem
             }),
+            // Settings → Appearance: a few themes on the open panel and the pill.
+            ("10-theme-midnight", { model in
+                model.settings.ui.pillDetail = .count
+                model.settings.ui.theme = .midnight
+                model.expand()
+            }),
+            ("11-theme-paper", { $0.settings.ui.theme = .paper }),
+            ("12-theme-high-contrast", { $0.settings.ui.theme = .highContrast }),
+            ("13-theme-sunset-pill", { model in
+                model.collapse()
+                model.settings.ui.theme = .sunset
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
-        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14)]
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
@@ -332,6 +344,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.setFocus(link.state(now: Date()))
                 yieldActivation()
             }
+            return
+        }
+        // Only a connect link may show Settings (and so activate the app). Any other
+        // needsyou:// host does nothing: a web page must not be able to take focus with one.
+        guard url.host?.lowercased() == "connect" else {
+            NSLog("NeedsYou: ignored a needsyou:// link with an unknown host")
+            yieldActivation()
             return
         }
         settingsWindow.show(tab: .otherHubs)

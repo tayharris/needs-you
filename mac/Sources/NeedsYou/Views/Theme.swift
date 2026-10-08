@@ -1,35 +1,63 @@
+import AppKit
 import NeedsYouCore
 import SwiftUI
 
+extension Color {
+    init(_ rgb: ThemeRGB) {
+        self.init(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue, opacity: 1)
+    }
+}
+
+extension NSColor {
+    convenience init(_ rgb: ThemeRGB) {
+        self.init(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+    }
+}
+
 enum Theme {
-    // mac/README.md "Design", look: urgent = red 400, normal = amber 300, low = slate 400.
-    static let urgent = Color(red: 248 / 255, green: 113 / 255, blue: 113 / 255)
-    static let normal = Color(red: 252 / 255, green: 211 / 255, blue: 77 / 255)
-    static let low = Color(red: 148 / 255, green: 163 / 255, blue: 184 / 255)
+    /// The panel's colours (Settings → Appearance; PanelTheme in NeedsYouCore). AppModel
+    /// sets it when the theme, the accent or macOS's appearance changes, and RootView
+    /// redraws everything then. The default palette is the original look: urgent = red
+    /// 400, normal = amber 300, low = slate 400, white text on dark glass.
+    nonisolated(unsafe) static var palette = PanelTheme.standardPalette
 
-    static let hairline = Color.white.opacity(0.08)
-    static let cardFill = Color.white.opacity(0.05)
-    static let muted = Color.white.opacity(0.55)
-    static let faint = Color.white.opacity(0.35)
+    /// macOS is in dark mode (for the themes that follow it). AppModel keeps it current.
+    nonisolated(unsafe) static var systemIsDark = true
 
-    // Card link buttons (LinkChip): a clearly lighter capsule than the card, white text,
-    // and on hover a stronger fill and outline. White on these fills over the dark
-    // material stays well above 7:1.
-    static let linkFill = Color.white.opacity(0.14)
-    static let linkFillHover = Color.white.opacity(0.24)
-    static let linkStroke = Color.white.opacity(0.18)
-    static let linkStrokeHover = Color.white.opacity(0.5)
-    static let linkText = Color.white
+    static var urgent: Color { Color(palette.urgent) }
+    static var normal: Color { Color(palette.normal) }
+    static var low: Color { Color(palette.low) }
+    /// Ticked steps, links in card text, the DEMO badge (Settings → Appearance → Accent).
+    static var accent: Color { Color(palette.accent) }
+    /// Primary text; the rest is this at an opacity.
+    static var text: Color { Color(palette.text) }
+
+    static var hairline: Color { text.opacity(palette.hairlineOpacity) }
+    static var cardFill: Color { text.opacity(palette.cardFillOpacity) }
+    static var muted: Color { text.opacity(palette.mutedOpacity) }
+    static var faint: Color { text.opacity(palette.faintOpacity) }
+
+    /// The layer behind the glass and the theme's wash over it.
+    static var backdrop: Color { Color(palette.backdrop) }
+    static var tint: Color { Color(palette.tint).opacity(palette.tintOpacity) }
+    /// The Settings samples' backgrounds (what the panel looks like behind its text).
+    static var surface: Color { Color(palette.surface) }
+    static var raised: Color { Color(palette.raised) }
+    static var colorScheme: ColorScheme { palette.isDark ? .dark : .light }
+
+    // Card link buttons (LinkChip): a clearly lighter capsule than the card, text-coloured
+    // label, and on hover a stronger fill and outline. White on these fills over the dark
+    // material stays well above 7:1 (and dark on light the same way).
+    static var linkFill: Color { text.opacity(0.14) }
+    static var linkFillHover: Color { text.opacity(0.24) }
+    static var linkStroke: Color { text.opacity(0.18) }
+    static var linkStrokeHover: Color { text.opacity(0.5) }
+    static var linkText: Color { text }
     /// The faint "where it really goes" after a link's label.
-    static let linkDestination = Color.white.opacity(0.62)
+    static var linkDestination: Color { text.opacity(0.62) }
 
     static func color(_ priority: ItemPriority?) -> Color {
-        switch priority {
-        case .urgent: return urgent
-        case .normal: return normal
-        case .low: return low
-        case nil: return low
-        }
+        Color(palette.color(priority))
     }
 
     // Type scales with Settings → Panel → Size (PanelStyle); body text has its own size.
@@ -57,15 +85,75 @@ struct GlowEdge<S: Shape>: View {
     }
 }
 
-/// Runs an alert look's pulses by animating `set(1)` / `set(0)`.
+/// Plays an ArrivalPlan's frames by animating `set(value)` (Settings → Alerts → Arrival
+/// animation; the timing is in NeedsYouCore's ArrivalMotion).
 @MainActor
-enum PulseRunner {
-    static func run(_ look: AlertLook, set: @escaping (Double) -> Void) async {
-        for _ in 0..<look.pulses {
-            withAnimation(.easeOut(duration: look.riseSeconds)) { set(1) }
-            try? await Task.sleep(nanoseconds: UInt64(look.holdSeconds * 1_000_000_000))
-            withAnimation(.easeIn(duration: look.fallSeconds)) { set(0) }
-            try? await Task.sleep(nanoseconds: UInt64(look.gapSeconds * 1_000_000_000))
+enum ArrivalRunner {
+    static func run(_ plan: ArrivalPlan, set: @escaping (Double) -> Void) async {
+        for frame in plan.frames {
+            if frame.curve == .instant || frame.seconds <= 0 {
+                var jump = Transaction()
+                jump.disablesAnimations = true
+                withTransaction(jump) { set(frame.value) }
+                // Let the jump draw before the next frame animates away from it.
+                try? await Task.sleep(nanoseconds: 16_000_000)
+                continue
+            }
+            withAnimation(animation(frame)) { set(frame.value) }
+            try? await Task.sleep(nanoseconds: UInt64(frame.seconds * 1_000_000_000))
+        }
+    }
+
+    static func animation(_ frame: ArrivalFrame) -> Animation {
+        switch frame.curve {
+        case .easeOut: return .easeOut(duration: frame.seconds)
+        case .easeIn: return .easeIn(duration: frame.seconds)
+        case .easeInOut: return .easeInOut(duration: frame.seconds)
+        case .linear, .instant: return .linear(duration: frame.seconds)
+        }
+    }
+}
+
+/// The ripple: a ring that spreads out from the shape's edge into the panel's padding and
+/// fades (`progress` 0...1). Animatable, so the ring is drawn at every step in between.
+struct RippleEdge<S: InsettableShape>: View, Animatable {
+    let shape: S
+    let color: Color
+    var progress: Double
+    let plan: ArrivalPlan
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let ring = ArrivalMotion.ripple(progress: progress, plan: plan)
+        shape
+            .inset(by: -CGFloat(ring.outset))
+            .stroke(color.opacity(ring.opacity), lineWidth: max(1.5, plan.look.strokeWidth))
+    }
+}
+
+/// Bounce, shake and slide drawn with SwiftUI (the Settings samples; the panel moves its
+/// whole window content instead, PanelController.playArrival). Inactive without a plan.
+struct ArrivalMotionEffect: ViewModifier {
+    let plan: ArrivalPlan?
+    let value: Double
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let amp = CGFloat(plan?.amplitude ?? 0)
+        let v = CGFloat(value)
+        switch plan?.animation {
+        case .bounce?:
+            content.offset(y: -v * amp)
+        case .shake?:
+            content.offset(x: v * amp)
+        case .slide?:
+            content.offset(y: -(1 - v) * amp).opacity(Double(v))
+        default:
+            content
         }
     }
 }

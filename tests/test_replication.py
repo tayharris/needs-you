@@ -415,5 +415,42 @@ class LastWriterWins(HubTestCase):
         self.assertEqual(status, 409)
 
 
+class LateLoserWrite(HubTestCase):
+    def test_a_loser_written_again_does_not_undo_a_repost_on_the_winner(self):
+        # W wins a merge with L (fresher content). The sender re-posts the key with a new link
+        # (same title: content_updated_at stays). Then L arrives again, its own hub's merge
+        # result (resolved, superseded by W, a later updated_at): W must keep the new link.
+        from support import FakeClock
+        clock = FakeClock()
+        hub = self.make_hub("hub-a", clock=clock)
+        sender, reader = self.tokens(hub)
+        s, w = request("POST", hub.url + "/v1/items", sender, {"key": "K", "title": "old title"})
+        self.assertEqual(s, 201, w)
+        clock.advance(1)
+        ts = hubmod.fmt_ts(int(clock() * 1000))
+        loser = {"id": hubmod.new_ulid(int(clock() * 1000)), "key": "K", "context": "work", "kind": "needs",
+                 "priority": "normal", "title": "fresh title", "body": None, "links": [], "steps": [],
+                 "source": {}, "status": "open", "created_at": ts, "updated_at": ts, "content_updated_at": ts,
+                 "seen_at": None, "expires_at": None, "superseded_by": None, "token_id": None,
+                 "origin_hub": "hub-b", "updated_by": "hub-b"}
+
+        def push(rec):
+            return request("POST", hub.url + "/v1/replicate", PEER_SECRET, {"from_hub": "hub-b", "items": [rec]})
+
+        clock.advance(1)
+        self.assertEqual(push(loser)[1]["applied"], 1)
+        self.assertEqual(request("GET", hub.url + "/v1/items/" + w["id"], reader)[1]["title"], "fresh title")
+        clock.advance(1)
+        link = {"label": "PR", "url": "https://example.com/pr/1"}
+        s, body = request("POST", hub.url + "/v1/items", sender, {"key": "K", "title": "fresh title",
+                                                                  "links": [link]})
+        self.assertEqual((s, body["id"]), (200, w["id"]), body)
+        clock.advance(1)
+        push(dict(loser, status="resolved", superseded_by=w["id"], updated_at=hubmod.fmt_ts(int(clock() * 1000))))
+        got = request("GET", hub.url + "/v1/items/" + w["id"], reader)[1]
+        self.assertEqual(got["links"], [link])
+        self.assertEqual(got["title"], "fresh title")
+
+
 if __name__ == "__main__":
     unittest.main()
