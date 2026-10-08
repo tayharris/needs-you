@@ -1,35 +1,63 @@
+import AppKit
 import NeedsYouCore
 import SwiftUI
 
+extension Color {
+    init(_ rgb: ThemeRGB) {
+        self.init(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue, opacity: 1)
+    }
+}
+
+extension NSColor {
+    convenience init(_ rgb: ThemeRGB) {
+        self.init(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+    }
+}
+
 enum Theme {
-    // mac/README.md "Design", look: urgent = red 400, normal = amber 300, low = slate 400.
-    static let urgent = Color(red: 248 / 255, green: 113 / 255, blue: 113 / 255)
-    static let normal = Color(red: 252 / 255, green: 211 / 255, blue: 77 / 255)
-    static let low = Color(red: 148 / 255, green: 163 / 255, blue: 184 / 255)
+    /// The panel's colours (Settings → Appearance; PanelTheme in NeedsYouCore). AppModel
+    /// sets it when the theme, the accent or macOS's appearance changes, and RootView
+    /// redraws everything then. The default palette is the original look: urgent = red
+    /// 400, normal = amber 300, low = slate 400, white text on dark glass.
+    nonisolated(unsafe) static var palette = PanelTheme.standardPalette
 
-    static let hairline = Color.white.opacity(0.08)
-    static let cardFill = Color.white.opacity(0.05)
-    static let muted = Color.white.opacity(0.55)
-    static let faint = Color.white.opacity(0.35)
+    /// macOS is in dark mode (for the themes that follow it). AppModel keeps it current.
+    nonisolated(unsafe) static var systemIsDark = true
 
-    // Card link buttons (LinkChip): a clearly lighter capsule than the card, white text,
-    // and on hover a stronger fill and outline. White on these fills over the dark
-    // material stays well above 7:1.
-    static let linkFill = Color.white.opacity(0.14)
-    static let linkFillHover = Color.white.opacity(0.24)
-    static let linkStroke = Color.white.opacity(0.18)
-    static let linkStrokeHover = Color.white.opacity(0.5)
-    static let linkText = Color.white
+    static var urgent: Color { Color(palette.urgent) }
+    static var normal: Color { Color(palette.normal) }
+    static var low: Color { Color(palette.low) }
+    /// Ticked steps, links in card text, the DEMO badge (Settings → Appearance → Accent).
+    static var accent: Color { Color(palette.accent) }
+    /// Primary text; the rest is this at an opacity.
+    static var text: Color { Color(palette.text) }
+
+    static var hairline: Color { text.opacity(palette.hairlineOpacity) }
+    static var cardFill: Color { text.opacity(palette.cardFillOpacity) }
+    static var muted: Color { text.opacity(palette.mutedOpacity) }
+    static var faint: Color { text.opacity(palette.faintOpacity) }
+
+    /// The layer behind the glass and the theme's wash over it.
+    static var backdrop: Color { Color(palette.backdrop) }
+    static var tint: Color { Color(palette.tint).opacity(palette.tintOpacity) }
+    /// The Settings samples' backgrounds (what the panel looks like behind its text).
+    static var surface: Color { Color(palette.surface) }
+    static var raised: Color { Color(palette.raised) }
+    static var colorScheme: ColorScheme { palette.isDark ? .dark : .light }
+
+    // Card link buttons (LinkChip): a clearly lighter capsule than the card, text-coloured
+    // label, and on hover a stronger fill and outline. White on these fills over the dark
+    // material stays well above 7:1 (and dark on light the same way).
+    static var linkFill: Color { text.opacity(0.14) }
+    static var linkFillHover: Color { text.opacity(0.24) }
+    static var linkStroke: Color { text.opacity(0.18) }
+    static var linkStrokeHover: Color { text.opacity(0.5) }
+    static var linkText: Color { text }
     /// The faint "where it really goes" after a link's label.
-    static let linkDestination = Color.white.opacity(0.62)
+    static var linkDestination: Color { text.opacity(0.62) }
 
     static func color(_ priority: ItemPriority?) -> Color {
-        switch priority {
-        case .urgent: return urgent
-        case .normal: return normal
-        case .low: return low
-        case nil: return low
-        }
+        Color(palette.color(priority))
     }
 
     // Type scales with Settings → Panel → Size (PanelStyle); body text has its own size.

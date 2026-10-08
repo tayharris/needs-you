@@ -320,6 +320,9 @@ struct SettingsView: View {
             SetupTipsSettingsSection(settings: settings)
             keyboardSection
             extra[.panel]
+        case .appearance:
+            AppearanceSettingsSection(model: model, settings: settings)
+            extra[.appearance]
         case .alerts:
             alertStyleSection
             ArrivalSettingsSection(settings: settings)
@@ -951,7 +954,7 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             HStack {
-                LabelWithDetail("Look and alerts", "The pill, the cards' size and text, opacity and alert styles, back to how they started.")
+                LabelWithDetail("Look and alerts", "The pill, the cards' size and text, theme, opacity and alert styles, back to how they started.")
                 Spacer()
                 Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
                     .disabled(settings.ui == UIPrefs.defaults)

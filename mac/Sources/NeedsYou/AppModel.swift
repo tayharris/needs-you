@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import NeedsYouCore
 
@@ -157,11 +158,35 @@ final class AppModel: ObservableObject {
     /// the invite link or code.
     @Published var setupNotice: SetupNotice?
     private let localHost: String
+    /// The panel's colours: Settings → Appearance's theme and accent for macOS's current
+    /// light or dark appearance. Also copied to `Theme.palette`, which the views read.
+    @Published private(set) var palette = PanelTheme.standardPalette
+    private var appearanceObservers = Set<AnyCancellable>()
 
     init(settings: AppSettings) {
         self.settings = settings
         localHost = LocalHubController.localHostName()
         visibility = settings.panelHidden ? .hidden : .shown
+        refreshPalette()
+        settings.$ui
+            .map { [$0.theme.rawValue, $0.accent.storageString] }
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                // $ui publishes before the new value is stored.
+                Task { @MainActor in self?.refreshPalette() }
+            }
+            .store(in: &appearanceObservers)
+        NSApplication.shared.publisher(for: \.effectiveAppearance)
+            .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
+            .store(in: &appearanceObservers)
+    }
+
+    /// Recomputes the palette from the settings and macOS's appearance.
+    func refreshPalette() {
+        Theme.systemIsDark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let next = settings.ui.palette(systemIsDark: Theme.systemIsDark)
+        Theme.palette = next
+        if next != palette { palette = next }
     }
 
     // MARK: Derived

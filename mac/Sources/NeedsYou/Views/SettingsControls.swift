@@ -52,11 +52,12 @@ struct PanelPreview: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Preview").font(.caption).foregroundStyle(.secondary)
             CardView(item: Self.sample(now: model.now), model: model)
+                .id(Theme.palette)
                 .frame(width: m.expandedWidth - 2 * m.listPadding)
                 .padding(m.listPadding)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(white: 0.11)))
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface))
                 .opacity(settings.ui.panelOpacity)
-                .environment(\.colorScheme, .dark)
+                .environment(\.colorScheme, Theme.colorScheme)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -79,9 +80,10 @@ struct AlertPreview: View {
                 AlertSamplePill(settings: settings, priority: .normal, count: 3, basePulses: 1)
                 Spacer()
             }
+            .id(Theme.palette)
             .padding(.vertical, 14)
             .padding(.horizontal, 18)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.11)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface))
         }
         .padding(.vertical, 4)
     }
@@ -103,10 +105,10 @@ private struct AlertSamplePill: View {
         VStack(spacing: 6) {
             Text("\(count)")
                 .font(.system(size: m.countFont, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.95))
+                .foregroundStyle(Theme.text.opacity(0.95))
                 .frame(width: m.countWidth(digits: 1), height: m.countHeight)
                 .background(color.opacity(look.fillOpacity))
-                .background(Color(white: 0.18))
+                .background(Theme.raised)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(color.opacity(look.ringOpacity), lineWidth: look.ringWidth))
                 .background(GlowEdge(shape: shape, color: color, glow: glow, look: look))
@@ -117,7 +119,7 @@ private struct AlertSamplePill: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, Theme.colorScheme)
         .onChange(of: settings.ui.alertIntensity(for: priority)) { _, _ in play() }
         .onChange(of: settings.ui.panelSize) { _, _ in play() }
     }

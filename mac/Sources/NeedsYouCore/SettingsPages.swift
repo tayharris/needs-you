@@ -15,7 +15,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     // Inbox and machines
     case inbox, connect, machines, otherHubs
     // The app
-    case panel, alerts, integrations, updates, advanced
+    case panel, appearance, alerts, integrations, updates, advanced
 
     public var title: String {
         switch self {
@@ -25,6 +25,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .machines: return "Machines"
         case .otherHubs: return "Other hubs (advanced)"
         case .panel: return "Panel"
+        case .appearance: return "Appearance"
         case .alerts: return "Alerts"
         case .integrations: return "Integrations"
         case .updates: return "Updates"
@@ -41,6 +42,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .machines: return "desktopcomputer"
         case .otherHubs: return "server.rack"
         case .panel: return "rectangle.on.rectangle"
+        case .appearance: return "paintpalette"
         case .alerts: return "bell.badge"
         case .integrations: return "puzzlepiece.extension"
         case .updates: return "arrow.down.circle"
@@ -63,6 +65,8 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
             return "Optional. Join a hub someone else runs, add one by URL, or use always-on server hubs."
         case .panel:
             return "How the floating pill and its cards look, where they show, and the shortcut."
+        case .appearance:
+            return "The pill's and cards' colours: a theme, light or dark, and an accent colour."
         case .alerts:
             return "How loudly new items arrive, what can interrupt you, and when."
         case .integrations:
@@ -78,7 +82,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .general: return .start
         case .inbox, .connect, .machines, .otherHubs: return .hubs
-        case .panel, .alerts, .integrations, .updates, .advanced: return .app
+        case .panel, .appearance, .alerts, .integrations, .updates, .advanced: return .app
         }
     }
 

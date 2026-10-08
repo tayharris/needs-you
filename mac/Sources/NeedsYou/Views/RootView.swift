@@ -13,8 +13,11 @@ struct RootView: View {
     var body: some View {
         let display = model.display
         content(display)
+            // A theme change redraws everything (the views read Theme's colours).
+            .id(model.palette)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(tint(display))
+            .background(themeTint(display))
             .background(backdrop(display))
             .clipShape(shape(display))
             .overlay(ring(display))
@@ -24,7 +27,7 @@ struct RootView: View {
                 GlowEdge(shape: shape(display), color: glowColor, glow: glow, look: glowLook)
             )
             .padding(PanelController.glowPadding)
-            .environment(\.colorScheme, .dark)
+            .environment(\.colorScheme, model.palette.isDark ? .dark : .light)
             .environment(\.openURL, OpenURLAction { url in
                 model.open(url) ? .handled : .discarded
             })
@@ -98,7 +101,18 @@ struct RootView: View {
         case .idle:
             EmptyView()
         default:
-            Color.black.opacity(model.settings.ui.backdrop)
+            Theme.backdrop.opacity(model.palette.backdropOpacity(model.settings.ui.backdrop))
+        }
+    }
+
+    /// Settings → Appearance → Theme: the theme's wash over the glass (none by default).
+    @ViewBuilder
+    private func themeTint(_ display: PanelDisplay) -> some View {
+        switch display {
+        case .idle:
+            EmptyView()
+        default:
+            if model.palette.tintOpacity > 0 { Theme.tint }
         }
     }
 
@@ -177,7 +191,7 @@ struct IdlePill: View {
                 if model.focusSetByLink {
                     Image(systemName: "link")
                         .font(.system(size: model.metrics.idleFont - 2, weight: .semibold))
-                        .foregroundStyle(Theme.normal.opacity(0.9))
+                        .foregroundStyle(Theme.accent.opacity(0.9))
                 }
             } else {
                 Circle()
@@ -186,7 +200,7 @@ struct IdlePill: View {
             }
             Text(model.hovering ? model.idleHoverLine : model.idleRestLine)
                 .font(.system(size: model.metrics.idleFont))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Theme.text.opacity(0.85))
                 .lineLimit(1)
         }
         .padding(.horizontal, 8)
@@ -218,7 +232,7 @@ struct PreviewPill: View {
             VStack(alignment: .leading, spacing: PreviewLayout.metaGap) {
                 Text(item.title)
                     .font(Theme.title(metrics))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.text)
                     .lineLimit(PreviewLayout.maxTitleLines)
                     .fixedSize(horizontal: false, vertical: true)
                 (Text(item.kind == .needs ? needsLabel : item.kind.rawValue).foregroundStyle(Theme.color(item.priority).opacity(0.9))
@@ -274,7 +288,7 @@ struct DigestPill: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(digest.text)
                     .font(Theme.title(metrics))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.text)
                     .lineLimit(1)
                 Text("Click to see them")
                     .font(Theme.meta(metrics))

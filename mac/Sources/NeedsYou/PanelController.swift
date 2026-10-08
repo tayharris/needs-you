@@ -120,6 +120,9 @@ final class PanelController {
         model.settings.objectWillChange
             .sink { [weak self] _ in self?.scheduleSync() }
             .store(in: &cancellables)
+        model.$palette
+            .sink { [weak self] palette in self?.applyPalette(palette) }
+            .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .sink { [weak self] _ in self?.screensChanged() }
@@ -477,13 +480,20 @@ final class PanelController {
         liveListHeight = nil
     }
 
+    /// Settings → Appearance → Theme: dark glass (the original) or light glass.
+    private func applyPalette(_ palette: PanelPalette) {
+        effect.appearance = NSAppearance(named: palette.isDark ? .vibrantDark : .vibrantLight)
+        effect.material = palette.isDark ? .hudWindow : .popover
+    }
+
     // MARK: Debug snapshot
 
     /// Renders the panel's view hierarchy to a PNG (NEEDS_YOU_SNAPSHOT_DIR). Works without
-    /// Screen Recording permission; the behind-window material renders as plain dark.
+    /// Screen Recording permission; the behind-window material renders as plain dark (light for a light theme).
     func writeSnapshot(to url: URL) {
         guard let view = panel.contentView, panel.isVisible else { return }
-        try? SnapshotImage.png(of: view, background: NSColor(white: 0.13, alpha: 1))?.write(to: url)
+        let background = model.palette.isDark ? NSColor(white: 0.13, alpha: 1) : NSColor(model.palette.surface)
+        try? SnapshotImage.png(of: view, background: background)?.write(to: url)
     }
 
     // MARK: Menus

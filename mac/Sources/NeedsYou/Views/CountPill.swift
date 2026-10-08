@@ -86,7 +86,7 @@ struct PillContentView: View {
                         // Set by a needsyou://focus link, not by hand.
                         Image(systemName: "link")
                             .font(.system(size: metrics.font - 4, weight: .semibold))
-                            .foregroundStyle(Theme.normal.opacity(0.9))
+                            .foregroundStyle(Theme.accent.opacity(0.9))
                     }
                 }
                 ForEach(Array(content.segments.enumerated()), id: \.offset) { _, segment in
@@ -95,7 +95,7 @@ struct PillContentView: View {
                 if let title = content.title {
                     Text(verbatim: title)
                         .font(.system(size: metrics.titleFont, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(Theme.text.opacity(0.85))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .padding(.leading, max(0, metrics.titleGap - 3))
@@ -109,7 +109,7 @@ struct PillContentView: View {
     private func segmentView(_ segment: PillSegment) -> some View {
         switch segment.style {
         case .count(let dim):
-            Text(verbatim: segment.text).foregroundStyle(.white.opacity(dim ? 0.5 : 0.95))
+            Text(verbatim: segment.text).foregroundStyle(Theme.text.opacity(dim ? 0.5 : 0.95))
         case .other:
             // Out-of-context items: a faint second number ("3 · 1").
             Text(verbatim: segment.text).foregroundStyle(Theme.faint)
@@ -120,9 +120,9 @@ struct PillContentView: View {
             HStack(spacing: 2) {
                 Text(verbatim: segment.label ?? "")
                     .font(.system(size: metrics.smallFont, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(current ? 0.6 : 0.3))
+                    .foregroundStyle(Theme.text.opacity(current ? 0.6 : 0.3))
                 Text(verbatim: segment.text)
-                    .foregroundStyle(.white.opacity(current ? 0.95 : 0.4))
+                    .foregroundStyle(Theme.text.opacity(current ? 0.95 : 0.4))
             }
         case .divider:
             Text(verbatim: segment.text).foregroundStyle(Theme.faint.opacity(0.6))
@@ -131,9 +131,9 @@ struct PillContentView: View {
         case .new:
             Text(verbatim: segment.text)
                 .font(.system(size: metrics.smallFont, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(Theme.text.opacity(0.9))
                 .padding(.horizontal, 4)
-                .background(Capsule().fill(Color.white.opacity(0.16)))
+                .background(Capsule().fill(Theme.text.opacity(0.16)))
         }
     }
 }
