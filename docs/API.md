@@ -59,6 +59,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 403 | `forbidden` | Valid token, wrong role for the endpoint |
   | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
   | 409 | `self` | A hub tried to replicate to itself, or to redeem its own peer invite |
+  | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer |
   | 409 | `peer_outdated` | A hub redeeming a peer invite has an older schema than the inviting hub ([peer invites](#peer-invites)) |
   | 409 | `not_open`, `not_answerable`, `question_expired`, `question_changed`, `already_answered` | An answer that can't be taken ([answers](#post-v1itemsidanswer-reader)) |
   | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
@@ -624,7 +625,7 @@ Response `200`:
 
 ### Peer invites
 
-A `peer` invite pairs another hub with this one ([ADR 0010](adr/0010-mac-hub-peers.md)): the
+A `peer` invite pairs another hub with this one ([ADR 0012](adr/0012-mac-hub-peers.md)): the
 way an always-on server joins the Mac's own hub, or one server another, without copying a
 secret. It has one use, lives 1 hour by default (at most 24), and stays on the hub that made it:
 it is never replicated (it names this hub). Redeeming it mints no token. The joining hub
@@ -636,14 +637,17 @@ it is never replicated (it names this hub). Redeeming it mints no token. The joi
 ```
 
 - `peer.url`: the joining hub's `public_url`, `http(s)://host[:port]` only (no user, path,
-  query or fragment; a trailing `/` is dropped, the scheme and host lowercased). Use the
-  MagicDNS name, which survives a tailnet IP change.
+  query or fragment; a trailing `/` is dropped, the scheme and host lowercased). `https` to any
+  host, or plain `http` only to a tailnet name (`*.ts.net`), a tailnet address (`100.64.0.0/10`,
+  `fd7a:115c:a1e0::/48`) or loopback: the inviting hub sends that URL its secret and every
+  record. Use the MagicDNS name, which survives a tailnet IP change.
 - `peer.hub_id`: its id (same rule as `hub_id` in the config).
 - `peer.schema`: its database schema version (`PRAGMA user_version`; 9 for this release).
 
 The code is checked first (`404` as above, counted). Then, without spending the use: a
 malformed `peer` is a `400` (`field` names the part); the inviting hub's own `hub_id` or URL is
-`409 self`; a `schema` below the inviting hub's is `409 peer_outdated` (the older hub would drop
+`409 self`; a URL already in its config `peers` is `409 conflict` (that peer uses the shared
+secret); a `schema` below the inviting hub's is `409 peer_outdated` (the older hub would drop
 fields the newer one writes, such as `question` and `answer`: upgrade it first). A `peer` object
 sent with a `sender`, `reader` or `owner` invite is a `400` (`"field": "peer"`).
 

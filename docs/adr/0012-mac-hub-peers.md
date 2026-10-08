@@ -1,4 +1,4 @@
-# 0010. The Mac's hub peers with always-on hubs, set up by a peer invite
+# 0012. The Mac's hub peers with always-on hubs, set up by a peer invite
 
 - Status: Proposed
 - Date: 2026-10-08
@@ -65,7 +65,14 @@ Mac's `LocalHubPlan.peers` with its `peer-secret` file for someone joining the M
 existing mesh by hand).
 
 **Inbound auth** accepts the mesh secret or any link's secret (each compared in constant
-time). **Outbound**, a link peer gets its own secret, a config peer the mesh secret. A hub
+time). That doesn't tell peers apart, and needn't: a peer is fully trusted, as mesh members
+are today (it pulls every record and may push any, tokens included), so a link's secret grants
+nothing a mesh secret doesn't, and removing the link revokes it. Binding a secret to a
+`from_hub` would also break on the Mac, whose hub id follows its local host name.
+**Outbound**, a link peer gets its own secret, a config peer the mesh secret, and any other URL
+nothing. A redeem can't take over a config peer's URL (`409 conflict`), and `peer.url` must be
+`https`, or plain `http` to a tailnet name or address or loopback (the inviting hub sends it its
+secret and every record); redirects are never followed. A hub
 needs no mesh secret to have link peers.
 
 **Where the secret lives.** In plaintext in `peer_links` (a hub must send it), in the same

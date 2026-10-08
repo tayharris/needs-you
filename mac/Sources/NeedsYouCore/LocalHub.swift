@@ -183,7 +183,7 @@ public struct LocalHubPlan: Equatable, Sendable {
     public var parentPID: Int32
     /// Hand-set peers (other hubs' public URLs) that share a mesh secret, read from
     /// `peerSecretPath`. Peers added by a peer invite need neither: the hub keeps them, each
-    /// with its own secret, in its database (ADR 0010).
+    /// with its own secret, in its database (ADR 0012).
     public var peers: [String]
     /// The mesh secret's file (`~/Library/Application Support/NeedsYou/peer-secret`, mode
     /// 600). Only its path is ever on the command line, never the secret.

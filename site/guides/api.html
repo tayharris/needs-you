@@ -104,6 +104,7 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>403</td><td><code>forbidden</code></td><td>Valid token, wrong role for the endpoint</td></tr>
 <tr><td>404</td><td><code>not_found</code></td><td>Unknown endpoint, unknown id on <code>GET</code>/<code>PATCH /v1/items/{id}</code>, or nothing to revoke on <code>DELETE /v1/invites/…</code> / <code>/v1/tokens/…</code></td></tr>
 <tr><td>409</td><td><code>self</code></td><td>A hub tried to replicate to itself, or to redeem its own peer invite</td></tr>
+<tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer</td></tr>
 <tr><td>409</td><td><code>peer_outdated</code></td><td>A hub redeeming a peer invite has an older schema than the inviting hub (<a href="#peer-invites">peer invites</a>)</td></tr>
 <tr><td>409</td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code>, <code>question_changed</code>, <code>already_answered</code></td><td>An answer that can't be taken (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>421</td><td><code>misdirected</code></td><td>The <code>Host</code> header names something this hub isn't (below). Clients fail over to their next hub URL</td></tr>
@@ -572,7 +573,7 @@ window passes. Successful redeems don't count.</li>
 spends nothing.</li>
 </ul>
 <h3 id="peer-invites">Peer invites <a class="anchor" href="#peer-invites" aria-label="Link to this section">#</a></h3>
-<p>A <code>peer</code> invite pairs another hub with this one (<a data-repo="/blob/main/docs/adr/0010-mac-hub-peers.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0010-mac-hub-peers.md">ADR 0010</a>): the
+<p>A <code>peer</code> invite pairs another hub with this one (<a data-repo="/blob/main/docs/adr/0012-mac-hub-peers.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0012-mac-hub-peers.md">ADR 0012</a>): the
 way an always-on server joins the Mac's own hub, or one server another, without copying a
 secret. It has one use, lives 1 hour by default (at most 24), and stays on the hub that made it:
 it is never replicated (it names this hub). Redeeming it mints no token. The joining hub
@@ -581,14 +582,17 @@ it is never replicated (it names this hub). Redeeming it mints no token. The joi
  "peer": {"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "schema": 9}}</code></pre></div>
 <ul>
 <li><code>peer.url</code>: the joining hub's <code>public_url</code>, <code>http(s)://host[:port]</code> only (no user, path,
-query or fragment; a trailing <code>/</code> is dropped, the scheme and host lowercased). Use the
-MagicDNS name, which survives a tailnet IP change.</li>
+query or fragment; a trailing <code>/</code> is dropped, the scheme and host lowercased). <code>https</code> to any
+host, or plain <code>http</code> only to a tailnet name (<code>*.ts.net</code>), a tailnet address (<code>100.64.0.0/10</code>,
+<code>fd7a:115c:a1e0::/48</code>) or loopback: the inviting hub sends that URL its secret and every
+record. Use the MagicDNS name, which survives a tailnet IP change.</li>
 <li><code>peer.hub_id</code>: its id (same rule as <code>hub_id</code> in the config).</li>
 <li><code>peer.schema</code>: its database schema version (<code>PRAGMA user_version</code>; 9 for this release).</li>
 </ul>
 <p>The code is checked first (<code>404</code> as above, counted). Then, without spending the use: a
 malformed <code>peer</code> is a <code>400</code> (<code>field</code> names the part); the inviting hub's own <code>hub_id</code> or URL is
-<code>409 self</code>; a <code>schema</code> below the inviting hub's is <code>409 peer_outdated</code> (the older hub would drop
+<code>409 self</code>; a URL already in its config <code>peers</code> is <code>409 conflict</code> (that peer uses the shared
+secret); a <code>schema</code> below the inviting hub's is <code>409 peer_outdated</code> (the older hub would drop
 fields the newer one writes, such as <code>question</code> and <code>answer</code>: upgrade it first). A <code>peer</code> object
 sent with a <code>sender</code>, <code>reader</code> or <code>owner</code> invite is a <code>400</code> (<code>"field": "peer"</code>).</p>
 <p>Response <code>200</code>:</p>

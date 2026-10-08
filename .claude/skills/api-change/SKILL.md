@@ -40,6 +40,6 @@ Bump `VERSION` in the hub/CLI only as part of a release (see the `release` skill
 
 ## Conformance suite
 
-`protocol/conformance/` (ADR 0004, 0010) is the shared black-box suite. Update it with every
+`protocol/conformance/` (ADR 0004, 0012) is the shared black-box suite. Update it with every
 wire change and run it against every hub implementation (see its README). A machine-readable
 spec under `protocol/` is still to come (docs/roadmap/ai-first.md).

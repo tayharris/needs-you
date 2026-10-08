@@ -1,4 +1,4 @@
-"""Peer invites (ADR 0010): a hub joins another with a one-use invite and a pairwise secret,
+"""Peer invites (ADR 0012): a hub joins another with a one-use invite and a pairwise secret,
 the way a server joins the Mac's own hub (which has no config file and no mesh secret)."""
 from __future__ import annotations
 
@@ -160,6 +160,50 @@ class Redeem(PeerCase):
         self.assertEqual(a.store.list_invites()[0]["left"], 1)
         self.assertEqual(a.store.peer_links(), [])
         self.assertFalse(a.limiter.blocked("127.0.0.1"))  # only unknown codes count as failures
+
+    def test_peer_url_must_be_on_the_tailnet_or_https(self):
+        """The inviting hub sends its secret and every record to that URL: plain http only to
+        a tailnet name or address (or loopback), never an arbitrary LAN or internet host."""
+        a = self.hub("hub-a")
+        for url in ("http://intranet.example.com:8765", "http://192.168.1.10:8765", "http://10.0.0.5",
+                    "http://devbox:8765", "http://169.254.169.254", "http://hub-b.local:8765"):
+            _, inv = self.peer_invite(a)
+            status, err = self.redeem(a, inv["code"], {"url": url, "hub_id": "hub-b",
+                                                       "schema": hubmod.SCHEMA_VERSION})
+            self.assertEqual((status, err.get("field")), (400, "peer.url"), url)
+        for url in ("http://hub-b.example.ts.net:8765", "http://100.64.0.7:8765",
+                    "http://[fd7a:115c:a1e0::7]:8765", "https://hub-b.example.com", "http://127.0.0.1:9"):
+            _, inv = self.peer_invite(a)
+            status, err = self.redeem(a, inv["code"], {"url": url, "hub_id": "hub-b-%d" % len(url),
+                                                       "schema": hubmod.SCHEMA_VERSION})
+            self.assertEqual(status, 200, (url, err))
+
+    def test_a_config_peer_url_cant_be_taken_over_by_an_invite(self):
+        """A redeemer naming a mesh peer's URL would get that peer sent a secret it doesn't
+        know (and replication with it broken)."""
+        a = self.hub("hub-a", start=False, peer_secret=PEER_SECRET)
+        a.set_peers(["http://hub-b.example.ts.net:8765"])
+        a.start()
+        _, inv = self.peer_invite(a)
+        status, err = self.redeem(a, inv["code"], {"url": "http://hub-b.example.ts.net:8765", "hub_id": "evil",
+                                                   "schema": hubmod.SCHEMA_VERSION})
+        self.assertEqual((status, err.get("error")), (409, "conflict"), err)
+        self.assertEqual(a.secret_for("http://hub-b.example.ts.net:8765"), PEER_SECRET)
+
+    def test_the_mesh_secret_goes_only_to_config_peers(self):
+        a = self.hub("hub-a", start=False, peer_secret=PEER_SECRET)
+        a.set_peers(["http://hub-b.example.ts.net:8765"])
+        a.start()
+        self.assertEqual(a.secret_for("http://hub-b.example.ts.net:8765"), PEER_SECRET)
+        self.assertEqual(a.secret_for("http://someone-else.example.ts.net:8765"), "")
+        _, inv = self.peer_invite(a)
+        _, body = self.redeem(a, inv["code"], {"url": "http://hub-c.example.ts.net:8765", "hub_id": "hub-c",
+                                               "schema": hubmod.SCHEMA_VERSION})
+        self.assertEqual(a.secret_for("http://hub-c.example.ts.net:8765"), body["peer_secret"])
+        # and the changes feed (what peers pull) never carries a link or its secret
+        text = json.dumps(request("GET", a.url + "/v1/replicate/changes?after=0&limit=2000", PEER_SECRET)[1])
+        self.assertNotIn(body["peer_secret"], text)
+        self.assertNotIn("nyp_", text)
 
     def test_unknown_code_counts_and_a_sender_invite_is_not_a_peer_invite(self):
         a = self.hub("hub-a")

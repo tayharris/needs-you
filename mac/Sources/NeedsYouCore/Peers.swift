@@ -1,6 +1,6 @@
 import Foundation
 
-// Always-on hubs that replicate with this Mac's hub (ADR 0010).
+// Always-on hubs that replicate with this Mac's hub (ADR 0012).
 //
 // Hub contract:
 //   POST /v1/invites {name, role: "peer", uses: 1, ttl_hours}  (Bearer owner)

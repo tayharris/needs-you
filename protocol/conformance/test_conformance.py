@@ -1,6 +1,6 @@
 """needs-you hub conformance suite (API v1, docs/API.md): black-box over HTTP, stdlib only.
 
-Every hub implementation must pass it (ADR 0004, 0010). It talks to a running hub and never
+Every hub implementation must pass it (ADR 0004, 0012). It talks to a running hub and never
 imports one. Run it against a throwaway hub: it writes items, mints tokens and pairs a fake
 peer (all cleaned up at the end, but it is still traffic).
 
@@ -15,6 +15,11 @@ Optional:
                                        cross-hub cases (writes and answers reach it)
     NEEDS_YOU_CONFORMANCE_MAX_OPEN     the hub's max_open_per_token (default 60)
     NEEDS_YOU_CONFORMANCE_WAIT         seconds to wait for replication (default 20)
+
+No token makes more than about 80 requests (Senders), so a hub's per-token rate limit on
+POST /v1/items (120 a minute is typical) is never what a case measures. The volume guard
+posts max_open + 3 items with one token: keep NEEDS_YOU_CONFORMANCE_MAX_OPEN under the hub's
+rate limit. Replication (/v1/replicate) is peer traffic and must not be rate-limited as posts.
 
 Without NEEDS_YOU_CONFORMANCE_URL every test is skipped. tests/test_conformance.py starts two
 peered hubs and runs this suite against them, so CI runs it on every change.
@@ -107,6 +112,23 @@ def mint(role: str, url: Optional[str] = None) -> str:
         if t["name"] == red["name"]:
             Env.minted.append(t["id"])
     return red["token"]
+
+
+class Senders:
+    """Fresh sender tokens, each used for at most `per_token` requests: a hub may rate-limit
+    one token's posts (for example 120 a minute), and the suite must stay under any such
+    limit. Use for loops that post many items."""
+
+    def __init__(self, per_token: int = 40) -> None:
+        self.per_token = per_token
+        self.used = per_token
+        self.token = ""
+
+    def next(self) -> str:
+        if self.used >= self.per_token:
+            self.token, self.used = mint("sender"), 0
+        self.used += 1
+        return self.token
 
 
 def key(name: str) -> str:
@@ -283,13 +305,14 @@ class Validation(HubCase):
             self.skipTest("link_cases.json not found next to this suite")
         with open(path, encoding="utf-8") as fh:
             cases = json.load(fh)["cases"]
+        pool = Senders()
         for i, case in enumerate(cases):
             with self.subTest(url=case["url"]):
                 status, body = post({"key": key("link-%d" % i), "title": "link case",
-                                     "links": [{"label": "l", "url": case["url"]}]})
+                                     "links": [{"label": "l", "url": case["url"]}]}, pool.next())
                 self.assertEqual(status in (200, 201), case["allowed"], (status, body))
                 if status in (200, 201):
-                    call("POST", "/v1/items/resolve", Env.sender, {"id": body["id"]})
+                    call("POST", "/v1/items/resolve", pool.next(), {"id": body["id"]})
 
     def test_normalised_output(self):
         status, body = post({"key": key("norm"), "title": "  Trim me  ", "context": "PERSONAL", "kind": "Info",
@@ -434,8 +457,9 @@ class VolumeGuard(HubCase):
             # updates to an open key are not new items: still allowed
             self.assertEqual(post({"key": key("vol-0"), "title": "volume 0 again"}, tok)[0], 200)
         finally:
+            pool = Senders()  # any sender may resolve; spread the requests (rate limits)
             for i in made:
-                call("POST", "/v1/items/resolve", tok, {"id": i})
+                call("POST", "/v1/items/resolve", pool.next(), {"id": i})
         self.assertEqual(post({"key": key("vol-after"), "title": "room again"}, tok)[0], 201)
         call("POST", "/v1/items/resolve", tok, {"key": key("vol-after")})
 
@@ -510,7 +534,7 @@ class Invites(HubCase):
 
 
 class PeerInvites(HubCase):
-    """ADR 0010: a peer invite pairs another hub; its secret is shown once, then removable."""
+    """ADR 0012: a peer invite pairs another hub; its secret is shown once, then removable."""
 
     def test_pair_a_fake_peer_and_remove_it(self):
         status, inv = call("POST", "/v1/invites", Env.owner, {"name": Env.run + "-peer", "role": "peer"})
@@ -529,6 +553,9 @@ class PeerInvites(HubCase):
                          409, "peer_outdated")
         self.assertError(call("POST", "/v1/invites/redeem", None, {"code": inv["code"], "peer": dict(fake, url="ftp://x")}),
                          400, "invalid", "peer.url")
+        self.assertError(call("POST", "/v1/invites/redeem", None,
+                              {"code": inv["code"], "peer": dict(fake, url="http://intranet.example.com:8765")}),
+                         400, "invalid", "peer.url")  # plain http only on the tailnet or loopback
         status, red = call("POST", "/v1/invites/redeem", None, {"code": inv["code"], "host": "x", "peer": fake})
         self.assertEqual(status, 200, red)
         self.assertEqual((red["role"], red["hub_id"]), ("peer", Env.hub_id))

@@ -1,6 +1,6 @@
 # The next big item: four candidates
 
-Status (2026-10-08): a comparison for the owner. Nothing is decided. The recommendation is at the end, with a first plan for it.
+Status (2026-10-08): a comparison for the owner. The recommendation (A) is at the end, with a first plan for it. A was taken up on the recommendation: steps 1–6 are designed in [ADR 0012](../adr/0012-mac-hub-peers.md) (Proposed) and built on `tay/mac-hub-peers`; step 7 waits for the owner.
 
 The candidates are the four larger items left on the roadmap after 0.1.5. The questions and choices on cards work is already under way, so it isn't compared here.
 

@@ -47,7 +47,7 @@ STATUSES = ("open", "resolved", "dismissed")
 PATCH_STATUSES = ("resolved", "dismissed")
 ROLES = ("sender", "reader", "owner")
 READ_ROLES = ("reader", "owner")  # owner = reader + may create invites
-# Invites may also be for another hub (ADR 0010): redeeming a "peer" invite pairs two hubs
+# Invites may also be for another hub (ADR 0012): redeeming a "peer" invite pairs two hubs
 # with a fresh secret instead of minting a token. Never a token role.
 PEER_ROLE = "peer"
 INVITE_ROLES = ROLES + (PEER_ROLE,)
@@ -337,7 +337,7 @@ def mint_token() -> str:
 
 
 def mint_peer_secret() -> str:
-    """A pairwise replication secret (ADR 0010): 256 random bits. Stored in plaintext in the
+    """A pairwise replication secret (ADR 0012): 256 random bits. Stored in plaintext in the
     hub's database (it has to be sent), never replicated, logged or listed."""
     return "nyp_" + secrets.token_urlsafe(32)
 
@@ -1001,7 +1001,7 @@ ALTER TABLE items ADD COLUMN answer TEXT;
 ALTER TABLE items ADD COLUMN answered_at INTEGER;
 ALTER TABLE items ADD COLUMN answered_by TEXT;
 """,
-    # 9: peers this hub learned from a peer invite (ADR 0010), each with its own secret
+    # 9: peers this hub learned from a peer invite (ADR 0012), each with its own secret
     #    (plaintext: it is sent to that peer). Local to this hub: never replicated.
     """
 CREATE TABLE IF NOT EXISTS peer_links (
@@ -1629,7 +1629,7 @@ class Store:
         with self.lock:
             rows = []
             for kind, table in (("item", "items"), ("token", "tokens"), ("invite", "invites")):
-                # Peer invites name this hub and stay on it (ADR 0010); an older peer would
+                # Peer invites name this hub and stay on it (ADR 0012); an older peer would
                 # also hold replication on their unknown role.
                 local = " AND role != 'peer'" if kind == "invite" else ""
                 rows += [(kind, dict(r)) for r in self.conn.execute(
@@ -1758,7 +1758,7 @@ class Store:
 
     def redeem_peer_invite(self, code: str, check: Callable[[Any], Dict[str, str]],
                            peer: Any) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
-        """Spend a peer invite (ADR 0010). `check(peer)` validates the joining hub, raising
+        """Spend a peer invite (ADR 0012). `check(peer)` validates the joining hub, raising
         400/409 before anything is spent, and returns its {"url", "hub_id"}. Stores the link
         with a fresh secret and returns (secret, link, invite)."""
         with self.tx():
@@ -1774,7 +1774,7 @@ class Store:
             self._put_peer_link(link)
         return secret, link, inv
 
-    # -- peer links (ADR 0010) -------------------------------------------
+    # -- peer links (ADR 0012) -------------------------------------------
 
     def _put_peer_link(self, link: Dict[str, Any]) -> None:
         """Insert or replace a link (inside a transaction). A link to the same hub id under
@@ -2512,7 +2512,27 @@ def normalise_peer_url(value: Any) -> str:
     return "%s://%s%s" % (parts.scheme.lower(), host, ":%d" % port if port is not None else "")
 
 
-def validate_peer_request(peer: Any, own_hub_id: str, own_urls: List[str], schema: int) -> Dict[str, str]:
+_TAILNET_NETS = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+
+
+def peer_url_allowed(url: str) -> bool:
+    """Where this hub will send its secret and every record (hard rule 4's spirit): https
+    anywhere, plain http only to a tailnet name (*.ts.net) or address, or loopback."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme == "https":
+        return True
+    host = (parts.hostname or "").lower()
+    if host.endswith(".ts.net") or host == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or any(ip in net for net in _TAILNET_NETS if ip.version == net.version)
+
+
+def validate_peer_request(peer: Any, own_hub_id: str, own_urls: List[str], schema: int,
+                          config_peers: Optional[List[str]] = None) -> Dict[str, str]:
     """The joining hub in a peer invite redeem: {"url", "hub_id"}. 400 for a malformed
     `peer`, 409 `self` for this hub, 409 `peer_outdated` for an older schema (it would drop
     fields this hub writes)."""
@@ -2522,6 +2542,9 @@ def validate_peer_request(peer: Any, own_hub_id: str, own_urls: List[str], schem
         url = normalise_peer_url(peer.get("url"))
     except ValueError:
         raise _invalid("peer.url", "peer.url must be the joining hub's http(s)://host[:port]")
+    if not peer_url_allowed(url):
+        raise _invalid("peer.url", "peer.url must be https, or http to a tailnet name (*.ts.net) or "
+                                   "address: use the joining hub's MagicDNS URL")
     hub_id = peer.get("hub_id")
     if not isinstance(hub_id, str) or not HUB_ID_RE.match(hub_id):
         raise _invalid("peer.hub_id", "peer.hub_id must be 1-64 chars of letters, digits, '.', '_' or '-'")
@@ -2530,6 +2553,9 @@ def validate_peer_request(peer: Any, own_hub_id: str, own_urls: List[str], schem
         raise _invalid("peer.schema", "peer.schema must be the joining hub's schema version (an integer)")
     if hub_id == own_hub_id or url in own_urls:
         raise ApiError(409, "self", "that is this hub; a hub can't peer with itself")
+    if url in (config_peers or []):
+        raise ApiError(409, "conflict", "that URL is already a peer in this hub's config (it uses the "
+                                        "shared peer secret)")
     if their < schema:
         raise ApiError(409, "peer_outdated", "the joining hub has schema %d, this hub %d: upgrade it "
                                              "(to needs-you %s or later) and try again" % (their, schema, VERSION))
@@ -2977,7 +3003,7 @@ class Handler(BaseHTTPRequestHandler):
         return str(self.client_address[0]) if self.client_address else ""
 
     def _peer_auth(self) -> None:
-        """The mesh secret (config) or any peer link's own secret (ADR 0010)."""
+        """The mesh secret (config) or any peer link's own secret (ADR 0012)."""
         secrets_ = self.hub.peer_secrets()
         tok = (self._bearer() or "").encode("utf-8")
         if not secrets_:
@@ -3208,12 +3234,12 @@ class Handler(BaseHTTPRequestHandler):
                          "hub_urls": self.hub.hub_urls(local_first=local), "hub_id": self.hub.hub_id})
 
     def _redeem_peer(self, data: Dict[str, Any]) -> None:
-        """A hub joining this one with a peer invite (ADR 0010)."""
+        """A hub joining this one with a peer invite (ADR 0012)."""
         hub = self.hub
         own = [u for u in (hub.public_url, hub.url, hub.loopback_url) if u]
 
         def check(peer: Any) -> Dict[str, str]:
-            return validate_peer_request(peer, hub.hub_id, own, SCHEMA_VERSION)
+            return validate_peer_request(peer, hub.hub_id, own, SCHEMA_VERSION, hub.config_peers)
 
         try:
             secret, link, _inv = hub.store.redeem_peer_invite(data.get("code"), check, data.get("peer"))
@@ -3836,7 +3862,7 @@ class Hub:
     # -- peers -----------------------------------------------------------
 
     def peer_urls(self) -> List[str]:
-        """Every peer: the config's, then the links from peer invites (ADR 0010)."""
+        """Every peer: the config's, then the links from peer invites (ADR 0012)."""
         with self.peers_lock:
             out = list(self.config_peers)
             out += [u for u in self.links if u not in out]
@@ -3850,12 +3876,14 @@ class Hub:
         return ([mesh] if mesh else []) + out
 
     def secret_for(self, peer: str) -> str:
-        """What this hub sends to `peer`: its link's own secret, else the mesh secret."""
+        """What this hub sends to `peer`: its link's own secret; the mesh secret only to a
+        config peer; nothing to anyone else."""
         with self.peers_lock:
             link = self.links.get(peer)
+            configured = peer in self.config_peers
         if link is not None:
             return str(link["secret"])
-        return str(self.cfg.get("peer_secret") or "")
+        return str(self.cfg.get("peer_secret") or "") if configured else ""
 
     def _load_links(self) -> List[str]:
         """Re-read the links (the admin tool may have changed them); keep the store's peer list

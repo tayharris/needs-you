@@ -77,7 +77,7 @@ older hub; replication then resumes by itself.
 
 A server joins the Mac's own hub with a **peer invite**: a one-use link the Mac makes, which
 the server redeems for the pair's own replication secret. Nothing to copy by hand, and the
-secret never shows on a screen ([ADR 0010](adr/0010-mac-hub-peers.md)).
+secret never shows on a screen ([ADR 0012](adr/0012-mac-hub-peers.md)).
 
 **1. On the Mac**, make the link: **Settings → Your inbox → Always-on hub → Add an always-on
 hub** shows the command to run on the server (and copies it). The Mac must be on the tailnet;

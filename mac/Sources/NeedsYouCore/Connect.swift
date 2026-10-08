@@ -12,7 +12,7 @@ import Foundation
 //   POST|DELETE /v1/tokens/<id>/request-update
 //                            (Bearer owner) ask a sender machine to update, or withdraw it
 //   POST /v1/invites {role: "peer"}, GET /v1/peers, DELETE /v1/peers/<hub_id>
-//                            (Bearer owner) always-on hubs (Peers.swift, ADR 0010)
+//                            (Bearer owner) always-on hubs (Peers.swift, ADR 0012)
 
 /// A token's role on the hub. `owner` = reader + may create invites.
 public enum HubRole: String, Codable, CaseIterable, Sendable {
@@ -521,7 +521,7 @@ public struct InviteClient: Sendable {
     }
 
     /// POST /v1/invites with role "peer": a one-use link for an always-on hub to join this
-    /// one (ADR 0010). The response's `hubInstallCommand` is what to run on the server.
+    /// one (ADR 0012). The response's `hubInstallCommand` is what to run on the server.
     public func createPeerInvite(_ invite: PeerInviteRequest, hub: URL, token: String) async throws -> InviteResponse {
         guard HubTransportPolicy.allows(hub) else { throw ConnectError.httpNotAllowed(host: hub.host ?? hub.absoluteString) }
         let body = try JSONEncoder().encode(invite)

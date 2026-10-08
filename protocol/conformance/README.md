@@ -1,7 +1,7 @@
 # Hub conformance suite
 
 Black-box tests every needs-you hub implementation must pass ([ADR 0004](../../docs/adr/0004-always-on-hub.md),
-[ADR 0010](../../docs/adr/0010-mac-hub-peers.md)). They talk to a running hub over HTTP and
+[ADR 0012](../../docs/adr/0012-mac-hub-peers.md)). They talk to a running hub over HTTP and
 check the contract in [API.md](../../docs/API.md): health, roles, validation (including the
 shared link cases in `tests/fixtures/link_cases.json`), upsert and dedupe, resolve, patch,
 `cursor`/`since` paging, the volume guard, answers, invites and peer invites, and replication
