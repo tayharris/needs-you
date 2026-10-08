@@ -545,6 +545,27 @@ class CliOutput(unittest.TestCase):
         self.assertEqual(cli.clean("caf\u00e9 \u0645"), "caf\u00e9 \u0645")
         self.assertEqual(cli.clean(None), "None")
 
+    def test_write_atomic_never_writes_through_a_planted_temp_name(self):
+        # Scan 2026-10-08: the temp file was .<name>.<pid>.tmp, opened without O_EXCL, so a
+        # repo's .claude could ship symlinks under that name (uninstall-hooks rewrites the
+        # project settings in the current directory) and have any file overwritten.
+        import tempfile
+        import shutil
+        cli = load_cli()
+        d = tempfile.mkdtemp(prefix="ny-sec-atomic-")
+        self.addCleanup(shutil.rmtree, d, True)
+        victim = os.path.join(d, "victim")
+        with open(victim, "w") as fh:
+            fh.write("untouched\n")
+        target = os.path.join(d, "settings.json")
+        os.symlink(victim, os.path.join(d, ".settings.json.%d.tmp" % os.getpid()))
+        cli._write_atomic(target, b"{}\n", 0o600)
+        with open(victim) as fh:
+            self.assertEqual(fh.read(), "untouched\n")
+        with open(target, "rb") as fh:
+            self.assertEqual(fh.read(), b"{}\n")
+        self.assertEqual(os.stat(target).st_mode & 0o777, 0o600)
+
 
 class InstallerEnvFile(test_install.InstallScript):
     """A hub answer with shell syntax must never reach the sourceable env file."""
