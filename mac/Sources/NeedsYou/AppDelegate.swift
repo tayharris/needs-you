@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The only path that activates the app: the user clicked Settings (or the set-up pill).
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
         model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .connect) }
+        model.openSettingsPageHandler = { [weak self] page in self?.settingsWindow.show(tab: page) }
         // Setup cards: a click on a card's button (Settings may activate the app then).
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
@@ -85,6 +86,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Starting (and later restarting) the hub child never activates the app.
         localHub.apply()
         updates.start()
+        // After a move to Applications, the login item follows this copy (silent). A copy
+        // outside Applications never touches it and shows no alert: Settings → General and
+        // the menu bar menu offer Move to Applications instead.
+        LoginItem.reconcileAtLaunch(location: AppMover.shared.location, defaults: settings.defaults)
+        AppMover.shared.runTestMoveIfAsked()
         launched = true
         let pending = pendingURLs
         pendingURLs = []
