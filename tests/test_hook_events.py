@@ -1080,7 +1080,7 @@ class GrokTests(HookHarness):
         self.grok("notify", {"hook_event_name": "Notification", "hookEventName": "notification",
                              "notificationType": "idle_prompt", "message": "waiting", "level": "info"})
         argv = self.last()
-        self.assertEqual(self.opt(argv, "--title"), "Grok is waiting for you: my-repo")
+        self.assertEqual(self.opt(argv, "--title"), "Grok finished: my-repo")
         self.assertEqual(self.opt(argv, "--agent"), "grok")
         self.assertTrue(self.opt(argv, "--key").endswith(":grok-sess-1"))
         self.grok("notify", {"hook_event_name": "Notification", "notificationType": "permission_prompt"})

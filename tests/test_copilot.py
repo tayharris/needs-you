@@ -125,7 +125,7 @@ class CopilotHook(unittest.TestCase):
         self.run_hook("notify", {"transcriptPath": "/x/events.jsonl", "stopReason": "end_turn",
                                  "stop_hook_active": False})
         argv = self.wait_calls(2)[-1]
-        self.assertEqual(opt(argv, "--title"), "Copilot is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Copilot finished: my-repo")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
 
     def test_elicitation_from_the_payload(self):

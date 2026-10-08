@@ -143,7 +143,7 @@ class GeminiHook(unittest.TestCase):
         self.run_hook("notify", {"hook_event_name": "AfterAgent"})
         calls = self.wait_calls(3)
         self.assertEqual([c[0] for c in calls], ["add", "resolve", "add"])
-        self.assertEqual(opt(calls[2], "--title"), "Gemini is waiting for you: my-repo")
+        self.assertEqual(opt(calls[2], "--title"), "Gemini finished: my-repo")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
 
     def test_plan_approval(self):
@@ -155,7 +155,7 @@ class GeminiHook(unittest.TestCase):
         self.run_hook("notify", {"hook_event_name": "AfterAgent", "prompt": SECRET,
                                  "prompt_response": SECRET, "stop_hook_active": False})
         argv = self.wait_calls(1)[-1]
-        self.assertEqual(opt(argv, "--title"), "Gemini is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Gemini finished: my-repo")
         self.assertNotIn(SECRET, json.dumps(argv))
         self.run_hook("notify", {"hook_event_name": "AfterAgent"}, NEEDS_YOU_AGENT_TURN_CARDS="0")
         time.sleep(0.5)

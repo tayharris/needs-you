@@ -137,7 +137,7 @@ class CodexHook(CodexHookBase):
         # The question card goes, and the turn-end card takes the key.
         self.run_hook("notify", {"hook_event_name": "Stop"})
         self.assertEqual([c[0] for c in self.calls()], ["add", "resolve", "add"])
-        self.assertEqual(opt(self.calls()[-1], "--title"), "Codex is waiting for you: my-repo")
+        self.assertEqual(opt(self.calls()[-1], "--title"), "Codex finished: my-repo")
         # with turn cards off, the stale question card still goes
         self.run_hook("notify", data)
         self.run_hook("notify", {"hook_event_name": "Stop"}, NEEDS_YOU_AGENT_TURN_CARDS="0")
@@ -151,7 +151,7 @@ class CodexHook(CodexHookBase):
         self.run_hook("notify", {"hook_event_name": "Stop", "turn_id": "t1", "stop_hook_active": False,
                                  "last_assistant_message": "Here is the key: %s" % SECRET})
         argv = self.calls()[-1]
-        self.assertEqual(opt(argv, "--title"), "Codex is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Codex finished: my-repo")
         self.assertIn("finished its turn", opt(argv, "--body"))
         self.assertNotIn(SECRET, json.dumps(argv))
 
