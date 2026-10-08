@@ -13,7 +13,7 @@ Short records of decisions that shape the code: Context, Decision, Consequences,
 | [0007](0007-founding-design.md) | Founding design: one inbox, senders post, the Mac pulls | Accepted |
 | [0008](0008-mcp-server.md) | A one-file stdlib MCP server that wraps the CLI (`add`, `resolve`, `doctor`; no "list mine") | Accepted |
 | [0009](0009-questions-on-cards.md) | Questions and choices on cards: the question and its choices on the card, a `question` field, and answers by click (opencode, Claude Code, `needs-you answer-wait`) | Accepted |
-| [0011](0011-status-records.md) | Status records apart from items: a quiet progress strip and usage meters (`PUT /v1/status/<key>`, never counted or animated) | Proposed |
+| [0010](0010-mac-hub-peers.md) | The Mac's hub peers with always-on hubs, set up by a one-use peer invite with a pairwise secret | Proposed |
 
 Template:
 
