@@ -149,6 +149,34 @@ class PermissionTests(HookHarness):
         self.assertEqual(self.opt(self.last(), "--title"), "Claude needs permission: my-repo")
 
 
+class NestedKeyTests(HookHarness):
+    """Scan 2026-10-08: the hook read session_id (and the keys it skips on) with a sed grab
+    over the whole payload, so the same key inside tool_input (an MCP tool's argument) took
+    over the card's key and marker, or made the hook skip the event."""
+
+    def run_raw(self, text, mode="notify"):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux"}
+        r = subprocess.run([BASH, HOOK, mode], input=text, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+
+    def test_session_id_inside_tool_input_is_not_the_session(self):
+        for order in ("before", "after"):
+            with self.subTest(order):
+                inner = '"tool_input": {"session_id": "other-session", "conversation_id": "c-1"}'
+                top = '"session_id": "sess-1234-abcd", "cwd": %s, "hook_event_name": "PermissionRequest", ' \
+                      '"tool_name": "mcp__x__y"' % json.dumps(self.cwd)
+                text = "{%s, %s}" % ((inner, top) if order == "before" else (top, inner))
+                n = len(self.calls())
+                self.run_raw(text)
+                self.assertEqual(len(self.calls()), n + 1, "the card was skipped")
+                self.assertTrue(self.opt(self.last(), "--key").endswith(":sess-1234-abcd"), self.last())
+                self.assertTrue(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
+                self.assertFalse(os.path.exists(os.path.join(self.state, "other-session")))
+                self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
+
+
 class FailureTests(HookHarness):
     def test_free_text_on_cards_is_redacted(self):
         # Scan 2026-10-08: error_message and a notification's message are free text from the
