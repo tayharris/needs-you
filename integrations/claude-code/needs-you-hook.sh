@@ -810,8 +810,10 @@ _BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f­؜᠎​-‏ -‮"
 _SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
                          r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|nyi?_[A-Za-z0-9_-]{8,}"
                          r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*)")
-_SECRET_KV = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key"
+_SECRET_KV = re.compile(r"(?i)\b((?:\w*[_-])?(?:\w*password|passwd|token|secret|(?:api|access|secret|private)[_-]?key"
                         r"|auth|credentials?))(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+# A password in a URL's user part: scheme://user:<password>@host
+_URL_CREDS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s/:@]*:)[^\s/@]+@")
 _SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
 _PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
 _LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
@@ -830,6 +832,7 @@ def _long_run(m):
 
 def redact(text):
     text = _PEM.sub(REDACTED, text)
+    text = _URL_CREDS.sub(lambda m: m.group(1) + REDACTED + "@", text)
     text = _SECRET_RAW.sub(REDACTED, text)
     text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
     text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)

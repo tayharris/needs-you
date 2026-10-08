@@ -432,6 +432,20 @@ class FailureTests(HookHarness):
         for s in secrets + ("abcdefghijklmnop12345", "hunter2hunter2"):
             self.assertNotIn(s, body)
 
+    def test_credentials_in_urls_and_glued_names_are_redacted(self):
+        # Security review 0.2: a password in a URL's user part, and a name with the keyword
+        # glued on (PGPASSWORD=, MYSQL_PASSWORD already worked) or ending in _key, went out as is.
+        text = ("connect to postgres://app:Hunter2pw@db.example:5432/app failed; "
+                "https://bot:Gh0stPass99@git.example/repo.git; PGPASSWORD=Sw0rdfish42 psql; "
+                "secret_key: Zebra-Stripes-77; private-key=Kx9pQ2mL")
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                 "error_message": text})
+        body = self.opt(self.last(), "--body")
+        for s in ("Hunter2pw", "Gh0stPass99", "Sw0rdfish42", "Zebra-Stripes-77", "Kx9pQ2mL"):
+            self.assertNotIn(s, body)
+        for kept in ("postgres://app:", "@db.example:5432/app", "https://bot:", "PGPASSWORD=", "psql"):
+            self.assertIn(kept, body)
+
     def test_stop_failure_card(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
                                  "error_message": "Rate limit exceeded"})
