@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **A card when Claude's usage limit runs high (optional).** `integrations/claude-code/needs-you-usage` is a Claude Code status line helper: set `NEEDS_YOU_USAGE_ALERT_PCT` (and optionally `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT`) and, for claude.ai Pro and Max logins, it posts one low `info` card such as "Claude weekly limit 85% used: resets Thu 09:00" that expires at the reset and clears when usage drops back. It reads only the `rate_limits` numbers Claude Code passes to the status line, wraps the status line you already have, and is off by default. See [integrations/claude-code](integrations/claude-code/README.md#usage-limit-card-optional).
+
 ## [0.1.5] - 2026-10-08
 
 ### Added
