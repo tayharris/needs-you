@@ -44,7 +44,9 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 
 | Aider state | Card |
 |---|---|
-| Replied, waiting for your message or a yes/no answer | **Aider is waiting for you: my-repo** |
+| Replied, waiting for your message or a yes/no answer | **Aider finished: my-repo** (the body says it may be a yes/no question: Aider doesn't say which) |
+
+Aider gives the hook no text of the turn, so its turn card always says finished. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Aider is waiting for you** card (and no session name).
 
 One card per Aider process. Nothing from the chat is sent. `NEEDS_YOU_AIDER_EXPIRY_HOURS` (default 1) sets how long it lasts without a new wait; `NEEDS_YOU_AGENT_TURN_CARDS=0` turns it off.
 

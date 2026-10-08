@@ -63,7 +63,8 @@
 #            Aider exits (the lease) or expires (NEEDS_YOU_AIDER_EXPIRY_HOURS, default 1).
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
-# the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
+# the tmux pane (session:window.pane), the terminal app, VS Code or Cursor (with the
+# workspace Claude Code is connected to), or SSH, and links to it where
 # it can (VS Code folder, Remote-SSH window, the VS Code Claude tab, the Orca
 # terminal, the Mac terminal tab: below). Always exits 0 and never prints to stdout, so it can't block or
 # steer Claude, with one exception: `ask` prints the answer the person clicked on the card, as
@@ -114,6 +115,11 @@
 #                             the switch command gets --environment
 #   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode, Copilot, Grok, Kimi: 0 = no card when a turn ends,
 #                             just approval prompts (default: on)
+#   NEEDS_YOU_TURN_TEXT       0 = a finished turn's card is the old "<Agent> is waiting for
+#                             you: <project>", with no session name in any title (default: "<Agent>
+#                             finished: <session name> (<project>)", or "<Agent> asks: <question>"
+#                             when the turn's last message ends on a question; agent text is
+#                             redacted, cleaned and clamped)
 #   NEEDS_YOU_AGENT_QUESTIONS  0 = a question card says only "<Agent> asked you a
 #                             question" and a plan card shows no plan text (default:
 #                             the question, its choices as steps and the plan's first
@@ -283,7 +289,8 @@ for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
            NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
            NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS NEEDS_YOU_ANSWER_TIMEOUT \
-           NEEDS_YOU_USAGE_ALERT_PCT NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT NEEDS_YOU_USAGE_ACCOUNT; do
+           NEEDS_YOU_USAGE_ALERT_PCT NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT NEEDS_YOU_USAGE_ACCOUNT \
+           NEEDS_YOU_TURN_TEXT; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -496,7 +503,7 @@ run_py() {
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
   NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
   python3 - 2>/dev/null 3<<<"$input" <<'PY'
-import json, os, re, shlex, subprocess, sys, time
+import hashlib, json, os, re, shlex, subprocess, sys, time
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
@@ -557,6 +564,69 @@ def read_marker(path):
     return out
 
 
+# TERM_PROGRAM values -> the terminal's name (a value not here shows as itself when it looks
+# like a name). Inside tmux TERM_PROGRAM is "tmux": the outer terminal is a best guess.
+TERM_NAMES = {"iTerm.app": "iTerm", "Apple_Terminal": "Terminal", "ghostty": "Ghostty",
+              "WezTerm": "WezTerm", "WarpTerminal": "Warp", "Hyper": "Hyper", "Tabby": "Tabby",
+              "zed": "Zed", "rio": "Rio", "kitty": "kitty", "alacritty": "Alacritty",
+              "Alacritty": "Alacritty", "Jetbrains.Fleet": "Fleet", "JetBrains-JediTerm": "JetBrains"}
+TERM_APP_NAMES = {"iterm": "iTerm", "terminal": "Terminal", "wezterm": "WezTerm", "ghostty": "Ghostty"}
+
+
+def terminal_name():
+    """The terminal app the session runs in ("" if unknown), from the environment only."""
+    env = os.environ
+    tp = env.get("TERM_PROGRAM", "")
+    if tp in ("vscode", "tmux", "screen"):
+        tp = ""
+    if tp in TERM_NAMES:
+        return TERM_NAMES[tp]
+    if env.get("KITTY_WINDOW_ID"):
+        return "kitty"
+    if env.get("ALACRITTY_WINDOW_ID") or env.get("ALACRITTY_SOCKET"):
+        return "Alacritty"
+    host = tmux_host()  # iTerm, WezTerm, Ghostty, Terminal from their own variables
+    if host:
+        return TERM_APP_NAMES[host]
+    if env.get("SSH_CONNECTION"):
+        # ssh forwards LC_*: the Mac's tab, as needs-you's own LC_NEEDS_YOU_TERM names it
+        m = re.match(r"^app=([a-z]{1,16})(?:&|$)", env.get("LC_NEEDS_YOU_TERM", ""))
+        if m and m.group(1) in TERM_APP_NAMES:
+            return TERM_APP_NAMES[m.group(1)]
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,23}", tp):
+        return tp[:-4] if tp.endswith(".app") else tp
+    return ""
+
+
+IDE_NAMES = (("cursor", "Cursor"), ("windsurf", "Windsurf"), ("vscodium", "VSCodium"),
+             ("visual studio code", "VS Code"), ("vscode", "VS Code"), ("vs code", "VS Code"))
+
+
+def ide_workspace():
+    """(IDE name, workspace folder name) of the editor Claude Code is connected to, else ("", "").
+    The VS Code extension gives its terminals and its panel CLAUDE_CODE_SSE_PORT, and the editor
+    writes <config dir>/ide/<port>.lock (Claude Code 2.1.294 reads workspaceFolders and ideName
+    from it). Only those two are read; the file's auth token is never touched."""
+    port = os.environ.get("CLAUDE_CODE_SSE_PORT", "")
+    if AGENT != "claude" or not re.fullmatch(r"[0-9]{1,5}", port):
+        return "", ""
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    try:
+        with open(os.path.join(base, "ide", port + ".lock"), encoding="utf-8") as fh:
+            d = json.loads(fh.read(256 * 1024))
+    except Exception:
+        return "", ""
+    if not isinstance(d, dict):
+        return "", ""
+    raw = d.get("ideName") if isinstance(d.get("ideName"), str) else ""
+    ide = next((label for k, label in IDE_NAMES if k in raw.lower()), "")
+    folders = d.get("workspaceFolders") if isinstance(d.get("workspaceFolders"), list) else []
+    ws = ""
+    if folders and isinstance(folders[0], str):
+        ws = _clean_name(re.split(r"[/\\]", folders[0].rstrip("/\\"))[-1], 40).replace("`", "'")
+    return ide, ws
+
+
 def where_lines():
     """Where the session runs, so a card from a tmux pane on a VM says which one."""
     home = os.path.expanduser("~")
@@ -574,13 +644,20 @@ def where_lines():
             tmux_target = ""
         if tmux_target:
             where.append("tmux `%s`" % tmux_target)
+    ide, workspace = ide_workspace()
+    term = terminal_name()
     if AGENT == "cursor":
         where.append("Cursor")
     elif (os.environ.get("TERM_PROGRAM") == "vscode" or os.environ.get("VSCODE_IPC_HOOK_CLI")
             or os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"):
-        where.append("VS Code")
+        ide = ide or ("Cursor" if os.environ.get("CURSOR_TRACE_ID") else "VS Code")
+        where.append("%s `%s`" % (ide, workspace) if workspace else ide)
+    elif term and tmux_target:
+        where[-1] += " in " + term
     elif os.environ.get("SSH_CONNECTION") and not tmux_target:
-        where.append("SSH")
+        where.append("SSH" + (" from " + term if term else ""))
+    elif term:
+        where.append(term)
     lines.append("`%s` on `%s`%s" % (short_cwd, host, ", " + ", ".join(where) if where else ""))
     orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
     if handle:
@@ -1127,7 +1204,7 @@ def question_card(name, questions, qid="", answerable=False):
     if not first:
         return None
     more = " and %d more" % (len(questions) - 1) if multi_q else ""
-    room = MAX_TITLE - len('%s asks ""%s: ' % (name, more)) - min(len(project), 30)
+    room = MAX_TITLE - len('%s asks ""%s: ' % (name, more)) - min(len(place_label()), 30)
     what = "%s asks “%s”%s" % (name, clamp(first, max(20, room)), more)
     per_q = max(150, QUESTION_BUDGET // len(questions))
     parts = []
@@ -1195,6 +1272,302 @@ def plan_card(name, plan):
     return what, ("%s\n\n%s" % (lines, tail)) if lines else "%s has a plan ready. %s" % (name, tail)
 
 
+# ---------------------------------------------------------------- finished turns and names
+# A turn that ended is a "finished" card, unless the agent's final message ends on a question
+# to the person: then an "asks" card with that question. The title also names the session
+# (Claude Code's /rename name or auto title, a Codex thread name, Kimi's and opencode's
+# session titles). All of it is agent text: redacted as a whole first, then cut, cleaned and
+# clamped. NEEDS_YOU_TURN_TEXT=0 keeps the old "<Agent> is waiting for you: <project>" cards.
+TITLE = [None]  # a card's whole title, when it isn't "<what>: <where>"
+_NAME = []  # session_name(), worked out once
+
+
+def turn_text_on():
+    return (os.environ.get("NEEDS_YOU_TURN_TEXT") or "").lower() not in ("0", "false", "no", "off")
+
+
+def _redacted_tail(text, limit=200000):
+    """The end of `text`, redacted. A cut at the front drops the partial word there, so a
+    token cut in two can't slip past the patterns."""
+    text = text.replace("\r\n", "\n")
+    if len(text) > limit:
+        text = text[-limit:]
+        text = text.split(None, 1)[1] if len(text.split(None, 1)) == 2 else ""
+    return redact(text)
+
+
+def turn_question(text):
+    """(question, paragraph) when a turn's final message ends on a question to the person, else
+    ("", ""). Conservative: only the message's last line counts, it must end with "?" (closing
+    quotes or markdown aside), and a message that ends in code or a table is never a question.
+    The question is the last sentence or sentences of that line that end it: from the end of the
+    last sentence that doesn't end in "?"."""
+    if not isinstance(text, str) or "?" not in text[-2000:]:
+        return "", ""
+    # A line's closing "?" is kept out of the redaction (`token=x?` would take it along).
+    end_q = r"(\?+)(?=[\"'”’)\]*_` \t]*$)"
+    text = re.sub(r"(\S)" + end_q, "\\1 \x00\\2", text[-250000:], flags=re.M)
+    text = _redacted_tail(text).replace(" \x00", "").replace("\x00", "")
+    paras = [p for p in re.split(r"\n[ \t]*\n", text) if p.strip()]
+    if not paras:
+        return "", ""
+    para = paras[-1]
+    lines = [l for l in para.split("\n") if l.strip()]
+    last = lines[-1]
+    if (re.match(r"^\s*(```|~~~|\|)", last) or re.match(r"^( {4}|\t)", last)
+            or any(re.match(r"^\s*(```|~~~)", l) for l in lines)):
+        return "", ""
+    line = re.sub(r"^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,3}[.)]\s+)+", "", last).strip()
+    core = line.rstrip("\"'”’)]*_` ")
+    if not core.endswith("?"):
+        return "", ""
+    # From after the last ". " or "! " (a statement before the question).
+    m = None
+    for m in re.finditer(r"[.!](?:[\"'”’)\]*_`]*)\s+", core):
+        pass
+    q = core[m.end():] if m else core
+    q = re.sub(r"(\*\*|__)", "", q).strip()
+    if len(q) < 3 or not re.search(r"[A-Za-z0-9]", q):
+        return "", ""
+    return q, para
+
+
+def _clean_name(value, limit=60):
+    """A session name for a title: one line, cleaned, clamped; none if it holds anything
+    token-shaped (a name with a secret in it isn't worth showing in part)."""
+    if not isinstance(value, str):
+        return ""
+    name = " ".join(_BAD_CHARS.sub(" ", value).split())
+    if not name or redact(name) != name:
+        return ""
+    return clamp(name, limit)
+
+
+def claude_last_text(path):
+    """The text of the turn's final assistant message in a Claude Code transcript (what the
+    terminal shows last), or "": a main-thread assistant entry's text blocks. Anything else
+    first (a tool call, a prompt, an interruption, a synthetic or error message) means none."""
+    if not path or not os.path.isfile(path):
+        return ""
+    for size in (256 * 1024, 2 * 1024 * 1024):
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, 2)
+                end = fh.tell()
+                start = max(0, end - size)
+                fh.seek(start)
+                buf = fh.read(end - start)
+        except OSError:
+            return ""
+        lines = buf.split(b"\n")
+        if start > 0:
+            lines = lines[1:]
+        for raw in reversed(lines):
+            if b'"assistant"' not in raw and b'"user"' not in raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(d, dict) or d.get("isSidechain") or d.get("type") not in ("assistant", "user"):
+                continue
+            m = d.get("message") if isinstance(d.get("message"), dict) else {}
+            if d["type"] == "user":
+                if d.get("isMeta"):
+                    continue
+                return ""  # a prompt, a tool result or an interruption came after the last text
+            if m.get("model") == "<synthetic>" or d.get("isApiErrorMessage"):
+                return ""
+            content = m.get("content")
+            if isinstance(content, str):
+                return content
+            if not isinstance(content, list):
+                return ""
+            texts = [c.get("text") for c in content if isinstance(c, dict) and c.get("type") == "text"
+                     and isinstance(c.get("text"), str)]
+            return "\n\n".join(texts)
+        if start == 0:
+            break
+    return ""
+
+
+TITLE_SCAN_MAX = 64 * 1024 * 1024  # bytes of transcript read for titles on one card, at most
+
+
+def title_cache_path():
+    sid = re.sub(r"^\.", "_", re.sub(r"[^A-Za-z0-9._-]", "_", session)[:80])  # as the shell's sanitize
+    return os.path.join(os.environ["NY_STATE"], ".title-" + sid) if sid else ""
+
+
+def read_title_cache():
+    path = title_cache_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            c = json.loads(fh.read(64 * 1024))
+        return c if isinstance(c, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_title_cache(c):
+    path = title_cache_path()
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = "%s.%d.tmp" % (path, os.getpid())
+        # private: the names are the session's own words, as in the transcript
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600),
+                       "w", encoding="utf-8") as fh:
+            json.dump(c, fh)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+def prompt_title():
+    """UserPromptSubmit (the `title` mode): remember the session_title Claude Code sends with a
+    prompt (live on 2.1.294 after /rename), for the session's later cards."""
+    if AGENT != "claude" or not field("session_title"):
+        return 0
+    c = read_title_cache()
+    if c.get("prompt") != field("session_title")[:500]:
+        c["prompt"] = field("session_title")[:500]
+        write_title_cache(c)
+    return 0
+
+
+def claude_title(path):
+    """The session's name: the latest /rename name (a custom-title transcript line, live on
+    2.1.294), else the session_title of the latest prompt, else the latest auto title (ai-title).
+    The titles can be anywhere in the transcript, so what was found is kept in the state dir
+    (.title-<session>) with the byte offset read up to: a card reads only what Claude appended
+    since, and the whole file at most once (up to 64 MB)."""
+    c = read_title_cache()
+    custom, auto = c.get("custom"), c.get("auto")
+    if path and os.path.isfile(path):
+        try:
+            size = os.path.getsize(path)
+            offset = c.get("offset") if c.get("path") == path else None
+            with open(path, "rb") as fh:
+                # The file's first 4 KB tell the same transcript from one rewritten in its place.
+                head = hashlib.sha1(fh.read(4096)).hexdigest()
+                if (not isinstance(offset, int) or offset < 0 or offset > size
+                        or (offset > 0 and c.get("head") != head)):
+                    offset, custom, auto = 0, None, None  # a new or rewritten transcript: from the top
+                buf = b""
+                if offset < size:
+                    fh.seek(offset)
+                    buf = fh.read(min(size - offset, TITLE_SCAN_MAX))
+            if buf:
+                done = buf.rfind(b"\n") + 1  # complete lines only; a line being written waits
+                for raw in buf[:done].split(b"\n"):
+                    if b'-title"' not in raw[:40]:
+                        continue
+                    try:
+                        d = json.loads(raw)
+                    except Exception:
+                        continue
+                    if not isinstance(d, dict):
+                        continue
+                    if d.get("type") == "custom-title" and isinstance(d.get("customTitle"), str):
+                        custom = d["customTitle"][:500]
+                    elif d.get("type") == "ai-title" and isinstance(d.get("aiTitle"), str):
+                        auto = d["aiTitle"][:500]
+                if len(buf) == TITLE_SCAN_MAX and done == 0:
+                    done = len(buf)  # one huge line: skip it rather than read it again
+                c.update(path=path, offset=offset + done, head=head, custom=custom, auto=auto)
+                write_title_cache(c)
+        except OSError:
+            pass
+    for name in (custom, c.get("prompt"), auto):
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return ""
+
+
+def codex_title():
+    """A Codex thread's name (/rename): the newest line for this session in
+    $CODEX_HOME/session_index.jsonl ({"id", "thread_name", "updated_at"}; codex 0.161 source)."""
+    if not session:
+        return ""
+    path = os.path.join(os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex"), "session_index.jsonl")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            end = fh.tell()
+            fh.seek(max(0, end - 1024 * 1024))
+            lines = fh.read().split(b"\n")
+    except OSError:
+        return ""
+    for raw in reversed(lines):
+        if session.encode("utf-8", "replace") not in raw:
+            continue
+        try:
+            d = json.loads(raw)
+        except Exception:
+            continue
+        if isinstance(d, dict) and d.get("id") == session and isinstance(d.get("thread_name"), str):
+            return d["thread_name"]
+    return ""
+
+
+def session_name():
+    """The session's name, cleaned (or ""): the payload's session_title (Kimi, the opencode
+    plugin, Claude's prompt events), else what the agent keeps on disk."""
+    if not _NAME:
+        name = ""
+        if turn_text_on():
+            try:
+                name = _clean_name(field("session_title"))
+                if not name and AGENT == "claude":
+                    name = _clean_name(claude_title(field("transcript_path")))
+                if not name and AGENT == "codex":
+                    name = _clean_name(codex_title())
+            except Exception:
+                name = ""
+        _NAME.append(name)
+    return _NAME[0]
+
+
+def place_label():
+    """Where the card is from, for its title: "<session name> (<project>)", or the project."""
+    name = session_name()
+    return "%s (%s)" % (name, project) if name and name.lower() != project.lower() else project
+
+
+def card_title(what):
+    """"<what>: <session name> (<project>)", the name cut to fit the hub's title limit."""
+    title = "%s: %s" % (what, place_label())
+    name = session_name()
+    if len(title) <= MAX_TITLE or place_label() == project:
+        return title
+    room = MAX_TITLE - len("%s:  ()" % what) - len(project)
+    if room >= 12:
+        return "%s: %s (%s)" % (what, clamp(name, room), project)
+    return clamp("%s: %s" % (what, name), MAX_TITLE)
+
+
+def turn_card(name, text, legacy_what, legacy_msg):
+    """(kind, what, msg) for a finished turn: "<Agent> asks: <question>" when its final message
+    `text` ends on a question, else "<Agent> finished". With NEEDS_YOU_TURN_TEXT=0, the old
+    card (legacy_what, legacy_msg)."""
+    if not turn_text_on():
+        return "notify", legacy_what, legacy_msg
+    q, para = turn_question(text)
+    if q:
+        where = place_label()
+        if len(where) > 40:
+            where = clamp(session_name(), 40) if session_name() else clamp(project, 40)
+        head = "%s asks: " % name
+        room = max(30, MAX_TITLE - len(head) - len(" · ") - len(where))
+        TITLE[0] = clamp("%s%s · %s" % (head, one_line(q, room), where), MAX_TITLE)
+        body = text_block(para, 600, max_lines=6)
+        return "notify", "%s asks" % name, ((body + "\n\n") if body else "") + \
+            "%s ended its turn on this question; your reply continues it." % name
+    return "notify", "%s finished" % name, "%s finished its turn; your next message continues it." % name
+
+
 # ---------------------------------------------------------------- notify
 PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
 
@@ -1233,7 +1606,8 @@ def codex_card():
     if event == "Stop":
         if not turn_cards():
             return None
-        return "notify", "Codex is waiting for you", "Codex finished its turn and is waiting for your next message."
+        return turn_card("Codex", field("last_assistant_message"), "Codex is waiting for you",
+                         "Codex finished its turn and is waiting for your next message.")
     return None
 
 
@@ -1281,7 +1655,9 @@ def gemini_card():
     if event == "AfterAgent":
         if not turn_cards():
             return None
-        return "notify", "Gemini is waiting for you", "Gemini finished its turn and is waiting for your next message."
+        # prompt_response: the turn's final answer (Gemini CLI source)
+        return turn_card("Gemini", field("prompt_response"), "Gemini is waiting for you",
+                         "Gemini finished its turn and is waiting for your next message.")
     return None
 
 
@@ -1317,7 +1693,9 @@ def opencode_card():
     if event == "Stop":
         if not turn_cards():
             return None
-        return "notify", "opencode is waiting for you", "opencode finished its turn and is waiting for your next message."
+        # The plugin sends the last assistant text it saw for the session.
+        return turn_card("opencode", field("last_assistant_message"), "opencode is waiting for you",
+                         "opencode finished its turn and is waiting for your next message.")
     return None
 
 
@@ -1332,7 +1710,9 @@ def grok_card():
             # An open permission card says more than "waiting"; keep it.
             if not turn_cards() or read_marker(os.environ["NY_MARKER"]).get("kind") == "permission":
                 return None
-            return "notify", "Grok is waiting for you", "Grok finished its turn and is waiting for your next message."
+            # idle_prompt carries no text of the turn (its Stop does, but isn't a card)
+            return turn_card("Grok", "", "Grok is waiting for you",
+                             "Grok finished its turn and is waiting for your next message.")
         return None
     if event == "StopFailure":
         # errorDetails is free text from the API; the card takes only the error code's meaning.
@@ -1385,7 +1765,9 @@ def kimi_card():
     if event == "Stop":
         if not turn_cards():
             return None
-        return "notify", "Kimi is waiting for you", "Kimi finished its turn and is waiting for your next message."
+        # Kimi's Stop carries no text of the turn (source), only session_title
+        return turn_card("Kimi", "", "Kimi is waiting for you",
+                         "Kimi finished its turn and is waiting for your next message.")
     if event == "StopFailure":
         err = one_line(field("error_message"), 300)
         return "failure", "Kimi stopped on an error", ((err + "\n\n") if err else "") + \
@@ -1418,7 +1800,8 @@ def copilot_card():
     if not ntype and "stopReason" in data:
         if not turn_cards():
             return None
-        return "notify", "Copilot is waiting for you", "Copilot finished its turn and is waiting for your next message."
+        return turn_card("Copilot", "", "Copilot is waiting for you",
+                         "Copilot finished its turn and is waiting for your next message.")
     return None
 
 
@@ -1431,7 +1814,8 @@ def cursor_card():
     if status == "completed":
         if not turn_cards():
             return None
-        return "notify", "Cursor finished", "Cursor's agent finished its turn and is waiting for your next message."
+        return turn_card("Cursor", "", "Cursor finished",
+                         "Cursor's agent finished its turn and is waiting for your next message.")
     if status == "error":
         return "failure", "Cursor stopped on an error", "The agent's turn ended on an error; send a message to retry."
     return None  # aborted: the person stopped it, so they are right there
@@ -1448,7 +1832,12 @@ def cline_card():
     if ev == "TaskComplete":
         if not turn_cards():
             return None
-        return "notify", "Cline finished", "Cline finished the task and is waiting for your next message."
+        # VS Code's TaskComplete holds the agent's final text (taskMetadata.result): only a
+        # question it ends on reaches the card.
+        tc = data.get("taskComplete") if isinstance(data.get("taskComplete"), dict) else {}
+        meta = tc.get("taskMetadata") if isinstance(tc.get("taskMetadata"), dict) else {}
+        return turn_card("Cline", meta.get("result") if isinstance(meta.get("result"), str) else "",
+                         "Cline finished", "Cline finished the task and is waiting for your next message.")
     return None
 
 
@@ -1456,8 +1845,12 @@ def aider_card():
     """Aider says only that it is waiting: for the next message or a yes/no question."""
     if not turn_cards():
         return None
-    return ("notify", "Aider is waiting for you",
-            "Aider replied and is waiting for you: an answer to its question, or your next message.")
+    if not turn_text_on():
+        return ("notify", "Aider is waiting for you",
+                "Aider replied and is waiting for you: an answer to its question, or your next message.")
+    # No payload: Aider may also be waiting on a yes/no question of its own, so the body says so.
+    return ("notify", "Aider finished",
+            "Aider finished its reply and is waiting for you: your next message, or an answer to its question.")
 
 
 def notify():
@@ -1542,7 +1935,11 @@ def notify_card():
         msg = one_line(data.get("message"), 400)
         if ntype == "quota_auto_resume_disabled":
             kind = "failure"
-    title = "%s: %s" % (what, project)
+        elif ntype == "idle_prompt" and turn_text_on():
+            # About a minute after any turn ended: finished, or a question it ended on (the
+            # transcript's last assistant text; the notification itself has none).
+            kind, what, msg = turn_card("Claude", claude_last_text(field("transcript_path")), what, msg)
+    title = TITLE[0] or card_title(what)
     body = "\n\n".join(([msg] if msg else []) + where_lines())
     steps_body = "\n\n".join(([asked.steps_msg] if asked else []) + where_lines())
     rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links(), steps, asked, steps_body)
@@ -1760,7 +2157,7 @@ def context():
     except ValueError:
         pass
     key = os.environ["NY_KEY"] + ":context"
-    title = "Claude's context is %d%% full: %s" % (pct, project)
+    title = card_title("Claude's context is %d%% full" % pct)
     msg = ("This session has used about %dk of its %dk-token context (%d%%). Run `/compact` to "
            "summarize and keep going, or `/clear` to start fresh if the next task is unrelated."
            % (used // 1000, window // 1000, pct))
@@ -1936,7 +2333,7 @@ def codex_usage():
 
 try:
     rc = {"notify": notify, "context": context, "ask": ask, "reply": reply,
-          "codex_usage": codex_usage}.get(mode, lambda: 0)()
+          "codex_usage": codex_usage, "title": prompt_title}.get(mode, lambda: 0)()
 except Exception:
     rc = 1
 raise SystemExit(rc)
@@ -1949,6 +2346,11 @@ case "$mode" in
     [ "$agent" = codex ] && resolve_bg=1
     cancel_posts
     resolve_marker "$marker" "$key"
+    # Claude's UserPromptSubmit names the session (session_title, after /rename): keep it for
+    # the session's cards, so they needn't search the transcript for it.
+    case "$agent:$input" in
+      claude:*'"session_title"'*) run_py title >/dev/null ;;
+    esac
     ;;
 
   stop)
@@ -1967,7 +2369,7 @@ case "$mode" in
     model=$(json_str model)
     if [ "$agent" = claude ] && [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
       printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
-      find "$state_dir" -name '.model-*' -mtime +7 -exec rm -f {} + 2>/dev/null
+      find "$state_dir" \( -name '.model-*' -o -name '.title-*' \) -mtime +7 -exec rm -f {} + 2>/dev/null
     fi
     # Cline: a task starts or resumes (a new task has a new taskId): the finished cards of
     # earlier tasks in the same Cline (the lease's process) no longer apply.
@@ -2009,7 +2411,7 @@ case "$mode" in
     else
       resolve_marker "$marker" "$key"
       resolve_marker "$ctx_marker"
-      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")" "$state_dir/.title-$(sanitize "$session_id")"
     fi
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)

@@ -148,7 +148,7 @@ class KimiHook(unittest.TestCase):
                        capture_output=True, text=True, timeout=30)
         argv = self.wait_calls(1)[-1]
         self.assertEqual(opt(argv, "--title"),
-                         "Kimi asks \u201cWhich database should the service use?\u201d and 1 more: my-repo")
+                         "Kimi asks \u201cWhich database should the service use?\u201d and 1 more: please ask me (my-repo)")
         body = opt(argv, "--body")
         self.assertTrue(body.startswith(
             "**Database** \u00b7 choose one\nWhich database should the service use?\n"
@@ -164,7 +164,7 @@ class KimiHook(unittest.TestCase):
         subprocess.run([BASH, HOOK, "notify", "kimi"], input=json.dumps(data),
                        env=self.env(NEEDS_YOU_AGENT_QUESTIONS="0"), capture_output=True, text=True, timeout=30)
         argv = self.wait_calls(2)[-1]
-        self.assertEqual(opt(argv, "--title"), "Kimi asked you a question: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Kimi asked you a question: please ask me (my-repo)")
         self.assertNotIn("database", json.dumps(argv).lower())
         self.assertFalse(posted_item(argv)["steps"])
 
@@ -174,7 +174,8 @@ class KimiHook(unittest.TestCase):
         subprocess.run([BASH, HOOK, "notify", "kimi"], input=json.dumps(data), env=self.env(),
                        capture_output=True, text=True, timeout=30)
         argv = self.wait_calls(1)[-1]
-        self.assertEqual(opt(argv, "--title"), "Kimi wants approval for a plan: my-repo")
+        # the captured payload's session_title names the session
+        self.assertEqual(opt(argv, "--title"), "Kimi wants approval for a plan: plan it (my-repo)")
         self.assertTrue(opt(argv, "--body").startswith("**Plan**\n1. Do the thing.\n\nApprove or reject it in Kimi."))
         self.assertEqual(step_texts(argv), ["Small refactor (Recommended) \u2014 Touch two files.",
                                             "Rewrite \u2014 Start over."])
@@ -209,7 +210,7 @@ class KimiHook(unittest.TestCase):
         calls = self.wait_calls(3)
         self.assertEqual(calls[1][0], "resolve")
         argv = calls[2]
-        self.assertEqual(opt(argv, "--title"), "Kimi is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Kimi finished: my-repo")
         self.run_hook("notify", "StopFailure", {"error_type": "rate_limit", "error_message": "429 Too Many Requests"})
         argv = self.wait_calls(4)[-1]
         self.assertEqual(opt(argv, "--title"), "Kimi stopped on an error: my-repo")

@@ -50,7 +50,7 @@ class AiderHook(HookCase):
         self.run_like_aider()
         argv = self.wait_calls(1)[-1]
         sid = "aider-%d" % os.getpid()
-        self.assertEqual(opt(argv, "--title"), "Aider is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Aider finished: my-repo")
         self.assertEqual(opt(argv, "--agent"), "aider")
         self.assertEqual(opt(argv, "--project"), "my-repo")
         self.assertEqual(opt(argv, "--key").split(":")[-1], sid)

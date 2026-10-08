@@ -84,7 +84,7 @@ When the blocker clears (they answered, the ticket moved, the job passed): `need
 
 ## One card per wait
 
-If the needs-you hooks are installed, they post and resolve permission prompts, plan approvals, your questions, "waiting for input" and API-error stops (key `agent:<host>:<session>`); don't duplicate those. A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card in Claude Code, so prefer it over asking in plain text when there are a few clear choices. While a `needs` card you posted from this session is open, the hooks skip their generic "Claude is waiting for you" card, so the person sees one card for the wait: yours. Until you resolve it, this session gets no "waiting" card.
+If the needs-you hooks are installed, they post and resolve permission prompts, plan approvals, your questions, "waiting for input" and API-error stops (key `agent:<host>:<session>`); don't duplicate those. A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card in Claude Code, so prefer it over asking in plain text when there are a few clear choices. While a `needs` card you posted from this session is open, the hooks skip their generic "Claude finished" card, so the person sees one card for the wait: yours. Until you resolve it, this session gets no "waiting" card.
 
 ## Rules
 

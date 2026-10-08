@@ -74,12 +74,15 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Plan ready (plan mode, `ExitPlanMode`) | **Claude wants approval for a plan: my-repo**, the plan's first lines in the body |
 | Claude asks you a question (`AskUserQuestion`) | **Claude asks “Which database should we use?”: my-repo**, its choices listed (`and 1 more` for two questions) |
 | Any other permission prompt | **Claude needs permission for <tool>: my-repo** (MCP tools as `<server> <tool>`) |
-| Idle, waiting for your input | **Claude is waiting for you: my-repo** |
+| Turn finished, idle about a minute | **Claude finished: Login fix (my-repo)**: the session's name (its `/rename` name, else Claude's auto title) and the project |
+| Turn ended on a question to you, idle about a minute | **Claude asks: Should I also update the migration? · Login fix (my-repo)**, that paragraph in the body |
 | MCP server asks for input / a sign-in | **Claude needs an answer: my-repo** / **Claude needs you to sign in: my-repo** |
 | Claude Code's `agent_needs_input` notification | **Claude needs your input: my-repo** |
 | Usage limit, won't resume on its own | **Claude hit its usage limit: my-repo** |
 | Turn ended on an API error | **Claude hit a rate limit**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
 | Context at 80% or more (low priority, a card of its own) | **Claude's context is 85% full: my-repo**, suggesting `/compact` or `/clear` |
+
+Every title names the session when it has a name: **Claude wants to run git: Login fix (my-repo)**. A finished turn's card is a question only when Claude's last message ends with one (its last line ends with "?", outside code); anything else is "finished". The question and the name are Claude's words: cleaned, anything token-shaped redacted (a name with a token in it isn't shown), clamped. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Claude is waiting for you: my-repo** and no names.
 
 A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. A question with several parts is one card, each part under its header.
 

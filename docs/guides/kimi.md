@@ -42,8 +42,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Approval to fetch a page | **Kimi wants to fetch a page: my-repo** |
 | A plan to approve | **Kimi wants approval for a plan: my-repo**, the plan's first lines, its options as steps |
 | A question for you | **Kimi asks “Which database should the service use?”: my-repo**, its choices listed |
-| Turn finished, waiting for you | **Kimi is waiting for you: my-repo** |
+| Turn finished, waiting for you | **Kimi finished: Fix flaky test (my-repo)** (Kimi's session title) |
 | The turn failed on an error | **Kimi stopped on an error: my-repo** |
+
+Kimi gives the hook no text of the turn, so its turn card always says finished. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Kimi is waiting for you** card (and no session name).
 
 One card per session, updated in place. Command lines, prompts and tool output aren't sent: an approval card names at most the program or a file's name. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in Kimi. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval, question and error cards. A one-shot `kimi -p` gets no "waiting" card, because Kimi has already exited.
 

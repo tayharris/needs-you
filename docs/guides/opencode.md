@@ -34,7 +34,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Permission for a shell command | **opencode wants to run git: my-repo** |
 | Permission for an edit | **opencode wants to edit main.ts: my-repo** |
 | A question for you | **opencode asks “Which branch should the release come from?”: my-repo**, its choices listed |
-| Idle, waiting for you | **opencode is waiting for you: my-repo** |
+| Idle, waiting for you | **opencode finished: Refactor auth (my-repo)** (the session's title) |
+| Idle after a turn that ended on a question to you | **opencode asks: Should I push the branch? · Refactor auth (my-repo)** |
+
+A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: **opencode asks: Should I push the branch? · my-repo** (cleaned, token-shaped text redacted, clamped). `NEEDS_YOU_TURN_TEXT=0` keeps the old **opencode is waiting for you** card with no name or question.
 
 One card per session, updated in place. Commands, patterns and answers aren't sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. When the card can show the question whole (1 to 4 questions, each with 1 to 8 options, not a plan approval) you can answer on the card too: click a choice (or your choices, then **Send**) and the plugin hands your answer to opencode through its own question API, as if you'd picked it in the TUI. The question stays in the TUI the whole time; whichever answer comes first wins, and answering in the TUI stops the wait. The plugin waits up to `NEEDS_YOU_ANSWER_TIMEOUT` seconds (600 by default; 30 to 3600) and never answers on its own: no click, no answer. Anything else, answer in opencode. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
 

@@ -38,8 +38,8 @@ REWRITES = [
      "(key `agent:<host>:<session>`); don't duplicate those. Pass your own name as `--agent` "
      "(`codex`, `gemini`, `opencode`)."),
     ('"source":{"agent":"claude-code",', '"source":{"agent":"my-agent",'),
-    ("the hooks skip their generic \"Claude is waiting for you\" card",
-     "the hooks skip their generic \"waiting for you\" card"),
+    ("the hooks skip their generic \"Claude finished\" card",
+     "the hooks skip their generic \"finished\" card"),
     # Answering from the card through the hooks is Claude Code's (opencode's plugin answers
     # its own question tool without the agent's doing).
     (" A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card "

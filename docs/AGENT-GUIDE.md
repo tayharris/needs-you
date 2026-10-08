@@ -280,7 +280,7 @@ renews the expiry, so a run that crashed before its resolve doesn't leave a card
 
 **One card per wait.** When an agent posts a `needs` item with the CLI from inside its session
 (Claude Code, Codex, Gemini CLI, opencode, Kimi Code, or an Orca terminal; Copilot CLI and Grok only in Orca), the CLI notes the key for that
-session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
+session, and while it is open the hooks skip their generic "Claude finished" or "turn
 ended" card for that session. Permission prompts, questions and errors still post. The CLI
 finds the session from `$ORCA_TERMINAL_HANDLE`, the agent's own id (`$CLAUDE_CODE_SESSION_ID`,
 `$CODEX_SESSION_ID`), the agent process (Gemini CLI, and Kimi Code's Bash tool), or

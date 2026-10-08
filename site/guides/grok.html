@@ -67,10 +67,11 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <thead><tr><th>Session state</th><th>Card</th></tr></thead>
 <tbody>
 <tr><td>A permission prompt</td><td><strong>Grok needs permission: my-repo</strong></td></tr>
-<tr><td>Waiting for your next message, a minute after the turn</td><td><strong>Grok is waiting for you: my-repo</strong></td></tr>
+<tr><td>Waiting for your next message, a minute after the turn</td><td><strong>Grok finished: my-repo</strong></td></tr>
 <tr><td>The turn failed on an error</td><td><strong>Grok hit a rate limit: my-repo</strong> (or <strong>Grok stopped on an error</strong>)</td></tr>
 </tbody>
 </table></div>
+<p>Grok gives the hook no text of the turn, so its turn card always says finished. <code>NEEDS_YOU_TURN_TEXT=0</code> keeps the old <strong>Grok is waiting for you</strong> card (and no session name).</p>
 <p>One card per session, updated in place. Grok's permission notification doesn't say which tool, so neither does the card. The "waiting" card comes from Grok's <code>idle_prompt</code> notification, about 60 seconds after the turn ends, as in Claude Code, and not at all if you type first; an open permission card is kept rather than replaced by it. Commands, prompts, Grok's replies and tool output aren't sent. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the permission and error cards. Subagents post nothing; their waits show in the main session.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "grok hooks" line should be OK

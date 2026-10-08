@@ -120,7 +120,7 @@ class GrokHook(unittest.TestCase):
     def test_idle_and_permission_cards(self):
         self.idle()
         argv = self.wait_calls(1)[-1]
-        self.assertEqual(opt(argv, "--title"), "Grok is waiting for you: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Grok finished: my-repo")
         self.assertEqual(opt(argv, "--agent"), "grok")
         self.assertEqual(opt(argv, "--key").split(":")[-1], SESSION)
         self.run_hook("notify", "Notification", {"notificationType": "permission_prompt",
@@ -331,7 +331,7 @@ class EndToEnd(HubTestCase):
                       self.hub.url, "notification")
         self.assertTrue(wait_until(lambda: len(self.items()) == 1, timeout=10))
         item = self.items()[0]
-        self.assertEqual(item["title"], "Grok is waiting for you: my-repo")
+        self.assertEqual(item["title"], "Grok finished: my-repo")
         self.assertEqual(item["source"]["agent"], "grok")
         marker = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks", "grok-e2e")
         self.assertTrue(wait_until(lambda: os.path.exists(marker), timeout=10))

@@ -65,12 +65,14 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <tr><td>Approval prompt for an edit</td><td><strong>Codex wants to edit config.py: my-repo</strong></td></tr>
 <tr><td>Approval prompt for an MCP tool</td><td><strong>Codex needs permission for linear create_issue: my-repo</strong></td></tr>
 <tr><td>A question in Plan mode (<code>request_user_input</code>)</td><td><strong>Codex asks “Which database should the service use?”: my-repo</strong>, its choices listed</td></tr>
-<tr><td>Turn finished, waiting for you</td><td><strong>Codex is waiting for you: my-repo</strong></td></tr>
+<tr><td>Turn finished, waiting for you</td><td><strong>Codex finished: Billing cleanup (my-repo)</strong> (the thread's <code>/rename</code> name, when it has one)</td></tr>
+<tr><td>Turn ended on a question to you</td><td><strong>Codex asks: Should I push the branch? · my-repo</strong></td></tr>
 <tr><td>Your Codex plan's 5-hour or weekly limit past a threshold you set (optional, below)</td><td><strong>Codex weekly limit 85% used: resets Thu 09:00</strong>, low, never counted</td></tr>
 </tbody>
 </table></div>
+<p>A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: <strong>Codex asks: Should I push the branch? · my-repo</strong> (cleaned, token-shaped text redacted, clamped). <code>NEEDS_YOU_TURN_TEXT=0</code> keeps the old <strong>Codex is waiting for you</strong> card with no name or question.</p>
 <p>One card per session (key <code>agent:&lt;host&gt;:&lt;session&gt;</code>), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), or the end of the session. After <code>/clear</code>, or when a Codex window is closed or killed, Codex ends that session within about a minute (its background app-server unloads it), and the card clears then. If Codex itself dies, the 5-minute <code>needs-you flush</code> cleans up; any card expires 48 hours after its last post.</p>
-<p>Approval cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's <code>question</code> field for the Mac. Answer in Codex. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders (<a href="claude-code-everywhere.html#buttons">details</a>).</p>
+<p>Approval cards name at most the program or a file's basename. No command lines, patches or prompts are sent, and of Codex's reply only the question it ends on. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's <code>question</code> field for the Mac. Answer in Codex. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders (<a href="claude-code-everywhere.html#buttons">details</a>).</p>
 <p>Only want approval prompts, not a card at the end of every turn?</p>
 <div class="code" data-copy><pre><code class="language-bash">echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' &gt;&gt; ~/.config/needs-you/env</code></pre></div>
 <p>Want a heads-up before Codex's usage limit runs out? Set a threshold, the same one Claude's <a data-repo="/blob/main/integrations/claude-code/README.md#usage-limit-card-optional" href="https://github.com/tayharris/needs-you/blob/main/integrations/claude-code/README.md#usage-limit-card-optional">usage-limit card</a> uses:</p>
@@ -84,7 +86,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "codex hooks" line should be OK
 echo '{"hook_event_name":"Stop","session_id":"test-1","cwd":"'"$PWD"'"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.codex/hooks/needs-you-hook.sh notify codex
-# a "Codex is waiting for you" card appears; then:
+# a "Codex finished" card appears; then:
 echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.codex/hooks/needs-you-hook.sh resolve codex</code></pre></div>
 <h2 id="remove-it">Remove it <a class="anchor" href="#remove-it" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you uninstall-hooks --codex                         # offline: no hub, no checkout

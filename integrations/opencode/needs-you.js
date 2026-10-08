@@ -12,6 +12,8 @@
 //   permission.replied, question.replied,
 //   question.rejected, session.status busy resolve
 //   session.deleted                        end
+//   session.created/updated, message.updated, message.part.updated: remembered (the
+//   session's title, its last assistant text) for the Stop card, nothing sent
 //
 // The hook does the rest (opt-in gate, card text, links, lease, the CLI call); it is off
 // unless NEEDS_YOU_AGENT_ALERTS=1 or the session runs in an Orca terminal. This file never
@@ -206,12 +208,52 @@ export const NeedsYou = async (input) => {
   // Session -> the event behind its card, so the frequent resolve events cost nothing
   // otherwise, and session.idle plus session.status idle post once.
   const open = new Map()
+  // Session -> its title (not opencode's "New session - <date>" placeholder), the id of its
+  // latest assistant message, and that message's latest text (its end only). The turn card
+  // names the session and, when that text ends on a question, shows the question (the hook
+  // redacts and cuts it).
+  const titles = new Map()
+  const lastAssistant = new Map()
+  const lastText = new Map()
+
+  function noteSession(info) {
+    if (!info || typeof info !== "object") return
+    const id = str(info.id)
+    const title = str(info.title)
+    if (!id) return
+    if (title && !/^(New|Child) session - /.test(title)) titles.set(id, title.slice(0, 200))
+    else titles.delete(id)
+  }
+  function noteMessage(info) {
+    if (info && typeof info === "object" && info.role === "assistant" && str(info.sessionID) && str(info.id)) {
+      if (lastAssistant.get(str(info.sessionID)) !== str(info.id)) lastText.delete(str(info.sessionID))
+      lastAssistant.set(str(info.sessionID), str(info.id))
+    }
+  }
+  function notePart(part) {
+    if (!part || typeof part !== "object" || part.type !== "text" || part.synthetic === true) return
+    const sid = str(part.sessionID)
+    if (sid && lastAssistant.get(sid) === str(part.messageID)) lastText.set(sid, tail(str(part.text), 4000))
+  }
+  // The end of a text; a cut drops the partial word at the front, so a token cut in two
+  // can't slip past the hook's redaction.
+  function tail(t, n) {
+    return t.length <= n ? t : t.slice(-n).replace(/^\S*\s*/, "")
+  }
+  function forget(sid) {
+    titles.delete(sid)
+    lastAssistant.delete(sid)
+    lastText.delete(sid)
+  }
 
   function notify(sessionID, data) {
     if (!sessionID) return
     if (data.hook_event_name === "Stop" && open.get(sessionID) === "Stop") return
     open.set(sessionID, data.hook_event_name)
-    return run("notify", { session_id: sessionID, cwd, ...data })
+    const extra = {}
+    if (titles.has(sessionID)) extra.session_title = titles.get(sessionID)
+    if (data.hook_event_name === "Stop" && lastText.has(sessionID)) extra.last_assistant_message = lastText.get(sessionID)
+    return run("notify", { session_id: sessionID, cwd, ...extra, ...data })
   }
   function resolve(sessionID, mode = "resolve") {
     if (!sessionID || !open.has(sessionID)) return
@@ -261,8 +303,19 @@ export const NeedsYou = async (input) => {
           case "permission.replied":
             resolve(sid)
             break
+          case "session.created":
+          case "session.updated":
+            noteSession(p.info)
+            break
+          case "message.updated":
+            noteMessage(p.info)
+            break
+          case "message.part.updated":
+            notePart(p.part)
+            break
           case "session.deleted":
             resolve(sid || str(p.info && p.info.id), "end")
+            forget(sid || str(p.info && p.info.id))
             break
         }
       } catch {

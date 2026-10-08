@@ -82,7 +82,7 @@ When the blocker clears (they answered, the ticket moved, the job passed): `need
 
 ### One card per wait
 
-If the needs-you hooks are installed, they post and resolve permission prompts, plan approvals, your questions, "waiting for input" and API-error stops (key `agent:<host>:<session>`); don't duplicate those. Pass your own name as `--agent` (`codex`, `gemini`, `opencode`). While a `needs` card you posted from this session is open, the hooks skip their generic "waiting for you" card, so the person sees one card for the wait: yours. Until you resolve it, this session gets no "waiting" card.
+If the needs-you hooks are installed, they post and resolve permission prompts, plan approvals, your questions, "waiting for input" and API-error stops (key `agent:<host>:<session>`); don't duplicate those. Pass your own name as `--agent` (`codex`, `gemini`, `opencode`). While a `needs` card you posted from this session is open, the hooks skip their generic "finished" card, so the person sees one card for the wait: yours. Until you resolve it, this session gets no "waiting" card.
 
 ### Rules
 

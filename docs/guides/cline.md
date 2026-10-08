@@ -39,8 +39,11 @@ The invite installer's `--alerts` writes that line.
 | Task state | Card |
 |---|---|
 | Task finished, waiting for you | **Cline finished: my-repo** |
+| Task finished on a question to you (VS Code) | **Cline asks: Do you want CI wired up too? · my-repo** |
 | Task ended on an error | **Cline stopped on an error: my-repo** |
 | Waiting for your approval | none (Cline has no hook for it) |
+
+A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: **Cline asks: Should I push the branch? · my-repo** (cleaned, token-shaped text redacted, clamped). `NEEDS_YOU_TURN_TEXT=0` keeps the old **Cline is waiting for you** card with no name or question.
 
 One card per task (Cline's `taskId`). Starting or resuming a task clears the cards of earlier tasks in the same Cline. Cline's final answer, which it hands to the hook, and your prompts aren't sent. Subagent runs post nothing, and neither does a one-shot `cline "task"`: it has exited, so nobody is waiting. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns the finished cards off.
 

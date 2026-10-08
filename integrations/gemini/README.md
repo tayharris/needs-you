@@ -31,14 +31,14 @@ The installer backs up `settings.json`, replaces only entries whose command cont
 |---|---|---|
 | `Notification`, matcher `ToolPermission` | `notify gemini` | `needs-you add`: **Gemini wants to run npm** (`details.rootCommand`), **Gemini wants to edit app.py** (`details.fileName`), **Gemini needs permission for github create_pr** (MCP), **Gemini wants to fetch a page**, **Gemini wants approval for a plan**, else **Gemini needs your approval**. Nothing for `ask_user` (its confirmation has no question): `BeforeTool` posts that one |
 | `BeforeTool`, matcher `^ask_user$` | `notify gemini` | `needs-you add`: **Gemini asks “<question>”**, the questions and their choices in the body and as the item's `question` (a yes/no question: Yes and No) |
-| `AfterAgent` | `notify gemini` | resolves a question card the turn ended under, then `needs-you add`: **Gemini is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval cards |
+| `AfterAgent` | `notify gemini` | resolves a question card the turn ended under, then `needs-you add`: **Gemini finished** (the turn ended), or **Gemini asks: <question>** when `prompt_response` ends on a question. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval cards |
 | `BeforeAgent`, `AfterTool` | `resolve gemini` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`) | `start gemini` | resolves the cards this Gemini process posted before |
 | `SessionEnd` | `end gemini` | resolves the session's card |
 
 - Denying an approval (Esc, "No, suggest changes") fires no hook in Gemini CLI 0.63, so that card stays until the next prompt or the session ends.
 - **Key:** `agent:<short-hostname>:<id>`, `<id>` being `$ORCA_TERMINAL_HANDLE` or Gemini's `session_id`.
-- **Never sent:** the command line, diffs, file contents, URLs, the notification `message`, the prompt or Gemini's reply. A question's own text and choices are (cleaned, token-shaped text redacted, clamped; `NEEDS_YOU_AGENT_QUESTIONS=0` turns that off). A card names at most the program or a file's basename.
+- **Never sent:** the command line, diffs, file contents, URLs, the notification `message`, the prompt or Gemini's reply (except the question a reply ends on). A question's own text and choices are (cleaned, token-shaped text redacted, clamped; `NEEDS_YOU_AGENT_QUESTIONS=0` turns that off). A card names at most the program or a file's basename.
 - **Source:** `--agent gemini-cli --project <basename of the project dir>`.
 - Gemini waits for every hook and reads its stdout (or, if empty, stderr) as JSON. So in `gemini` mode the hook reads its input, starts a background copy with no stdin, stdout or stderr, and exits 0 at once with no output. The copy keeps the lease on the Gemini process, so the 5-minute `needs-you flush` can clear the card of a session that died.
 

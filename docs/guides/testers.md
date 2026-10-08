@@ -137,7 +137,7 @@ Tick off what you get to; anything that surprises you is worth a report. With a 
 
   The pill springs out with the title, then goes back to idle after the resolve.
 - [ ] **Re-post the same key** with a different title: the card updates instead of duplicating.
-- [ ] **Claude Code:** in a Claude Code session on a connected machine, ask for something that needs a permission prompt (e.g. "run `ls` in a new folder"). A card "Claude wants to run …" appears; once you answer in Claude, it clears itself. Leave a session idle waiting for input for about a minute: "Claude is waiting for you".
+- [ ] **Claude Code:** in a Claude Code session on a connected machine, ask for something that needs a permission prompt (e.g. "run `ls` in a new folder"). A card "Claude wants to run …" appears; once you answer in Claude, it clears itself. Leave a session idle for about a minute after a turn: "Claude finished: <session name> (<project>)", or "Claude asks: <question>" when Claude's last message ended on a question; `/rename` the session and the next card uses the new name.
 - [ ] **Card buttons:** **Done**, **Dismiss**, snooze, and the **Terminal** / **VS Code** buttons on agent cards ([claude-code-everywhere.md](claude-code-everywhere.md#buttons)).
 - [ ] **Never steals focus:** keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.
 - [ ] **Work and personal:** post one item with `--context work` and one with `--context personal`. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.
