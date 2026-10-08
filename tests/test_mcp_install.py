@@ -420,7 +420,7 @@ class Installer(HubTestCase):
         with open(self.p(".codex", "config.toml")) as fh:
             self.assertIn("[mcp_servers.needs-you]", fh.read())
         with open(self.p(".claude.json")) as fh:
-            self.assertIn(server, json.load(fh)["mcpServers"]["needs-you"]["args"])
+            self.assertIn(os.path.realpath(server), json.load(fh)["mcpServers"]["needs-you"]["args"])
         with open(self.p(".gemini", "settings.json")) as fh:
             self.assertIn("needs-you", json.load(fh)["mcpServers"])
         with open(self.p(".codex", "AGENTS.md")) as fh:
