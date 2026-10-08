@@ -207,6 +207,11 @@ class Installer(unittest.TestCase):
             self.assertEqual(json.load(fh), mine)
         self.assertFalse(os.path.exists(self.hook))
 
+    def test_new_file(self):
+        self.assertEqual(self.run_installer().returncode, 0)
+        with open(self.conf) as fh:
+            self.assertEqual(list(json.load(fh)), ["version", "hooks"])
+
     def test_refuses_invalid_json_and_symlinks(self):
         os.makedirs(self.cursor)
         with open(self.conf, "w") as fh:

@@ -456,6 +456,8 @@ def where_lines():
         jump = "orca terminal switch%s --terminal %s" % (
             " --environment " + shlex.quote(orca_env) if orca_env else "", shlex.quote(handle))
         lines.append("Jump to its terminal: `%s`" % jump)
+    elif AGENT == "aider" and session.startswith("aider-"):
+        lines.append("Aider process `%s`" % session[6:])
     elif session:
         lines.append("Session `%s`" % session[:8])
     return lines

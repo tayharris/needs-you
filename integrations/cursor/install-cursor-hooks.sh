@@ -134,7 +134,8 @@ if action == "install":
 
 if hooks:
     doc["hooks"] = hooks
-    doc.setdefault("version", 1)
+    if "version" not in doc:
+        doc = dict([("version", 1)] + list(doc.items()))
 else:
     doc.pop("hooks", None)
 

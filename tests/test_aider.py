@@ -56,6 +56,7 @@ class AiderHook(HookCase):
         self.assertEqual(opt(argv, "--key").split(":")[-1], sid)
         # No event tells us the person answered: a short expiry, and the lease on Aider's pid.
         self.assertEqual(opt(argv, "--expires-in"), "1")
+        self.assertIn("Aider process `%d`" % os.getpid(), opt(argv, "--body"))
         self.wait_marker(sid)
         self.assertEqual(self.read_marker(sid)["pid"], str(os.getpid()))
         # The next wait updates the same card.
