@@ -45,6 +45,8 @@
         <li><a href="#claude-code-hooks">Claude Code hooks</a></li>
         <li><a href="#codex-hooks">Codex hooks</a></li>
         <li><a href="#copilot-cli-hooks">Copilot CLI hooks</a></li>
+        <li><a href="#kimi-code-hooks">Kimi Code hooks</a></li>
+        <li><a href="#grok-build-hooks">Grok Build hooks</a></li>
         <li><a href="#cursor-cline-and-aider">Cursor, Cline and Aider</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
@@ -164,6 +166,32 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li><strong>Hooks turned off.</strong> <code>"disableAllHooks": true</code> in <code>~/.copilot/settings.json</code> or <code>config.json</code>; doctor reports it.</li>
 <li><strong>Another <code>COPILOT_HOME</code>.</strong> Copilot then reads <code>$COPILOT_HOME/hooks/</code> instead; run the installer and doctor with the same value.</li>
 <li><strong>A card stays after Esc.</strong> Cancelling a permission prompt runs no hook in Copilot; the card goes with your next prompt or the end of the session.</li>
+</ul>
+<h2 id="kimi-code-hooks">Kimi Code hooks <a class="anchor" href="#kimi-code-hooks" aria-label="Link to this section">#</a></h2>
+<p><code>needs-you doctor</code> has a <code>kimi hooks</code> line, and <code>kimi doctor</code> checks that Kimi accepts <code>config.toml</code>. In <code>kimi</code> mode the hook finishes in the background, so log to a file:</p>
+<div class="code" data-copy><pre><code class="language-bash">echo '{"hook_event_name":"PermissionRequest","session_id":"session_t1","cwd":"'"$PWD"'","tool_name":"Bash","display":{"command":"make test"}}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.kimi-code/hooks/needs-you-hook.sh notify kimi
+sleep 2; cat /tmp/ny-hook.log</code></pre></div>
+<p>Kimi-specific causes:</p>
+<ul>
+<li><strong>Not restarted.</strong> Kimi reads <code>config.toml</code> when it starts.</li>
+<li><strong>Kimi refuses the config.</strong> Any key Kimi doesn't know, in any <code>[[hooks]]</code> entry, makes it refuse the whole file; <code>kimi doctor</code> names it. The needs-you block uses only <code>event</code>, <code>matcher</code>, <code>command</code> and <code>timeout</code>.</li>
+<li><strong>The installer stopped.</strong> Your <code>config.toml</code> defines <code>hooks</code> as a table or an inline list: copy the entries from <code>integrations/kimi/kimi-hooks.toml</code> into it by hand.</li>
+<li><strong>Another <code>KIMI_CODE_HOME</code>.</strong> Kimi then reads <code>$KIMI_CODE_HOME/config.toml</code>; run the installer and doctor with the same value.</li>
+<li><strong>No "waiting" card from <code>kimi -p</code>.</strong> By design: the run has exited, so nobody is waiting (the log says <code>skipped: kimi has exited</code>).</li>
+<li><strong>A card stays after Ctrl-C.</strong> Kimi runs no <code>SessionEnd</code> hook then; the 5-minute <code>needs-you flush</code> clears the card once Kimi has exited. Leave with <code>/exit</code> to clear it at once.</li>
+</ul>
+<h2 id="grok-build-hooks">Grok Build hooks <a class="anchor" href="#grok-build-hooks" aria-label="Link to this section">#</a></h2>
+<p><code>needs-you doctor</code> has a <code>grok hooks</code> line, and <code>grok inspect</code> lists the hooks Grok loaded. In <code>grok</code> mode the hook finishes in the background, so log to a file:</p>
+<div class="code" data-copy><pre><code class="language-bash">echo '{"hook_event_name":"Notification","notificationType":"permission_prompt","session_id":"t1","cwd":"'"$PWD"'"}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.grok/hooks/needs-you-hook.sh notify grok
+sleep 2; cat /tmp/ny-hook.log</code></pre></div>
+<p>Grok-specific causes:</p>
+<ul>
+<li><strong>The "waiting" card comes a minute late.</strong> By design: it comes from Grok's <code>idle_prompt</code> notification, about 60 seconds after the turn, and not at all if you type first.</li>
+<li><strong>Not restarted, or switched off.</strong> Grok reads <code>~/.grok/hooks/*.json</code> when it starts; an entry switched off in <code>/hooks</code> stays off (<code>~/.grok/disabled-hooks</code>), and an organization policy with <code>allow_managed_hooks_only</code> turns off every user hook. Doctor reports both.</li>
+<li><strong>Cards say Grok but come from the Claude Code hooks.</strong> Without needs-you's own Grok hooks, Grok runs the Claude Code ones, which post for it. With both installed, only the Grok ones post.</li>
+<li><strong>Another <code>GROK_HOME</code>.</strong> Grok then reads <code>$GROK_HOME/hooks/</code>; run the installer and doctor with the same value.</li>
 </ul>
 <h2 id="cursor-cline-and-aider">Cursor, Cline and Aider <a class="anchor" href="#cursor-cline-and-aider" aria-label="Link to this section">#</a></h2>
 <p><code>needs-you doctor</code> has <code>cursor hooks</code>, <code>cline hooks</code> and <code>aider notifications</code> lines. None of the three has an approval hook, so <strong>no card when the agent asks to run something</strong>: that's expected, not a fault. The hook finishes in the background in all three, so log to a file (<code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> on the test commands in <a href="cursor.html#check-it-works">Cursor</a>, <a href="cline.html#check-it-works">Cline</a> or <a href="aider.html#check-it-works">Aider</a>).</p>

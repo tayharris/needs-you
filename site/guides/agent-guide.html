@@ -81,6 +81,7 @@ invite**; on a server hub: <code>needs-you-admin invite create</code>). It looks
 Code (plus <code>--ssh-alias &lt;name&gt;</code> if the person reaches it from the Mac over SSH),
 <code>--codex-hooks user</code> for Codex CLI, <code>--gemini-hooks user</code> for Gemini CLI,
 <code>--opencode-plugin</code> for opencode, <code>--copilot-hooks user</code> for GitHub Copilot CLI,
+<code>--kimi-hooks user</code> for Kimi Code CLI, <code>--grok-hooks user</code> for Grok Build,
 <code>--cursor-hooks user</code> for Cursor, <code>--cline-hooks user</code> for Cline, <code>--aider</code> for Aider,
 <code>--orca</code> for Orca automations, <code>--context personal</code> if
 its items are personal. Only if the person asks: <code>--agent-instructions codex,gemini,opencode</code>
@@ -244,7 +245,7 @@ Resolving is idempotent; any sender token of the inbox can resolve any of its it
 (hourly: <code>3</code>, daily: <code>48</code>) and re-posts on every run that still sees the blocker; each re-post
 renews the expiry, so a run that crashed before its resolve doesn't leave a card forever.</p>
 <p><strong>One card per wait.</strong> When an agent posts a <code>needs</code> item with the CLI from inside its session
-(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI only in Orca), the CLI notes the key for that
+(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI, Kimi Code and Grok only in Orca), the CLI notes the key for that
 session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
 ended" card for that session. Permission prompts, questions and errors still post. The CLI
 finds the session from <code>$ORCA_TERMINAL_HANDLE</code>, the agent's own id (<code>$CLAUDE_CODE_SESSION_ID</code>,
@@ -269,6 +270,8 @@ doesn't duplicate them.</p>
 <tr><td>Gemini CLI</td><td><code>--gemini-hooks user</code>; only in folders you trust</td><td><a data-repo="/blob/main/integrations/gemini/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/gemini/README.md">integrations/gemini</a></td></tr>
 <tr><td>opencode</td><td><code>--opencode-plugin</code></td><td><a data-repo="/blob/main/integrations/opencode/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/opencode/README.md">integrations/opencode</a></td></tr>
 <tr><td>GitHub Copilot CLI</td><td><code>--copilot-hooks user</code></td><td><a data-repo="/blob/main/integrations/copilot/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/copilot/README.md">integrations/copilot</a></td></tr>
+<tr><td>Kimi Code CLI</td><td><code>--kimi-hooks user</code>; check with <code>kimi doctor</code></td><td><a data-repo="/blob/main/integrations/kimi/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/kimi/README.md">integrations/kimi</a></td></tr>
+<tr><td>Grok Build</td><td><code>--grok-hooks user</code>; without it Grok runs the Claude Code hooks, which then post for it</td><td><a data-repo="/blob/main/integrations/grok/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/grok/README.md">integrations/grok</a></td></tr>
 <tr><td>Cursor</td><td><code>--cursor-hooks user</code>; a card when a turn finishes only (no approval hook)</td><td><a data-repo="/blob/main/integrations/cursor/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/cursor/README.md">integrations/cursor</a></td></tr>
 <tr><td>Cline</td><td><code>--cline-hooks user</code>; a card when a task finishes only (no approval hook)</td><td><a data-repo="/blob/main/integrations/cline/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/cline/README.md">integrations/cline</a></td></tr>
 <tr><td>Aider</td><td><code>--aider</code>; a card when Aider waits, cleared when it exits or after an hour</td><td><a data-repo="/blob/main/integrations/aider/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/aider/README.md">integrations/aider</a></td></tr>

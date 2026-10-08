@@ -52,6 +52,8 @@ for f in integrations/claude-code/needs-you-hook.sh integrations/claude-code/ski
          integrations/gemini/gemini-hooks.json integrations/gemini/install-gemini-hooks.sh \
          integrations/opencode/needs-you.js integrations/opencode/install-opencode-plugin.sh \
          integrations/copilot/copilot-hooks.json integrations/copilot/install-copilot-hooks.sh \
+         integrations/kimi/kimi-hooks.toml integrations/kimi/install-kimi-hooks.sh \
+         integrations/grok/grok-hooks.json integrations/grok/install-grok-hooks.sh \
          integrations/cursor/cursor-hooks.json integrations/cursor/install-cursor-hooks.sh \
          integrations/cline/install-cline-hooks.sh integrations/aider/install-aider-notifications.sh \
          integrations/agent-instructions/needs-you.md; do
