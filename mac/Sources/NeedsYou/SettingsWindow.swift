@@ -4,7 +4,7 @@ import ServiceManagement
 import SwiftUI
 
 /// The Settings window: a sidebar of short pages, like System Settings. General; the
-/// "Inbox and machines" group (Your inbox, Connect a machine, Machines, Other hubs
+/// "Hubs and machines" group (Built-in hub, Connect a machine, Machines, Other hubs
 /// (advanced)); then Panel, Alerts, Integrations, Updates and Advanced. The page list is `SettingsTab` in Core
 /// (SettingsPages.swift). Each page is a grouped form that scrolls.
 ///
@@ -372,17 +372,17 @@ struct SettingsView: View {
                 Text("Welcome to Needs You").font(.headline)
                 Text("Needs You shows what your machines, projects and agents need from you, in a small floating pill. It stays out of the way until something is waiting.")
                     .fixedSize(horizontal: false, vertical: true)
-                Text("To start, pick one. You can change it later in Your inbox.")
+                Text("Alerts are kept in a hub. To start, pick one. You can change it later in Built-in hub.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
-                    Button("Use this Mac as my inbox") {
+                    Button("Use the hub built into this app") {
                         settings.runLocalHub = true
                         localHub.apply()
                         model.restartFeed()
                         navigation.tab = .inbox
                     }
-                    Button("Join another hub with a link") { navigation.tab = .otherHubs }
+                    Button("Join a hub with a link") { navigation.tab = .otherHubs }
                     Button("Try demo mode") {
                         settings.demoMode = true
                         localHub.apply()
@@ -425,23 +425,23 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Your inbox
+    // MARK: Built-in hub
 
-    /// Three lines on what the parts are, at the top of Your inbox.
+    /// Three lines on what the parts are (senders, hub, app), at the top of Built-in hub.
     private var howItWorksSection: some View {
         Section {
-            HowItWorksStep(symbol: "paperplane", text: "Your machines and agents send alerts.")
-            HowItWorksStep(symbol: "tray.full", text: "This Mac holds them. It's the hub: it runs inside this app, nothing else to install.")
-            HowItWorksStep(symbol: "capsule", text: "The pill shows them until they're handled.")
+            HowItWorksStep(symbol: "paperplane", text: "Senders post alerts: the needs-you command and agent hooks, on any machine.")
+            HowItWorksStep(symbol: "tray.full", text: "A hub stores them. This app has one built in, so there's nothing else to install.")
+            HowItWorksStep(symbol: "capsule", text: "This app shows them in the pill until they're handled.")
         } header: {
             Text("How it works")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Machines that only send alerts (servers, CI, agents) don't need this app, just the `needs-you` command. A link from Connect a machine installs it.")
+                Text("Senders don't need this app, just the `needs-you` command: a link from Connect a machine installs it. You can also use a hub on a server instead of the built-in one (Other hubs).")
                     .foregroundStyle(.secondary)
                 // Its own colour (not the footer's grey) and an arrow, so it reads as a link.
                 Link(destination: SettingsLinks.wordsGuide()) {
-                    Label("What the words mean", systemImage: "arrow.up.right.square")
+                    Label("App, hubs and senders explained", systemImage: "arrow.up.right.square")
                 }
                 .foregroundStyle(Color.accentColor)
             }
@@ -459,7 +459,7 @@ struct SettingsView: View {
                     model.restartFeed()
                 }
             )) {
-                LabelWithDetail("Run hub on this Mac", "Your agents and servers send alerts to it. Nothing else to install.")
+                LabelWithDetail("Run hub on this Mac", "The built-in hub. Senders post to it and this app shows what it holds.")
             }
             .disabled(demoUI)
             if demoUI {
@@ -482,7 +482,7 @@ struct SettingsView: View {
                         .help("Stop the hub on this Mac and start it again now")
                 }
             } else {
-                Text("Off. To get alerts without it, join another hub in Other hubs (advanced).")
+                Text("Off. To get alerts without it, join a server hub or another hub in Other hubs (advanced).")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         } header: {
@@ -534,9 +534,9 @@ struct SettingsView: View {
     private var otherHubsIntroSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
-                Text("You don't need anything here: Your inbox already runs a hub on this Mac. Use this page only to:")
-                Text("• **Join another hub:** see alerts from a hub another Mac or a server runs, with a link made for this Mac.")
-                Text("• **Add an always-on server hub,** so alerts land somewhere while this Mac sleeps.")
+                Text("You don't need anything here: this app already runs its built-in hub. Use this page only to:")
+                Text("• **Join another hub:** show alerts from a hub another Mac or a server runs, with a link made for this Mac.")
+                Text("• **Use an always-on server hub,** so alerts land somewhere while this Mac sleeps.")
                 Text("• **Add a hub by URL and token,** if you were given those instead of a link.")
             }
             .font(.callout)
@@ -546,7 +546,7 @@ struct SettingsView: View {
 
     private var serverHubsSection: some View {
         Section {
-            Text("A server hub is the same hub, running all the time on a Linux server or VM on your tailnet. It keeps a copy of your alerts while this Mac sleeps, and senders fall back to it. There's no app screen for it: you set it up on the server from the command line with `scripts/install-hub.sh`, then join it here with a link from its admin.")
+            Text("A server hub is the same hub, running all the time on a Linux server or VM on your tailnet. Set it up on the server with `scripts/install-hub.sh`, then join it here with a link from its admin. Server hubs copy alerts to each other, not yet to this app's built-in hub: the app shows one hub at a time, the built-in one first, so to see a server hub's alerts all the time turn off Run hub on this Mac.")
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Link("Server hub guide (HUB.md)", destination: SettingsLinks.serverHubGuide())
                 .font(.callout)
@@ -678,7 +678,7 @@ struct SettingsView: View {
                 Label(warning, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Button("Your inbox…") { navigation.tab = .inbox }
+                Button("Built-in hub…") { navigation.tab = .inbox }
             }
         }
     }
@@ -686,15 +686,15 @@ struct SettingsView: View {
     private var inviteUnavailableSection: some View {
         Section {
             if settings.isDemo {
-                Text("Demo mode is on, so there's no inbox to connect machines to. Turn demo mode off in General.")
+                Text("Demo mode is on, so there's no hub to connect machines to. Turn demo mode off in General.")
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Connecting machines needs an owner token. The hub on this Mac gives you one: turn on “Run hub on this Mac” in Your inbox.")
+                Text("Connecting machines needs an owner token. The built-in hub gives you one: turn on “Run hub on this Mac” in Built-in hub.")
                     .fixedSize(horizontal: false, vertical: true)
                 Text("To connect machines to someone else's hub, ask its owner for an owner link, then join with it in Other hubs.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack {
-                    Button("Your inbox…") { navigation.tab = .inbox }
+                    Button("Built-in hub…") { navigation.tab = .inbox }
                     Button("Other hubs…") { navigation.tab = .otherHubs }
                 }
             }
@@ -708,7 +708,7 @@ struct SettingsView: View {
     private var machinesSection: some View {
         Section {
             HStack {
-                Text("Machines that can use your inbox, with what they are and their open items.")
+                Text("Senders (they post alerts) and Macs (they show them) that can use your hub, with their open items.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Button("Refresh") { connect.refreshAccess() }
@@ -724,7 +724,7 @@ struct SettingsView: View {
         } header: {
             Text("Connected machines")
         } footer: {
-            Text("Revoke a machine to stop it from using your inbox. Its open items stay until they're resolved or dismissed.")
+            Text("Revoke a machine to stop it from using your hub. Its open items stay until they're resolved or dismissed.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onAppear { connect.refreshAccess() }
@@ -937,7 +937,7 @@ struct SettingsView: View {
 
     private var sendersSection: some View {
         Section {
-            Text("Claude Code hooks, Orca automations, CI jobs and scripts send alerts to your inbox. To set up a machine, make a link for it in Connect a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
+            Text("Claude Code hooks, Orca automations, CI jobs and scripts are senders: they post alerts to your hub. To set up a machine, make a link for it in Connect a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if canInvite {
                 HStack {
@@ -978,7 +978,7 @@ struct SettingsView: View {
             }
             if settings.runLocalHub && !settings.isDemo {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("This Mac (your inbox)").bold()
+                    Text("This Mac (built-in hub)").bold()
                     VStack(alignment: .leading, spacing: 2) {
                         Text(LocalHub.clientURL.absoluteString).foregroundStyle(.secondary).font(.callout.monospaced())
                         if let tailnet = localHub.reach?.tailnetURL {
@@ -1326,7 +1326,7 @@ private struct AddressRow: View {
     }
 }
 
-/// One line of Your inbox → How it works.
+/// One line of Built-in hub → How it works.
 private struct HowItWorksStep: View {
     let symbol: String
     let text: String
