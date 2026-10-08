@@ -67,6 +67,15 @@ final class AppModel: ObservableObject {
     /// When urgent last played its arrival (UrgentReminder).
     private var lastUrgentAlertAt: Date?
     @Published var showRecent = false
+    /// The Orca section in the open panel is open (it starts collapsed).
+    @Published var showOrca = false
+    /// Orca's worktrees (OrcaWorktrees.visible), refreshed while the panel is open; empty
+    /// without Orca or with Settings → Panel → Orca off. Local only: never counted.
+    @Published private(set) var orcaRows: [OrcaWorktreeRow] = []
+    /// Every row Orca returned (for the header's "of N").
+    @Published private(set) var orcaTotal: [OrcaWorktreeRow] = []
+    private var orcaFetchedAt: Date?
+    private var orcaFetching = false
     /// The Later section in the expanded panel is open.
     @Published var showLater = false
     /// The quiet peek that delivers Later, if one is showing.
@@ -294,6 +303,32 @@ final class AppModel: ObservableObject {
         guard !isDemo, !senderObserved, tokens.contains(where: { !$0.current }) else { return }
         senderObserved = true
         recordSetupProgress()
+    }
+
+    // MARK: Orca strip
+
+    /// Re-reads Orca's worktrees (this Mac and its paired environments) at most every
+    /// OrcaWorktrees.refreshInterval while the panel is open. Runs `orca` off the main
+    /// thread; nothing it returns is ever a link or an action.
+    func refreshOrca(force: Bool = false) {
+        guard settings.showOrcaWorktrees, !isDemo else {
+            if !orcaRows.isEmpty { orcaRows = []; orcaTotal = [] }
+            return
+        }
+        guard !orcaFetching else { return }
+        if !force, let at = orcaFetchedAt, Date().timeIntervalSince(at) < OrcaWorktrees.refreshInterval { return }
+        orcaFetching = true
+        orcaFetchedAt = Date()
+        OrcaStripRunner.fetch { [weak self] rows in
+            guard let self else { return }
+            self.orcaFetching = false
+            guard self.settings.showOrcaWorktrees else { return }
+            let all = rows ?? []
+            if all != self.orcaTotal {
+                self.orcaTotal = all
+                self.orcaRows = OrcaWorktrees.visible(all)
+            }
+        }
     }
 
     /// Re-reads ~/.claude (on launch, expand and wake). Small and read-only.
@@ -545,6 +580,7 @@ final class AppModel: ObservableObject {
 
     private func tick() {
         now = Date()
+        if isExpanded { refreshOrca() }
         if case .snoozed(let until) = visibility, until <= now {
             visibility = .shown
             objectWillChange.send()
@@ -790,6 +826,7 @@ final class AppModel: ObservableObject {
         }
         isExpanded = true
         if byUser { refreshSetupFacts() }
+        refreshOrca()
         markVisibleSeen()
         settings.pillLastOpenedAt = Date()   // the pill's "N new" starts over
     }

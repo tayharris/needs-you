@@ -318,6 +318,7 @@ struct SettingsView: View {
             OpenPanelSettingsSection(settings: settings)
             OpacitySettingsSection(settings: settings)
             SetupTipsSettingsSection(settings: settings)
+            OrcaStripSettingsSection(settings: settings)
             keyboardSection
             extra[.panel]
         case .appearance:

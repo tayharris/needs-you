@@ -282,8 +282,63 @@ struct CardList: View {
                     }
                 }
             }
+            if !model.orcaRows.isEmpty {
+                // Orca's worktrees (local `orca worktree ps`): plain text, never counted,
+                // never a link or a button beyond the fold.
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { model.showOrca.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: model.showOrca ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(verbatim: OrcaWorktrees.header(model.orcaTotal))
+                        Spacer()
+                    }
+                    .font(.system(size: model.metrics.sectionFont, weight: .semibold))
+                    .foregroundStyle(Theme.faint)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Orca's worktrees on this Mac and its paired environments (Settings → Panel → Orca)")
+                .padding(.top, 4)
+                if model.showOrca {
+                    ForEach(model.orcaRows) { row in
+                        OrcaWorktreeRowView(row: row, model: model)
+                    }
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One Orca worktree: name, then status, terminals and host. Text(verbatim:), so a branch
+/// name is never read as markdown or a link.
+private struct OrcaWorktreeRowView: View {
+    let row: OrcaWorktreeRow
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(row.liveTerminals > 0 ? Theme.accent : Theme.faint.opacity(0.5))
+                .frame(width: 6, height: 6)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: row.name)
+                    .font(Theme.body(model.bodyFont))
+                    .foregroundStyle(Theme.text.opacity(0.8))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(verbatim: row.detail)
+                    .font(Theme.meta(model.metrics))
+                    .foregroundStyle(Theme.faint)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .help(row.branch.isEmpty ? row.name : row.branch)
     }
 }
 
