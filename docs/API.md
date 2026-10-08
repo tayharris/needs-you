@@ -799,6 +799,16 @@ The hub cleans up after itself every 10 minutes (`maintenance_seconds`):
   that still has the text never brings it back (last writer wins needs a strictly newer
   version). `0` keeps the text until the item is deleted. Clients drop a tombstone like any
   closed item and never show one.
+
+  The hub's own clock decides: an item qualifies once it closed more than
+  `text_retention_hours` ago by its `updated_at` **or** by when this hub stored that closed
+  version, so a far-future `updated_at` from a peer can't keep the text. Text stays gone: a
+  replicated version of a closed (or expired) item is stored without its text when this hub has
+  already purged that item, or when it closed longer ago than `text_retention_hours`; only an
+  open, unexpired version (a re-open) carries text back. A sender re-posting the key gets a new
+  item. Unreadable replicated records in quarantine go after `text_retention_hours` too, the
+  database overwrites freed space (`secure_delete`) and the WAL is checkpointed, and the same
+  purge runs on the pre-migration backups (`hub.db.bak-N`).
 - Hard-deletes items (tombstones by then) that were resolved or dismissed more than
   `retention_days` (default 30) ago, and items whose `expires_at` passed more than
   `retention_days` ago. Open `needs` items are never purged.

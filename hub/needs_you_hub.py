@@ -1114,6 +1114,8 @@ class Store:
         self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout=10000")
+        # Purged text is overwritten on disk, not just unlinked from the b-tree (short retention).
+        self.conn.execute("PRAGMA secure_delete=ON")
         version = int(self.conn.execute("PRAGMA user_version").fetchone()[0])
         has_tables = int(self.conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]) > 0
@@ -1545,6 +1547,10 @@ class Store:
             if row is not None and not self.newer(rec["updated_at"], rec["updated_by"],
                                                   row["updated_at"], row["updated_by"]):
                 return False
+            if rec["purged_at"] is None and self._stays_dead(rec, row):
+                rec.update(TOMBSTONE_TEXT_COLS)  # its metadata, never its text
+                rec["purged_at"] = (row["purged_at"] if row is not None and row["purged_at"] is not None
+                                    else self.now_ms())
             if (not knows_steps and row is not None
                     and row["content_updated_at"] == rec["content_updated_at"]):
                 # A hub older than `steps` wrote this version (a resolve, a seen_at, an
@@ -1566,6 +1572,22 @@ class Store:
                     return True
             self._settle_content(rec["superseded_by"] or rec["id"])
             return True
+
+    def _stays_dead(self, rec: Dict[str, Any], row: Any) -> bool:
+        """A replicated version that must arrive as a tombstone: it is closed (or expired) and
+        either this hub already purged the item (only an open, unexpired version, a genuine
+        re-open, brings text back) or it closed longer ago than text_retention."""
+        if self.text_retention_ms <= 0:
+            return False
+        now = self.now_ms()
+        expired = rec["expires_at"] is not None and rec["expires_at"] <= now
+        if rec["status"] == "open" and not expired:
+            return False
+        if row is not None and row["purged_at"] is not None:
+            return True
+        tcut = now - self.text_retention_ms
+        return (rec["status"] != "open" and rec["updated_at"] < tcut) or \
+            (rec["expires_at"] is not None and rec["expires_at"] < tcut)
 
     CONTENT_COLS = ("context", "kind", "priority", "title", "body", "links", "steps", "question",
                     "answer", "answered_at", "answered_by", "source",
@@ -1942,13 +1964,18 @@ class Store:
                 sets = ", ".join("%s = ?" % k for k in TOMBSTONE_TEXT_COLS)
                 out["texts"] = c.execute(
                     "UPDATE items SET %s, purged_at = ? WHERE purged_at IS NULL AND "
-                    "((status != 'open' AND updated_at < ?) OR (expires_at IS NOT NULL AND expires_at < ?))"
-                    % sets, tuple(TOMBSTONE_TEXT_COLS.values()) + (now, tcut, tcut)).rowcount
+                    "((status != 'open' AND (updated_at < ? OR local_at < ?)) OR "
+                    "(expires_at IS NOT NULL AND expires_at < ?))"
+                    % sets, tuple(TOMBSTONE_TEXT_COLS.values()) + (now, tcut, tcut, tcut)).rowcount
+                # (local_at: when this hub stored the closed version, by its own clock, so a
+                # peer's far-future updated_at can't keep the text.) Unreadable replicated
+                # records keep text too: they go as soon.
+                c.execute("DELETE FROM quarantine WHERE received_at < ?", (tcut,))
             if self.retention_ms > 0:
                 cutoff = now - self.retention_ms
                 out["items"] = c.execute(
-                    "DELETE FROM items WHERE (status != 'open' AND updated_at < ?) OR "
-                    "(expires_at IS NOT NULL AND expires_at < ?)", (cutoff, cutoff)).rowcount
+                    "DELETE FROM items WHERE (status != 'open' AND (updated_at < ? OR local_at < ?)) OR "
+                    "(expires_at IS NOT NULL AND expires_at < ?)", (cutoff, cutoff, cutoff)).rowcount
             out["outbox"] = c.execute("DELETE FROM outbox WHERE created_at < ?",
                                       (now - OUTBOX_MAX_AGE_MS,)).rowcount
             dead = []
@@ -1965,7 +1992,48 @@ class Store:
                       "(SELECT id FROM tokens WHERE revoked_at IS NULL)")
             if self.retention_ms > 0:
                 c.execute("DELETE FROM quarantine WHERE received_at < ?", (now - self.retention_ms,))
+        self._scrub_backups(now)
         return out
+
+    def _scrub_backups(self, now: int) -> None:
+        """The pre-migration backups (hub.db.bak-N) keep a copy of every item: apply the same
+        text purge and deletion to them, overwriting the freed space (secure_delete)."""
+        d = os.path.dirname(os.path.abspath(self.path))
+        prefix = os.path.basename(self.path) + ".bak-"
+        try:
+            names = [n for n in os.listdir(d) if n.startswith(prefix) and not n.endswith(".tmp")]
+        except OSError:
+            return
+        for n in names:
+            p = os.path.join(d, n)
+            try:
+                b = sqlite3.connect(p, isolation_level=None, timeout=5)
+            except sqlite3.Error:
+                continue
+            try:
+                b.execute("PRAGMA secure_delete=ON")
+                cols = {r[1] for r in b.execute("PRAGMA table_info(items)")}
+                if not cols:
+                    continue
+                closed = "status != 'open' AND (updated_at < ?%s)" % (" OR local_at < ?" if "local_at" in cols else "")
+                b.execute("BEGIN IMMEDIATE")
+                if self.text_retention_ms > 0:
+                    tcut = now - self.text_retention_ms
+                    sets = [(k, v) for k, v in TOMBSTONE_TEXT_COLS.items() if k in cols]
+                    args = [v for _k, v in sets] + [tcut] * (closed.count("?") + 1)
+                    b.execute("UPDATE items SET %s WHERE (%s) OR (expires_at IS NOT NULL AND expires_at < ?)"
+                              % (", ".join("%s = ?" % k for k, _v in sets), closed), args)
+                    if {r[0] for r in b.execute("SELECT name FROM sqlite_master WHERE type='table'")} >= {"quarantine"}:
+                        b.execute("DELETE FROM quarantine WHERE received_at < ?", (tcut,))
+                if self.retention_ms > 0:
+                    cutoff = now - self.retention_ms
+                    b.execute("DELETE FROM items WHERE (%s) OR (expires_at IS NOT NULL AND expires_at < ?)" % closed,
+                              [cutoff] * (closed.count("?") + 1))
+                b.execute("COMMIT")
+            except sqlite3.Error as e:
+                sys.stderr.write("couldn't scrub %s: %s\n" % (p, e))
+            finally:
+                b.close()
 
     def compact(self, full: bool = False) -> Dict[str, Any]:
         """WAL checkpoint plus incremental vacuum; a full VACUUM when `full` and >25% is free."""

@@ -264,7 +264,9 @@ them within seconds. A link from one hub can be redeemed on any; see
 The hub keeps itself small and keeps little: a closed item's text (title, body, links, steps,
 question, answer, source) is purged `text_retention_hours` (24) after it closed, leaving a
 tombstone (id, key, status, times, origin hub) so peers and clients that were away still learn it
-closed; tombstones are deleted after `retention_days` (30), stale peer
+closed; tombstones are deleted after `retention_days` (30). The purge runs on the hub's own clock,
+a peer's copy can't bring purged text back, freed space is overwritten (`secure_delete`), and the
+backups made before a migration (`hub.db.bak-N`) are purged the same way. Stale peer
 outbox rows after 7 days, dead invites after a day, with a WAL checkpoint and incremental
 vacuum every 10 minutes and a full `VACUUM` at most daily. Replicated records older than the
 cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` shows

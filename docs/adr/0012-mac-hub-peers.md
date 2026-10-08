@@ -195,6 +195,14 @@ So instead of a longer `retention_days`:
 - **Nothing resurrects.** A tombstone or full version older than `retention_days` is refused,
   as closed records past retention always were. A merge never copies a tombstone's (empty)
   content onto the winner.
+- **No copy keeps the text.** A replicated closed (or expired) version arrives without its text
+  when this hub already purged the item or it closed more than `text_retention_hours` ago; only
+  an open, unexpired version (a re-open) carries text back. Eligibility also counts when this
+  hub stored the closed version (its own clock), so a peer's far-future `updated_at` can't keep
+  text. A sender re-posting the key gets a new item. Quarantined records go after
+  `text_retention_hours`; the database runs with `secure_delete` and checkpoints its WAL; the
+  pre-migration backups get the same purge. The Mac keeps items in memory only (an ephemeral,
+  cache-less URL session).
 - **Clients** drop a tombstone like any closed item; the Mac never shows one.
 - Schema 10 (`items.purged_at`), backed up before migrating like every migration. Hubs up to
   0.2.1 skip tombstones as unreadable items (they keep their own text), so upgrade every hub.

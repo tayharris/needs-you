@@ -148,5 +148,97 @@ class SleepingPeer(HubTestCase):
         self.assertEqual(row(self.srv, win["id"])["title"], "winner")
 
 
+class NoWayBack(HubTestCase):
+    """Purged text stays gone: no peer version, client timestamp or leftover copy brings it back."""
+
+    def setUp(self):
+        super().setUp()
+        self.clock = FakeClock(time.time())
+        self.hub = self.make_hub("hub-a", clock=self.clock, maintenance_seconds=0)
+        self.st = self.hub.store
+
+    def closed_item(self, key="k"):
+        rec, _, _ = self.st.upsert_item(fields(key=key), None, 0, DAY * 1000)
+        self.st.resolve(rec["id"], None)
+        return row(self.hub, rec["id"])
+
+    def push(self, rec):
+        return request("POST", self.hub.url + "/v1/replicate", PEER_SECRET, {"from_hub": "hub-b", "items": [rec]})
+
+    def test_a_newer_closed_version_with_text_stays_a_tombstone(self):
+        """A peer that keeps text longer marks the closed item seen (a newer version, with its
+        text). Its metadata is taken; the text isn't."""
+        full = hubmod.item_wire(self.closed_item())
+        self.clock.advance(2 * DAY)
+        self.hub.maintain()
+        newer = dict(full, seen_at=hubmod.fmt_ts(self.st.now_ms()), updated_by="hub-b",
+                     updated_at=hubmod.fmt_ts(self.st.now_ms()))
+        self.assertEqual(self.push(newer)[1]["applied"], 1)
+        r = row(self.hub, full["id"])
+        self.assertEqual((r["title"], r["body"], r["links"]), ("", "", "[]"))
+        self.assertIsNotNone(r["seen_at"])
+        self.assertIsNotNone(r["purged_at"])
+
+    def test_old_closed_text_from_a_peer_is_never_stored(self):
+        """A peer with longer retention sends a closed item, closed long ago, to a hub that
+        never had it: it lands as a tombstone, not with its text."""
+        other = self.make_hub("hub-c", clock=self.clock, maintenance_seconds=0, text_retention_hours=0)
+        rec, _, _ = other.store.upsert_item(fields(key="old"), None, 0, DAY * 1000)
+        other.store.resolve(rec["id"], None)
+        self.clock.advance(3 * DAY)
+        self.assertEqual(self.push(hubmod.item_wire(row(other, rec["id"])))[1]["applied"], 1)
+        r = row(self.hub, rec["id"])
+        self.assertEqual((r["status"], r["title"]), ("resolved", ""))
+        self.assertIsNotNone(r["purged_at"])
+
+    def test_a_future_timestamp_doesnt_dodge_the_purge(self):
+        """Eligibility runs on this hub's clock (when it stored the version), not on a
+        peer's updated_at."""
+        rec, _, _ = self.st.upsert_item(fields(key="f"), None, 0, DAY * 1000)
+        wire = hubmod.item_wire(row(self.hub, rec["id"]))
+        future = self.st.now_ms() + 3650 * DAY * 1000
+        self.push(dict(wire, status="resolved", updated_by="hub-b", updated_at=hubmod.fmt_ts(future)))
+        self.assertEqual(row(self.hub, rec["id"])["status"], "resolved")
+        self.clock.advance(25 * HOUR)
+        self.assertEqual(self.hub.maintain()["purged"]["texts"], 1)
+        self.assertEqual(row(self.hub, rec["id"])["title"], "")
+
+    def test_a_repost_of_the_key_is_a_new_item(self):
+        old = self.closed_item("same")
+        self.clock.advance(2 * DAY)
+        self.hub.maintain()
+        new, created, _ = self.st.upsert_item(fields(key="same", title="fresh"), None, 0, DAY * 1000)
+        self.assertTrue(created)
+        self.assertNotEqual(new["id"], old["id"])
+        self.assertEqual(row(self.hub, old["id"])["title"], "")  # the old one stays a tombstone
+
+    def test_no_copy_of_the_text_is_left_behind(self):
+        item = self.closed_item("secret")
+        # an unreadable replicated record with the same text sits in quarantine
+        changed, skip = self.st.apply_record("item", dict(hubmod.item_wire(item), id="01QUARANTINED",
+                                                          status="exploded"))
+        self.assertIsNotNone(skip)
+        backup = self.st._backup(hubmod.SCHEMA_VERSION)   # a pre-migration backup
+        self.clock.advance(2 * DAY)
+        self.hub.maintain(full=True)
+        with self.st.lock:
+            self.assertEqual(self.st.conn.execute("PRAGMA secure_delete").fetchone()[0], 1)
+            self.assertEqual(self.st.conn.execute("SELECT COUNT(*) FROM quarantine").fetchone()[0], 0)
+        import sqlite3
+        b = sqlite3.connect(backup)
+        try:
+            self.assertEqual(b.execute("SELECT title, body FROM items WHERE id = ?", (item["id"],)).fetchone(),
+                             ("", ""))
+        finally:
+            b.close()
+        for path in (self.st.path, self.st.path + "-wal", backup):
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read()
+            except OSError:
+                continue
+            self.assertNotIn(b"secret-ish details", data, path)
+
+
 if __name__ == "__main__":
     unittest.main()
