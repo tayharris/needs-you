@@ -9,10 +9,9 @@ built in, which is all most setups need. This page is about the other place a hu
 - you run many servers, or senders that can't wait (CI with short-lived runners).
 
 A hub is one Python file (`hub/needs_you_hub.py`, standard library and SQLite only) on stock
-`python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Server hubs replicate every write to each other
-(not yet with the app's built-in hub, [below](#with-the-apps-built-in-hub)), so a sender, the Mac or an
-invite link can use any of them. The wire contract is in
-[API.md](API.md).
+`python3` 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Hubs replicate every write to each other,
+the Mac's own hub included once a server [joins it](#with-the-macs-own-hub), so a sender, the
+Mac or an invite link can use any of them. The wire contract is in [API.md](API.md).
 
 ## Two hubs in 10 minutes
 
@@ -76,19 +75,52 @@ older hub; replication then resumes by itself.
 
 ### With the app's built-in hub
 
-Today the app's built-in hub doesn't replicate with server hubs: the app starts it without peers,
-so server hubs replicate only with each other. Invites made on the Mac list only the Mac's URL,
-so the senders they set up post only to the Mac. To use server hubs:
+A server joins the Mac's own hub with a **peer invite**: a one-use link the Mac makes, which
+the server redeems for the pair's own replication secret. Nothing to copy by hand, and the
+secret never shows on a screen ([ADR 0010](adr/0010-mac-hub-peers.md)).
 
-- Make the sender invites on a server hub (`needs-you-admin invite create my-servers --role sender`),
-  so senders get every server hub's URL and fail over between them.
-- Connect the Mac to a server hub with an owner invite from it (**Settings → Other hubs (advanced)**).
-  The app reads one hub at a time, this Mac's first, so items posted to the server hubs show
-  while the built-in hub is down. To read the server hubs all the time, turn off **Run hub on
-  this Mac**.
+**1. On the Mac**, make the link: **Settings → Your inbox → Always-on hub → Add an always-on
+hub** shows the command to run on the server (and copies it). The Mac must be on the tailnet;
+the link lasts an hour. From a terminal on the Mac instead:
 
-Peering the Mac's hub with server hubs is planned ([ADR 0004](adr/0004-always-on-hub.md),
-[next-big-item.md](roadmap/next-big-item.md)).
+```bash
+python3 /Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py \
+  --db ~/Library/Application\ Support/NeedsYou/hub.db \
+  --public-url http://<this-mac>.<tailnet>.ts.net:8765 invite create my-server --role peer
+```
+
+**2. On the server**, from a checkout of this repo (or the release's server tarball):
+
+```bash
+./scripts/install-hub.sh --user --join 'http://<this-mac>.<tailnet>.ts.net:8765/join/nyi_...'
+```
+
+It installs and starts the hub, pairs it with the Mac's hub, and prints no secret. On a server
+that already runs a hub (alone, or in a mesh with its own `peer_secret`), run
+`needs-you-admin peer join '<link>'` instead; the running hub picks it up within 5 seconds and
+its other peers are left as they are.
+
+Then:
+
+- Every item posted to either hub shows on both, with its question and answer: an answer
+  clicked on the Mac reaches a sender that asked through the server, and the other way round.
+- Sender invites made on the Mac list both URLs (`hub_urls`), so those senders fail over to
+  the server while the Mac sleeps, and the Mac catches up when it wakes (within seconds: a hub
+  that notices it slept retries at once).
+- Settings shows the server's state (connected, last sync, behind by N changes). Or:
+  `needs-you-admin peer list` on the server, `GET /v1/peers` with the owner token.
+- To stop: **Remove** in Settings (or `DELETE /v1/peers/<hub id>`) and
+  `needs-you-admin peer remove <mac hub id>` on the server. Removing deletes that pair's secret.
+
+The server's `public_url` must be its MagicDNS name (the installer's default with Tailscale),
+so the Mac reaches it by name whatever its tailnet IP. The Mac's hub is named the same way.
+
+Known limit: a server deletes resolved items after `retention_days` (7). If the Mac sleeps
+longer than that, an item resolved on the server meanwhile can stay open on the Mac until you
+close it. Raise `retention_days` on the server if your Mac is often away for longer.
+
+Joining one server to another works the same way: `needs-you-admin invite create hub-b --role
+peer` on one, `install-hub.sh --join` (or `needs-you-admin peer join`) on the other.
 
 ## What `install-hub.sh --user` sets up
 
@@ -113,6 +145,7 @@ Options:
 | `--peer-secret-file F` | | The shared replication secret, from a file. |
 | `--peer-secret S` | | The same, inline (visible in `ps`; prefer the file). |
 | `--generate-peer-secret` | | Make a new secret and print it once. |
+| `--join LINK` | | Pair with the hub that made this peer invite ([above](#with-the-macs-own-hub)). No owner invite is printed. |
 | `--reconfigure` | off | Rebuild the config from defaults + flags (keeps the secret). |
 | `--no-start` | off | Install files and config only. |
 | `--no-invite` | off | Don't print the first owner invite. |
@@ -196,11 +229,16 @@ needs-you-admin invite revoke my-server
 needs-you-admin token list             # name, role, state, open items
 needs-you-admin token revoke my-server-build-1
 needs-you-admin token add ci-myrepo --role sender                          # a bare token, printed once
+needs-you-admin invite create hub-b --role peer       # another hub joins this one (one use, 1 h)
+needs-you-admin peer join '<peer invite link>'         # this hub joins another
+needs-you-admin peer list                              # peers: config and invite, never secrets
+needs-you-admin peer remove hub-b                      # by hub id, URL or name (invite peers)
 ```
 
 Roles: `sender` posts and resolves; `reader` reads, resolves and dismisses; `owner` is a reader
 that can also create invites (the Mac app). Codes and tokens are stored as sha256 hashes and
-printed once. Revoking an invite doesn't revoke tokens it already minted.
+printed once. Revoking an invite doesn't revoke tokens it already minted. A `peer` invite is
+for another hub, not a machine: it stays on this hub (it isn't replicated) and mints no token.
 
 The admin tool writes straight to the database (safe while the hub runs, thanks to WAL) and
 queues the change for replication, so an invite or token made on one hub works on all of
@@ -281,6 +319,9 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   ([API.md](API.md#post-v1itemsidanswer-reader)): a hub without them drops them from replicated
   items, and the upgraded hubs keep theirs through its resolves and seen marks. Upgrade every
   hub together.
+- **Peer links (schema 9):** a new local table for peers joined by a peer invite; nothing that
+  replicates changes. A hub refuses a peer invite from a hub with an older schema
+  (`peer_outdated`), so upgrade the server before joining it to a newer Mac app.
 
 ## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`
@@ -293,8 +334,10 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   makes the peers re-pull from it from the start. Tokens and invites come back with the rest.
 - **A hub was off for longer than `retention_days`:** stop it, delete its `hub.db*` files, and
   start it empty, so it can't push stale open versions of items the others resolved and purged.
-- **Removing a peer:** take it out of `peers` on the others (`install-hub.sh --user --peer ...`
-  with the remaining ones) and restart; queued rows for it are dropped at start-up.
+- **Removing a peer:** one that joined by a peer invite: `needs-you-admin peer remove <hub id>`
+  on both sides (its secret is deleted, so it can't replicate with this hub any more). One in
+  `peers`: take it out on the others (`install-hub.sh --user --peer ...` with the remaining
+  ones) and restart; queued rows for it are dropped at start-up.
 - **Moving a hub:** keep the MagicDNS name, or update `peers` on the other hubs. Senders pick up
   new URLs when they re-run an invite with `--force`, or by editing `NEEDS_YOU_URLS`.
 - **Clocks:** keep hubs on NTP (systemd-timesyncd is enough); replication is last-writer-wins

@@ -16,6 +16,8 @@
 #   --peer-secret-file F   read the shared replication secret from a file
 #   --peer-secret S        the shared secret (visible in `ps`; prefer the file)
 #   --generate-peer-secret make a new secret and print it once (copy it to the other hub)
+#   --join LINK            pair with another hub (the Mac's, or a server) by its peer invite
+#                          (http(s)://<hub>/join/nyi_...): no secret to copy; it stays in the DB
 #   --reconfigure          rebuild the config from defaults + flags (keeps the secret)
 #   --no-start             install files and config, don't start the service
 #   --no-invite            don't print an owner invite at the end
@@ -36,8 +38,9 @@ GEN_SECRET=0
 RECONFIGURE=0
 START=1
 INVITE=1
+JOIN=""
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
@@ -52,6 +55,7 @@ while [ $# -gt 0 ]; do
     --peer-secret) PEER_SECRET=${2:?}; shift 2 ;;
     --peer-secret-file) PEER_SECRET=$(tr -d '\r\n' < "${2:?}"); shift 2 ;;
     --generate-peer-secret) GEN_SECRET=1; shift ;;
+    --join) JOIN=${2:?--join needs the peer invite link}; shift 2 ;;
     --reconfigure) RECONFIGURE=1; shift ;;
     --no-start) START=0; shift ;;
     --no-invite) INVITE=0; shift ;;
@@ -59,6 +63,13 @@ while [ $# -gt 0 ]; do
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
+if [ -n "$JOIN" ]; then
+  case "$JOIN" in
+    http://*/join/nyi_*|https://*/join/nyi_*) ;;
+    *) die "--join takes a peer invite link: http(s)://<hub>/join/nyi_... (make one in the Mac app's Settings, or with needs-you-admin invite create NAME --role peer)" ;;
+  esac
+  INVITE=0  # the hub it joins already has the owner; its tokens replicate here
+fi
 
 PYTHON=/usr/bin/python3
 [ -x "$PYTHON" ] || PYTHON=$(command -v python3 || true)
@@ -214,6 +225,16 @@ else
   install -m 0755 "$SRC/deploy/needs-you-admin.sh" "$ADMIN_BIN"
 fi
 
+# 3b. pair with the hub whose peer invite this is (before the service starts, so it starts
+#     replicating with it at once). The secret goes into the database, never to the terminal.
+JOINED=""
+if [ -n "$JOIN" ]; then
+  if ! JOINED=$("$ADMIN_BIN" peer join "$JOIN"); then
+    die "couldn't join with that link (above). The hub is installed; make a new peer invite and re-run with --join, or run: needs-you-admin peer join <link>"
+  fi
+  echo "$JOINED"
+fi
+
 # 4. service
 if [ "$MODE" = user ]; then
   # The paths this install used, quoted for systemd (which also expands % and $).
@@ -276,6 +297,11 @@ if [ "$INVITE" -eq 1 ] && [ "$NEW_CONFIG" -eq 1 ]; then
   echo
   echo "Connect your Mac to this hub (or, if the Mac app runs its own hub, add this hub as a peer instead):"
   "$ADMIN_BIN" invite create mac --role owner --uses 1 --ttl 72 | sed 's/^/  /'
+fi
+if [ -n "$JOINED" ]; then
+  echo
+  echo "This hub now replicates with the hub that invited it: items posted to either show on both,"
+  echo "and sender invites made there list this hub too. Check it: needs-you-admin peer list"
 fi
 cat <<EOF
 

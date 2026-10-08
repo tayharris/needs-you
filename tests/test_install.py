@@ -816,5 +816,79 @@ class InstallHubUserPaths(unittest.TestCase):
         self.assertTrue(os.path.isfile(argv[1]))
 
 
+class InstallHubJoin(HubTestCase):
+    """install-hub.sh --user --join <peer invite>: the server pairs with a hub (here an
+    in-process one standing in for the Mac's) without a secret on the command line or the
+    terminal. --no-start: no systemd is touched."""
+
+    def setUp(self):
+        super().setUp()
+        self.mac = self.make_hub("mac", peer_secret="", maintenance_seconds=0)
+        self.mac.store.ensure_token("this-mac", "owner", OWNER)
+        self.home = os.path.join(self.tmp, "home")
+        stub = os.path.join(self.tmp, "stub")
+        os.makedirs(self.home)
+        os.makedirs(stub)
+        with open(os.path.join(stub, "tailscale"), "w") as fh:  # not on a tailnet
+            fh.write("#!/bin/sh\nexit 1\n")
+        os.chmod(os.path.join(stub, "tailscale"), 0o755)
+        self.env = {"HOME": self.home, "PATH": stub + ":/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C"}
+        self.script = os.path.join(ROOT, "scripts", "install-hub.sh")
+        self.port = free_port()
+
+    def peer_link(self):
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertEqual(status, 201, inv)
+        return inv["join_url"]
+
+    def install(self, *args):
+        return subprocess.run([BASH, self.script, "--user", "--no-start", "--bind", "127.0.0.1",
+                               "--port", str(self.port), "--hub-id", "srv",
+                               "--public-url", "http://127.0.0.1:%d" % self.port] + list(args),
+                              env=self.env, capture_output=True, text=True, timeout=120)
+
+    def test_join_pairs_both_hubs_and_never_shows_the_secret(self):
+        r = self.install("--join", self.peer_link())
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (link,) = self.mac.store.peer_links()
+        self.assertEqual((link["url"], link["hub_id"]), ("http://127.0.0.1:%d" % self.port, "srv"))
+        self.assertNotIn(link["secret"], r.stdout + r.stderr)
+        self.assertNotIn("nyp_", r.stdout + r.stderr)
+        self.assertNotIn("needsyou://", r.stdout)  # no owner invite: the Mac's owner replicates here
+        self.assertIn("now replicates with", r.stdout)
+        conf = os.path.join(self.home, ".config", "needs-you", "hub.json")
+        with open(conf) as fh:
+            cfg = json.load(fh)
+        self.assertNotIn("peer_secret", cfg)  # the pair's secret lives in the database
+        self.assertEqual(cfg.get("peers"), [])
+        import sqlite3
+        db = sqlite3.connect(cfg["db"])
+        try:
+            rows = db.execute("SELECT url, hub_id, secret FROM peer_links").fetchall()
+        finally:
+            db.close()
+        self.assertEqual(rows, [(self.mac.url, "mac", link["secret"])])
+        self.assertEqual(stat.S_IMODE(os.stat(cfg["db"]).st_mode), 0o600)
+        self.assertIn("http://127.0.0.1:%d" % self.port, self.mac.hub_urls())
+
+        # the admin wrapper lists it without the secret
+        admin = os.path.join(self.home, ".local", "bin", "needs-you-admin")
+        r = subprocess.run([admin, "peer", "list"], env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(self.mac.url, r.stdout)
+        self.assertNotIn(link["secret"], r.stdout)
+
+    def test_a_used_or_bad_link_fails_loudly(self):
+        link = self.peer_link()
+        self.assertEqual(self.install("--join", link).returncode, 0)
+        r = self.install("--join", link)  # one use
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("unknown, expired or already used", r.stderr)
+        self.assertIn("make a new peer invite", r.stderr)
+        r = self.install("--join", "needsyou://connect?hub=x&code=nyi_x")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--join takes a peer invite link", r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

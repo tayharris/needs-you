@@ -53,14 +53,14 @@ One invite link installs the CLI and, with the options you pick, the hooks, the 
 
 | Word | What it is | In the app |
 |---|---|---|
-| **Token** | What a machine uses to talk to a hub. Each machine gets its own, with one role, and you can revoke it. The hub stores only a hash of it. | Listed in **Settings → Machines** |
-| **Sender** (role) | Can post and resolve alerts, nothing else. Every sender machine gets this role. | **Connect a machine** → *A server or agent that sends alerts* |
-| **Reader** (role) | Another Mac with the app that shows the same alerts from the same hub. It can't connect machines. | **Connect a machine** → *Another Mac that shows the same alerts* |
-| **Owner** (role) | A reader that can also make invite links and revoke machines. The app is the owner of its built-in hub. Give it to other Macs only if they're yours. | **Connect a machine** → *Another Mac that can also connect machines (advanced)* |
-| **Peer** | Another hub this hub replicates with, using a shared peer secret (not a token). Today only server hubs have peers. | [HUB.md](../HUB.md) |
-| **Invite link** | Sets up one or more machines, each with its own token. For a sender it's `http://<hub>/join/<code>` (an agent reads it, or you run its one-liner); for another Mac it's a connect link, `needsyou://connect?…`. It works a set number of times, then expires. | Made in **Connect a machine**; joined in **Other hubs (advanced)**; listed and revoked in **Machines** |
-| **Machines** | Every sender and Mac that can use your hub, with its role, CLI version and open items. | **Settings → Machines** |
-| **Tailnet** | Your private [Tailscale](tailscale.md) network. It lets servers reach the built-in hub (`http://<name>.<tailnet>.ts.net:8765`) without opening it to the internet. | **Built-in hub → Addresses** |
+| **Hub** | Holds your alerts: a small SQLite database behind a tiny web server, one Python file (standard library only). The Mac app runs one for you, so your Mac is the hub; you don't install anything. | **Settings → Your inbox** (**Run hub on this Mac**, on by default) |
+| **Sender** | Any machine or agent that sends alerts: a server, a CI job, a cron script, Claude Code. It doesn't need the Mac app, only the `needs-you` command (one Python file), which a link installs. If no hub answers, it keeps the alert in a local outbox and sends it later. It can send but can't see your alerts. | **Settings → Connect a machine** → *A server or agent that sends alerts* |
+| **Reader** (another Mac) | Another Mac with the app that shows the same alerts as yours. It can't connect other machines. | **Connect a machine** → *Another Mac that shows the same alerts* |
+| **Owner** | A Mac that can also make links and revoke machines. Your own Mac is the owner of its hub. Give it to other Macs only if they're yours. | **Connect a machine** → *Another Mac that can also connect machines (advanced)* |
+| **Invite link** / **connect link** | A link that sets up one or more machines. For a sender it's `http://<hub>/join/<code>` (an agent reads it, or you run its one-liner); for another Mac it's `needsyou://connect?…`. It works a set number of times, then expires. Each machine it sets up gets its own token you can revoke. | Made in **Connect a machine**; joined in **Other hubs (advanced)**; listed and revoked in **Machines** |
+| **Machines** | Every machine that can use your hub, with its role, CLI version and open items. | **Settings → Machines** |
+| **Server hub** | Optional, for redundancy: the same hub, always on, on a Linux server or VM, so alerts land while your Mac sleeps. Hubs replicate with each other, the Mac's own hub included: a server joins it with a one-use **peer invite** the Mac makes, and `scripts/install-hub.sh --join <link>` on the server. Most people don't need one: senders queue alerts while the Mac sleeps. | [HUB.md](../HUB.md#with-the-macs-own-hub); **Settings → Your inbox → Always-on hub** |
+| **Tailnet** | Your private [Tailscale](tailscale.md) network. It lets servers reach the hub on your Mac (`http://<name>.<tailnet>.ts.net:8765`) without opening it to the internet. | **Your inbox → Addresses** |
 
 ## The Settings pages, by task
 

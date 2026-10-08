@@ -71,7 +71,7 @@ Each server gets its own token (named `<invite name>-<hostname>`), so you can re
 
 ## 4. Optional: a server hub
 
-If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). They're set up on a server from the command line (`scripts/install-hub.sh`); there's no app screen for them. The Mac joins one with a link in **Settings… → Other hubs (advanced)**. Today server hubs replicate only with each other, not with the built-in hub (that's being built), and invites made on the Mac list only the Mac's URL, so senders that should fail over to a server hub need an invite made on it ([HUB.md](../HUB.md#with-the-apps-built-in-hub)). To use only a server hub, turn off **Run hub on this Mac**: the app then shows the server hub's alerts ([the three setups](concepts.md#where-the-hub-runs-three-setups)).
+If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). The Mac makes a one-use peer invite (**Settings… → Your inbox → Always-on hub**) and the server runs one command with it (`scripts/install-hub.sh --user --join <link>`). From then on the two hubs replicate every item both ways, and invites made on the Mac list the server too, so senders fail over to it while the Mac sleeps ([HUB.md](../HUB.md#with-the-macs-own-hub)).
 
 ## Done
 
