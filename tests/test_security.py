@@ -412,6 +412,31 @@ class ConnectionLimit(HubTestCase):
             for s in idle:
                 s.close()
 
+    def test_clients_that_stop_reading_give_way_when_the_hub_is_full(self):
+        # A finished request whose client never reads the answer (a /dl file, unauthenticated)
+        # blocked in the hub's write and kept its slot for the whole socket timeout.
+        install = os.path.join(self.tmp, "install")
+        os.makedirs(os.path.join(install, "cli"))
+        with open(os.path.join(install, "cli", "needs-you"), "wb") as fh:
+            fh.write(b"#" * (32 << 20))  # far more than the socket buffers hold
+        hub = self.make_hub("hub-a", maintenance_seconds=0, max_connections=4, request_read_seconds=0.5,
+                            install_dir=install)
+        host, port = hub.server.server_address[:2]
+        stuck = []
+        try:
+            for _ in range(4):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+                s.settimeout(5)
+                s.connect((host, port))
+                s.sendall(b"GET /dl/needs-you HTTP/1.0\r\n\r\n")
+                stuck.append(s)
+            time.sleep(1.0)
+            self.assertEqual(request("GET", hub.url + "/v1/health")[0], 200)
+        finally:
+            for s in stuck:
+                s.close()
+
     def test_slow_requests_give_way_when_the_hub_is_full(self):
         # Connections that hold a slot without finishing their request (sending a byte now and
         # then, inside the socket timeout) are closed once they are older than

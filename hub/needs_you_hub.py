@@ -2433,13 +2433,6 @@ class Handler(BaseHTTPRequestHandler):
     # hub; reset per request (a keep-alive connection reuses the handler).
     _update_requested = False
 
-    def send_response(self, code: int, message: Optional[str] = None) -> None:
-        # The request has been read: this connection no longer gives way to new ones.
-        slots = getattr(self.server, "slots", None)
-        if slots is not None:
-            slots.request_read(self.request)
-        super().send_response(code, message)
-
     def _send(self, status: int, body: Any, headers: Optional[Dict[str, str]] = None) -> None:
         if self._update_requested and 200 <= status < 300 and isinstance(body, dict):
             body = dict(body, update_requested=True)
@@ -2892,6 +2885,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, query: Dict[str, List[str]]) -> None:
         self._auth("reader")
+        # A reader's event stream is meant to stay open: it never gives way to new connections.
+        slots = getattr(self.server, "slots", None)
+        if slots is not None:
+            slots.keep(self.request)
         last = self.headers.get("Last-Event-ID") or (query.get("after") or [""])[0]
         try:
             after = int(last) if last else self.hub.store.max_seq()
@@ -2990,15 +2987,16 @@ class ConnectionSlots:
     """The connections the hub serves at once, shared by every bind (the descriptors it
     protects are the process's). A thread and a descriptor per connection: past the limit a
     new connection is closed at once, so idle or slow clients can't exhaust descriptors
-    (accept then fails with EMFILE in a busy loop) or threads. When full, connections that
-    still haven't sent their whole request after `read_seconds` are closed to make room, so
-    clients that trickle bytes inside the socket timeout can't hold every slot."""
+    (accept then fails with EMFILE in a busy loop) or threads. When full, connections older
+    than `read_seconds` are closed to make room (a request trickled in a byte at a time, or
+    an answer the client stopped reading), so they can't hold every slot for the socket
+    timeout. Only a reader's event stream (/v1/stream, after its token is checked) is kept."""
 
     def __init__(self, limit: int, read_seconds: float) -> None:
         self.free = threading.BoundedSemaphore(max(1, int(limit)))
         self.read_seconds = float(read_seconds)
         self.lock = threading.Lock()
-        self.reading: Dict[int, Tuple[Any, float]] = {}  # id(socket) -> (socket, accepted at)
+        self.reading: Dict[int, Tuple[Any, float]] = {}  # id(socket) -> (socket, accepted at); may give way
 
     def acquire(self, request: Any) -> bool:
         if not self.free.acquire(blocking=False):
@@ -3016,12 +3014,12 @@ class ConnectionSlots:
             self.reading[id(request)] = (request, time.monotonic())
         return True
 
-    def request_read(self, request: Any) -> None:
+    def keep(self, request: Any) -> None:
         with self.lock:
             self.reading.pop(id(request), None)
 
     def release(self, request: Any) -> None:
-        self.request_read(request)
+        self.keep(request)
         self.free.release()
 
 
