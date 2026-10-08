@@ -33,10 +33,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 |---|---|
 | Permission for a shell command | **opencode wants to run git: my-repo** |
 | Permission for an edit | **opencode wants to edit main.ts: my-repo** |
-| A question for you | **opencode asks “Which branch should the release come from?”: my-repo**, each choice a step |
+| A question for you | **opencode asks “Which branch should the release come from?”: my-repo**, its choices listed |
 | Idle, waiting for you | **opencode is waiting for you: my-repo** |
 
-One card per session, updated in place. Commands, patterns and answers aren't sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in opencode; ticking a step on the Mac answers nothing. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
+One card per session, updated in place. Commands, patterns and answers aren't sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in opencode. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
 
 ## Tell opencode when to post (optional)
 

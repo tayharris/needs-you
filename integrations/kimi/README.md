@@ -37,7 +37,7 @@ Check the result with `kimi doctor`. Kimi reads hooks when it starts: restart it
 | Kimi event | Hook mode | Action |
 |---|---|---|
 | `PermissionRequest` | `notify kimi` | `needs-you add`: **Kimi wants to run make** (the program from `display.command`), **Kimi wants to edit a.py**, **Kimi wants to fetch a page**, **Kimi wants approval for a plan** (the first lines of `display.plan`, `display.options` as steps), else **Kimi needs permission for &lt;tool&gt;** |
-| `PreToolUse`, matcher `^AskUserQuestion$` | `notify kimi` | `needs-you add`: **Kimi asks “<question>”**, the questions in the body and each choice as a read-only step (Kimi approves this tool by itself, so it has no `PermissionRequest`) |
+| `PreToolUse`, matcher `^AskUserQuestion$` | `notify kimi` | `needs-you add`: **Kimi asks “<question>”**, the questions and their choices in the body and as the item's `question` (Kimi approves this tool by itself, so it has no `PermissionRequest`) |
 | `Stop` | `notify kimi` | resolves a question card the turn ended under, then `needs-you add`: **Kimi is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval, question and error cards |
 | `StopFailure` | `notify kimi` | `needs-you add`: **Kimi stopped on an error**, with Kimi's one-line error message |
 | `PermissionResult`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, `Interrupt` | `resolve kimi` | `needs-you resolve`, only if this session posted something |

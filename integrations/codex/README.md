@@ -40,7 +40,7 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 | Codex event | Hook mode | Action |
 |---|---|---|
 | `PermissionRequest` | `notify codex` | `needs-you add`: **Codex wants to run make**, **Codex wants to edit config.py** (`apply_patch`; "2 files" for more), **Codex needs permission for linear create_issue** (MCP) |
-| `PreToolUse`, matcher `request_user_input` | `notify codex` | `needs-you add`: **Codex asks “<question>”**, the questions in the body and each choice as a read-only step (Plan mode; this tool has no `PermissionRequest`) |
+| `PreToolUse`, matcher `request_user_input` | `notify codex` | `needs-you add`: **Codex asks “<question>”**, the questions and their choices in the body and as the item's `question` (Plan mode; this tool has no `PermissionRequest`) |
 | `Stop` | `notify codex` | resolves a question card first (outside Plan mode Codex refuses the question after `PreToolUse` ran), then `needs-you add`: **Codex is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval and question cards |
 | `UserPromptSubmit`, `PostToolUse`, `Interrupt` | `resolve codex` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before. Codex 0.159+ runs every session's hooks from one shared app-server daemon, so there it resolves only this session's card; after `/clear` the old session's card clears with its `SessionEnd`, which the daemon sends when it unloads the thread (about a minute later) |

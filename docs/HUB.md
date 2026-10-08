@@ -267,6 +267,10 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   `steps`. When it later resolves, dismisses or marks such an item seen, the upgraded hubs keep
   their steps; only a re-post that changes the title, body or priority on the old hub clears
   them. Upgrade peers together to avoid the gap.
+- **Item question (schema 7):** the same for an agent's `question` ([API.md](API.md)): a hub
+  without it drops the field from replicated items, and keeps nothing to hand back; the
+  upgraded hubs keep theirs through its resolves and seen marks. An older hub refuses a
+  database at schema 7 (it backs up before migrating), so upgrade every hub together.
 
 ## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`

@@ -183,6 +183,9 @@ not a one-step list.</li>
 whole list, and a change to the steps re-animates the card.</li>
 <li>The person's ticks stay on their Mac; you never hear about them. Resolve when the work is
 actually done.</li>
+<li>Choices you are waiting on the person to pick between are a question, not steps:
+<code>--question-json '{"items": [{"text": "Deploy now or wait?", "options": [{"label": "Now"}, {"label": "Wait for the migration"}]}]}'</code> (<a href="api.html">API</a>). Say in the body where they
+answer; there is no answer path back to you yet.</li>
 </ul>
 <h3 id="when-something-seems-wrong">When something seems wrong <a class="anchor" href="#when-something-seems-wrong" aria-label="Link to this section">#</a></h3>
 <p>Run <code>needs-you doctor --json</code> when you're unsure the machine is set up (a post queued instead

@@ -41,11 +41,11 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Approval for an edit | **Kimi wants to edit config.py: my-repo** |
 | Approval to fetch a page | **Kimi wants to fetch a page: my-repo** |
 | A plan to approve | **Kimi wants approval for a plan: my-repo**, the plan's first lines, its options as steps |
-| A question for you | **Kimi asks “Which database should the service use?”: my-repo**, each choice a step |
+| A question for you | **Kimi asks “Which database should the service use?”: my-repo**, its choices listed |
 | Turn finished, waiting for you | **Kimi is waiting for you: my-repo** |
 | The turn failed on an error | **Kimi stopped on an error: my-repo** |
 
-One card per session, updated in place. Command lines, prompts and tool output aren't sent: an approval card names at most the program or a file's name. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Kimi; ticking a step on the Mac answers nothing. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval, question and error cards. A one-shot `kimi -p` gets no "waiting" card, because Kimi has already exited.
+One card per session, updated in place. Command lines, prompts and tool output aren't sent: an approval card names at most the program or a file's name. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's `question` field for the Mac. Answer in Kimi. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval, question and error cards. A one-shot `kimi -p` gets no "waiting" card, because Kimi has already exited.
 
 ## Check it works
 

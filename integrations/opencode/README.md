@@ -27,7 +27,7 @@ It writes `plugins/needs-you.js` and `hooks/needs-you-hook.sh` there (opencode l
 | opencode event | Hook mode | Action |
 |---|---|---|
 | `permission.asked` | `notify opencode` | **opencode wants to run git** (`bash`: the program from the first pattern), **opencode wants to edit main.ts** (`edit`), **opencode wants to fetch a page**, **opencode wants to use a folder outside the project**, else **opencode needs permission for <permission>** |
-| `question.asked` | `notify opencode` | **opencode asks “<question>”**, the questions in the body and each choice as a read-only step |
+| `question.asked` | `notify opencode` | **opencode asks “<question>”**, the questions and their choices in the body and as the item's `question` |
 | `session.status` idle, `session.idle` | `notify opencode` | **opencode is waiting for you** (once per idle; `NEEDS_YOU_AGENT_TURN_CARDS=0` turns these off) |
 | `permission.replied`, `question.replied`, `question.rejected`, `session.status` busy | `resolve opencode` | resolves the session's card |
 | `session.deleted` | `end opencode` | resolves it |

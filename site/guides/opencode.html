@@ -59,11 +59,11 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <tbody>
 <tr><td>Permission for a shell command</td><td><strong>opencode wants to run git: my-repo</strong></td></tr>
 <tr><td>Permission for an edit</td><td><strong>opencode wants to edit main.ts: my-repo</strong></td></tr>
-<tr><td>A question for you</td><td><strong>opencode asks “Which branch should the release come from?”: my-repo</strong>, each choice a step</td></tr>
+<tr><td>A question for you</td><td><strong>opencode asks “Which branch should the release come from?”: my-repo</strong>, its choices listed</td></tr>
 <tr><td>Idle, waiting for you</td><td><strong>opencode is waiting for you: my-repo</strong></td></tr>
 </tbody>
 </table></div>
-<p>One card per session, updated in place. Commands, patterns and answers aren't sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in opencode; ticking a step on the Mac answers nothing. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the permission and question cards.</p>
+<p>One card per session, updated in place. Commands, patterns and answers aren't sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title, the question and its choices in the body, and the same as the item's <code>question</code> field for the Mac. Answer in opencode. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the permission and question cards.</p>
 <h2 id="tell-opencode-when-to-post-optional">Tell opencode when to post (optional) <a class="anchor" href="#tell-opencode-when-to-post-optional" aria-label="Link to this section">#</a></h2>
 <p>The hooks cover "opencode is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add <code>--agent-instructions opencode</code> to the invite's one line.</p>
 <div class="code"><pre><code class="language-bash">curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --agent-instructions opencode</code></pre></div>
