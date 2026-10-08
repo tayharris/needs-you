@@ -579,6 +579,14 @@ class PeerInvites(HubCase):
         self.assertEqual([(p["url"], p["source"]) for p in mine], [("http://127.0.0.1:9", "invite")])
         self.assertNotIn(red["peer_secret"], json.dumps(peers))
         self.assertNotIn(red["peer_secret"], json.dumps(call("GET", "/v1/health", Env.owner)[1]))
+        # another peer invite can't take that link over by naming its URL or hub id, and spends nothing
+        status, inv2 = call("POST", "/v1/invites", Env.owner, {"name": Env.run + "-peer2", "role": "peer"})
+        self.assertEqual(status, 201, inv2)
+        for clash in (dict(fake, hub_id=Env.run + "-other"), dict(fake, url="http://127.0.0.2:9")):
+            self.assertError(call("POST", "/v1/invites/redeem", None, {"code": inv2["code"], "peer": clash}),
+                             409, "conflict")
+        self.assertEqual(call("GET", changes, red["peer_secret"], headers=link)[0], 200)
+        self.assertEqual(call("DELETE", "/v1/invites/" + inv2["id"], Env.owner)[0], 200)
         status, gone = call("DELETE", "/v1/peers/" + fake["hub_id"], Env.owner)
         self.assertEqual(status, 200, gone)
         self.assertNotIn(fake["hub_id"], [p["hub_id"] for p in call("GET", "/v1/peers", Env.owner)[1]["peers"]])

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import sys
 import time
 import unittest
 import urllib.parse
@@ -43,6 +44,41 @@ def _peer_call(method, h, path, secret, link_id=None, body=None):
         return e.code, json.loads(e.read().decode("utf-8") or "{}")
 
 
+def redeem_stub(test, answer, prefix=""):
+    """A stand-in inviting hub: POST <prefix>/v1/invites/redeem answers `answer` (200). Records
+    each request path in the returned list; closed when the test ends. Returns (base URL, paths)."""
+    import http.server
+    import threading
+    seen = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen.append(self.path)
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            data = json.dumps(answer).encode("utf-8")
+            self.send_response(200 if self.path == prefix + "/v1/invites/redeem" else 404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    test.addCleanup(srv.server_close)
+    test.addCleanup(srv.shutdown)
+    return "http://127.0.0.1:%d%s" % (srv.server_address[1], prefix), seen
+
+
+def stub_answer(**over):
+    out = {"role": "peer", "name": "evil", "peer_secret": "nyp_" + "s" * 43, "link_id": "pl_stubstubstub",
+           "hub_id": "hub-x", "hub_url": "http://hub-x.example.ts.net:8765", "schema": hubmod.SCHEMA_VERSION}
+    out.update(over)
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def peer_get(h, secret, link_id=None):
     """GET /v1/replicate/changes as a peer: the secret, and the link id for a link's secret."""
     return _peer_call("GET", h, "/v1/replicate/changes?after=0&limit=5", secret, link_id)
@@ -77,14 +113,19 @@ class PeerCase(HubTestCase):
     def me(self, h):
         return {"url": h.url, "hub_id": h.hub_id, "schema": hubmod.SCHEMA_VERSION}
 
-    def admin(self, h, *argv):
+    def admin(self, h, *argv, stdin=""):
         """needs-you-admin against `h`'s database, with a config naming it."""
         conf = os.path.join(self.tmp, h.hub_id + ".json")
         with open(conf, "w") as fh:
             json.dump({"db": h.cfg["db"], "hub_id": h.hub_id, "public_url": h.url}, fh)
         out, err = io.StringIO(), io.StringIO()
-        with redirect_stdout(out), redirect_stderr(err):
-            rc = admin.main(["--config", conf] + list(argv))
+        old_stdin = sys.stdin
+        sys.stdin = io.StringIO(stdin)
+        try:
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = admin.main(["--config", conf] + list(argv))
+        finally:
+            sys.stdin = old_stdin
         return rc, out.getvalue(), err.getvalue()
 
     def join(self, inviter, joiner):
@@ -109,7 +150,8 @@ class CreatePeerInvite(PeerCase):
         self.assertEqual(body["uses"], 1)
         self.assertEqual(body["join_url"], a.url + "/join/" + body["code"])
         self.assertEqual(body["install_command"],
-                         "curl -fsSL https://github.com/tayharris/needs-you/releases/download/v%s/install-hub.sh | sudo bash -s -- --join '%s'" % (hubmod.VERSION, body["join_url"]))
+                         "(curl -fsSL https://github.com/tayharris/needs-you/releases/download/v%s/install-hub.sh"
+                         " && echo '%s') | sudo bash -s -- --join -" % (hubmod.VERSION, body["join_url"]))
         self.assertNotIn("mac_url", body)
         self.assertNotIn("agent_prompt", body)
         left = hubmod.parse_ts(body["expires_at"]) - a.store.now_ms()
@@ -124,6 +166,17 @@ class CreatePeerInvite(PeerCase):
         self.assertIn("peer", err["message"])
         listed = request("GET", a.url + "/v1/invites", self.owner(a))[1]["invites"]
         self.assertEqual({i["role"] for i in listed}, {"peer"})
+
+    def test_the_code_never_reaches_sudos_command_line(self):
+        """sudo logs its command line and ps shows it to every user: the link travels on the
+        installer's stdin, after the script, from the shell's own echo."""
+        a = self.hub("hub-a")
+        _, inv = self.peer_invite(a)
+        piped, sep, under_sudo = inv["install_command"].rpartition(" | sudo ")
+        self.assertTrue(sep)
+        self.assertIn(inv["code"], piped)
+        self.assertNotIn("nyi_", under_sudo)
+        self.assertEqual(under_sudo, "bash -s -- --join -")
 
     def test_join_page_and_installer_point_to_install_hub(self):
         a = self.hub("hub-a")
@@ -301,13 +354,32 @@ class Redeem(PeerCase):
         self.assertEqual(peer_get(a, b["peer_secret"], b["link_id"])[0], 401)
         self.assertEqual(peer_get(a, c["peer_secret"], c["link_id"])[0], 200)
 
-    def test_rejoin_under_a_new_url_replaces_the_old_link(self):
+    def test_an_invite_cant_take_over_an_existing_link(self):
+        """A second peer invite naming a linked hub's URL (or hub id) is a 409 that spends
+        nothing: the first link and its secret stay. Re-pairing goes through a removal."""
         a = self.hub("hub-a")
-        for url in ("http://b.example.ts.net:8765", "http://b2.example.ts.net:8765"):
-            _, inv = self.peer_invite(a)
-            status, _ = self.redeem(a, inv["code"], {"url": url, "hub_id": "hub-b",
+        _, inv = self.peer_invite(a)
+        status, first = self.redeem(a, inv["code"], {"url": "http://b.example.ts.net:8765", "hub_id": "hub-b",
                                                      "schema": hubmod.SCHEMA_VERSION})
-            self.assertEqual(status, 200)
+        self.assertEqual(status, 200, first)
+        for peer in ({"url": "http://b.example.ts.net:8765", "hub_id": "evil"},
+                     {"url": "http://b2.example.ts.net:8765", "hub_id": "hub-b"},
+                     {"url": "http://b.example.ts.net:8765", "hub_id": "hub-b"}):
+            _, inv = self.peer_invite(a)
+            status, err = self.redeem(a, inv["code"], dict(peer, schema=hubmod.SCHEMA_VERSION))
+            self.assertEqual((status, err.get("error")), (409, "conflict"), (peer, err))
+            self.assertIn("remove", err["message"])
+            self.assertEqual([i["left"] for i in a.store.list_invites() if i["id"] == inv["id"]], [1])
+        (link,) = a.store.peer_links()
+        self.assertEqual((link["url"], link["hub_id"], link["secret"]),
+                         ("http://b.example.ts.net:8765", "hub-b", first["peer_secret"]))
+        self.assertEqual(peer_get(a, first["peer_secret"], first["link_id"])[0], 200)
+        # after a removal the hub pairs again, under a new URL too
+        self.assertEqual(request("DELETE", a.url + "/v1/peers/hub-b", self.owner(a))[0], 200)
+        _, inv = self.peer_invite(a)
+        status, _ = self.redeem(a, inv["code"], {"url": "http://b2.example.ts.net:8765", "hub_id": "hub-b",
+                                                 "schema": hubmod.SCHEMA_VERSION})
+        self.assertEqual(status, 200)
         self.assertEqual([l["url"] for l in a.store.peer_links()], ["http://b2.example.ts.net:8765"])
 
     def test_without_a_mesh_secret_replication_is_off_until_a_link_exists(self):
@@ -433,14 +505,35 @@ class AdminTool(PeerCase):
         a = self.hub("hub-a")
         rc, out, err = self.admin(a, "invite", "create", "pi", "--role", "peer")
         self.assertEqual(rc, 0, err)
-        self.assertIn("/releases/download/v%s/install-hub.sh | sudo bash -s -- --join" % hubmod.VERSION, out)
-        self.assertIn("needs-you-admin peer join", out)
+        self.assertIn("/releases/download/v%s/install-hub.sh && echo '" % hubmod.VERSION, out)
+        self.assertIn("') | sudo bash -s -- --join -", out)
+        self.assertIn("| needs-you-admin peer join -", out)
+        for line in out.splitlines():  # the link is never an argument of the admin tool
+            self.assertNotRegex(line, r"needs-you-admin peer join\s+\S*nyi_")
         (inv,) = a.store.list_invites()
         self.assertEqual((inv["role"], inv["uses"]), ("peer", 1))
         self.assertLessEqual(inv["expires_at"] - inv["created_at"], 3600 * 1000)
         rc, _, err = self.admin(a, "invite", "create", "pi2", "--role", "peer", "--uses", "3")
         self.assertEqual(rc, 1)
         self.assertIn("one use", err)
+
+    def test_join_reads_the_link_from_stdin(self):
+        """`peer join -` (or no link) reads it from stdin, so it's in no command line: not in
+        ps, and not in sudo's log when the wrapper runs the tool as the service user."""
+        a = self.hub("hub-a")
+        b = self.hub("hub-b")
+        rc, out, err = self.admin(b, "peer", "join", "-", stdin="")
+        self.assertEqual(rc, 2)
+        self.assertIn("no peer invite link", err)
+        _, inv = self.peer_invite(a)
+        rc, out, err = self.admin(b, "peer", "join", "-", stdin="  %s\r\n" % inv["join_url"])
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual([l["url"] for l in b.store.peer_links()], [a.url])
+        c = self.hub("hub-c")
+        _, inv = self.peer_invite(a)
+        rc, out, err = self.admin(c, "peer", "join", stdin=inv["join_url"] + "\n")
+        self.assertEqual(rc, 0, out + err)
+        self.assertNotIn(inv["code"], out + err)
 
     def test_join_errors(self):
         a = self.hub("hub-a")
@@ -455,6 +548,74 @@ class AdminTool(PeerCase):
         self.assertEqual(rc, 1)
         self.assertIn("not for another hub", err)
         self.assertEqual(b.store.peer_links(), [])
+
+    def test_join_refuses_a_hub_url_off_the_tailnet(self):
+        """The inviting hub's answer picks where this hub sends its secret and every record:
+        the same rule as peer.url on the inviting side (https, or http on the tailnet)."""
+        b = self.hub("hub-b")
+        for hub_url in ("http://203.0.113.9:8765", "http://intranet.example.com:8765"):
+            base, _ = redeem_stub(self, stub_answer(hub_url=hub_url))
+            rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+            self.assertNotEqual(rc, 0, out + err)
+            self.assertIn("tailnet", err)
+            self.assertEqual(b.store.peer_links(), [])
+
+    def test_join_refuses_a_link_off_the_tailnet_without_sending_the_code(self):
+        b = self.hub("hub-b")
+        for link in ("http://203.0.113.9:8765/join/nyi_x", "http://devbox:8765/join/nyi_x"):
+            rc, out, err = self.admin(b, "peer", "join", link)
+            self.assertEqual(rc, 2, out + err)
+            self.assertIn("tailnet", err)
+        self.assertEqual(b.store.peer_links(), [])
+        self.assertEqual(admin.parse_join_link("https://hub.example.com/join/nyi_x")[0], "https://hub.example.com")
+
+    def test_join_through_a_path_prefix(self):
+        """The join link may sit under a path prefix; the stored peer URL can't. Without a usable
+        hub_url in the answer that's a clear error, not a traceback."""
+        b = self.hub("hub-b")
+        for answer in (stub_answer(hub_url=None), stub_answer(hub_url="not a url")):
+            base, seen = redeem_stub(self, answer, prefix="/ny")
+            rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+            self.assertEqual(seen, ["/ny/v1/invites/redeem"])
+            self.assertEqual(rc, 1, out + err)
+            self.assertIn("hub_url", err)
+            self.assertEqual(b.store.peer_links(), [])
+        base, _ = redeem_stub(self, stub_answer(hub_url="http://hub-x.example.ts.net:8765/"), prefix="/ny")
+        rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual([l["url"] for l in b.store.peer_links()], ["http://hub-x.example.ts.net:8765"])
+
+    def test_join_cant_take_over_another_link(self):
+        """The inviting hub's answer names an existing peer's URL or hub id: refused, that link
+        kept. The same hub at the same URL (a re-pair after the other side removed it) replaces it."""
+        b = self.hub("hub-b")
+        b.store.add_peer_link("http://hub-c.example.ts.net:8765", "pl_cccccccccc", "hub-c", "c", "nyp_" + "c" * 43)
+        for answer in (stub_answer(hub_url="http://hub-c.example.ts.net:8765"),
+                       stub_answer(hub_id="hub-c")):
+            base, _ = redeem_stub(self, answer)
+            rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+            self.assertEqual(rc, 1, out + err)
+            self.assertIn("already", err)
+            self.assertEqual([(l["url"], l["link_id"]) for l in b.store.peer_links()],
+                             [("http://hub-c.example.ts.net:8765", "pl_cccccccccc")])
+        base, _ = redeem_stub(self, stub_answer(hub_url="http://hub-c.example.ts.net:8765", hub_id="hub-c"))
+        rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual([(l["url"], l["link_id"]) for l in b.store.peer_links()],
+                         [("http://hub-c.example.ts.net:8765", "pl_stubstubstub")])
+
+    def test_a_stored_link_off_the_tailnet_is_never_used(self):
+        """A link already in the database (from an older version) to a disallowed URL: the
+        running hub doesn't replicate with it."""
+        b = self.hub("hub-b")
+        with b.store.tx():
+            b.store.conn.execute("INSERT INTO peer_links(url, link_id, hub_id, name, secret, added_at) "
+                                 "VALUES(?,?,?,?,?,?)", ("http://203.0.113.9:8765", "pl_oldoldold1", "old", "",
+                                                         "nyp_" + "o" * 43, 0))
+        b.sync_peers()
+        self.assertEqual(b.peer_urls(), [])
+        self.assertNotIn("http://203.0.113.9:8765", b.workers)
+        self.assertEqual(b.secret_for("http://203.0.113.9:8765"), "")
 
     def test_parse_join_link(self):
         self.assertEqual(admin.parse_join_link("http://hub-a.example.ts.net:8765/join/nyi_abc"),

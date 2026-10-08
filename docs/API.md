@@ -535,9 +535,10 @@ The prompt ends by having the agent run `needs-you doctor` and act on, or relay,
 under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
 A `peer` invite's response has no `mac_url` or `agent_prompt`; its `install_command` is what to
-run on the server: `curl -fsSL https://github.com/tayharris/needs-you/releases/download/v<hub version>/install-hub.sh | sudo bash -s -- --join '<join_url>'`.
+run on the server: `(curl -fsSL https://github.com/tayharris/needs-you/releases/download/v<hub version>/install-hub.sh && echo '<join_url>') | sudo bash -s -- --join -`.
 The installer and the code it installs come from that GitHub release, never from a hub; the hub
-supplies only the link.
+supplies only the link. The link reaches the installer on its stdin, after the script, so the
+code is in no command line (not in `ps`, not in sudo's log).
 
 ### `GET /v1/invites` (owner)
 
@@ -642,7 +643,7 @@ A `peer` invite pairs another hub with this one ([ADR 0012](adr/0012-mac-hub-pee
 way an always-on server joins the Mac's own hub, or one server another, without copying a
 secret. It has one use, lives 1 hour by default (at most 24), and stays on the hub that made it:
 it is never replicated (it names this hub). Redeeming it mints no token. The joining hub
-(`needs-you-admin peer join <join_url>`, which `install-hub.sh --join` runs) sends:
+(`needs-you-admin peer join -` with the `join_url` on stdin, which `install-hub.sh --join -` runs) sends:
 
 ```json
 {"code": "nyi_...", "host": "hub-b",
@@ -660,7 +661,8 @@ it is never replicated (it names this hub). Redeeming it mints no token. The joi
 The code is checked first (`404` as above, counted). Then, without spending the use: a
 malformed `peer` is a `400` (`field` names the part); the inviting hub's own `hub_id` or URL is
 `409 self`; a URL already in its config `peers` is `409 conflict` (that peer uses the shared
-secret); a `schema` below the inviting hub's is `409 peer_outdated` (the older hub would drop
+secret), and so is a URL or `hub_id` that already belongs to a link made by an earlier peer
+invite (remove that peer first, then redeem again); a `schema` below the inviting hub's is `409 peer_outdated` (the older hub would drop
 fields the newer one writes, such as `question` and `answer`: upgrade it first). A `peer` object
 sent with a `sender`, `reader` or `owner` invite is a `400` (`"field": "peer"`).
 
@@ -677,8 +679,10 @@ Response `200`:
 over the link sends it in `X-Needs-You-Peer-Link` with the secret ([below](#replication-between-hubs)).
 The inviting hub stores `peer.url`, `peer.hub_id`, the invite's `name`, the link id and the
 secret, and starts replicating with that URL at once; the joining hub stores `hub_url` with the
-same link id and secret. A
-later peer invite redeemed by the same `hub_id` under another URL replaces that link. The
+same link id and secret, and refuses a `hub_url` that is neither `https` nor on the tailnet or
+loopback (the rule for `peer.url` above), or one whose URL or `hub_id` belongs to a different
+link it already has. To pair the same hub again, or under a new URL, remove the old link
+first (`DELETE /v1/peers/<hub id>`, or `needs-you-admin peer remove`). The
 secret is sent only in this response: never replicated, listed, or logged.
 
 `GET /join/<code>` for a peer invite says what to run on the server;

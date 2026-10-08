@@ -11,7 +11,7 @@
     needs_you_admin.py token request-update devbox           # ask that machine to update
     needs_you_admin.py token clear-update devbox             # withdraw the request
     needs_you_admin.py invite create hub-b --role peer       # pair another hub with this one
-    needs_you_admin.py peer join http://hub-a.example.ts.net:8765/join/nyi_...  # redeem one here
+    echo 'http://hub-a.example.ts.net:8765/join/nyi_...' | needs_you_admin.py peer join -  # redeem one here
     needs_you_admin.py peer list                             # every peer (never the secrets)
     needs_you_admin.py peer remove hub-b                     # by hub id, URL or name
 
@@ -100,7 +100,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     peer = sub.add_parser("peer", help="hubs this hub replicates with")
     psub = peer.add_subparsers(dest="cmd")
     pj = psub.add_parser("join", help="redeem another hub's peer invite (its join URL) for this hub")
-    pj.add_argument("link", help="the peer invite's join URL, http(s)://<hub>/join/nyi_...")
+    pj.add_argument("link", nargs="?", default="-",
+                    help="the peer invite's join URL, http(s)://<hub>/join/nyi_...; '-' or nothing reads "
+                         "it from stdin, which keeps the code out of ps and sudo's log")
     psub.add_parser("list", help="list peers (never shows secrets)")
     pr = psub.add_parser("remove", help="stop replicating with a peer from a peer invite")
     pr.add_argument("which", help="its hub id, URL or name")
@@ -215,7 +217,8 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
             print("On the other hub (a server with Linux, systemd, python3 and Tailscale), run:")
             print("  %s" % links["install_command"])
             print()
-            print("Or, where a hub already runs: needs-you-admin peer join %s" % links["join_url"])
+            print("Or, where a hub already runs: echo %s | needs-you-admin peer join -"
+                  % hubmod._sh_quote(links["join_url"]))
         elif rec["role"] == "sender":
             print("Join URL (open it to read what it does):")
             print("  %s" % links["join_url"])
@@ -267,6 +270,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+PEER_URL_RULE = ("%s is neither https nor on the tailnet: a peer hub must be https, or plain http to a "
+                 "tailnet name (*.ts.net) or address. Use the hub's MagicDNS URL")
+
+
 def parse_join_link(link: str) -> Tuple[str, str]:
     """(hub URL, code) from a peer invite's join URL: http(s)://<hub>[/prefix]/join/<code>."""
     parts = urllib.parse.urlsplit(link.strip())
@@ -306,10 +313,24 @@ def redeem_peer(hub: str, code: str, me: Dict[str, Any], timeout: float = 15.0) 
 
 def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
     if args.cmd == "join":
+        link = args.link
+        if link == "-":
+            # On stdin, the code is in no command line: not in ps, nor in sudo's log.
+            if sys.stdin.isatty():
+                sys.stderr.write("Paste the peer invite link: ")
+                sys.stderr.flush()
+            link = sys.stdin.readline().strip()
+            if not link:
+                sys.stderr.write("error: no peer invite link on stdin\n")
+                return 2
         try:
-            hub, code = parse_join_link(args.link)
+            hub, code = parse_join_link(link)
         except ValueError as e:
             sys.stderr.write("error: %s\n" % e)
+            return 2
+        if not hubmod.peer_url_allowed(hub):
+            # The code is a credential and this hub will send that URL its secret and every record.
+            sys.stderr.write("error: %s\n" % PEER_URL_RULE % hub)
             return 2
         me = {"url": args.public_url or public_url(cfg), "hub_id": str(cfg["hub_id"]),
               "schema": hubmod.SCHEMA_VERSION}
@@ -328,14 +349,35 @@ def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         except RuntimeError as e:
             sys.stderr.write("error: %s\n" % e)
             return 1
-        try:
-            url = hubmod.normalise_peer_url(out.get("hub_url") or hub)
-        except ValueError:
-            url = hubmod.normalise_peer_url(hub)
+        url = ""
+        for candidate in (out.get("hub_url"), hub):
+            try:
+                url = hubmod.normalise_peer_url(candidate)
+                break
+            except ValueError:
+                continue
+        if not url:
+            sys.stderr.write("error: %s answered without a usable hub_url (http(s)://host[:port]) and the "
+                             "link has a path, so there is no URL to replicate with. Nothing was stored here; "
+                             "remove this hub (%s) from that hub's peers\n" % (hub, me["hub_id"]))
+            return 1
+        if not hubmod.peer_url_allowed(url):
+            sys.stderr.write("error: %s. Nothing was stored here; remove this hub (%s) from that hub's "
+                             "peers\n" % (PEER_URL_RULE % url, me["hub_id"]))
+            return 1
         hub_id = out.get("hub_id") if isinstance(out.get("hub_id"), str) and hubmod.HUB_ID_RE.match(
             out.get("hub_id") or "") else ""
         name = out.get("name") if isinstance(out.get("name"), str) else ""
-        link = store.add_peer_link(url, out["link_id"], hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
+        try:
+            link = store.add_peer_link(url, out["link_id"], hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
+        except hubmod.PeerLinkClash as e:
+            old = e.existing
+            sys.stderr.write("error: %s answered as %s (%s), but this hub is already paired with %s (%s). "
+                             "Nothing was stored here; if that pairing is gone, run needs-you-admin peer remove "
+                             "%s and join again, and remove this hub (%s) from that hub's peers\n"
+                             % (hub, url, hub_id or "?", old["url"], old["hub_id"] or "?",
+                                old["hub_id"] or old["url"], me["hub_id"]))
+            return 1
         if args.json:
             print(json.dumps({"url": link["url"], "hub_id": link["hub_id"], "name": link["name"]}))
         else:

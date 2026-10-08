@@ -150,9 +150,11 @@ PEER_INVITE_MAX_TTL_HOURS = 24
 PEER_URL_MAX = 300
 # What a peer invite tells the server to run (ADR 0012): the installer of this hub's release,
 # from GitHub, never from a hub. It installs its own release's code; the hub gives only the link.
+# The link follows the script on the installer's stdin (--join -), echoed by the shell itself:
+# the code is in no command line, so neither in sudo's log nor in ps.
 RELEASE_REPO = "tayharris/needs-you"  # the CLI's RELEASE_REPO
-PEER_JOIN_COMMAND = ("curl -fsSL https://github.com/" + RELEASE_REPO
-                     + "/releases/download/v%s/install-hub.sh | sudo bash -s -- --join %s")
+PEER_JOIN_COMMAND = ("(curl -fsSL https://github.com/" + RELEASE_REPO
+                     + "/releases/download/v%s/install-hub.sh && echo %s) | sudo bash -s -- --join -")
 PEER_LINK_HEADER = "X-Needs-You-Peer-Link"  # which link's secret a replication request carries
 PEER_LINK_ID_RE = re.compile(r"^pl_[A-Za-z0-9_-]{8,40}\Z")
 PEER_SYNC_SECONDS = 5.0  # how often a running hub re-reads peer links (the admin tool writes them)
@@ -243,6 +245,14 @@ AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN
                       "unknown, expired or used up, ask me for a new one.")
 
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
+
+
+class PeerLinkClash(ValueError):
+    """A new peer link shares its URL, hub id or link id with a different stored link."""
+
+    def __init__(self, existing: Dict[str, Any]) -> None:
+        super().__init__("clashes with the link to %s" % existing["url"])
+        self.existing = existing
 
 
 class ApiError(Exception):
@@ -1838,7 +1848,7 @@ class Store:
             inv = self._live_invite(code, now)
             if inv["role"] == PEER_ROLE:
                 raise _invalid("peer", "this is a peer invite, for another hub: run "
-                                       "install-hub.sh --join <link> (or needs-you-admin peer join) there")
+                                       "install-hub.sh --join - (or needs-you-admin peer join -) there")
             self._spend_invite(inv)
             name = self._unique_token_name(invite_token_name(inv["name"], host))
             token = mint_token()
@@ -1860,6 +1870,10 @@ class Store:
             if inv["role"] != PEER_ROLE:
                 raise _invalid("peer", "this invite is for a %s, not for another hub" % inv["role"])
             want = check(peer)
+            if self._peer_link_clashes(want["url"], want["hub_id"], ""):
+                raise ApiError(409, "conflict", "a peer with that URL or hub id is already paired with this "
+                                                "hub: remove it first (Settings, DELETE /v1/peers/<hub id> or "
+                                                "needs-you-admin peer remove), then try this invite again")
             self._spend_invite(inv)
             secret = mint_peer_secret()
             link = {"url": want["url"], "link_id": mint_peer_link_id(), "hub_id": want["hub_id"],
@@ -1869,22 +1883,29 @@ class Store:
 
     # -- peer links (ADR 0012) -------------------------------------------
 
+    def _peer_link_clashes(self, url: str, hub_id: str, link_id: str) -> List[Dict[str, Any]]:
+        """Stored links with this URL, hub id (when not empty) or link id (inside a transaction)."""
+        return [dict(r) for r in self.conn.execute(
+            "SELECT url, hub_id, link_id FROM peer_links WHERE url = ? OR (hub_id = ? AND hub_id != '') "
+            "OR link_id = ?", (url, hub_id, link_id))]
+
     def _put_peer_link(self, link: Dict[str, Any]) -> None:
-        """Insert or replace a link (inside a transaction). A link to the same hub id under
-        another URL goes, with its queue and state; a re-join at the same URL keeps its cursor."""
-        for old in self.conn.execute("SELECT url FROM peer_links WHERE hub_id = ? AND url != ?",
-                                     (link["hub_id"], link["url"])).fetchall():
-            self._drop_peer_rows(old["url"])
-        self.conn.execute("DELETE FROM peer_links WHERE link_id = ? AND url != ?", (link["link_id"], link["url"]))
+        """Insert a link, or replace the one at the same URL (keeping its queue and cursor);
+        callers have refused clashes with other links."""
         self.conn.execute("INSERT OR REPLACE INTO peer_links(url, link_id, hub_id, name, secret, added_at) "
                           "VALUES(?,?,?,?,?,?)", (link["url"], link["link_id"], link["hub_id"], link["name"],
                                                   link["secret"], link["added_at"]))
 
     def add_peer_link(self, url: str, link_id: str, hub_id: str, name: str, secret: str) -> Dict[str, Any]:
-        """Store the link to a hub whose peer invite this hub redeemed (the joining side)."""
+        """Store the link to a hub whose peer invite this hub redeemed (the joining side). The
+        same hub at the same URL replaces its old link (a re-pair); a link that shares only the
+        URL, the hub id or the link id with a stored one raises PeerLinkClash."""
         if not PEER_LINK_ID_RE.match(link_id or ""):
             raise ValueError("bad link id")
         with self.tx():
+            for old in self._peer_link_clashes(url, hub_id, link_id):
+                if old["url"] != url or old["hub_id"] != hub_id:
+                    raise PeerLinkClash(old)
             link = {"url": url, "link_id": link_id, "hub_id": hub_id, "name": name, "secret": secret,
                     "added_at": self.now_ms()}
             self._put_peer_link(link)
@@ -3467,7 +3488,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "Ask for a new one.", script)
         if script and inv["role"] == PEER_ROLE:
             return self._join_failed(400, "this is a peer invite, for another hub: run "
-                                          "install-hub.sh --join <link> on the server instead.", script)
+                                          "install-hub.sh --join - on the server instead.", script)
         if script:
             return self._send_text(200, install_script(self.hub, inv, code),
                                    "text/x-shellscript; charset=utf-8")
@@ -4110,7 +4131,7 @@ class Hub:
     def _load_links(self) -> List[str]:
         """Re-read the links (the admin tool may have changed them); keep the store's peer list
         (the outbox fan-out) in step. Returns the peer list."""
-        links = {str(r["url"]): r for r in self.store.peer_links()}
+        links = {str(r["url"]): r for r in self.store.peer_links() if peer_url_allowed(str(r["url"]))}
         with self.peers_lock:
             self.links = links
             peers = list(self.config_peers) + [u for u in links if u not in self.config_peers]
@@ -4293,7 +4314,7 @@ def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:
             "against its SHA256SUMS and release manifest; nothing comes from this hub), installs "
             "the hub as a system service, redeems this link (one use) for the pair's replication secret, "
             "which it keeps in the hub's database and never prints, and starts the service. On a "
-            "server that already runs a hub, `needs-you-admin peer join <link>` does the same and "
+            "server that already runs a hub, `needs-you-admin peer join -` (the link on its stdin) does the same and "
             "the running hub picks it up. If you are an agent, ask the user before installing a "
             "service.\n" % links["install_command"])
     if inv["role"] != "sender":
