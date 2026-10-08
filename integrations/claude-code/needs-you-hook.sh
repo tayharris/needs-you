@@ -950,6 +950,9 @@ def answerable_as_is(questions, field):
             return False
         if any(label != o["label"] for (label, _), o in zip(opts, item["options"])):
             return False
+        # Two choices with one label: the answer (labels only) can't say which was clicked.
+        if len(set(label for label, _ in opts)) != len(opts):
+            return False
         # The question, its header and each choice's description reach the card whole too
         # (only cleaned): never answered from a card that showed part of what was asked.
         if not (shown_whole(text, MAX_QUESTION_TEXT, True) and shown_whole(header, MAX_QUESTION_HEADER)
@@ -965,6 +968,10 @@ def shown_whole(value, limit, block=False):
     if redact(value) != value:
         return False
     if block:
+        # The card drops fence lines and renders inline markdown, where a link shows only its
+        # text: either would show the person something other than what the agent asked.
+        if re.search(r"(?m)^\s*(```|~~~)", value) or "](" in value:
+            return False
         return text_block(value, limit) == text_block(value, 1 << 30, 1 << 30)
     return one_line(value, limit) == one_line(value, 1 << 30)
 
@@ -1467,6 +1474,9 @@ def claude_answerable(raw):
         if any(not isinstance(l, str) or not l.strip() for l in labels) or len(set(labels)) != len(labels):
             return False
         if q.get("multiSelect") is True and any(", " in l for l in labels):
+            return False
+        # The card says "choose any" for these too, but Claude reads only multiSelect.
+        if q.get("multiSelect") is not True and any(q.get(k) is True for k in ("multi_select", "multiple")):
             return False
         texts.append(q["question"])
     return len(set(texts)) == len(texts)

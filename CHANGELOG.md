@@ -8,6 +8,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **`needs-you answer-wait --question-id ID`** only takes an answer to the question with that id. Once nothing is open under a key the hub reads back the last item with it, so while a run's answerable question was still in the outbox or on another hub, an earlier run's answer (its card already resolved) came back as if the person had just clicked. The agent guide and the skill now give each ask a new id and pass it.
 - **A question card is answerable only when it shows the whole question.** The hook checked only that every choice's label reached the card as written; a question cut after 8 lines or 500 characters, a header or a choice's description cut short, or any of them with text redacted could still be answered from the card, so the person could pick without seeing all that was asked. Such cards are now read-only (answer in the agent), for Claude Code and opencode.
+- **Agent hooks redact more:** a password in a URL (`postgres://app:<password>@db`), and values after names like `PGPASSWORD=`, `secret_key:` or `private-key=`, became `[redacted]` only when they also looked like a token.
+- **What the card shows is what the agent takes.** A question card stayed answerable when the card would show it differently from the agent: two choices with the same label (the answer carries labels only, so clicking "Yes — keep it" could reach opencode as the other "Yes"), a one-line code fence the card drops, a markdown link the card shows only as its text, or a Claude question marked `multi_select` ("choose any" on the card) where Claude reads only `multiSelect`. Those cards are now read-only.
 
 ## [0.2.1] - 2026-10-08
 

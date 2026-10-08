@@ -201,6 +201,15 @@ class AskMode(unittest.TestCase):
                                                       ["Yes", "No"])),
             "a question it would redact": qs(q("Use ghp_abcdefghijklmnopqrstuvwxyz0123 to push?", ["Yes", "No"])),
             "a header it would cut": qs(dict(q("Which?", ["A", "B"]), header="H" * 40)),
+            # Parser differentials (security review 0.2): what the card shows must be what
+            # Claude takes. A fence line is dropped from the card; a markdown link shows only
+            # its text there; multi_select/multiple make the card "choose any" while Claude
+            # reads only multiSelect.
+            "a one-line code fence the card drops": qs(q("Run this?\n```rm -rf ~/work```", ["Yes", "No"])),
+            "a markdown link the card shows as its text": qs(q(
+                "Merge [PR 12](https://github.com/acme/app/pull/13)?", ["Yes", "No"])),
+            "multi_select where Claude reads multiSelect": {"questions": [dict(
+                q("Which?", ["A", "B"]), multiSelect=False, multi_select=True)]},
             "a description it would cut": {"questions": [{"question": "Which?", "header": "H", "options": [
                 {"label": "A", "description": "fine " * 50 + "but wipes the disk"}, {"label": "B"}]}]},
         }

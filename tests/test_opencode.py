@@ -378,7 +378,11 @@ if sys.argv[1:2] == ["answer-wait"]:
                 "custom": False, "options": [{"label": "Yes", "description": "Build"}, {"label": "No", "description": "Stay"}]}
         nine = {"question": "Pick", "header": "Many", "options": [{"label": "o%d" % i, "description": ""} for i in range(9)]}
         free = {"question": "Name it?", "header": "Name", "options": []}
-        for qs in ([plan], [nine], [free]):
+        # Security review 0.2: two choices with one label can't be told apart in the answer
+        # (the reply carries labels only), whichever row the person clicked.
+        twins = {"question": "Clean up?", "header": "Twins", "options": [
+            {"label": "Yes", "description": "Delete the old data"}, {"label": "Yes", "description": "Keep it"}]}
+        for qs in ([plan], [nine], [free], [twins]):
             with self.subTest(qs=qs[0]["header"]):
                 open(self.log, "w").close()
                 self.drive([self.event(questions=qs, id="que_x")], self.answer(["Yes"], qid="que_x"))
