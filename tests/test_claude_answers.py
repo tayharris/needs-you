@@ -18,9 +18,9 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
-import threading
 import time
 import unittest
 
@@ -333,8 +333,15 @@ class EndToEnd(HubTestCase):
             fh.write(self.payload("PermissionRequest", tool_name="AskUserQuestion", tool_input=QUESTIONS))
         with open(path) as stdin:
             proc = subprocess.Popen([BASH, HOOK, "ask"], stdin=stdin, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, env=self.env(), text=True)
-        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+                                    stderr=subprocess.PIPE, env=self.env(), text=True, start_new_session=True)
+
+        def stop():
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)  # the hook and its CLI
+            except OSError:
+                pass
+            proc.communicate()
+        self.addCleanup(stop)
         return proc
 
     def item(self):
