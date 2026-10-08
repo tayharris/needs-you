@@ -402,14 +402,17 @@ resolve_marker() {
   log "resolve $k -> $?"
 }
 
-# The card builder and the context check share one python program (below).
+# The card builder and the context check share one python program (below). The program comes
+# on stdin; the hook input goes on fd 3 as a here-string, not in the environment, where one
+# variable is capped at about 128 KB (a big plan would post no card). Bash backs a here-string
+# with a pipe or a temp file it unlinks at once, so nothing is left behind if the hook is killed.
 run_py() {
   command -v python3 >/dev/null 2>&1 || { log "python3 not found"; return 1; }
   lease
-  NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
+  NY_MODE=$1 NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
   NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
-  python3 - 2>/dev/null <<'PY'
+  python3 - 2>/dev/null 3<<<"$input" <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
@@ -420,7 +423,8 @@ AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
             "copilot": "copilot-cli", "grok": "grok", "kimi": "kimi-code", "cursor": "cursor", "cline": "cline",
             "aider": "aider"}.get(AGENT, "claude-code")
 try:
-    data = json.loads(os.environ.get("NY_INPUT") or "{}")
+    with os.fdopen(3, encoding="utf-8", errors="replace") as _fh:
+        data = json.loads(_fh.read(16 * 1024 * 1024) or "{}")
 except Exception:
     data = {}
 if not isinstance(data, dict):
@@ -911,7 +915,7 @@ def plan_card(name, plan):
 
 
 # ---------------------------------------------------------------- notify
-PATCH_FILE =re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
+PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
 
 
 def codex_card():

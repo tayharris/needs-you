@@ -127,6 +127,18 @@ class PermissionTests(HookHarness):
         self.assertNotIn("plans/", body)  # never the plan file's path
         posted_item(argv)
 
+    def test_huge_plan_still_posts_a_clamped_card(self):
+        # Over 200 KB: too big for one environment variable (about 128 KB on Linux), so the
+        # hook hands the payload to its Python on a file descriptor instead.
+        plan = "# Big plan\n\n" + "".join("%d. Step with some detail %s\n" % (i, "x" * 60) for i in range(4000))
+        self.assertGreater(len(plan), 200 * 1024)
+        argv = self.permission("ExitPlanMode", {"plan": plan})
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants approval for a plan: my-repo")
+        body = self.opt(argv, "--body")
+        self.assertTrue(body.startswith("**Big plan**\n0. Step with some detail"), body[:80])
+        self.assertLessEqual(len(body), 2000)
+        posted_item(argv)
+
     def test_question(self):
         argv = self.permission("AskUserQuestion", {"questions": [{"question": "Use %s?" % SECRET}]})
         self.assertEqual(self.opt(argv, "--title"), "Claude asks \u201cUse [redacted]?\u201d: my-repo")

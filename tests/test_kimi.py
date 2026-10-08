@@ -177,6 +177,23 @@ class KimiHook(unittest.TestCase):
                                             "Rewrite \u2014 Start over."])
         self.assertEqual(self.marker()["kind"], "permission")
 
+    def test_huge_plan_through_the_background_copy(self):
+        # Kimi's hooks hand their work to a detached copy (setsid, or perl on macOS): a payload
+        # over 200 KB still reaches it and its Python, and leaves no file behind.
+        plan = "# Big plan\n\n" + "".join("%d. Step %s\n" % (i, "y" * 70) for i in range(3500))
+        self.assertGreater(len(plan), 200 * 1024)
+        tmp = os.path.join(self.home, "tmp")
+        os.makedirs(tmp)
+        self.run_hook("notify", "PermissionRequest", {
+            "tool_name": "ExitPlanMode", "tool_call_id": "c9", "tool_input": {},
+            "display": {"kind": "plan_review", "plan": plan}}, TMPDIR=tmp)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"), "Kimi wants approval for a plan: my-repo")
+        self.assertTrue(opt(argv, "--body").startswith("**Big plan**\n0. Step yyy"))
+        posted_item(argv)
+        self.marker()
+        self.assertEqual(os.listdir(tmp), [])
+
     def test_question_turn_end_and_failure(self):
         self.run_hook("notify", "PreToolUse", {"tool_name": "AskUserQuestion", "tool_call_id": "c2",
                                                "tool_input": {"questions": [{"question": SECRET}]}})
