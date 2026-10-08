@@ -54,7 +54,6 @@ Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
 Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page. Every guide is also on the site, in reading order: **[needsyou.app/guides](https://needsyou.app/guides/)**.
 
-Words used below: **the app** shows your alerts on the Mac; the **hub** stores them (the app has one built in); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [App, hubs and senders](docs/guides/concepts.md).
 **Or let an agent do it.** Paste this prompt into Claude Code (or Codex, Gemini CLI, any agent that runs shell commands) on your Mac, and later on each server. It installs the app, connects the agents it finds, and posts a test card, asking you at every choice ([Set it up with an agent](docs/guides/setup-with-an-agent.md)):
 
 <details>
@@ -109,7 +108,7 @@ Rules for you, the whole way through:
 
 </details>
 
-Words used below: the **hub** holds your alerts (the Mac app runs one, so your Mac is the hub); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
+Words used below: **the app** shows your alerts on the Mac; the **hub** stores them (the app has one built in); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [App, hubs and senders](docs/guides/concepts.md).
 
 1. **Download** the latest release from the repository's [Releases page](https://github.com/tayharris/needs-you/releases) (macOS 14 or later): `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
 2. **First launch.** The app is ad-hoc signed, not notarized, so macOS blocks it once. On macOS 14 and earlier: right-click `NeedsYou.app` → **Open** → **Open**. On macOS 15 and later: double-click it, then **System Settings → Privacy & Security → Open Anyway**. The release notes have the full steps (firewall prompt, managed Macs). The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools; if Settings says Python 3 isn't available, run `xcode-select --install` and reopen the app.
@@ -171,7 +170,6 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Quickstart](docs/guides/quickstart.md) | The Mac app, local Claude Code, servers |
 | [App, hubs and senders](docs/guides/concepts.md) | The three parts and where each runs, roles, invite links, tailnet, and the Settings page for each |
 | [Set it up with an agent](docs/guides/setup-with-an-agent.md) | One prompt for Claude Code or another agent: it installs the app, connects the agents it finds, and asks you at every choice |
-| [Words](docs/guides/concepts.md) | Hub, sender, reader, owner, invite link, server hub, tailnet, and the Settings page for each |
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
 | [MCP server](docs/guides/mcp.md) | Agents with MCP but no shell: post, resolve and check the setup as tool calls |
