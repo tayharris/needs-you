@@ -625,6 +625,21 @@ class ClaudeInstallerFiles(unittest.TestCase):
         with open(os.path.join(claude, backups[0])) as fh:
             self.assertIn("sk-secret", fh.read())
 
+    def test_settings_path_with_shell_syntax_is_refused(self):
+        # --settings FILE: its directory went into the hook command line inside double quotes,
+        # so a `$(...)` in a directory name ran on every hook event.
+        for name in ("x$(touch PWNED)", "a`id`b", 'q"q', "b\\s"):
+            with self.subTest(name):
+                d = os.path.join(self.tmp, name)
+                os.makedirs(d, exist_ok=True)
+                r = self.run_install("--settings", os.path.join(d, "settings.json"))
+                self.assertNotEqual(r.returncode, 0)
+                self.assertFalse(os.path.exists(os.path.join(d, "settings.json")))
+        ok = os.path.join(self.tmp, "with space")
+        os.makedirs(ok)
+        r = self.run_install("--settings", os.path.join(ok, "settings.json"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

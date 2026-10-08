@@ -111,6 +111,8 @@ case "$SCOPE" in
     SETTINGS_DIR=$(cd "$(dirname "$SETTINGS")" 2>/dev/null && pwd) || die "no such directory: $(dirname "$SETTINGS")"
     SETTINGS="$SETTINGS_DIR/$(basename "$SETTINGS")"
     HOOKS_DIR="$SETTINGS_DIR/hooks"
+    # The path goes into the hook command line, which a shell runs: no quoting tricks.
+    case "$HOOKS_DIR" in *[\"\\\`\$]*) die "--settings can't be in a directory whose path has quotes, backslashes, \` or \$" ;; esac
     CMD_PREFIX="\"$HOOKS_DIR/needs-you-hook.sh\""
     ;;
 esac
