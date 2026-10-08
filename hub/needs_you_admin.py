@@ -355,7 +355,16 @@ def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         hub_id = out.get("hub_id") if isinstance(out.get("hub_id"), str) and hubmod.HUB_ID_RE.match(
             out.get("hub_id") or "") else ""
         name = out.get("name") if isinstance(out.get("name"), str) else ""
-        link = store.add_peer_link(url, out["link_id"], hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
+        try:
+            link = store.add_peer_link(url, out["link_id"], hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
+        except hubmod.PeerLinkClash as e:
+            old = e.existing
+            sys.stderr.write("error: %s answered as %s (%s), but this hub is already paired with %s (%s). "
+                             "Nothing was stored here; if that pairing is gone, run needs-you-admin peer remove "
+                             "%s and join again, and remove this hub (%s) from that hub's peers\n"
+                             % (hub, url, hub_id or "?", old["url"], old["hub_id"] or "?",
+                                old["hub_id"] or old["url"], me["hub_id"]))
+            return 1
         if args.json:
             print(json.dumps({"url": link["url"], "hub_id": link["hub_id"], "name": link["name"]}))
         else:

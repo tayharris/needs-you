@@ -336,13 +336,32 @@ class Redeem(PeerCase):
         self.assertEqual(peer_get(a, b["peer_secret"], b["link_id"])[0], 401)
         self.assertEqual(peer_get(a, c["peer_secret"], c["link_id"])[0], 200)
 
-    def test_rejoin_under_a_new_url_replaces_the_old_link(self):
+    def test_an_invite_cant_take_over_an_existing_link(self):
+        """A second peer invite naming a linked hub's URL (or hub id) is a 409 that spends
+        nothing: the first link and its secret stay. Re-pairing goes through a removal."""
         a = self.hub("hub-a")
-        for url in ("http://b.example.ts.net:8765", "http://b2.example.ts.net:8765"):
-            _, inv = self.peer_invite(a)
-            status, _ = self.redeem(a, inv["code"], {"url": url, "hub_id": "hub-b",
+        _, inv = self.peer_invite(a)
+        status, first = self.redeem(a, inv["code"], {"url": "http://b.example.ts.net:8765", "hub_id": "hub-b",
                                                      "schema": hubmod.SCHEMA_VERSION})
-            self.assertEqual(status, 200)
+        self.assertEqual(status, 200, first)
+        for peer in ({"url": "http://b.example.ts.net:8765", "hub_id": "evil"},
+                     {"url": "http://b2.example.ts.net:8765", "hub_id": "hub-b"},
+                     {"url": "http://b.example.ts.net:8765", "hub_id": "hub-b"}):
+            _, inv = self.peer_invite(a)
+            status, err = self.redeem(a, inv["code"], dict(peer, schema=hubmod.SCHEMA_VERSION))
+            self.assertEqual((status, err.get("error")), (409, "conflict"), (peer, err))
+            self.assertIn("remove", err["message"])
+            self.assertEqual([i["left"] for i in a.store.list_invites() if i["id"] == inv["id"]], [1])
+        (link,) = a.store.peer_links()
+        self.assertEqual((link["url"], link["hub_id"], link["secret"]),
+                         ("http://b.example.ts.net:8765", "hub-b", first["peer_secret"]))
+        self.assertEqual(peer_get(a, first["peer_secret"], first["link_id"])[0], 200)
+        # after a removal the hub pairs again, under a new URL too
+        self.assertEqual(request("DELETE", a.url + "/v1/peers/hub-b", self.owner(a))[0], 200)
+        _, inv = self.peer_invite(a)
+        status, _ = self.redeem(a, inv["code"], {"url": "http://b2.example.ts.net:8765", "hub_id": "hub-b",
+                                                 "schema": hubmod.SCHEMA_VERSION})
+        self.assertEqual(status, 200)
         self.assertEqual([l["url"] for l in a.store.peer_links()], ["http://b2.example.ts.net:8765"])
 
     def test_without_a_mesh_secret_replication_is_off_until_a_link_exists(self):
@@ -526,6 +545,25 @@ class AdminTool(PeerCase):
         rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
         self.assertEqual(rc, 0, out + err)
         self.assertEqual([l["url"] for l in b.store.peer_links()], ["http://hub-x.example.ts.net:8765"])
+
+    def test_join_cant_take_over_another_link(self):
+        """The inviting hub's answer names an existing peer's URL or hub id: refused, that link
+        kept. The same hub at the same URL (a re-pair after the other side removed it) replaces it."""
+        b = self.hub("hub-b")
+        b.store.add_peer_link("http://hub-c.example.ts.net:8765", "pl_cccccccccc", "hub-c", "c", "nyp_" + "c" * 43)
+        for answer in (stub_answer(hub_url="http://hub-c.example.ts.net:8765"),
+                       stub_answer(hub_id="hub-c")):
+            base, _ = redeem_stub(self, answer)
+            rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+            self.assertEqual(rc, 1, out + err)
+            self.assertIn("already", err)
+            self.assertEqual([(l["url"], l["link_id"]) for l in b.store.peer_links()],
+                             [("http://hub-c.example.ts.net:8765", "pl_cccccccccc")])
+        base, _ = redeem_stub(self, stub_answer(hub_url="http://hub-c.example.ts.net:8765", hub_id="hub-c"))
+        rc, out, err = self.admin(b, "peer", "join", base + "/join/nyi_x")
+        self.assertEqual(rc, 0, out + err)
+        self.assertEqual([(l["url"], l["link_id"]) for l in b.store.peer_links()],
+                         [("http://hub-c.example.ts.net:8765", "pl_stubstubstub")])
 
     def test_a_stored_link_off_the_tailnet_is_never_used(self):
         """A link already in the database (from an older version) to a disallowed URL: the

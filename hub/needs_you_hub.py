@@ -245,6 +245,14 @@ AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
 
+class PeerLinkClash(ValueError):
+    """A new peer link shares its URL, hub id or link id with a different stored link."""
+
+    def __init__(self, existing: Dict[str, Any]) -> None:
+        super().__init__("clashes with the link to %s" % existing["url"])
+        self.existing = existing
+
+
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str = "", field: Optional[str] = None,
                  headers: Optional[Dict[str, str]] = None) -> None:
@@ -1860,6 +1868,10 @@ class Store:
             if inv["role"] != PEER_ROLE:
                 raise _invalid("peer", "this invite is for a %s, not for another hub" % inv["role"])
             want = check(peer)
+            if self._peer_link_clashes(want["url"], want["hub_id"], ""):
+                raise ApiError(409, "conflict", "a peer with that URL or hub id is already paired with this "
+                                                "hub: remove it first (Settings, DELETE /v1/peers/<hub id> or "
+                                                "needs-you-admin peer remove), then try this invite again")
             self._spend_invite(inv)
             secret = mint_peer_secret()
             link = {"url": want["url"], "link_id": mint_peer_link_id(), "hub_id": want["hub_id"],
@@ -1869,22 +1881,29 @@ class Store:
 
     # -- peer links (ADR 0012) -------------------------------------------
 
+    def _peer_link_clashes(self, url: str, hub_id: str, link_id: str) -> List[Dict[str, Any]]:
+        """Stored links with this URL, hub id (when not empty) or link id (inside a transaction)."""
+        return [dict(r) for r in self.conn.execute(
+            "SELECT url, hub_id, link_id FROM peer_links WHERE url = ? OR (hub_id = ? AND hub_id != '') "
+            "OR link_id = ?", (url, hub_id, link_id))]
+
     def _put_peer_link(self, link: Dict[str, Any]) -> None:
-        """Insert or replace a link (inside a transaction). A link to the same hub id under
-        another URL goes, with its queue and state; a re-join at the same URL keeps its cursor."""
-        for old in self.conn.execute("SELECT url FROM peer_links WHERE hub_id = ? AND url != ?",
-                                     (link["hub_id"], link["url"])).fetchall():
-            self._drop_peer_rows(old["url"])
-        self.conn.execute("DELETE FROM peer_links WHERE link_id = ? AND url != ?", (link["link_id"], link["url"]))
+        """Insert a link, or replace the one at the same URL (keeping its queue and cursor);
+        callers have refused clashes with other links."""
         self.conn.execute("INSERT OR REPLACE INTO peer_links(url, link_id, hub_id, name, secret, added_at) "
                           "VALUES(?,?,?,?,?,?)", (link["url"], link["link_id"], link["hub_id"], link["name"],
                                                   link["secret"], link["added_at"]))
 
     def add_peer_link(self, url: str, link_id: str, hub_id: str, name: str, secret: str) -> Dict[str, Any]:
-        """Store the link to a hub whose peer invite this hub redeemed (the joining side)."""
+        """Store the link to a hub whose peer invite this hub redeemed (the joining side). The
+        same hub at the same URL replaces its old link (a re-pair); a link that shares only the
+        URL, the hub id or the link id with a stored one raises PeerLinkClash."""
         if not PEER_LINK_ID_RE.match(link_id or ""):
             raise ValueError("bad link id")
         with self.tx():
+            for old in self._peer_link_clashes(url, hub_id, link_id):
+                if old["url"] != url or old["hub_id"] != hub_id:
+                    raise PeerLinkClash(old)
             link = {"url": url, "link_id": link_id, "hub_id": hub_id, "name": name, "secret": secret,
                     "added_at": self.now_ms()}
             self._put_peer_link(link)

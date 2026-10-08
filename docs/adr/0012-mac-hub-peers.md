@@ -45,13 +45,20 @@ server, or a server (`needs-you-admin`) to add another server without copying th
 The joining hub sends `POST /v1/invites/redeem` with
 `{"code", "host", "peer": {"url": <its public_url>, "hub_id": <its id>, "schema": <its schema>}}`.
 The inviting hub checks the code first (`404`, counted against the client IP like any failed
-redeem), then the `peer` object (`400`), refuses its own `hub_id` or URL (`409 self`) and a
-joining hub whose `schema` is below its own (`409 peer_outdated`). None of those spend the use.
+redeem), then the `peer` object (`400`), refuses its own `hub_id` or URL (`409 self`), a URL or `hub_id` that already belongs to
+another link (`409 conflict`: re-pairing goes through a removal, so a redeem can't take over a
+link) and a joining hub whose `schema` is below its own (`409 peer_outdated`). None of those
+spend the use.
 Then it mints a fresh **pairwise secret** (`nyp_` + 256 random bits), stores
 `(url, hub_id, name, secret)` in a new `peer_links` table (schema 9), starts replicating with
 that URL at once, and answers `{"role": "peer", "peer_secret", "hub_id", "hub_url", "schema",
 "version", "hub_urls"}`. The joining hub stores the reverse link (the inviting hub's
-`hub_url` and the same secret) in its own `peer_links`.
+`hub_url` and the same secret) in its own `peer_links`, under the same rule for that URL as
+the inviting hub applies to `peer.url` (below): it checks the join link's hub before sending the
+code and the answered `hub_url` before storing anything, and a running hub never replicates
+with a stored link that fails it. It refuses an answer whose URL or `hub_id` belongs to a
+different link it already has; the same hub at the same URL replaces its old link (a re-pair
+after the other side removed it).
 
 `needs-you-admin peer join <join_url>` does the joining side; `install-hub.sh --join <link>`
 installs the hub, runs it, and starts the service. Neither prints the secret.
