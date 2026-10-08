@@ -60,7 +60,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. An `idle_prompt` or `agent_needs_input` posts nothing while the agent's own blocker from this session is open ([below](#one-card-for-one-wait)). |
 | `PermissionRequest` (any tool) | `notify` | Posts the session's card, titled by the tool: plan approval (with the plan's first lines), a question (with its text and choices), the program a command runs, the file an edit changes. Skipped when the request doesn't need your approval. |
 | `StopFailure` | `notify` | Posts the session's card, titled by the API error. |
-| `UserPromptSubmit`, `PostToolUse` | `resolve` | Resolves the session's card, if it posted one. |
+| `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` | `resolve` | Resolves the session's card, if it posted one (also one still being posted when you replied). |
 | `Stop` | `stop` | Resolves the session's card (except an API-error card), then checks how full the context is and posts, updates or resolves the context card. |
 | `SessionStart` | `start` | Remembers the model. After `/clear`, compaction or `/resume`, resolves the earlier cards of this Claude process and its context card. |
 | `SessionEnd` | `end` | Resolves the session's card and its context card. |

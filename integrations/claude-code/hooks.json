@@ -44,6 +44,13 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
