@@ -66,6 +66,10 @@ class QuestionFields(AnswerCase):
             ({"expires_at": "soon"}, "question.expires_at"),
             # only offered labels can be answered: every item needs options
             ({"items": [{"text": "Name it?"}]}, "question.answerable"),
+            # an answer carries labels only: two options with one label can't be told apart
+            ({"items": [{"text": "Clean up?", "options": [{"label": "Yes", "description": "Delete"},
+                                                          {"label": "No"}, {"label": "Yes", "description": "Keep"}]}]},
+             "question.items[0].options[2].label"),
         ]
         for extra, field in cases:
             q = dict(QUESTION, **extra)
@@ -286,6 +290,31 @@ class AnswerSecurity(AnswerCase):
             self.assertEqual(request("GET", url, sender)[0], 404)
         status, err = request("GET", url, sender)
         self.assertEqual((status, err["error"]), (429, "rate_limited"))
+
+
+class UniqueLabels(AnswerCase):
+    def test_repeated_labels_only_matter_when_answerable(self):
+        twins = {"items": [{"text": "Clean up?", "options": [{"label": "Yes"}, {"label": "Yes"}]}]}
+        item = self.ask("read-only", question=twins)
+        self.assertEqual([o["label"] for o in item["question"]["items"][0]["options"]], ["Yes", "Yes"])
+        # the same labels in two different questions are fine
+        two = {"answerable": True, "items": [{"text": "A?", "options": [{"label": "Yes"}, {"label": "No"}]},
+                                             {"text": "B?", "options": [{"label": "Yes"}, {"label": "No"}]}]}
+        self.assertTrue(self.ask("two", question=two)["question"]["answerable"])
+
+    def test_a_peer_record_with_repeated_answerable_labels_loses_its_question(self):
+        st = self.make_hub("hub-x", start=False).store
+        twins = {"answerable": True, "items": [{"text": "Clean up?", "options": [{"label": "Yes"}, {"label": "Yes"}]}]}
+        rec = {"id": "01AAAAAAAAAAAAAAAAAAAAAAAB", "key": "k2", "context": "work", "kind": "needs",
+               "priority": "normal", "title": "t", "status": "open",
+               "created_at": "2026-10-06T10:00:00.000Z", "updated_at": "2026-10-06T10:00:01.000Z",
+               "content_updated_at": "2026-10-06T10:00:00.000Z", "updated_by": "hub-a",
+               "question": twins, "answer": [{"selected": ["Yes"]}],
+               "answered_at": "2026-10-06T10:00:01.000Z", "answered_by": "mac"}
+        st.apply_item(rec)
+        wire = hubmod.item_wire(st.get_item(rec["id"]))
+        self.assertIsNone(wire["question"])
+        self.assertIsNone(wire["answer"])
 
 
 class PeerAnswers(HubTestCase):

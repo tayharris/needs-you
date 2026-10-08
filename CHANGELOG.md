@@ -7,6 +7,9 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Upgrade note
 
 Sender machines now update themselves once a day by default. Machines set up earlier keep what they had (off, unless they used `--auto-update`): run `needs-you update --enable-auto` on each, or re-run its invite one-liner. `needs-you doctor` says so on a machine that is behind its hub.
+### Security
+
+- **Hub: an answerable question can't repeat a label.** An answer carries labels only, so two options named "Yes" with different descriptions couldn't be told apart, and the sender could act on the one the person didn't click. `POST /v1/items` now answers `400` (`question.items[i].options[j].label`) for such a question; a read-only one may still repeat a label ([API.md](docs/API.md), [ADR 0009](docs/adr/0009-questions-on-cards.md) amendment). The Mac app also keeps such a card read-only when an older hub serves one.
 
 ### Added
 

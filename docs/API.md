@@ -281,6 +281,9 @@ Text follows the same rules as every field (trimmed, no control or bidi characte
 when given, `answerable` as a boolean, `expires_at` only when given (in the hub's timestamp
 form); an item without one has `"question": null`. An answerable question with an item that has
 no options is refused (`400`, `question.answerable`): only offered labels can be answered.
+So is one with two options of the same label within a question (`400`, the second one's
+`question.items[i].options[j].label`): an answer carries labels only, so the two couldn't be
+told apart. A read-only question may repeat a label; different questions may share labels.
 Senders keep the question's text in `body` as well, for clients and views that don't show the
 field. A re-post that changes the question (any part of it), or a re-post by a different
 token, clears the item's `answer`: an answer is only ever read back by the token that asked.
@@ -727,7 +730,8 @@ from a hub that predates steps: the receiver keeps its own steps for that id whe
 hub), and otherwise stores none. An empty array clears them. Older hubs ignore the field, so
 their own copies have no steps. `question` works the same way: carried as the object (or
 `null`), kept when a record without the key has the receiver's `content_updated_at`. A
-replicated question this hub would refuse on POST is dropped (the item stays). `answer`,
+replicated question this hub would refuse on POST is dropped (the item stays), including an
+answerable one that repeats a label (from an older hub). `answer`,
 `answered_at` and `answered_by` work the same way (a record without an `answer` key keeps the
 receiver's answer when `content_updated_at` matches). A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names

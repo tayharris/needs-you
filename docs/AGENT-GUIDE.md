@@ -197,6 +197,8 @@ needs-you resolve --key "work:deploy:api-v2.14"   # once you've acted on it
 - 1 to 4 questions, each with 1 to 8 options (labels up to 80 characters); every question
   needs options. `"multi_select": true` lets the person pick several. Add `"expires_at"`
   when you'll stop waiting, so a late click is refused rather than lost.
+- Within a question, every label must differ: an answer is labels only, so the hub refuses
+  an answerable question that repeats one (`400`).
 - `answer-wait` prints `{"id", "key", "status", "question_id", "answers": [{"selected":
   [labels]}], "answered_at", "answered_by"}` and exits 0. It exits 3 when `--timeout`
   runs out and 4 when no answer will come (the card was resolved or dismissed, the question
