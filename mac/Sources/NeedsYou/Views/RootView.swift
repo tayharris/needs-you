@@ -255,7 +255,7 @@ struct PreviewPill: View {
                     // What it asks and the first choices (QuestionDisplay.previewRows sizes these).
                     Text(text)
                         .font(Theme.meta(metrics))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(Theme.text.opacity(0.85))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .padding(.top, PreviewLayout.questionRowGap - PreviewLayout.metaGap)

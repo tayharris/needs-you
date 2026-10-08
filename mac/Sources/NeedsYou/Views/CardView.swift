@@ -258,7 +258,7 @@ struct QuestionList: View {
                         .foregroundStyle(Theme.muted)
                     Text(LimitedMarkdown.render(q.text))
                         .font(Theme.body(font).weight(.medium))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(Theme.text.opacity(0.92))
                         .tint(Theme.normal)
                         .fixedSize(horizontal: false, vertical: true)
                     if !q.options.isEmpty {
@@ -372,7 +372,7 @@ struct OptionRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(option.label)
                     .font(Theme.body(font).weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(Theme.text.opacity(0.92))
                     .fixedSize(horizontal: false, vertical: true)
                 if !option.detail.isEmpty {
                     Text(option.detail)
@@ -392,7 +392,7 @@ struct OptionRow: View {
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(chosen ? Theme.normal.opacity(0.16) : Color.white.opacity(clickable ? (hovering ? 0.16 : 0.1) : 0.06)))
+            .fill(chosen ? Theme.normal.opacity(0.16) : Theme.text.opacity(clickable ? (hovering ? 0.16 : 0.1) : 0.06)))
         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
             .strokeBorder(chosen ? Theme.normal.opacity(0.6) : (clickable ? Theme.linkStroke : Theme.hairline),
                           lineWidth: chosen || clickable ? 1 : 0.5))
