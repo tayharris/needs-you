@@ -164,7 +164,7 @@ def ours(hook):
 original_text = None
 settings = {}
 if os.path.exists(settings_path):
-    with open(settings_path, encoding="utf-8") as f:
+    with open(settings_path, encoding="utf-8", newline="") as f:  # the backup keeps it exactly
         original_text = f.read()
     if original_text.strip():
         try:
@@ -246,8 +246,19 @@ if dry_run:
 real = os.path.realpath(settings_path)
 os.makedirs(os.path.dirname(real), exist_ok=True)
 if original_text is not None:
+    # O_EXCL: a backup from earlier in the same second (an install then an uninstall) is
+    # never overwritten, and a backup name that is a planted symlink is never written.
     backup = "%s.bak-%s" % (real, time.strftime("%Y%m%d-%H%M%S"))
-    with open(backup, "w", encoding="utf-8") as f:
+    n = 0
+    while True:
+        try:
+            bfd = os.open(backup if not n else "%s.%d" % (backup, n), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            n += 1
+    if n:
+        backup = "%s.%d" % (backup, n)
+    with os.fdopen(bfd, "w", encoding="utf-8", newline="") as f:
         f.write(original_text)
     print("settings: backed up to %s" % backup)
     mode = os.stat(real).st_mode & 0o777

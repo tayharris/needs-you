@@ -106,6 +106,24 @@ class UninstallHooks(unittest.TestCase):
             self.assertNotIn("project hooks", r.stdout.lower(), args)
         self.assertEqual(self.text(self.user_settings()), before)
 
+    def test_every_backup_is_kept_within_one_second(self):
+        # The JSON is rewritten (re-indented), so a backup is the only exact copy of the file as
+        # it was: an uninstall right after the install must not overwrite the install's backup.
+        os.makedirs(os.path.join(self.home, ".claude"))
+        mine = b'{\r\n\t"model": "keep"\r\n}\r\n'
+        with open(self.user_settings(), "wb") as fh:
+            fh.write(mine)
+        self.install("--user")
+        self.install("--user", "--uninstall")
+        d = os.path.join(self.home, ".claude")
+        baks = []
+        for n in sorted(os.listdir(d)):
+            if n.startswith("settings.json.bak-"):
+                with open(os.path.join(d, n), "rb") as fh:
+                    baks.append(fh.read())
+        self.assertEqual(len(baks), 2, baks)
+        self.assertIn(mine, baks)
+
     def test_project_only_from_inside_it(self):
         self.setup_all()
         r = self.cli("--project", cwd=os.path.join(self.proj, "src"))
