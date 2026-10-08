@@ -18,7 +18,7 @@ struct CardView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(item.title)
                         .font(Theme.title(m))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.text)
                         .fixedSize(horizontal: false, vertical: true)
                         .help(item.key)
                     if let badge {
@@ -37,8 +37,8 @@ struct CardView: View {
                 if let body = item.body, !body.isEmpty, CardBodyPolicy.showsBody(mode, expanded: expanded) {
                     Text(LimitedMarkdown.render(body))
                         .font(Theme.body(model.bodyFont))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .tint(Theme.normal)
+                        .foregroundStyle(Theme.text.opacity(0.85))
+                        .tint(Theme.accent)
                         .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -172,7 +172,7 @@ struct StepList: View {
                     Button { model.toggleStep(item, index) } label: {
                         Image(systemName: ticked ? "checkmark.square.fill" : "square")
                             .font(.system(size: font))
-                            .foregroundStyle(ticked ? Theme.normal.opacity(toggles ? 0.9 : 0.6) : Theme.muted)
+                            .foregroundStyle(ticked ? Theme.accent.opacity(toggles ? 0.9 : 0.6) : Theme.muted)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -185,10 +185,10 @@ struct StepList: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(LimitedMarkdown.render(step.text))
-                            .strikethrough(ticked, color: .white.opacity(0.35))
+                            .strikethrough(ticked, color: Theme.text.opacity(0.35))
                             .font(Theme.body(font))
-                            .foregroundStyle(.white.opacity(ticked ? 0.45 : 0.85))
-                            .tint(Theme.normal)
+                            .foregroundStyle(Theme.text.opacity(ticked ? 0.45 : 0.85))
+                            .tint(Theme.accent)
                             .fixedSize(horizontal: false, vertical: true)
                         if let link = step.link {
                             StepLinkButton(item: item, link: link, model: model)
@@ -200,7 +200,7 @@ struct StepList: View {
                 Button { model.resolve(item) } label: {
                     Label("All steps done: mark Done", systemImage: "checkmark.circle.fill")
                         .font(.system(size: model.metrics.actionFont, weight: .semibold))
-                        .foregroundStyle(Theme.normal)
+                        .foregroundStyle(Theme.accent)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -337,7 +337,7 @@ private struct AgeBadge: View {
             .font(.system(size: metrics.metaFont, weight: .medium).monospacedDigit())
             .foregroundStyle(stale ? Theme.normal.opacity(0.9) : Theme.muted)
             .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(Capsule().fill(Color.white.opacity(stale ? 0.10 : 0.06)))
+            .background(Capsule().fill(Theme.text.opacity(stale ? 0.10 : 0.06)))
             .fixedSize()
             .help(stale ? "Waiting a long time: it may be stale. Dismiss it, or all from this host (… menu)." : "Waiting since this long ago")
     }
@@ -373,7 +373,7 @@ struct RecentRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(Theme.body(model.bodyFont))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(Theme.text.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
                 Text(Format.meta(item, now: model.now))
                     .font(Theme.meta(model.metrics))

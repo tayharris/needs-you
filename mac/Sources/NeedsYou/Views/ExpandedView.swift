@@ -59,8 +59,8 @@ struct ExpandedView: View {
                 Text("DEMO")
                     .font(.system(size: model.metrics.sectionFont - 1, weight: .bold, design: .monospaced))
                     .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(Capsule().fill(Theme.normal.opacity(0.25)))
-                    .foregroundStyle(Theme.normal)
+                    .background(Capsule().fill(Theme.accent.opacity(0.25)))
+                    .foregroundStyle(Theme.accent)
             }
             Text(model.statusLine)
                 .font(Theme.meta(model.metrics))
@@ -95,7 +95,7 @@ struct ExpandedHeader: View {
         HStack(spacing: 5) {
             Text(model.needsLabel)
                 .font(.system(size: model.metrics.headerFont, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.text)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .layoutPriority(-1)
@@ -131,7 +131,7 @@ struct ExpandedHeader: View {
             }
         }
         .padding(.horizontal, 10)
-        .foregroundStyle(.white.opacity(0.8))
+        .foregroundStyle(Theme.text.opacity(0.8))
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 3, coordinateSpace: .global)
@@ -182,8 +182,8 @@ struct ContextSwitch: View {
                     }
                     .font(.system(size: model.metrics.headerFont - 1, weight: selected ? .semibold : .regular))
                     .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Capsule().fill(selected ? Color.white.opacity(0.12) : .clear))
-                    .foregroundStyle(selected ? .white : Theme.muted)
+                    .background(Capsule().fill(selected ? Theme.text.opacity(0.12) : .clear))
+                    .foregroundStyle(selected ? Theme.text : Theme.muted)
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -328,7 +328,7 @@ private struct EmptyState: View {
                 .foregroundStyle(.green.opacity(0.7))
             Text("All clear in \(model.context.rawValue)")
                 .font(Theme.body(model.bodyFont))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Theme.text.opacity(0.8))
             if model.otherCount > 0 {
                 Button("\(model.otherCount) waiting in \(model.context.other.rawValue)") {
                     model.setContext(model.context.other)

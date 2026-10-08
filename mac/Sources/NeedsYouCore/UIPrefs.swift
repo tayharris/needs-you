@@ -31,6 +31,13 @@ public struct UIPrefs: Equatable, Sendable {
         public static let collapseOnClickOutside = "collapseOnClickOutside"
         public static let backdrop = "panelBackdrop"
         public static let expandedListHeight = "expandedListHeight"
+        public static let theme = "theme"
+        public static let accent = "themeAccent"
+        public static let arrivalUrgent = "arrivalUrgent"
+        public static let arrivalOther = "arrivalOther"
+        public static let arrivalRepeats = "arrivalRepeats"
+        public static let arrivalSpeed = "arrivalSpeed"
+        public static let urgentReminderMinutes = "urgentReminderMinutes"
     }
 
     public var panelSize: PanelSize = .regular
@@ -68,6 +75,18 @@ public struct UIPrefs: Equatable, Sendable {
     public var backdrop: Double = PanelBackdrop.standard
     /// The open panel's list height in points, set by dragging its grip; 0 = automatic.
     public var expandedListHeight: Double = 0
+    /// Settings → Appearance: the panel's colours (PanelTheme) and an accent override.
+    public var theme: PanelTheme = .standard
+    public var accent: ThemeAccent = .theme
+    /// Settings → Alerts → Arrival animation, for urgent items and for the rest
+    /// (ArrivalMotion). Glow pulse is the original.
+    public var arrivalUrgent: ArrivalAnimation = .glow
+    public var arrivalOther: ArrivalAnimation = .glow
+    /// How many times it plays (ArrivalRepeats.choices; 0 = from the alert loudness).
+    public var arrivalRepeats: Int = ArrivalRepeats.automatic
+    public var arrivalSpeed: PulseSpeed = .normal
+    /// Play urgent's arrival again every N minutes while it's unseen (UrgentReminder; 0 = off).
+    public var urgentReminderMinutes: Int = UrgentReminder.off
 
     public init() {}
 
@@ -96,6 +115,17 @@ public struct UIPrefs: Equatable, Sendable {
         if let v = store.object(forKey: Key.backdrop) as? NSNumber { p.backdrop = PanelBackdrop.nearestChoice(v.doubleValue) }
         if let v = store.object(forKey: Key.collapseOnClickOutside) as? NSNumber { p.collapseOnClickOutside = v.boolValue }
         if let v = store.object(forKey: Key.expandedListHeight) as? NSNumber { p.expandedListHeight = ListResize.sanitized(v.doubleValue) }
+        if let raw = store.string(forKey: Key.theme), let v = PanelTheme(rawValue: raw) { p.theme = v }
+        p.accent = ThemeAccent(stored: store.string(forKey: Key.accent))
+        if let raw = store.string(forKey: Key.arrivalUrgent), let v = ArrivalAnimation(rawValue: raw) {
+            p.arrivalUrgent = ArrivalAnimation.effective(v, for: .urgent)
+        }
+        if let raw = store.string(forKey: Key.arrivalOther), let v = ArrivalAnimation(rawValue: raw) { p.arrivalOther = v }
+        if let v = store.object(forKey: Key.arrivalRepeats) as? NSNumber { p.arrivalRepeats = ArrivalRepeats.sanitized(v.intValue) }
+        if let raw = store.string(forKey: Key.arrivalSpeed), let v = PulseSpeed(rawValue: raw) { p.arrivalSpeed = v }
+        if let v = store.object(forKey: Key.urgentReminderMinutes) as? NSNumber {
+            p.urgentReminderMinutes = UrgentReminder.sanitized(v.intValue)
+        }
         return p
     }
 
@@ -120,9 +150,22 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.backdrop != backdrop { store.set(backdrop, forKey: Key.backdrop) }
         if previous?.collapseOnClickOutside != collapseOnClickOutside { store.set(collapseOnClickOutside, forKey: Key.collapseOnClickOutside) }
         if previous?.expandedListHeight != expandedListHeight { store.set(expandedListHeight, forKey: Key.expandedListHeight) }
+        if previous?.theme != theme { store.set(theme.rawValue, forKey: Key.theme) }
+        if previous?.accent != accent { store.set(accent.storageString, forKey: Key.accent) }
+        if previous?.arrivalUrgent != arrivalUrgent { store.set(arrivalUrgent.rawValue, forKey: Key.arrivalUrgent) }
+        if previous?.arrivalOther != arrivalOther { store.set(arrivalOther.rawValue, forKey: Key.arrivalOther) }
+        if previous?.arrivalRepeats != arrivalRepeats { store.set(arrivalRepeats, forKey: Key.arrivalRepeats) }
+        if previous?.arrivalSpeed != arrivalSpeed { store.set(arrivalSpeed.rawValue, forKey: Key.arrivalSpeed) }
+        if previous?.urgentReminderMinutes != urgentReminderMinutes {
+            store.set(urgentReminderMinutes, forKey: Key.urgentReminderMinutes)
+        }
     }
 
     public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }
+    /// The panel's colours for the theme, the accent override and macOS's appearance.
+    public func palette(systemIsDark: Bool) -> PanelPalette {
+        theme.palette(systemIsDark: systemIsDark, accent: accent)
+    }
     public var bodyFont: CGFloat { PanelStyle.bodyFont(textSize, panel: panelSize) }
     public var pillOptions: PillOptions {
         PillOptions(size: pillSize, detail: pillDetail, split: pillSplit, showNew: pillShowNew)
@@ -133,6 +176,18 @@ public struct UIPrefs: Equatable, Sendable {
     /// The chosen alert intensity for a priority (before the urgent floor).
     public func alertIntensity(for priority: ItemPriority) -> AlertIntensity {
         priority == .urgent ? alertUrgent : alertOther
+    }
+
+    /// The arrival animation chosen for a priority (urgent never None).
+    public func arrivalAnimation(for priority: ItemPriority) -> ArrivalAnimation {
+        ArrivalAnimation.effective(priority == .urgent ? arrivalUrgent : arrivalOther, for: priority)
+    }
+
+    /// The arrival to play for `priority`: the chosen animation at the alert loudness,
+    /// with the timing settings.
+    public func arrivalPlan(for priority: ItemPriority, basePulses: Int = 1, reduceMotion: Bool = false) -> ArrivalPlan {
+        ArrivalMotion.plan(arrivalAnimation(for: priority), look: alertLook(for: priority, basePulses: basePulses),
+                           speed: arrivalSpeed, repeats: arrivalRepeats, reduceMotion: reduceMotion)
     }
 
     /// What to draw for `priority` (the urgent floor applied).

@@ -52,11 +52,12 @@ struct PanelPreview: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Preview").font(.caption).foregroundStyle(.secondary)
             CardView(item: Self.sample(now: model.now), model: model)
+                .id(Theme.palette)
                 .frame(width: m.expandedWidth - 2 * m.listPadding)
                 .padding(m.listPadding)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(white: 0.11)))
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface))
                 .opacity(settings.ui.panelOpacity)
-                .environment(\.colorScheme, .dark)
+                .environment(\.colorScheme, Theme.colorScheme)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -79,9 +80,10 @@ struct AlertPreview: View {
                 AlertSamplePill(settings: settings, priority: .normal, count: 3, basePulses: 1)
                 Spacer()
             }
+            .id(Theme.palette)
             .padding(.vertical, 14)
             .padding(.horizontal, 18)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(white: 0.11)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface))
         }
         .padding(.vertical, 4)
     }
@@ -93,7 +95,10 @@ private struct AlertSamplePill: View {
     let count: Int
     let basePulses: Int
     @State private var glow: Double = 0
-    @State private var playing = false
+    @State private var ripple: Double = 0
+    @State private var motion: Double = 0
+    /// The arrival playing, if any.
+    @State private var active: ArrivalPlan?
 
     var body: some View {
         let m = settings.ui.metrics
@@ -103,13 +108,16 @@ private struct AlertSamplePill: View {
         VStack(spacing: 6) {
             Text("\(count)")
                 .font(.system(size: m.countFont, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.95))
+                .foregroundStyle(Theme.text.opacity(0.95))
                 .frame(width: m.countWidth(digits: 1), height: m.countHeight)
                 .background(color.opacity(look.fillOpacity))
-                .background(Color(white: 0.18))
+                .background(Theme.tint)
+                .background(Theme.raised)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(color.opacity(look.ringOpacity), lineWidth: look.ringWidth))
-                .background(GlowEdge(shape: shape, color: color, glow: glow, look: look))
+                .background(GlowEdge(shape: shape, color: color, glow: glow, look: active?.look ?? look))
+                .background(RippleEdge(shape: shape, color: color, progress: ripple, plan: active ?? .idle(look)))
+                .modifier(ArrivalMotionEffect(plan: active, value: motion))
                 .padding(AlertStyle.maxGlowRadius)
                 .contentShape(Rectangle())
                 .onTapGesture { play() }
@@ -117,20 +125,27 @@ private struct AlertSamplePill: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, Theme.colorScheme)
         .onChange(of: settings.ui.alertIntensity(for: priority)) { _, _ in play() }
+        .onChange(of: settings.ui.arrivalAnimation(for: priority)) { _, _ in play() }
+        .onChange(of: settings.ui.arrivalSpeed) { _, _ in play() }
+        .onChange(of: settings.ui.arrivalRepeats) { _, _ in play() }
         .onChange(of: settings.ui.panelSize) { _, _ in play() }
     }
 
     private func play() {
-        guard !playing else { return }
-        var look = settings.ui.alertLook(for: priority, basePulses: basePulses)
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { look = look.reducedMotion() }
-        guard look.pulses > 0 else { return }
-        playing = true
+        guard active == nil else { return }
+        let plan = settings.ui.arrivalPlan(for: priority, basePulses: basePulses,
+                                           reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        guard !plan.isEmpty else { return }
+        active = plan
         Task { @MainActor in
-            await PulseRunner.run(look) { glow = $0 }
-            playing = false
+            switch plan.animation {
+            case .glow: await ArrivalRunner.run(plan) { glow = $0 }
+            case .ripple: await ArrivalRunner.run(plan) { ripple = $0 }
+            default: await ArrivalRunner.run(plan) { motion = $0 }
+            }
+            active = nil
         }
     }
 }
