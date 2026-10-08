@@ -47,6 +47,10 @@ STATUSES = ("open", "resolved", "dismissed")
 PATCH_STATUSES = ("resolved", "dismissed")
 ROLES = ("sender", "reader", "owner")
 READ_ROLES = ("reader", "owner")  # owner = reader + may create invites
+# Invites may also be for another hub (ADR 0010): redeeming a "peer" invite pairs two hubs
+# with a fresh secret instead of minting a token. Never a token role.
+PEER_ROLE = "peer"
+INVITE_ROLES = ROLES + (PEER_ROLE,)
 LINK_SCHEMES = ("https", "slack", "vscode", "cursor", "figma", "msteams", "discord", "linear")
 # vscode:// and cursor:// reach every installed extension's URI handler, so only these
 # shapes are allowed (security audit #14; mirrored byte for byte by LinkPolicy.editorLinkPattern
@@ -136,6 +140,14 @@ OUTBOX_MAX_AGE_MS = 7 * 24 * 3600 * 1000  # older undelivered peer rows: anti-en
 INVITE_GRACE_MS = 24 * 3600 * 1000  # keep revoked invites this long so the revocation replicates
 INVITE_MAX_USES = 100
 INVITE_MAX_TTL_HOURS = 24 * 90
+PEER_INVITE_TTL_HOURS = 1.0  # a peer invite carries a long-lived secret: one use, short life
+PEER_INVITE_MAX_TTL_HOURS = 24
+PEER_URL_MAX = 300
+# What a peer invite tells the server to run, from a checkout or the release's server tarball.
+PEER_JOIN_COMMAND = "./scripts/install-hub.sh --user --join %s"
+PEER_SYNC_SECONDS = 5.0  # how often a running hub re-reads peer links (the admin tool writes them)
+WAKE_JUMP_SECONDS = 30.0  # wall clock ahead of the monotonic one by this much: we were asleep
+HUB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 DEFAULT_OWNER_TOKEN_NAME = "this-mac"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}\Z")
 INVITE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}\Z")
@@ -322,6 +334,12 @@ def hash_token(token: str) -> str:
 
 def mint_token() -> str:
     return "ny_" + secrets.token_urlsafe(32)
+
+
+def mint_peer_secret() -> str:
+    """A pairwise replication secret (ADR 0010): 256 random bits. Stored in plaintext in the
+    hub's database (it has to be sent), never replicated, logged or listed."""
+    return "nyp_" + secrets.token_urlsafe(32)
 
 
 def mint_invite_code() -> str:
@@ -841,7 +859,7 @@ def check_bind(cfg: Dict[str, Any]) -> None:
         if len(secret) < 16:
             raise SystemExit("peers are configured but peer_secret is missing or shorter than 16 chars")
     hub_id = str(cfg.get("hub_id") or "")
-    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", hub_id):
+    if not HUB_ID_RE.match(hub_id):
         raise SystemExit("hub_id must be 1-64 chars of letters, digits, '.', '_' or '-'")
 
 
@@ -982,6 +1000,17 @@ ALTER TABLE items ADD COLUMN question TEXT;
 ALTER TABLE items ADD COLUMN answer TEXT;
 ALTER TABLE items ADD COLUMN answered_at INTEGER;
 ALTER TABLE items ADD COLUMN answered_by TEXT;
+""",
+    # 9: peers this hub learned from a peer invite (ADR 0010), each with its own secret
+    #    (plaintext: it is sent to that peer). Local to this hub: never replicated.
+    """
+CREATE TABLE IF NOT EXISTS peer_links (
+  url TEXT PRIMARY KEY,
+  hub_id TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  secret TEXT NOT NULL,
+  added_at INTEGER NOT NULL
+);
 """,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -1600,8 +1629,12 @@ class Store:
         with self.lock:
             rows = []
             for kind, table in (("item", "items"), ("token", "tokens"), ("invite", "invites")):
+                # Peer invites name this hub and stay on it (ADR 0010); an older peer would
+                # also hold replication on their unknown role.
+                local = " AND role != 'peer'" if kind == "invite" else ""
                 rows += [(kind, dict(r)) for r in self.conn.execute(
-                    "SELECT * FROM %s WHERE seq > ? ORDER BY seq LIMIT ?" % table, (after, limit + 1))]
+                    "SELECT * FROM %s WHERE seq > ?%s ORDER BY seq LIMIT ?" % (table, local),
+                    (after, limit + 1))]
         merged = sorted(rows, key=lambda x: x[1]["seq"])
         more = len(merged) > limit
         merged = merged[:limit]
@@ -1636,14 +1669,17 @@ class Store:
                       created_by: str = "") -> Tuple[str, Dict[str, Any]]:
         if not isinstance(name, str) or not INVITE_NAME_RE.match(name):
             raise _invalid("name", "name must be 1-40 chars of letters, digits, '.', '_', '@' or '-'")
-        if role not in ROLES:
-            raise _invalid("role", "role must be one of %s" % ", ".join(ROLES))
+        if role not in INVITE_ROLES:
+            raise _invalid("role", "role must be one of %s" % ", ".join(INVITE_ROLES))
         if isinstance(uses, bool) or not isinstance(uses, int) or not 1 <= uses <= INVITE_MAX_USES:
             raise _invalid("uses", "uses must be an integer from 1 to %d" % INVITE_MAX_USES)
+        if role == PEER_ROLE and uses != 1:
+            raise _invalid("uses", "a peer invite has exactly one use")
+        max_ttl = PEER_INVITE_MAX_TTL_HOURS if role == PEER_ROLE else INVITE_MAX_TTL_HOURS
         if (isinstance(ttl_hours, bool) or not isinstance(ttl_hours, (int, float))
                 or not 1 <= float(ttl_hours) * 3600 * 1000
-                or not float(ttl_hours) <= INVITE_MAX_TTL_HOURS):  # at least 1 ms: alive when made
-            raise _invalid("ttl_hours", "ttl_hours must be a number from 0 to %d" % INVITE_MAX_TTL_HOURS)
+                or not float(ttl_hours) <= max_ttl):  # at least 1 ms: alive when made
+            raise _invalid("ttl_hours", "ttl_hours must be a number from 0 to %d" % max_ttl)
         code = mint_invite_code()
         with self.tx():
             now = self.now_ms()
@@ -1652,7 +1688,8 @@ class Store:
                    "expires_at": now + int(float(ttl_hours) * 3600 * 1000), "revoked_at": None,
                    "created_by": created_by or "", "updated_at": now, "updated_by": self.hub_id}
             self._write_invite(rec)
-            self.enqueue("invite", rec["id"])
+            if role != PEER_ROLE:
+                self.enqueue("invite", rec["id"])
         return code, rec
 
     def invite_by_code(self, code: str, spent_ok: bool = False) -> Optional[Dict[str, Any]]:
@@ -1682,22 +1719,34 @@ class Store:
             name = base[:64 - len(suffix)] + suffix
         return name
 
-    def redeem_invite(self, code: str, host: str) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
-        """Spend one use and mint a new token. Raises ApiError(404) if the code is not live."""
+    def _live_invite(self, code: Any, now: int) -> Dict[str, Any]:
+        """The live invite for `code` (inside a transaction). Raises ApiError(404) if none."""
         h = hash_token(code) if isinstance(code, str) and 0 < len(code) <= 200 else ""
+        row = self.conn.execute("SELECT * FROM invites WHERE hash = ?", (h,)).fetchone()
+        if row is None or not self.invite_live(dict(row), now):
+            raise ApiError(404, "not_found", "invite not found, expired or used up")
+        return dict(row)
+
+    def _spend_invite(self, inv: Dict[str, Any]) -> None:
+        used = json.loads(inv["used"] or "{}")
+        used[self.hub_id] = int(used.get(self.hub_id, 0)) + 1
+        inv["used"] = used
+        inv["updated_at"] = self.bump(inv["updated_at"])
+        inv["updated_by"] = self.hub_id
+        self._write_invite(inv)
+        if inv["role"] != PEER_ROLE:
+            self.enqueue("invite", inv["id"])
+
+    def redeem_invite(self, code: str, host: str) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
+        """Spend one use and mint a new token. Raises ApiError(404) if the code is not live,
+        and 400 (nothing spent) for a peer invite, which only another hub redeems."""
         with self.tx():
             now = self.now_ms()
-            row = self.conn.execute("SELECT * FROM invites WHERE hash = ?", (h,)).fetchone()
-            if row is None or not self.invite_live(dict(row), now):
-                raise ApiError(404, "not_found", "invite not found, expired or used up")
-            inv = dict(row)
-            used = json.loads(inv["used"] or "{}")
-            used[self.hub_id] = int(used.get(self.hub_id, 0)) + 1
-            inv["used"] = used
-            inv["updated_at"] = self.bump(inv["updated_at"])
-            inv["updated_by"] = self.hub_id
-            self._write_invite(inv)
-            self.enqueue("invite", inv["id"])
+            inv = self._live_invite(code, now)
+            if inv["role"] == PEER_ROLE:
+                raise _invalid("peer", "this is a peer invite, for another hub: run "
+                                       "install-hub.sh --join <link> (or needs-you-admin peer join) there")
+            self._spend_invite(inv)
             name = self._unique_token_name(invite_token_name(inv["name"], host))
             token = mint_token()
             trec = {"id": new_ulid(now), "name": name, "role": inv["role"], "hash": hash_token(token),
@@ -1706,6 +1755,67 @@ class Store:
             self._write_token(trec)
             self.enqueue("token", trec["id"])
         return token, trec, inv
+
+    def redeem_peer_invite(self, code: str, check: Callable[[Any], Dict[str, str]],
+                           peer: Any) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
+        """Spend a peer invite (ADR 0010). `check(peer)` validates the joining hub, raising
+        400/409 before anything is spent, and returns its {"url", "hub_id"}. Stores the link
+        with a fresh secret and returns (secret, link, invite)."""
+        with self.tx():
+            now = self.now_ms()
+            inv = self._live_invite(code, now)
+            if inv["role"] != PEER_ROLE:
+                raise _invalid("peer", "this invite is for a %s, not for another hub" % inv["role"])
+            want = check(peer)
+            self._spend_invite(inv)
+            secret = mint_peer_secret()
+            link = {"url": want["url"], "hub_id": want["hub_id"], "name": inv["name"],
+                    "secret": secret, "added_at": now}
+            self._put_peer_link(link)
+        return secret, link, inv
+
+    # -- peer links (ADR 0010) -------------------------------------------
+
+    def _put_peer_link(self, link: Dict[str, Any]) -> None:
+        """Insert or replace a link (inside a transaction). A link to the same hub id under
+        another URL goes, with its queue and state; a re-join at the same URL keeps its cursor."""
+        for old in self.conn.execute("SELECT url FROM peer_links WHERE hub_id = ? AND url != ?",
+                                     (link["hub_id"], link["url"])).fetchall():
+            self._drop_peer_rows(old["url"])
+        self.conn.execute("INSERT OR REPLACE INTO peer_links(url, hub_id, name, secret, added_at) "
+                          "VALUES(?,?,?,?,?)", (link["url"], link["hub_id"], link["name"],
+                                                link["secret"], link["added_at"]))
+
+    def add_peer_link(self, url: str, hub_id: str, name: str, secret: str) -> Dict[str, Any]:
+        """Store the link to a hub whose peer invite this hub redeemed (the joining side)."""
+        with self.tx():
+            link = {"url": url, "hub_id": hub_id, "name": name, "secret": secret,
+                    "added_at": self.now_ms()}
+            self._put_peer_link(link)
+        return link
+
+    def _drop_peer_rows(self, url: str) -> None:
+        self.conn.execute("DELETE FROM peer_links WHERE url = ?", (url,))
+        self.conn.execute("DELETE FROM outbox WHERE peer = ?", (url,))
+        self.conn.execute("DELETE FROM peer_state WHERE peer = ?", (url,))
+
+    def peer_links(self) -> List[Dict[str, Any]]:
+        """Every stored link, secrets included: for the hub's own use, never for output."""
+        with self.lock:
+            return [dict(r) for r in self.conn.execute("SELECT * FROM peer_links ORDER BY added_at, url")]
+
+    def remove_peer_link(self, which: str) -> List[Dict[str, Any]]:
+        """Delete the links whose URL, hub id or name is `which`, with their secret, outbox
+        rows and replication state. Returns them without their secrets."""
+        with self.tx():
+            rows = [dict(r) for r in self.conn.execute(
+                "SELECT * FROM peer_links WHERE url = ? OR hub_id = ? OR name = ?",
+                (which.rstrip("/"), which, which))]
+            for r in rows:
+                self._drop_peer_rows(r["url"])
+        for r in rows:
+            r.pop("secret", None)
+        return rows
 
     def list_invites(self, include_dead: bool = False, include_spent: bool = False) -> List[Dict[str, Any]]:
         """Live invites; `include_spent` adds used-up ones that are not revoked or expired,
@@ -1733,7 +1843,8 @@ class Store:
                 stamp = self.bump(rec["updated_at"])
                 rec.update({"revoked_at": stamp, "updated_at": stamp, "updated_by": self.hub_id})
                 self._write_invite(rec)
-                self.enqueue("invite", rec["id"])
+                if rec["role"] != PEER_ROLE:
+                    self.enqueue("invite", rec["id"])
                 out.append(rec)
             return out
 
@@ -2381,9 +2492,56 @@ def invite_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
             "updated_at": fmt_ts(rec["updated_at"]), "updated_by": rec.get("updated_by") or ""}
 
 
+def normalise_peer_url(value: Any) -> str:
+    """A hub URL as peers store it: http(s)://host[:port], nothing else (no user, path,
+    query or fragment). Raises ValueError."""
+    if not isinstance(value, str) or not 0 < len(value) <= PEER_URL_MAX \
+            or any(c.isspace() or not c.isprintable() for c in value):
+        raise ValueError("url")
+    parts = urllib.parse.urlsplit(value.strip())
+    try:
+        port = parts.port  # ValueError when out of range
+    except ValueError:
+        raise ValueError("url")
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname or "@" in parts.netloc \
+            or parts.path not in ("", "/") or parts.query or parts.fragment or "#" in value or "?" in value:
+        raise ValueError("url")
+    host = parts.hostname.lower()
+    if ":" in host:
+        host = "[%s]" % host
+    return "%s://%s%s" % (parts.scheme.lower(), host, ":%d" % port if port is not None else "")
+
+
+def validate_peer_request(peer: Any, own_hub_id: str, own_urls: List[str], schema: int) -> Dict[str, str]:
+    """The joining hub in a peer invite redeem: {"url", "hub_id"}. 400 for a malformed
+    `peer`, 409 `self` for this hub, 409 `peer_outdated` for an older schema (it would drop
+    fields this hub writes)."""
+    if not isinstance(peer, dict):
+        raise _invalid("peer", "peer must be an object {url, hub_id, schema}")
+    try:
+        url = normalise_peer_url(peer.get("url"))
+    except ValueError:
+        raise _invalid("peer.url", "peer.url must be the joining hub's http(s)://host[:port]")
+    hub_id = peer.get("hub_id")
+    if not isinstance(hub_id, str) or not HUB_ID_RE.match(hub_id):
+        raise _invalid("peer.hub_id", "peer.hub_id must be 1-64 chars of letters, digits, '.', '_' or '-'")
+    their = peer.get("schema")
+    if isinstance(their, bool) or not isinstance(their, int) or their < 0:
+        raise _invalid("peer.schema", "peer.schema must be the joining hub's schema version (an integer)")
+    if hub_id == own_hub_id or url in own_urls:
+        raise ApiError(409, "self", "that is this hub; a hub can't peer with itself")
+    if their < schema:
+        raise ApiError(409, "peer_outdated", "the joining hub has schema %d, this hub %d: upgrade it "
+                                             "(to needs-you %s or later) and try again" % (their, schema, VERSION))
+    return {"url": url, "hub_id": hub_id}
+
+
 def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
     """Everything a person needs to hand out an invite."""
     join = "%s/join/%s" % (public_url.rstrip("/"), code)
+    if role == PEER_ROLE:
+        # Redeemed by the other hub's installer or admin tool, never by a Mac or a sender.
+        return {"join_url": join, "install_command": PEER_JOIN_COMMAND % _sh_quote(join)}
     out = {"join_url": join,
            "mac_url": "needsyou://connect?hub=%s&code=%s" % (urllib.parse.quote(public_url, safe=""), code)}
     if role == "sender":
@@ -2480,11 +2638,25 @@ class PeerWorker(threading.Thread):
         self.next_pull = 0.0
         self.disabled = False
         self.batch_limit = PUSH_BATCH  # lowered while isolating a record an older peer refuses
+        self._clocks = (time.time(), time.monotonic())
+
+    def check_wake(self, wall: float, mono: float) -> bool:
+        """True (and backoff dropped, push and pull due now) when the wall clock moved more
+        than WAKE_JUMP_SECONDS further than the monotonic clock since the last look: the
+        machine slept (a Mac's hub), so whatever the backoff was waiting for may be back."""
+        last_wall, last_mono = self._clocks
+        self._clocks = (wall, mono)
+        if (wall - last_wall) - (mono - last_mono) <= WAKE_JUMP_SECONDS:
+            return False
+        self.failures = 0
+        self.next_push = 0.0
+        self.next_pull = 0.0
+        return True
 
     def _request(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(self.peer + path, data=data, method=method)
-        req.add_header("Authorization", "Bearer " + self.hub.cfg["peer_secret"])
+        req.add_header("Authorization", "Bearer " + self.hub.secret_for(self.peer))
         req.add_header("X-Needs-You-Hub", self.hub.hub_id)
         if data is not None:
             req.add_header("Content-Type", "application/json")
@@ -2501,6 +2673,7 @@ class PeerWorker(threading.Thread):
     def run(self) -> None:
         while not self.hub.stopping.is_set() and not self.disabled:
             now = time.monotonic()
+            self.check_wake(time.time(), now)
             did_work = False
             try:
                 if now >= self.next_push:
@@ -2522,7 +2695,8 @@ class PeerWorker(threading.Thread):
             if self.next_push > now:
                 wait = max(wait, self.next_push - now) if self.failures else wait
             wait = min(wait, max(0.0, self.next_pull - now))
-            self.wake.wait(max(0.05, wait))
+            # at most 10 s at a time, so a wake from sleep is noticed soon (check_wake)
+            self.wake.wait(max(0.05, min(wait, 10.0)))
             self.wake.clear()
 
     def _fail(self, err: Exception) -> None:
@@ -2683,6 +2857,7 @@ _LOG_SECRET_RES = (
     (re.compile(r"/join/[^/\s\"?#]+"), "/join/<code>"),       # invite codes in join paths
     (re.compile(r"\bnyi_[A-Za-z0-9_\-]+"), "nyi_<redacted>"),   # invite codes anywhere else
     (re.compile(r"\bny_[A-Za-z0-9_\-]{16,}"), "ny_<redacted>"), # tokens, should one ever appear
+    (re.compile(r"\bnyp_[A-Za-z0-9_\-]+"), "nyp_<redacted>"), # peer secrets, likewise
 )
 
 
@@ -2802,11 +2977,15 @@ class Handler(BaseHTTPRequestHandler):
         return str(self.client_address[0]) if self.client_address else ""
 
     def _peer_auth(self) -> None:
-        secret = self.hub.cfg.get("peer_secret") or ""
-        tok = self._bearer() or ""
-        if not secret:
+        """The mesh secret (config) or any peer link's own secret (ADR 0010)."""
+        secrets_ = self.hub.peer_secrets()
+        tok = (self._bearer() or "").encode("utf-8")
+        if not secrets_:
             raise ApiError(404, "not_found", "replication is not enabled on this hub")
-        if not hmac.compare_digest(tok.encode("utf-8"), secret.encode("utf-8")):
+        ok = False
+        for s in secrets_:  # every one compared, in constant time each
+            ok = hmac.compare_digest(tok, s.encode("utf-8")) or ok
+        if not ok:
             raise ApiError(401, "unauthorized", "bad peer secret")
 
     def _route(self, method: str) -> None:
@@ -2855,6 +3034,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redeem()
             if path.startswith("/v1/invites/") and method == "DELETE":
                 return self._revoke_invite(urllib.parse.unquote(path[len("/v1/invites/"):]))
+            if path == "/v1/peers" and method == "GET":
+                return self._list_peers()
+            if path.startswith("/v1/peers/") and method == "DELETE":
+                return self._remove_peer(urllib.parse.unquote(path[len("/v1/peers/"):]))
             if path == "/v1/tokens" and method == "GET":
                 return self._list_tokens()
             if (path.startswith("/v1/tokens/") and path[len("/v1/tokens/"):].endswith("/request-update")
@@ -2920,8 +3103,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 body["token"] = {"name": tok["name"], "role": tok["role"]}
                 self._note_client(tok)
-                body["peers"] = [self.hub.peer_status(p) for p in self.hub.cfg["peers"]]
-                stats["outbox"] = {p: outbox.get(p, 0) for p in self.hub.cfg["peers"]}
+                peers = self.hub.peer_urls()
+                body["peers"] = [self.hub.peer_status(p) for p in peers]
+                stats["outbox"] = {p: outbox.get(p, 0) for p in peers}
         self._send(200, body)
 
     # -- invites ---------------------------------------------------------
@@ -2932,8 +3116,9 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             raise ApiError(400, "invalid", "body must be a JSON object")
         role = data.get("role", "sender")
+        ttl = data.get("ttl_hours", PEER_INVITE_TTL_HOURS if role == PEER_ROLE else 72)
         code, rec = self.hub.store.create_invite(data.get("name"), role, data.get("uses", 1),
-                                                 data.get("ttl_hours", 72), created_by=tok["id"])
+                                                 ttl, created_by=tok["id"])
         self.hub.notify()
         out = {"code": code, "expires_at": fmt_ts(rec["expires_at"]), "id": rec["id"],
                "name": rec["name"], "role": rec["role"], "uses": rec["uses"]}
@@ -3007,6 +3192,8 @@ class Handler(BaseHTTPRequestHandler):
         data = self._body()
         if not isinstance(data, dict):
             raise ApiError(400, "invalid", "body must be a JSON object")
+        if "peer" in data:
+            return self._redeem_peer(data)
         try:
             token, trec, _inv = self.hub.store.redeem_invite(data.get("code"), data.get("host") or "")
         except ApiError as e:
@@ -3020,6 +3207,48 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"token": token, "role": trec["role"], "name": trec["name"],
                          "hub_urls": self.hub.hub_urls(local_first=local), "hub_id": self.hub.hub_id})
 
+    def _redeem_peer(self, data: Dict[str, Any]) -> None:
+        """A hub joining this one with a peer invite (ADR 0010)."""
+        hub = self.hub
+        own = [u for u in (hub.public_url, hub.url, hub.loopback_url) if u]
+
+        def check(peer: Any) -> Dict[str, str]:
+            return validate_peer_request(peer, hub.hub_id, own, SCHEMA_VERSION)
+
+        try:
+            secret, link, _inv = hub.store.redeem_peer_invite(data.get("code"), check, data.get("peer"))
+        except ApiError as e:
+            if e.status == 404:
+                hub.limiter.fail(self._client_ip())
+            raise
+        hub.sync_peers()
+        if not hub.cfg.get("quiet"):
+            sys.stderr.write("peer invite redeemed: now replicating with %s (%s)\n"
+                             % (safe_text(link["url"], 300), safe_text(link["hub_id"], 64)))
+        self._send(200, {"role": PEER_ROLE, "name": link["name"], "peer_secret": secret,
+                         "hub_id": hub.hub_id, "hub_url": hub.public_url, "schema": SCHEMA_VERSION,
+                         "version": VERSION, "hub_urls": hub.hub_urls()})
+
+    # -- peers -----------------------------------------------------------
+
+    def _list_peers(self) -> None:
+        self._auth("owner")
+        self._send(200, {"peers": [self.hub.peer_status(p) for p in self.hub.peer_urls()]})
+
+    def _remove_peer(self, which: str) -> None:
+        self._auth("owner")
+        if not which:
+            raise ApiError(404, "not_found", "no such endpoint")
+        removed = self.hub.store.remove_peer_link(which)
+        if not removed:
+            if which.rstrip("/") in self.hub.config_peers:
+                raise ApiError(400, "invalid", "that peer is set in the hub's config (peers); "
+                                               "remove it there and restart the hub")
+            raise ApiError(404, "not_found", "no peer with that hub id, URL or name")
+        self.hub.sync_peers()
+        self._send(200, {"removed": [{"url": r["url"], "hub_id": r["hub_id"], "name": r["name"]}
+                                     for r in removed]})
+
     def _join(self, code: str, script: bool) -> None:
         if self.hub.limiter.blocked(self._client_ip()):
             return self._join_failed(429, "Too many failed invite attempts. Try again later.", script)
@@ -3029,6 +3258,9 @@ class Handler(BaseHTTPRequestHandler):
             self.hub.limiter.fail(self._client_ip())
             return self._join_failed(404, "This invite link is unknown, expired or revoked. "
                                           "Ask for a new one.", script)
+        if script and inv["role"] == PEER_ROLE:
+            return self._join_failed(400, "this is a peer invite, for another hub: run "
+                                          "install-hub.sh --join <link> on the server instead.", script)
         if script:
             return self._send_text(200, install_script(self.hub, inv, code),
                                    "text/x-shellscript; charset=utf-8")
@@ -3496,6 +3728,12 @@ class Hub:
         self.answer_read_limiter = RateLimiter(int(cfg["answer_read_rate_limit"]),
                                                float(cfg["answer_rate_window_seconds"]))
         self.answer_waits = WaitCounter(int(cfg["answer_waits_per_token"]))
+        # Peers: the config's (mesh secret) and the links peer invites made (own secrets).
+        self.config_peers: List[str] = list(cfg["peers"])
+        self.links: Dict[str, Dict[str, Any]] = {}
+        self.peers_lock = threading.RLock()
+        self.started = False
+        self._load_links()
         self._drop_stale_outbox()
         if cfg.get("owner_token_file"):
             self._provision_owner_token(str(cfg["owner_token_file"]))
@@ -3581,20 +3819,82 @@ class Hub:
         the loopback URL goes first, so this machine's senders don't depend on the tailnet."""
         out: List[str] = []
         first = [self.loopback_url] if local_first else []
-        for u in first + [self.public_url] + list(self.cfg["peers"]):
+        for u in first + [self.public_url] + self.peer_urls():
             if u and u not in out:
                 out.append(u)
         return out
 
     def set_peers(self, peers: List[str]) -> None:
-        """Replace the peer list (before start(); used by tests that bind port 0 first)."""
+        """Replace the config peer list (before start(); used by tests that bind port 0 first)."""
         if peers and len(self.cfg.get("peer_secret") or "") < 16:
             raise ValueError("peer_secret required")
         self.cfg["peers"] = [p.rstrip("/") for p in peers]
-        self.store.peers = list(self.cfg["peers"])
+        with self.peers_lock:
+            self.config_peers = list(self.cfg["peers"])
+        self._load_links()
+
+    # -- peers -----------------------------------------------------------
+
+    def peer_urls(self) -> List[str]:
+        """Every peer: the config's, then the links from peer invites (ADR 0010)."""
+        with self.peers_lock:
+            out = list(self.config_peers)
+            out += [u for u in self.links if u not in out]
+        return out
+
+    def peer_secrets(self) -> List[str]:
+        """Secrets an incoming replication request may carry: the mesh secret, and each link's."""
+        with self.peers_lock:
+            out = [str(link["secret"]) for link in self.links.values() if link.get("secret")]
+        mesh = self.cfg.get("peer_secret") or ""
+        return ([mesh] if mesh else []) + out
+
+    def secret_for(self, peer: str) -> str:
+        """What this hub sends to `peer`: its link's own secret, else the mesh secret."""
+        with self.peers_lock:
+            link = self.links.get(peer)
+        if link is not None:
+            return str(link["secret"])
+        return str(self.cfg.get("peer_secret") or "")
+
+    def _load_links(self) -> List[str]:
+        """Re-read the links (the admin tool may have changed them); keep the store's peer list
+        (the outbox fan-out) in step. Returns the peer list."""
+        links = {str(r["url"]): r for r in self.store.peer_links()}
+        with self.peers_lock:
+            self.links = links
+            peers = list(self.config_peers) + [u for u in links if u not in self.config_peers]
+        with self.store.lock:
+            self.store.peers = peers
+        return peers
+
+    def sync_peers(self) -> None:
+        """Pick up added and removed links: start a worker for each new peer, stop the
+        workers of removed ones."""
+        peers = self._load_links()
+        if not self.started or self.stopping.is_set():
+            return
+        with self.peers_lock:
+            for url in list(self.workers):
+                if url not in peers:
+                    w = self.workers.pop(url)
+                    w.disabled = True
+                    w.wake.set()
+            for url in peers:
+                if url not in self.workers:
+                    w = PeerWorker(self, url)
+                    self.workers[url] = w
+                    w.start()
+
+    def _peer_sync_loop(self) -> None:
+        while not self.stopping.wait(PEER_SYNC_SECONDS):
+            try:
+                self.sync_peers()
+            except sqlite3.Error as e:
+                sys.stderr.write("peer sync failed: %s\n" % e)
 
     def _drop_stale_outbox(self) -> None:
-        peers = self.cfg["peers"]
+        peers = self.peer_urls()
         with self.store.tx() as c:
             if peers:
                 marks = ",".join("?" for _ in peers)
@@ -3605,12 +3905,21 @@ class Hub:
     def notify(self) -> None:
         with self.changed:
             self.changed.notify_all()
-        for w in self.workers.values():
+        with self.peers_lock:
+            workers = list(self.workers.values())
+        for w in workers:
             w.wake.set()
 
     def peer_status(self, peer: str) -> Dict[str, Any]:
         st = self.store.peer_state(peer)
-        return {"url": peer, "outbox_pending": self.store.outbox_pending(peer),
+        with self.peers_lock:
+            link = self.links.get(peer)
+        if link is not None:
+            who = {"hub_id": link["hub_id"] or None, "name": link["name"] or None, "source": "invite",
+                   "added_at": fmt_ts(link["added_at"])}
+        else:
+            who = {"hub_id": None, "name": None, "source": "config", "added_at": None}
+        return {"url": peer, **who, "outbox_pending": self.store.outbox_pending(peer),
                 "last_push_ok": fmt_ts(st["last_push_ok"]), "last_pull_ok": fmt_ts(st["last_pull_ok"]),
                 "last_error": st["last_error"], "skipped_push": st["skipped_push"],
                 "skipped_pull": st["skipped_pull"], "last_skipped": st["last_skipped"],
@@ -3661,10 +3970,9 @@ class Hub:
             t.start()
             self.threads.append(t)
         self.thread = self.threads[0]
-        for peer in self.cfg["peers"]:
-            w = PeerWorker(self, peer)
-            self.workers[peer] = w
-            w.start()
+        self.started = True
+        self.sync_peers()
+        threading.Thread(target=self._peer_sync_loop, name="peer-sync", daemon=True).start()
         if float(self.cfg["maintenance_seconds"]) > 0:
             threading.Thread(target=self._maintenance_loop, name="maintenance", daemon=True).start()
         if self.cfg.get("parent_pid"):
@@ -3679,7 +3987,9 @@ class Hub:
             if self.threads:
                 srv.shutdown()
             srv.server_close()
-        for w in self.workers.values():
+        with self.peers_lock:
+            workers = list(self.workers.values())
+        for w in workers:
             w.wake.set()
             w.join(timeout=10)
         for t in self.threads:
@@ -3722,6 +4032,19 @@ def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:
         head += ("**This link has no uses left.** It still re-runs the installer (or `--uninstall`) "
                  "on a machine it already set up, but it can't set up a new one. For a new machine, "
                  "stop and ask the user for a new link.\n\n")
+    if inv["role"] == PEER_ROLE:
+        return head + (
+            "## This invite is for another hub\n\n"
+            "It pairs an always-on needs-you hub (a server) with this hub, so they replicate "
+            "every item to each other. It isn't for a sender or a Mac app, and it sets up no "
+            "token. On the server, from a checkout of the needs-you repo (or the release's server "
+            "tarball), run:\n\n"
+            "    %s\n\n"
+            "It installs the hub, redeems this link (one use) for the pair's replication secret, "
+            "which it keeps in the hub's database and never prints, and starts the service. On a "
+            "server that already runs a hub, `needs-you-admin peer join <link>` does the same and "
+            "the running hub picks it up. If you are an agent, ask the user before installing a "
+            "service.\n" % links["install_command"])
     if inv["role"] != "sender":
         return head + (
             "## This invite is for the Mac app\n\n"
@@ -3927,7 +4250,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     hub = Hub(cfg)
     sys.stderr.write("needs-you-hub %s (%s) listening on %s, public %s, %d peer(s)\n"
                      % (VERSION, hub.hub_id, ", ".join(s_url(s) for s in hub.servers),
-                        hub.public_url, len(cfg["peers"])))
+                        hub.public_url, len(hub.peer_urls())))
     hub.start()
     import signal
 

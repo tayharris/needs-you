@@ -106,8 +106,8 @@ within the replication delay are settled by LWW (an existing known limit in API.
   `hub_id` and `source`.
 - `DELETE /v1/peers/<hub_id or url>` (owner) and `needs-you-admin peer remove`: delete the link
   (and so its secret), its outbox rows and its replication state, and stop its worker. The
-  other side's requests then get `401` and show as its `last_error` until it is removed there
-  too. Config peers can't be removed over the API (`400`; edit `hub.json`).
+  other side's requests are then refused (`401`, or `404` once the hub has no secret left) and
+  show as its `last_error` until it is removed there too. Config peers can't be removed over the API (`400`; edit `hub.json`).
 - A hub picks up links the admin tool adds or removes within 5 s.
 
 ### 6. Invites list every hub

@@ -29,7 +29,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   |---|---|
   | `sender` | `POST /v1/items`, `POST /v1/items/resolve` |
   | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream` |
-  | `owner` | everything `reader` can, plus invites (`/v1/invites`) and tokens (`/v1/tokens`): list, create, revoke and request updates (the Mac app) |
+  | `owner` | everything `reader` can, plus invites (`/v1/invites`), tokens (`/v1/tokens`) and peers (`/v1/peers`): list, create, revoke, remove and request updates (the Mac app) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
   `GET /join/<code>[/install.sh]` and `GET /dl/<file>` need no token. The hub stores only the sha256 of each token, and records
@@ -58,7 +58,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 401 | `unauthorized` | Missing, unknown or revoked token (or bad peer secret) |
   | 403 | `forbidden` | Valid token, wrong role for the endpoint |
   | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
-  | 409 | `self` | A hub tried to replicate to itself (replication only) |
+  | 409 | `self` | A hub tried to replicate to itself, or to redeem its own peer invite |
+  | 409 | `peer_outdated` | A hub redeeming a peer invite has an older schema than the inviting hub ([peer invites](#peer-invites)) |
   | 409 | `not_open`, `not_answerable`, `question_expired`, `question_changed`, `already_answered` | An answer that can't be taken ([answers](#post-v1itemsidanswer-reader)) |
   | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
@@ -141,7 +142,8 @@ If a bearer token is sent it is checked but never causes an error: a valid token
 `skipped_pull` / `last_skipped`: how many replicated item records that peer couldn't read
 from us, and we from it, and the last one; `blocked`: a token or invite record one side can't
 read, which holds replication in that direction (`"push ..."` / `"pull ..."`), else `null`;
-all absent from hubs up to 0.1.2); an unknown or revoked token adds `"token": null` and
+all absent from hubs up to 0.1.2; `hub_id`, `name`, `source` and `added_at` as in
+[`GET /v1/peers`](#get-v1peers-owner), absent from hubs up to 0.2.1); an unknown or revoked token adds `"token": null` and
 `"token_error": "unknown or revoked token"`.
 
 ### `POST /v1/items` (sender)
@@ -500,9 +502,9 @@ token. Codes are `nyi_` plus 192 random bits (URL-safe base64); hubs store only 
 | Field | Rule | Default |
 |---|---|---|
 | `name` | required, 1–40 chars of letters, digits, `.`, `_`, `@`, `-` | |
-| `role` | `sender`, `reader` or `owner` | `sender` |
-| `uses` | integer 1–100 | 1 |
-| `ttl_hours` | number, more than 0 and at most 2160 (90 days) | 72 |
+| `role` | `sender`, `reader`, `owner`, or `peer` (another hub, [below](#peer-invites)) | `sender` |
+| `uses` | integer 1–100; exactly 1 for `peer` | 1 |
+| `ttl_hours` | number, more than 0 and at most 2160 (90 days); at most 24 for `peer` | 72; 1 for `peer` |
 
 Response `201`:
 
@@ -520,12 +522,15 @@ Code alerts (`--claude-hooks user --skill --alerts`); the join page lists the ot
 The prompt ends by having the agent run `needs-you doctor` and act on, or relay, the next step
 under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
+A `peer` invite's response has no `mac_url` or `agent_prompt`; its `install_command` is what to
+run on the server: `./scripts/install-hub.sh --user --join '<join_url>'`.
 
 ### `GET /v1/invites` (owner)
 
 `{"invites": [{"id", "name", "role", "uses", "left", "created_at", "expires_at"}, ...]}`: every
 invite that is neither revoked nor expired, including used-up ones (`left: 0`), whose
-installer still re-runs and uninstalls until they expire. Never includes codes.
+installer still re-runs and uninstalls until they expire. Never includes codes. `peer`
+invites are listed only by the hub that made them.
 
 ### `DELETE /v1/invites/<id or name>` (owner)
 
@@ -614,6 +619,78 @@ Response `200`:
   counts against the client IP; after 10 failures in 10 minutes (`redeem_fail_limit`,
   `redeem_fail_window_seconds`) that IP gets `429 rate_limited` on redeem and `/join` until the
   window passes. Successful redeems don't count.
+- A `peer` invite redeemed this way (no `peer` object) is a `400` (`"field": "peer"`) and
+  spends nothing.
+
+### Peer invites
+
+A `peer` invite pairs another hub with this one ([ADR 0010](adr/0010-mac-hub-peers.md)): the
+way an always-on server joins the Mac's own hub, or one server another, without copying a
+secret. It has one use, lives 1 hour by default (at most 24), and stays on the hub that made it:
+it is never replicated (it names this hub). Redeeming it mints no token. The joining hub
+(`needs-you-admin peer join <join_url>`, which `install-hub.sh --join` runs) sends:
+
+```json
+{"code": "nyi_...", "host": "hub-b",
+ "peer": {"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "schema": 9}}
+```
+
+- `peer.url`: the joining hub's `public_url`, `http(s)://host[:port]` only (no user, path,
+  query or fragment; a trailing `/` is dropped, the scheme and host lowercased). Use the
+  MagicDNS name, which survives a tailnet IP change.
+- `peer.hub_id`: its id (same rule as `hub_id` in the config).
+- `peer.schema`: its database schema version (`PRAGMA user_version`; 9 for this release).
+
+The code is checked first (`404` as above, counted). Then, without spending the use: a
+malformed `peer` is a `400` (`field` names the part); the inviting hub's own `hub_id` or URL is
+`409 self`; a `schema` below the inviting hub's is `409 peer_outdated` (the older hub would drop
+fields the newer one writes, such as `question` and `answer`: upgrade it first). A `peer` object
+sent with a `sender`, `reader` or `owner` invite is a `400` (`"field": "peer"`).
+
+Response `200`:
+
+```json
+{"role": "peer", "name": "hub-b", "peer_secret": "nyp_...",
+ "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 9, "version": "0.2.1",
+ "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"]}
+```
+
+`peer_secret` (`nyp_` plus 256 random bits) is this pair's own replication secret. The
+inviting hub stores `peer.url`, `peer.hub_id`, the invite's `name` and the secret, and starts
+replicating with that URL at once; the joining hub stores `hub_url` with the same secret. A
+later peer invite redeemed by the same `hub_id` under another URL replaces that link. The
+secret is sent only in this response: never replicated, listed, or logged.
+
+`GET /join/<code>` for a peer invite says what to run on the server;
+`GET /join/<code>/install.sh` is the failing script (`200`, exit 1,
+`X-Needs-You-Invite: unusable (HTTP 400)`).
+
+## Peers
+
+A hub's peers are the config's `peers` (they use the shared `peer_secret`) plus the links made
+by [peer invites](#peer-invites) (each with its own secret, kept in the database). A running hub
+picks up links the admin tool adds or removes within 5 seconds.
+
+### `GET /v1/peers` (owner)
+
+```json
+{"peers": [{"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "name": "hub-b",
+            "source": "invite", "added_at": "2026-10-08T17:04:05.123Z",
+            "outbox_pending": 0, "last_push_ok": "2026-10-08T17:05:00.000Z",
+            "last_pull_ok": "2026-10-08T17:05:01.000Z", "last_error": null,
+            "skipped_push": 0, "skipped_pull": 0, "last_skipped": null, "blocked": null}]}
+```
+
+`source` is `config` (from `hub.json` or `--peer`; `hub_id`, `name` and `added_at` are `null`)
+or `invite`. The status fields are those of `/v1/health`'s `peers`. Never includes a secret.
+
+### `DELETE /v1/peers/<hub_id, URL or name>` (owner)
+
+Stops replicating with a peer a peer invite added (the URL percent-encoded): its link and
+secret are deleted, with its queued outbox rows and replication state. Requests from that hub
+are refused from then on (`401`, or `404` once this hub has no secret at all); remove this hub
+on the other side too. Response `200` `{"removed": [{"url", "hub_id", "name"}]}`; `404
+not_found` if no link matches; `400 invalid` for a config peer (edit `hub.json` and restart).
 
 ### `GET /join/<code>` (no token)
 
@@ -688,7 +765,9 @@ Invite records replicate like tokens (`invites` arrays next to `tokens` in `/v1/
 and `/v1/replicate/changes`), carrying the hash, never the code. Uses are a per-hub
 grow-only counter (`"used": {"hub-a": 2, "hub-b": 1}`), merged by taking the maximum per hub,
 so redemptions on different hubs add up and every hub converges on the same count.
-Revocation wins over an unrevoked version.
+Revocation wins over an unrevoked version. `peer` invites are the exception: they are never
+replicated (they name the hub that made them; hubs up to 0.2.1 would also hold replication on
+the unknown role).
 
 **Double-spend window:** each hub checks uses against what it has seen. If two hubs redeem
 the last use of the same invite within the replication delay (normally under a second; up to
@@ -717,8 +796,10 @@ revoked past the 24 h grace period.
 ## Replication between hubs
 
 Hubs are peers with no leader. Each hub has a `hub_id`, a list of peer URLs and a shared
-`peer_secret`. Replication endpoints authenticate with `Authorization: Bearer <peer_secret>`
-(compared in constant time) and are disabled (`404`) on a hub with no secret.
+`peer_secret`, plus any [peer links](#peers) with their own secrets. Replication endpoints
+authenticate with `Authorization: Bearer <secret>`, the shared `peer_secret` or any link's
+secret (each compared in constant time), and are disabled (`404`) on a hub with neither. A hub
+sends a link peer its link's secret and a config peer the shared one.
 
 ### Records
 
@@ -775,7 +856,9 @@ Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) i
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
 thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's *current* version, and
 deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
-5 min, ±20% jitter). Outbox rows survive restarts. The admin tool writes to the same outbox, so
+5 min, ±20% jitter). When the wall clock jumps more than 30 s past the monotonic clock (the
+machine slept, as a Mac does), the worker drops its backoff and pushes and pulls at once.
+Outbox rows survive restarts. The admin tool writes to the same outbox, so
 `needs-you-admin token add` on one hub reaches every peer.
 
 Applied records are not forwarded again (the mesh is full); anti-entropy covers indirect paths.
