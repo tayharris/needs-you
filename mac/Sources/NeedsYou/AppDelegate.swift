@@ -314,6 +314,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // Only a connect link may show Settings (and so activate the app). Any other
+        // needsyou:// host does nothing: a web page must not be able to take focus with one.
+        guard url.host?.lowercased() == "connect" else {
+            NSLog("NeedsYou: ignored a needsyou:// link with an unknown host")
+            yieldActivation()
+            return
+        }
         settingsWindow.show(tab: .otherHubs)
         guard let link = ConnectLink.parse(url.absoluteString) else {
             connect.connect(url.absoluteString)   // shows why the link isn't usable
