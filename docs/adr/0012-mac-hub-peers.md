@@ -33,9 +33,9 @@ no focus and gets nothing new (rule 2 of the app).
   defaults to 1 and may be at most 24;
 - is **local to the hub that made it**. It names that hub, so it isn't replicated (an older
   hub would also fail closed on the unknown role and hold replication, see API.md);
-- has a `join_url` and an `install_command` (`curl -fsSL https://github.com/<repo>/releases/download/v<hub version>/install-hub.sh | sudo bash -s -- --join '<join_url>'`), no
+- has a `join_url` and an `install_command` (`(curl -fsSL https://github.com/<repo>/releases/download/v<hub version>/install-hub.sh && echo '<join_url>') | sudo bash -s -- --join -`), no
   `needsyou://` link, and its `/join/<code>` page says what to run on the server. Its
-  `/join/<code>/install.sh` is the failing script (exit 1, "use install-hub.sh --join").
+  `/join/<code>/install.sh` is the failing script (exit 1, "use install-hub.sh --join -").
 
 Any hub can make one: the Mac (Settings, or `POST /v1/invites` with its owner token) to add a
 server, or a server (`needs-you-admin`) to add another server without copying the mesh secret.
@@ -60,8 +60,9 @@ with a stored link that fails it. It refuses an answer whose URL or `hub_id` bel
 different link it already has; the same hub at the same URL replaces its old link (a re-pair
 after the other side removed it).
 
-`needs-you-admin peer join <join_url>` does the joining side; `install-hub.sh --join <link>`
-installs the hub, runs it, and starts the service. Neither prints the secret.
+`needs-you-admin peer join -` does the joining side; `install-hub.sh --join -` installs the
+hub, runs it, and starts the service. Neither prints the secret. Both read the link from stdin
+(see the amendment below).
 
 **Why pairwise, not the mesh secret.** A shared secret can't be withdrawn from one hub
 without changing it on all of them, so removing a peer would not revoke it. A server that
@@ -164,9 +165,9 @@ only; nothing in the panel.
 
 - **Accepted**, with [0004](0004-always-on-hub.md) phases 1–2, once merged.
 - **One-liner, yes, from GitHub.** The installer is a release asset (`install-hub.sh`, in
-  `SHA256SUMS` and `release-manifest.json`), and a peer invite's `install_command` is `curl -fsSL
-  https://github.com/<repo>/releases/download/v<hub version>/install-hub.sh | sudo bash -s --
-  --join '<link>'`. Piped, the installer downloads the server tarball of its own embedded
+  `SHA256SUMS` and `release-manifest.json`), and a peer invite's `install_command` is `(curl -fsSL
+  https://github.com/<repo>/releases/download/v<hub version>/install-hub.sh && echo '<link>') |
+  sudo bash -s -- --join -` (the link on stdin: see the amendment below). Piped, the installer downloads the server tarball of its own embedded
   version (`INSTALLER_VERSION`) from the same release, checks it against `SHA256SUMS`,
   `release-manifest.json` and, with `gh`, that manifest's build provenance, refuses a tarball or
   manifest for another version, and installs only that. A hub supplies only the link: it can't
@@ -214,3 +215,28 @@ So instead of a longer `retention_days`:
 - Schema 10 (`items.purged_at`), backed up before migrating like every migration. Hubs up to
   0.2.1 skip tombstones as unreadable items (they keep their own text), so upgrade every hub.
 
+## Amendment (2026-10-08): the link stays out of command lines
+
+A security review found the peer invite code in `sudo bash -s -- --join '<link>'`: sudo logs
+its whole command line, and `ps` shows it to every user while the installer runs (hard rule 3).
+The admin wrapper had the same problem one level down (`sudo -u needs-you ... peer join <link>`).
+
+- **The link travels on stdin.** `install_command` is `(curl -fsSL <installer> && echo '<link>')
+  | sudo bash -s -- --join -`. `echo` is a shell builtin, so the code is in no process's argv;
+  sudo logs only `bash -s -- --join -`. The whole installer is one `{ ... }` group, which bash
+  parses completely before it runs any of it, so when the script reads stdin (first thing,
+  before any command that could read it) the next line is the link. The group ends in `exit`,
+  so bash never runs the link as a command; and `curl ... &&` means a failed download sends no
+  link, while a cut-off one is a syntax error that runs nothing.
+- **Considered and rejected:** an environment variable (`sudo` drops it unless passed as
+  `sudo VAR=... bash`, which is argv again, or with `--preserve-env`, which sudoers may refuse);
+  prompting on `/dev/tty` (two pastes instead of one, and an agent can't run it); a
+  `--join-file` (a second step, and a file to clean up). Stdin keeps one copy-paste command.
+- `needs-you-admin peer join -` (or no link) reads it from stdin; the system wrapper turns
+  `peer join <link>` into that before it calls `sudo -u needs-you`. `--join LINK` still works,
+  with a note that it shows in `ps`.
+
+The same review hardened pairing itself: the joining hub applies the `peer.url` rule to the
+join link's hub (before sending the code) and to the answered `hub_url` (before storing
+anything), and a running hub skips a stored link that fails it; a redeem whose URL or `hub_id`
+belongs to another link is `409 conflict` instead of replacing it (section 2).

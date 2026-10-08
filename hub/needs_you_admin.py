@@ -11,7 +11,7 @@
     needs_you_admin.py token request-update devbox           # ask that machine to update
     needs_you_admin.py token clear-update devbox             # withdraw the request
     needs_you_admin.py invite create hub-b --role peer       # pair another hub with this one
-    needs_you_admin.py peer join http://hub-a.example.ts.net:8765/join/nyi_...  # redeem one here
+    echo 'http://hub-a.example.ts.net:8765/join/nyi_...' | needs_you_admin.py peer join -  # redeem one here
     needs_you_admin.py peer list                             # every peer (never the secrets)
     needs_you_admin.py peer remove hub-b                     # by hub id, URL or name
 
@@ -100,7 +100,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     peer = sub.add_parser("peer", help="hubs this hub replicates with")
     psub = peer.add_subparsers(dest="cmd")
     pj = psub.add_parser("join", help="redeem another hub's peer invite (its join URL) for this hub")
-    pj.add_argument("link", help="the peer invite's join URL, http(s)://<hub>/join/nyi_...")
+    pj.add_argument("link", nargs="?", default="-",
+                    help="the peer invite's join URL, http(s)://<hub>/join/nyi_...; '-' or nothing reads "
+                         "it from stdin, which keeps the code out of ps and sudo's log")
     psub.add_parser("list", help="list peers (never shows secrets)")
     pr = psub.add_parser("remove", help="stop replicating with a peer from a peer invite")
     pr.add_argument("which", help="its hub id, URL or name")
@@ -215,7 +217,8 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
             print("On the other hub (a server with Linux, systemd, python3 and Tailscale), run:")
             print("  %s" % links["install_command"])
             print()
-            print("Or, where a hub already runs: needs-you-admin peer join %s" % links["join_url"])
+            print("Or, where a hub already runs: echo %s | needs-you-admin peer join -"
+                  % hubmod._sh_quote(links["join_url"]))
         elif rec["role"] == "sender":
             print("Join URL (open it to read what it does):")
             print("  %s" % links["join_url"])
@@ -310,8 +313,18 @@ def redeem_peer(hub: str, code: str, me: Dict[str, Any], timeout: float = 15.0) 
 
 def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
     if args.cmd == "join":
+        link = args.link
+        if link == "-":
+            # On stdin, the code is in no command line: not in ps, nor in sudo's log.
+            if sys.stdin.isatty():
+                sys.stderr.write("Paste the peer invite link: ")
+                sys.stderr.flush()
+            link = sys.stdin.readline().strip()
+            if not link:
+                sys.stderr.write("error: no peer invite link on stdin\n")
+                return 2
         try:
-            hub, code = parse_join_link(args.link)
+            hub, code = parse_join_link(link)
         except ValueError as e:
             sys.stderr.write("error: %s\n" % e)
             return 2

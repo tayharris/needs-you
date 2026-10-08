@@ -9,7 +9,7 @@
 #                                 (needs hdiutil, so macOS only; skipped with a message elsewhere)
 #   needs-you-server-X.Y.Z.tar.gz hub, CLI, scripts, deploy, integrations, docs (git archive HEAD)
 #   needs-you-cli-X.Y.Z           the sender CLI, one file
-#   install-hub.sh                the server installer (curl ... | sudo bash -s -- --join <link>);
+#   install-hub.sh                the server installer ((curl ... && echo <link>) | sudo bash -s -- --join -);
 #                                 it installs this release's server tarball
 #   release-manifest.json         version, commit, workflow run, test result, min macOS,
 #                                 and each asset above with its sha256 and size. The Mac

@@ -978,11 +978,75 @@ esac
         self.assertEqual(status, 201, inv)
         return inv["join_url"]
 
-    def install(self, *args):
+    def install(self, *args, stdin=""):
         return subprocess.run([BASH, self.script, "--user", "--no-start", "--bind", "127.0.0.1",
                                "--port", str(self.port), "--hub-id", "srv",
                                "--public-url", "http://127.0.0.1:%d" % self.port] + list(args),
-                              env=self.env, capture_output=True, text=True, timeout=120)
+                              input=stdin, env=self.env, capture_output=True, text=True, timeout=120)
+
+    def stub(self, name, body):
+        path = os.path.join(self.tmp, "stub", name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\n" + body)
+        os.chmod(path, 0o755)
+
+    def test_the_one_liner_keeps_the_code_out_of_sudos_command_line(self):
+        """The peer invite's install_command, run as it is printed by a shell, with stand-ins
+        for curl (this checkout's installer), sudo (records its argv, adds the test's --user
+        flags) and crontab: it pairs, and sudo never sees the code."""
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertEqual(status, 201, inv)
+        sudo_log = os.path.join(self.tmp, "sudo.log")
+        self.stub("curl", 'exec cat "%s"\n' % self.script)
+        self.stub("sudo", 'printf "%%s\\n" "$*" >> "%s"\nexec "$@" $NEEDS_YOU_TEST_ARGS\n' % sudo_log)
+        self.stub("crontab", "exit 0\n")
+        env = dict(self.fake_release(), NEEDS_YOU_TEST_ARGS="--user --no-start --bind 127.0.0.1 --port %d "
+                   "--hub-id srv --public-url http://127.0.0.1:%d" % (self.port, self.port))
+        cwd = os.path.join(self.tmp, "empty")
+        os.makedirs(cwd, exist_ok=True)
+        r = subprocess.run([BASH, "-c", inv["install_command"]], cwd=cwd, env=env, capture_output=True,
+                           text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (link,) = self.mac.store.peer_links()
+        self.assertEqual(link["hub_id"], "srv")
+        with open(sudo_log) as fh:
+            argv = fh.read()
+        self.assertEqual(argv, "bash -s -- --join -\n")
+        self.assertNotIn("nyi_", argv)
+        self.assertNotIn(inv["code"], r.stdout + r.stderr)
+
+    def test_join_dash_reads_the_link_from_stdin(self):
+        r = self.install("--join", "-", stdin="")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no peer invite link on stdin", r.stderr)
+        r = self.install("--join", "-", stdin="  %s  \n" % self.peer_link())
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([l["hub_id"] for l in self.mac.store.peer_links()], ["srv"])
+
+    def test_the_admin_wrapper_hands_the_link_over_on_stdin(self):
+        """deploy/needs-you-admin.sh runs the tool with sudo -u needs-you: a link given as an
+        argument goes to it on stdin, as `peer join -`, never on sudo's command line."""
+        log = os.path.join(self.tmp, "sudo.log")
+        self.stub("id", "echo someone\n")
+        self.stub("sudo", 'printf "%%s\\n" "$*" >> "%s"\nprintf "stdin:%%s\\n" "$(cat)" >> "%s"\n' % (log, log))
+        wrapper = os.path.join(ROOT, "deploy", "needs-you-admin.sh")
+        link = "http://hub-a.example.ts.net:8765/join/nyi_secretcode"
+        for args, want in ((["peer", "join", link], "peer join -"),
+                           (["--json", "peer", "join", link], "--json peer join -")):
+            open(log, "w").close()
+            r = subprocess.run(["sh", wrapper] + args, env=self.env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(log) as fh:
+                argv, got = fh.read().splitlines()
+            self.assertTrue(argv.endswith(want), argv)
+            self.assertNotIn("nyi_", argv)
+            self.assertEqual(got, "stdin:" + link)
+        open(log, "w").close()
+        r = subprocess.run(["sh", wrapper, "peer", "list"], input="", env=self.env, capture_output=True,
+                           text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(log) as fh:
+            self.assertTrue(fh.read().splitlines()[0].endswith("--config /etc/needs-you/hub.json peer list"))
 
     def test_join_pairs_both_hubs_and_never_shows_the_secret(self):
         r = self.install("--join", self.peer_link())
@@ -1034,8 +1098,8 @@ esac
         status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
         self.assertEqual(status, 201)
         self.assertEqual(inv["install_command"],
-                         "curl -fsSL https://github.com/tayharris/needs-you/releases/download/v%s/install-hub.sh"
-                         " | sudo bash -s -- --join '%s'" % (hubmod.VERSION, inv["join_url"]))
+                         "(curl -fsSL https://github.com/tayharris/needs-you/releases/download/v%s/install-hub.sh"
+                         " && echo '%s') | sudo bash -s -- --join -" % (hubmod.VERSION, inv["join_url"]))
         # the hub serves no server code (only the sender's files)
         from support import OPENER
         import urllib.error

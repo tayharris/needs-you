@@ -150,9 +150,11 @@ PEER_INVITE_MAX_TTL_HOURS = 24
 PEER_URL_MAX = 300
 # What a peer invite tells the server to run (ADR 0012): the installer of this hub's release,
 # from GitHub, never from a hub. It installs its own release's code; the hub gives only the link.
+# The link follows the script on the installer's stdin (--join -), echoed by the shell itself:
+# the code is in no command line, so neither in sudo's log nor in ps.
 RELEASE_REPO = "tayharris/needs-you"  # the CLI's RELEASE_REPO
-PEER_JOIN_COMMAND = ("curl -fsSL https://github.com/" + RELEASE_REPO
-                     + "/releases/download/v%s/install-hub.sh | sudo bash -s -- --join %s")
+PEER_JOIN_COMMAND = ("(curl -fsSL https://github.com/" + RELEASE_REPO
+                     + "/releases/download/v%s/install-hub.sh && echo %s) | sudo bash -s -- --join -")
 PEER_LINK_HEADER = "X-Needs-You-Peer-Link"  # which link's secret a replication request carries
 PEER_LINK_ID_RE = re.compile(r"^pl_[A-Za-z0-9_-]{8,40}\Z")
 PEER_SYNC_SECONDS = 5.0  # how often a running hub re-reads peer links (the admin tool writes them)
@@ -1846,7 +1848,7 @@ class Store:
             inv = self._live_invite(code, now)
             if inv["role"] == PEER_ROLE:
                 raise _invalid("peer", "this is a peer invite, for another hub: run "
-                                       "install-hub.sh --join <link> (or needs-you-admin peer join) there")
+                                       "install-hub.sh --join - (or needs-you-admin peer join -) there")
             self._spend_invite(inv)
             name = self._unique_token_name(invite_token_name(inv["name"], host))
             token = mint_token()
@@ -3486,7 +3488,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "Ask for a new one.", script)
         if script and inv["role"] == PEER_ROLE:
             return self._join_failed(400, "this is a peer invite, for another hub: run "
-                                          "install-hub.sh --join <link> on the server instead.", script)
+                                          "install-hub.sh --join - on the server instead.", script)
         if script:
             return self._send_text(200, install_script(self.hub, inv, code),
                                    "text/x-shellscript; charset=utf-8")
@@ -4312,7 +4314,7 @@ def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:
             "against its SHA256SUMS and release manifest; nothing comes from this hub), installs "
             "the hub as a system service, redeems this link (one use) for the pair's replication secret, "
             "which it keeps in the hub's database and never prints, and starts the service. On a "
-            "server that already runs a hub, `needs-you-admin peer join <link>` does the same and "
+            "server that already runs a hub, `needs-you-admin peer join -` (the link on its stdin) does the same and "
             "the running hub picks it up. If you are an agent, ask the user before installing a "
             "service.\n" % links["install_command"])
     if inv["role"] != "sender":

@@ -45,7 +45,8 @@ final class AlwaysOnHubController: ObservableObject {
         do {
             let invite = try await client.createPeerInvite(PeerInviteRequest(name: "always-on"),
                                                            hub: LocalHub.clientURL, token: token)
-            command = invite.hubInstallCommand ?? "curl -fsSL https://github.com/\(UpdateSource.defaultRepository)/releases/download/v\((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "X.Y.Z")/install-hub.sh | sudo bash -s -- --join '\(invite.joinURL)'"
+            // The link follows the script on stdin (--join -), so it stays out of sudo's log and ps.
+            command = invite.hubInstallCommand ?? "(curl -fsSL https://github.com/\(UpdateSource.defaultRepository)/releases/download/v\((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "X.Y.Z")/install-hub.sh && echo '\(invite.joinURL)') | sudo bash -s -- --join -"
             commandExpires = invite.expiresAt.flatMap(HubJSON.parseDate)
             message = nil
         } catch {

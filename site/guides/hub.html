@@ -105,8 +105,10 @@ the link lasts an hour. From a terminal on the Mac instead:</p>
   --db ~/Library/Application\ Support/NeedsYou/hub.db \
   --public-url http://&lt;this-mac&gt;.&lt;tailnet&gt;.ts.net:8765 invite create my-server --role peer</code></pre></div>
 <p><strong>2. On the server</strong> (Linux with systemd, python3 and Tailscale), the command Settings showed:</p>
-<div class="code"><pre><code class="language-bash">curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
-  | sudo bash -s -- --join 'http://&lt;this-mac&gt;.&lt;tailnet&gt;.ts.net:8765/join/nyi_...'</code></pre></div>
+<div class="code"><pre><code class="language-bash">(curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
+  &amp;&amp; echo 'http://&lt;this-mac&gt;.&lt;tailnet&gt;.ts.net:8765/join/nyi_...') | sudo bash -s -- --join -</code></pre></div>
+<p>The link goes to the installer on its stdin, after the script (<code>--join -</code>), so the invite code
+is in no command line: not in <code>ps</code>, and not in the command sudo logs. Run it in bash or zsh.</p>
 <p><code>vX.Y.Z</code> is the release the Mac app runs. The installer comes from that GitHub release, and so
 does all the code it installs: it downloads the release's server tarball for its own version,
 checks it against the release's <code>SHA256SUMS</code> and <code>release-manifest.json</code> (and, when <code>gh</code> is
@@ -116,11 +118,12 @@ GitHub can't be reached. The Mac's hub supplies only the link: no code comes fro
 can't make a server install anything else. It installs and starts a system-wide hub, pairs it
 with the Mac's hub, and prints no secret. A development build of the app has no matching
 release: install from a checkout then. From a checkout (or the release's server tarball),
-<code>./scripts/install-hub.sh --user --join '&lt;link&gt;'</code> does the same as your user. Run as root, a
+<code>echo '&lt;link&gt;' | ./scripts/install-hub.sh --user --join -</code> does the same as your user (or run it
+without the <code>echo</code> and paste the link when it asks). Run as root, a
 checkout is first copied to a private directory, refusing symlinks and anything another user
 could write (the files or any directory above them), and only that copy is installed. On a server
 that already runs a hub (alone, or in a mesh with its own <code>peer_secret</code>), run
-<code>needs-you-admin peer join '&lt;link&gt;'</code> instead; the running hub picks it up within 5 seconds and
+<code>echo '&lt;link&gt;' | needs-you-admin peer join -</code> instead; the running hub picks it up within 5 seconds and
 its other peers are left as they are.</p>
 <p>Then:</p>
 <ul>
@@ -140,7 +143,13 @@ so the Mac reaches it by name whatever its tailnet IP. The Mac's hub is named th
 purged a day after it closed, but a text-free tombstone stays for 30 days (<a href="#housekeeping">housekeeping</a>),
 and the Mac's hub pulls it when it wakes. Only after 30 days away can an item resolved on the
 server stay open on the Mac until you close it.</p>
-<p>Joining one server to another works the same way: <code>needs-you-admin invite create hub-b --role peer</code> on one, <code>install-hub.sh --join</code> (or <code>needs-you-admin peer join</code>) on the other.</p>
+<p>Joining one server to another works the same way: <code>needs-you-admin invite create hub-b --role peer</code> on one, the command it prints (<code>install-hub.sh --join -</code>, or <code>needs-you-admin peer join -</code>,
+with the link on stdin) on the other.</p>
+<p>A pairing can't be taken over: a peer invite redeemed with the URL or hub id of a hub that is
+already paired is refused (<code>409</code>), and so is a join whose answer names another paired hub. To
+pair the same hub again, or under a new URL, remove it first (<strong>Remove</strong> in Settings,
+<code>needs-you-admin peer remove</code>), then make a new peer invite. Both sides accept a peer only at
+<code>https</code>, or plain <code>http</code> to a tailnet name or address (or loopback).</p>
 <h2 id="what-install-hubsh---user-sets-up">What <code>install-hub.sh --user</code> sets up <a class="anchor" href="#what-install-hubsh---user-sets-up" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Path</th><th>What</th></tr></thead>
@@ -165,7 +174,7 @@ server stay open on the Mac until you close it.</p>
 <tr><td><code>--peer-secret-file F</code></td><td></td><td>The shared replication secret, from a file.</td></tr>
 <tr><td><code>--peer-secret S</code></td><td></td><td>The same, inline (visible in <code>ps</code>; prefer the file).</td></tr>
 <tr><td><code>--generate-peer-secret</code></td><td></td><td>Make a new secret and print it once.</td></tr>
-<tr><td><code>--join LINK</code></td><td></td><td>Pair with the hub that made this peer invite (<a href="#with-the-apps-built-in-hub">above</a>). No owner invite is printed.</td></tr>
+<tr><td><code>--join -</code></td><td></td><td>Pair with the hub that made this peer invite (<a href="#with-the-apps-built-in-hub">above</a>), reading its link from stdin. No owner invite is printed. <code>--join LINK</code> works too, but puts the code in <code>ps</code> and sudo's log.</td></tr>
 <tr><td><code>--reconfigure</code></td><td>off</td><td>Rebuild the config from defaults + flags (keeps the secret).</td></tr>
 <tr><td><code>--no-start</code></td><td>off</td><td>Install files and config only.</td></tr>
 <tr><td><code>--no-invite</code></td><td>off</td><td>Don't print the first owner invite.</td></tr>
@@ -240,7 +249,7 @@ needs-you-admin token list             # name, role, state, open items
 needs-you-admin token revoke my-server-build-1
 needs-you-admin token add ci-myrepo --role sender                          # a bare token, printed once
 needs-you-admin invite create hub-b --role peer       # another hub joins this one (one use, 1 h)
-needs-you-admin peer join '&lt;peer invite link&gt;'         # this hub joins another
+echo '&lt;peer invite link&gt;' | needs-you-admin peer join -   # this hub joins another
 needs-you-admin peer list                              # peers: config and invite, never secrets
 needs-you-admin peer remove hub-b                      # by hub id, URL or name (invite peers)</code></pre></div>
 <p>Roles: <code>sender</code> posts and resolves; <code>reader</code> reads, resolves and dismisses; <code>owner</code> is a reader

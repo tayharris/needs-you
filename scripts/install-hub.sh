@@ -4,8 +4,8 @@
 #
 #   ./scripts/install-hub.sh --user [options]     no root: runs as a systemd --user service
 #   sudo ./scripts/install-hub.sh [options]       system-wide: a `needs-you` system user
-#   curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
-#     | sudo bash -s -- --join <link>     no checkout: installs release vX.Y.Z from GitHub
+#   (curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
+#     && echo '<link>') | sudo bash -s -- --join -     no checkout: installs release vX.Y.Z
 #
 # Options:
 #   --user                 install under your home directory (recommended)
@@ -18,8 +18,9 @@
 #   --peer-secret-file F   read the shared replication secret from a file
 #   --peer-secret S        the shared secret (visible in `ps`; prefer the file)
 #   --generate-peer-secret make a new secret and print it once (copy it to the other hub)
-#   --join LINK            pair with another hub (the Mac's, or a server) by its peer invite
-#                          (http(s)://<hub>/join/nyi_...): no secret to copy; it stays in the DB
+#   --join -               pair with another hub (the Mac's, or a server) by its peer invite
+#                          (http(s)://<hub>/join/nyi_...), read from stdin: no secret to copy
+#                          (it stays in the DB). --join LINK works too, but shows it in ps
 #   --reconfigure          rebuild the config from defaults + flags (keeps the secret)
 #   --no-start             install files and config, don't start the service
 #   --no-invite            don't print an owner invite at the end
@@ -27,6 +28,11 @@
 #
 # Re-running upgrades the code in place, keeps the config (flags you pass are applied to it)
 # and the database, and restarts the service.
+
+# Everything is in one { } group, which bash reads whole before running any of it: piped, a
+# cut-off download runs nothing, and with --join - the line after the script (the link) is
+# still unread on stdin when the script reads it. The group ends in exit, so bash never runs it.
+{
 set -euo pipefail
 
 MODE=system
@@ -44,7 +50,7 @@ JOIN=""
 # The release this installer belongs to: piped, it installs exactly this version from GitHub.
 INSTALLER_VERSION=0.2.1  # needs-you-version: 0.2.1
 
-usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
@@ -67,6 +73,16 @@ while [ $# -gt 0 ]; do
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
+if [ "$JOIN" = - ]; then
+  # First, before any command that might read stdin: the link is the line after the script
+  # (or the whole of stdin when run from a checkout). It stays out of every command line.
+  [ -t 0 ] && printf 'Paste the peer invite link: ' >&2
+  IFS= read -r JOIN || true
+  JOIN=$(printf '%s' "$JOIN" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+  [ -n "$JOIN" ] || die "--join - found no peer invite link on stdin (pipe it in: echo '<link>' | ... --join -)"
+elif [ -n "$JOIN" ]; then
+  echo "install-hub: note: a link on the command line shows in ps (and sudo's log); --join - reads it from stdin" >&2
+fi
 if [ -n "$JOIN" ]; then
   case "$JOIN" in
     http://*/join/nyi_*|https://*/join/nyi_*) ;;
@@ -483,8 +499,8 @@ fi
 #     replicating with it at once). The secret goes into the database, never to the terminal.
 JOINED=""
 if [ -n "$JOIN" ]; then
-  if ! JOINED=$("$ADMIN_BIN" peer join "$JOIN"); then
-    die "couldn't join with that link (above). The hub is installed; make a new peer invite and re-run with --join, or run: needs-you-admin peer join <link>"
+  if ! JOINED=$(printf '%s\n' "$JOIN" | "$ADMIN_BIN" peer join -); then
+    die "couldn't join with that link (above). The hub is installed; make a new peer invite and re-run with --join -, or run: echo '<link>' | needs-you-admin peer join -"
   fi
   echo "$JOINED"
 fi
@@ -550,7 +566,7 @@ fi
 if [ "$INVITE" -eq 1 ] && [ "$NEW_CONFIG" -eq 1 ]; then
   echo
   echo "Connect a Mac to this hub with this link. (To pair this hub with a Mac app's built-in hub instead,"
-  echo "make a link in its Settings -> Built-in hub -> Always-on hub and re-run this with --join <link>.)"
+  echo "make a link in its Settings -> Built-in hub -> Always-on hub and run the command it shows.)"
   "$ADMIN_BIN" invite create mac --role owner --uses 1 --ttl 72 | sed 's/^/  /'
 fi
 if [ -n "$JOINED" ]; then
@@ -570,3 +586,5 @@ if [ -n "$CHECKOUT" ]; then
 else
   echo "Upgrade later: run a newer release's install-hub.sh the same way (without --join; the config and database are kept)."
 fi
+exit 0
+}

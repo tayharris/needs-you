@@ -535,9 +535,10 @@ The prompt ends by having the agent run `needs-you doctor` and act on, or relay,
 under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
 A `peer` invite's response has no `mac_url` or `agent_prompt`; its `install_command` is what to
-run on the server: `curl -fsSL https://github.com/tayharris/needs-you/releases/download/v<hub version>/install-hub.sh | sudo bash -s -- --join '<join_url>'`.
+run on the server: `(curl -fsSL https://github.com/tayharris/needs-you/releases/download/v<hub version>/install-hub.sh && echo '<join_url>') | sudo bash -s -- --join -`.
 The installer and the code it installs come from that GitHub release, never from a hub; the hub
-supplies only the link.
+supplies only the link. The link reaches the installer on its stdin, after the script, so the
+code is in no command line (not in `ps`, not in sudo's log).
 
 ### `GET /v1/invites` (owner)
 
@@ -642,7 +643,7 @@ A `peer` invite pairs another hub with this one ([ADR 0012](adr/0012-mac-hub-pee
 way an always-on server joins the Mac's own hub, or one server another, without copying a
 secret. It has one use, lives 1 hour by default (at most 24), and stays on the hub that made it:
 it is never replicated (it names this hub). Redeeming it mints no token. The joining hub
-(`needs-you-admin peer join <join_url>`, which `install-hub.sh --join` runs) sends:
+(`needs-you-admin peer join -` with the `join_url` on stdin, which `install-hub.sh --join -` runs) sends:
 
 ```json
 {"code": "nyi_...", "host": "hub-b",
