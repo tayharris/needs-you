@@ -2034,6 +2034,9 @@ def pinned_get(t: UpdateTarget, path: str, timeout: float, token: str = "") -> b
         if len(data) > MAX_UPDATE_BYTES:
             raise UpdateRefused("%s sent more than %d bytes for %s" % (t.url, MAX_UPDATE_BYTES, path))
         return data
+    except http.client.HTTPException as e:
+        # Not HTTP (another service on that port) or cut short: not an OSError, so say so as one.
+        raise ConnectionError("bad HTTP response (%s)" % type(e).__name__)
     finally:
         conn.close()
 
