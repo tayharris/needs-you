@@ -567,6 +567,15 @@ def validate_question(question: Any) -> Optional[Dict[str, Any]]:
     if answerable and any(not it["options"] for it in out["items"]):
         raise _invalid("question.answerable",
                        "an answerable question needs options for every item (no free-text answers)")
+    if answerable:
+        # An answer carries labels only, so two options with one label can't be told apart.
+        for i, it in enumerate(out["items"]):
+            seen = set()
+            for j, opt in enumerate(it["options"]):
+                if opt["label"] in seen:
+                    where = "question.items[%d].options[%d].label" % (i, j)
+                    raise _invalid(where, "%s repeats a label: an answerable question's labels must differ" % where)
+                seen.add(opt["label"])
     out["answerable"] = answerable
     if question.get("expires_at") is not None:
         try:

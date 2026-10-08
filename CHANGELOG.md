@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Security
+
+- **Hub: an answerable question can't repeat a label.** An answer carries labels only, so two options named "Yes" with different descriptions couldn't be told apart, and the sender could act on the one the person didn't click. `POST /v1/items` now answers `400` (`question.items[i].options[j].label`) for such a question; a read-only one may still repeat a label ([API.md](docs/API.md), [ADR 0009](docs/adr/0009-questions-on-cards.md) amendment).
+
 ### Added
 
 - **GitHub: a "Merged" FYI when one of your PRs merges.** `needs-you-github` remembers your open PRs between runs; when one leaves the list and GitHub says it merged, it posts one low `done` card, "Merged owner/repo#20: *title*", with a PR link, that expires after a day and isn't counted. A PR closed without merging posts nothing. On by default; `NEEDS_YOU_GITHUB_REASONS=-merged` turns it off. Copy the new `needs-you-github` to `~/.local/bin/` ([GitHub guide](docs/guides/github.md)).

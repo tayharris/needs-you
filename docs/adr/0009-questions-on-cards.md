@@ -189,3 +189,18 @@ field.
   hub; the scope (one field of one item, the poster's own) is the security boundary to review.
 - An answer from the card can race an answer in the terminal; the agent takes whichever
   arrives first, and the hook's late answer is ignored by the agent.
+
+## Amendment (2026-10-08): an answerable question's labels must differ
+
+A security review found that an answerable question could offer two options with the same
+label (for example two "Yes" options with different descriptions). An answer carries labels
+only, so the sender couldn't tell which one the person clicked, and could act on the other.
+The hooks already refused to post such a card answerable; now the hub refuses it too:
+`POST /v1/items` answers `400` with the repeated option's `question.items[i].options[j].label`
+when `answerable` is true and a question repeats a label. A read-only question may still
+repeat one, and different questions may share labels.
+
+This tightens validation, so it is a breaking change for a sender that posted such a
+question: no sender in this repo did (the hooks keep those cards read-only), and the CLI
+reports the `400` (exit 2). A replicated record with such a question from an older hub loses
+its question, like any question this hub would refuse.
