@@ -88,7 +88,7 @@ export const NeedsYou = async ({ directory, worktree }) => {
     "shell.env": async (input, output) => {
       try {
         const sid = str(input && input.sessionID)
-        if (sid && output && output.env && typeof output.env === "object") output.env.NEEDS_YOU_OPENCODE_SESSION = sid
+        if (sid && output && output.env && typeof output.env === "object") output.env.NEEDS_YOU_AGENT_SESSION = sid
       } catch {
         // never fail opencode
       }

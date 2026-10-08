@@ -197,7 +197,7 @@ console.log(JSON.stringify(out))
         r = subprocess.run([NODE, driver, os.path.join(self.oc, "plugins", "needs-you.js"), self.cwd],
                            env=self.env(), capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(json.loads(r.stdout), [{"NEEDS_YOU_OPENCODE_SESSION": "ses_0123abc"}, {}, {}])
+        self.assertEqual(json.loads(r.stdout), [{"NEEDS_YOU_AGENT_SESSION": "ses_0123abc"}, {}, {}])
 
     def test_missing_hook_is_harmless(self):
         os.makedirs(os.path.join(self.oc, "plugins"))

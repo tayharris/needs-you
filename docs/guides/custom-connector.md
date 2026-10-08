@@ -178,6 +178,15 @@ Before writing code, list every event your tool can report and decide one action
 
 **Never block, never fail the tool.** A hook runs inside the tool's event loop: read the input, start the CLI in the background with no stdin or stdout, exit 0, print nothing (some tools read a hook's stdout as instructions). The CLI waits up to 3 seconds per hub (`NEEDS_YOU_TIMEOUT`), which you don't want the tool to sit through. One catch: two background calls fired within milliseconds (a post and its resolve) can reach the hub in either order; the expiry backstop covers that rare case, and example (b) shows a single worker that keeps calls in order.
 
+### One card for one wait
+
+If the agent itself can post (it has the [skill](../AGENT-GUIDE.md) or runs `needs-you add`), it may post its own blocker and then wait, and your "is waiting for you" card would only repeat it. To skip yours while the agent's own item is open:
+
+1. Set **`NEEDS_YOU_AGENT_SESSION=<session id>`** in the environment of the commands the agent runs (its shell tool), using the same id your hook sees for that session. When `needs-you add` posts a `needs` item with it set, the CLI notes the key in `~/.local/state/needs-you/session-items/<id>/` (the id with anything outside `A-Za-z0-9._-` turned into `_`, at most 80 characters): one file per item, with `key=` and `expires=<epoch seconds>` lines. Resolving the item (by key or id) or re-posting it as `done`/`info` removes the file.
+2. Before posting your "waiting" card, skip it if that directory has a file whose `expires=` is still in the future. Keep posting permission prompts, questions and errors: those are a different thing to act on. When the session ends, delete the directory.
+
+The shared hook (`integrations/claude-code/needs-you-hook.sh`) does step 2 for you when you feed it the session's events with the same `session_id` (the opencode plugin works this way and sets the variable through opencode's `shell.env`). Inside an Orca terminal `$ORCA_TERMINAL_HANDLE` names the session instead, for the CLI and the hook alike.
+
 ### Example (a): a shell hook that reads JSON on stdin
 
 For a tool that runs a command per event with a JSON object on stdin, like Claude Code, Codex and Gemini CLI. Suppose `acme-agent` sends `{"event": "permission_request", "session_id": "3f9c2a", "cwd": "/home/me/src/app", "tool": "git"}`. JSON is read with `python3` (already on the machine: the CLI needs it), not `jq`.

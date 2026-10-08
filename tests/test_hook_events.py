@@ -602,10 +602,10 @@ class OwnItemTests(HookHarness):
 
     def test_other_agents_outside_orca(self):
         # Codex gives its commands $CODEX_SESSION_ID (older: $CODEX_THREAD_ID), the hook's
-        # session_id; the opencode plugin sets $NEEDS_YOU_OPENCODE_SESSION through shell.env.
+        # session_id; the opencode plugin sets $NEEDS_YOU_AGENT_SESSION through shell.env.
         for agent, env in (("codex", {"CODEX_SESSION_ID": "agent-sess-1", "CODEX_THREAD_ID": "agent-sess-2"}),
                            ("codex", {"CODEX_THREAD_ID": "agent-sess-1"}),
-                           ("opencode", {"NEEDS_YOU_OPENCODE_SESSION": "agent-sess-1"})):
+                           ("opencode", {"NEEDS_YOU_AGENT_SESSION": "agent-sess-1"})):
             key = "work:ACME-7:%s" % agent
             self.assertTrue(self.agent_turn_ended(agent, "Stop"), agent)
             self.real_cli("add", "--key", key, "--title", "t", **env)
@@ -619,6 +619,20 @@ class OwnItemTests(HookHarness):
                       CODEX_SESSION_ID="agent-sess-9", CODEX_THREAD_ID="agent-sess-1")
         self.assertTrue(self.agent_turn_ended("codex", "Stop"))
         self.real_cli("resolve", "--key", "work:ACME-8:x")
+
+    def test_any_connector_can_name_the_session(self):
+        # docs/guides/custom-connector.md: NEEDS_YOU_AGENT_SESSION in the agent's commands, a
+        # note per item under session-items/<sanitized id>/ with key= and expires=
+        self.real_cli("add", "--key", "acme-agent:x:decide", "--title", "t", NEEDS_YOU_AGENT_SESSION="ses 1/a")
+        d = os.path.join(self.home, ".local", "state", "needs-you", "session-items", "ses_1_a")
+        notes = os.listdir(d)
+        self.assertEqual(len(notes), 1)
+        with open(os.path.join(d, notes[0])) as fh:
+            note = dict(l.rstrip("\n").split("=", 1) for l in fh)
+        self.assertEqual(note["key"], "acme-agent:x:decide")
+        self.assertGreater(int(note["expires"]), 0)
+        self.real_cli("resolve", "--key", "acme-agent:x:decide")
+        self.assertFalse(os.path.exists(os.path.join(d, notes[0])))
 
     def test_gemini_outside_orca_by_process(self):
         # Gemini CLI gives its commands no session id, only GEMINI_CLI=1: the CLI notes the key

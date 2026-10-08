@@ -97,7 +97,7 @@ With the skill, an agent that's stuck posts its own blocker ("ACME-123: choose h
 
 The note goes away when the item is resolved with the CLI on this machine (`needs-you resolve --key` or `--id`, from any session or a later run), re-posted as `done` or `info`, expires (its `--expires-in`, at most 48 hours), or the session ends. An item resolved from another machine or in the Mac app keeps the note until it expires or the session ends; until then that session's "waiting" card stays off.
 
-Codex, Gemini CLI and opencode work the same way: their "turn ended" card is skipped while the agent's own item is open. Codex gives its commands `$CODEX_SESSION_ID`, the needs-you opencode plugin sets `$NEEDS_YOU_OPENCODE_SESSION` for them, and for Gemini CLI, which gives its commands no session id, the CLI notes the item for the Gemini process instead.
+Codex, Gemini CLI and opencode work the same way: their "turn ended" card is skipped while the agent's own item is open. Codex gives its commands `$CODEX_SESSION_ID`, the needs-you opencode plugin sets `$NEEDS_YOU_AGENT_SESSION` for them (any connector can, see the [custom connector guide](custom-connector.md#one-card-for-one-wait)), and for Gemini CLI, which gives its commands no session id, the CLI notes the item for the Gemini process instead.
 
 The hooks always exit 0 and print nothing, so they can't block a tool call, keep Claude from stopping, or put text into the conversation. When no hub answers, the CLI queues the post and the flush sends it later.
 
