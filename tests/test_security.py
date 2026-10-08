@@ -467,6 +467,51 @@ class ConnectionLimit(HubTestCase):
             self.assertLess(limit, soft)
 
 
+class PeerRedirects(HubTestCase):
+    """Scan 2026-10-08: the peer worker's opener followed redirects, and urllib copies the
+    Authorization header to the new location, any origin: a peer URL answering 3xx handed
+    the peer secret to whatever the Location named."""
+
+    def test_peer_secret_never_follows_a_redirect(self):
+        import http.server
+        import threading
+        seen = []
+
+        class Catch(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.headers.get("Authorization"))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
+            do_POST = do_GET
+
+            def log_message(self, *a):
+                pass
+
+        catcher = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Catch)
+        target = "http://127.0.0.1:%d" % catcher.server_address[1]
+
+        class Redirect(Catch):
+            def do_GET(self):
+                self.send_response(307)
+                self.send_header("Location", target + self.path)
+                self.end_headers()
+            do_POST = do_GET
+
+        redirector = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+        for srv in (catcher, redirector):
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            self.addCleanup(srv.server_close)
+            self.addCleanup(srv.shutdown)
+        hub = self.make_hub("hub-a", maintenance_seconds=0, start=False)
+        hub.set_peers(["http://127.0.0.1:%d" % redirector.server_address[1]])
+        hub.start()
+        sender, _ = hub.store.add_token("s", "sender")
+        request("POST", hub.url + "/v1/items", sender, OK)  # something to push
+        time.sleep(2.0)
+        self.assertEqual(seen, [])
+
+
 class DatabaseFileModes(HubTestCase):
     def test_db_wal_and_shm_are_private(self):
         # Items and token hashes: the -wal and -shm files hold the same data as the database,

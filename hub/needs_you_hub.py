@@ -2184,7 +2184,15 @@ def token_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
 # Peer replication worker
 # ---------------------------------------------------------------------------
 
-_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A peer never redirects. urllib would follow a 3xx and copy the Authorization header
+    (the peer secret) to the Location, any origin: the 3xx is an error instead."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        return None
+
+
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
 class PeerWorker(threading.Thread):
