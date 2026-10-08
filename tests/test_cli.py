@@ -595,6 +595,37 @@ class PostRate(CliTestCase):
         self.assertEqual(got, {"a": "t", "b": "t", "c": "second"})
 
 
+    def test_a_held_post_and_a_kept_resolve_of_its_key(self):
+        # The kept resolve is for the card before the held post: it goes to its hub while the
+        # post waits, and the post, once it goes out, isn't closed by it.
+        port = free_port()
+        a = self.make_hub("hub-a", post_rate_limit=1, post_rate_window_seconds=2)
+        sender, reader_a = self.tokens(a)
+        b = self.make_hub("hub-b", port=port)
+        b.store.ensure_token("sender-shared", "sender", sender)
+        _, reader_b = self.tokens(b)
+        url_b = b.url
+        self.run_cli("add", "--key", "k", "--title", "old", urls=[url_b], token=sender)
+        b.stop()
+        self.run_cli("resolve", "--key", "k", urls=[a.url, url_b], token=sender)  # kept for B
+        b2 = self.make_hub("hub-b", port=port, db=b.cfg["db"])
+        self.run_cli("add", "--key", "x", "--title", "t", urls=[a.url, url_b], token=sender)
+        r = self.run_cli("add", "--key", "k", "--title", "new", urls=[a.url, url_b], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("slow down", r.stderr)
+        r = self.run_cli("flush", urls=[a.url, url_b], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.items(b2, reader_b, "open"), [])  # the old card went
+        self.assertEqual(len(self.queued()), 1)                  # the new one still waits
+        time.sleep(2.5)
+        r = self.run_cli("flush", urls=[a.url, url_b], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.queued(), [])
+        self.assertEqual({i["key"]: i["title"] for i in self.items(a, reader_a, "open")}, {"x": "t", "k": "new"})
+        kept = os.path.join(self.outbox, "kept-resolves")
+        self.assertEqual([n for n in os.listdir(kept) if n.endswith(".json")] if os.path.isdir(kept) else [], [])
+
+
 class LineSeparators(CliTestCase):
     def test_title_line_separators_become_spaces(self):
         # ADR 0010: the hub refuses U+2028/U+2029 in a title; the CLI turns them into spaces
