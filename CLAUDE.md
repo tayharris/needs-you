@@ -55,7 +55,7 @@ New Swift test classes must be registered in `mac/Sources/NeedsYouSelfTest/main.
 
 ## In flux
 
-Invites (the `owner` role, `/v1/invites`, `/v1/invites/redeem`, `needsyou://connect` and `/join/<code>` links, the hub embedded in the app) are on `main`. Not built yet: the Mac's own hub peering with server hubs (it starts with no peers; see `docs/roadmap/next-big-item.md` and ADR 0004), and answering Claude Code's questions from the card (ADR 0009 B3, waiting on a live check). Questions on cards and answering them from the Mac (B1, B2; opencode only so far) are on `main`. Read the code on `main` before relying on a name from a plan.
+Invites (the `owner` role, `/v1/invites`, `/v1/invites/redeem`, `needsyou://connect` and `/join/<code>` links, the hub embedded in the app) are on `main`. Not built yet: the Mac's own hub peering with server hubs (it starts with no peers; see `docs/roadmap/next-big-item.md` and ADR 0004). Questions on cards and answering them from the Mac (ADR 0009 B1–B3: opencode, Claude Code through the hook's synchronous `ask` entry, any sender with `needs-you answer-wait`) are built. Read the code on `main` before relying on a name from a plan.
 
 ## Git
 

@@ -40,6 +40,10 @@ REWRITES = [
     ('"source":{"agent":"claude-code",', '"source":{"agent":"my-agent",'),
     ("the hooks skip their generic \"Claude is waiting for you\" card",
      "the hooks skip their generic \"waiting for you\" card"),
+    # Answering from the card through the hooks is Claude Code's (opencode's plugin answers
+    # its own question tool without the agent's doing).
+    (" A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card "
+     "in Claude Code, so prefer it over asking in plain text when there are a few clear choices.", ""),
 ]
 
 
