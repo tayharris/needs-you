@@ -1273,8 +1273,11 @@ class Store:
             "SELECT * FROM items WHERE superseded_by = ?", (winner_id,))]
         if not losers:
             return
-        best = max([winner] + losers, key=self._content_rank)
-        if best is winner or self._content_rank(best) <= self._content_rank(winner):
+        best = max(losers, key=self._content_rank)
+        # Only content that is really newer (API.md): a tie on content_updated_at broken by
+        # updated_at would let a loser's later non-content write (its own hub's merge result)
+        # copy its stale links, kind or expiry back over a re-post on the winner.
+        if best["content_updated_at"] <= winner["content_updated_at"]:
             return
         for col in self.CONTENT_COLS:
             winner[col] = best[col]
