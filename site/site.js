@@ -9,10 +9,12 @@ var REPO_URL = "https://github.com/tayharris/needs-you";
   });
 })();
 
-// Copy buttons for code blocks. Progressive enhancement: the page works without it.
+// Copy buttons, only on code blocks marked data-copy: commands that run exactly as written.
+// Examples with placeholders get none; the real commands come from the app's invite flow.
+// Progressive enhancement: the page works without it.
 (function () {
   if (!navigator.clipboard) return;
-  document.querySelectorAll(".code").forEach(function (block) {
+  document.querySelectorAll(".code[data-copy]").forEach(function (block) {
     var code = block.querySelector("code");
     if (!code) return;
     var btn = document.createElement("button");

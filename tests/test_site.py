@@ -275,6 +275,17 @@ class SiteTests(unittest.TestCase):
         self.assertIn("Right-click", text)
         self.assertIn("curl -fsSL <join_url>/install.sh | bash -s -- --yes", text)
 
+    def test_no_copy_on_examples(self):
+        # Copy buttons (site.js) only on .code[data-copy]: a command that runs as written.
+        # The landing page's commands are examples with placeholders; the real ones come
+        # from the app's invite flow.
+        html = read_site("index.html")
+        for block in re.findall(r'<div class="code"[^>]*>.*?</div>', html, re.S):
+            if "data-copy" in block:
+                with self.subTest(block=block[:80]):
+                    self.assertNotRegex(block, r"&lt;|example\.|devbox|acme", "an example: no Copy button")
+        self.assertIn('".code[data-copy]"', read_site("site.js"))
+
     def test_repo_links_follow_the_constant(self):
         base = repo_url()
         self.assertEqual(base, "https://github.com/tayharris/needs-you")

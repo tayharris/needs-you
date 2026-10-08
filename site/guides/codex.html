@@ -49,11 +49,11 @@
 <p>The rest of this page is the manual route and what to expect. Reference: <a data-repo="/blob/main/integrations/codex/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/codex/README.md">integrations/codex/README.md</a>.</p>
 <h2 id="manual-install">Manual install <a class="anchor" href="#manual-install" aria-label="Link to this section">#</a></h2>
 <p>Prerequisite: the machine is a sender (an invite link, or <code>./scripts/setup-sender.sh</code>), so <code>needs-you</code> works in a shell there. From a checkout of this repo:</p>
-<div class="code"><pre><code class="language-bash">integrations/codex/install-codex-hooks.sh     # adds the hooks to ~/.codex/hooks.json ($CODEX_HOME if set)</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">integrations/codex/install-codex-hooks.sh     # adds the hooks to ~/.codex/hooks.json ($CODEX_HOME if set)</code></pre></div>
 <p>It backs up <code>hooks.json</code>, keeps every other hook (Orca's included), and is safe to re-run. <code>--dry-run</code> shows the change; <code>--uninstall</code> removes it. Then trust them in <code>/hooks</code> and restart open Codex sessions.</p>
 <h2 id="opt-in">Opt in <a class="anchor" href="#opt-in" aria-label="Link to this section">#</a></h2>
 <p>Installed hooks do nothing until a session is opted in, the same switch as the Claude Code hooks:</p>
-<div class="code"><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 codex                               # one session
+<div class="code" data-copy><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 codex                               # one session
 echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every session on this machine (the installer's --alerts)</code></pre></div>
 <p>Sessions in an Orca terminal are on automatically; <code>NEEDS_YOU_AGENT_ALERTS=0</code> turns it off even there.</p>
 <h2 id="what-youll-see">What you'll see <a class="anchor" href="#what-youll-see" aria-label="Link to this section">#</a></h2>
@@ -69,15 +69,15 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <p>One card per session (key <code>agent:&lt;host&gt;:&lt;session&gt;</code>), updated rather than duplicated. It's resolved on your next prompt, the next tool run, an interrupt (Esc), <code>/clear</code>, or the end of the session. A Codex process that's killed is cleaned up by the 5-minute <code>needs-you flush</code>; any card expires 48 hours after its last post.</p>
 <p>Cards name at most the program or a file's basename. No command lines, patches, prompts or Codex replies are sent. The buttons are the same as for Claude Code: the Orca terminal, the Mac terminal tab, VS Code folders (<a href="claude-code-everywhere.html#buttons">details</a>).</p>
 <p>Only want approval prompts, not a card at the end of every turn?</p>
-<div class="code"><pre><code class="language-bash">echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' &gt;&gt; ~/.config/needs-you/env</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">echo 'NEEDS_YOU_AGENT_TURN_CARDS=0' &gt;&gt; ~/.config/needs-you/env</code></pre></div>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">needs-you doctor    # the "codex hooks" line should be OK
+<div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "codex hooks" line should be OK
 echo '{"hook_event_name":"Stop","session_id":"test-1","cwd":"'"$PWD"'"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.codex/hooks/needs-you-hook.sh notify codex
 # a "Codex is waiting for you" card appears; then:
 echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.codex/hooks/needs-you-hook.sh resolve codex</code></pre></div>
 <h2 id="remove-it">Remove it <a class="anchor" href="#remove-it" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">needs-you uninstall-hooks --codex                         # offline: no hub, no checkout
+<div class="code" data-copy><pre><code class="language-bash">needs-you uninstall-hooks --codex                         # offline: no hub, no checkout
 integrations/codex/install-codex-hooks.sh --uninstall     # or from a checkout</code></pre></div>
 <p>Both take out only the needs-you entries (with a backup of <code>hooks.json</code>) and delete the hook copy, and refuse a symlinked <code>hooks.json</code> or hook. <code>needs-you uninstall-hooks</code> with no option removes every agent's hooks; the invite installer's <code>--uninstall</code> runs it.</p>
 <p>Not working? <a href="troubleshooting.html#codex-hooks">Troubleshooting</a>.</p>

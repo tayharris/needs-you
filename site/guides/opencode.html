@@ -47,10 +47,10 @@
 <p>Then restart opencode. Reference: <a data-repo="/blob/main/integrations/opencode/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/opencode/README.md">integrations/opencode/README.md</a>.</p>
 <h2 id="manual-install">Manual install <a class="anchor" href="#manual-install" aria-label="Link to this section">#</a></h2>
 <p>On a sender machine, from a checkout of this repo:</p>
-<div class="code"><pre><code class="language-bash">integrations/opencode/install-opencode-plugin.sh    # ~/.config/opencode/plugins/needs-you.js</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">integrations/opencode/install-opencode-plugin.sh    # ~/.config/opencode/plugins/needs-you.js</code></pre></div>
 <p><code>--uninstall</code> removes it, and so does <code>needs-you uninstall-hooks --opencode</code>, which needs no checkout and no hub (it leaves a symlinked plugin alone). No opencode config file is changed.</p>
 <h2 id="opt-in">Opt in <a class="anchor" href="#opt-in" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 opencode                            # one session
+<div class="code" data-copy><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 opencode                            # one session
 echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every session on this machine</code></pre></div>
 <h2 id="what-youll-see">What you'll see <a class="anchor" href="#what-youll-see" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">
@@ -64,7 +64,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 </table></div>
 <p>One card per session, updated in place. Commands, patterns, questions and answers aren't sent. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the permission and question cards.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">needs-you doctor    # the "opencode plugin" line should be OK
+<div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "opencode plugin" line should be OK
 echo '{"hook_event_name":"Stop","session_id":"ses_test","cwd":"'"$PWD"'"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.config/opencode/hooks/needs-you-hook.sh notify opencode
 echo '{"session_id":"ses_test"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.config/opencode/hooks/needs-you-hook.sh resolve opencode</code></pre></div>

@@ -48,7 +48,7 @@
 <h2 id="1-install-tailscale">1. Install Tailscale <a class="anchor" href="#1-install-tailscale" aria-label="Link to this section">#</a></h2>
 <p><strong>On the Mac:</strong> install the Tailscale app from <a href="https://tailscale.com/download">tailscale.com/download</a> (or the Mac App Store), open it and sign in. The app's command-line tool is <code>/Applications/Tailscale.app/Contents/MacOS/Tailscale</code>; the commands below write it as <code>tailscale</code>.</p>
 <p><strong>On each Linux machine:</strong></p>
-<div class="code"><pre><code class="language-bash">curl -fsSL https://tailscale.com/install.sh | sh
+<div class="code" data-copy><pre><code class="language-bash">curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up            # prints a login URL; open it and sign in to the same account</code></pre></div>
 <p>Sign every machine in to the same tailnet (the same account or organization).</p>
 <h2 id="2-turn-on-magicdns-and-find-your-tailnet-name">2. Turn on MagicDNS and find your tailnet name <a class="anchor" href="#2-turn-on-magicdns-and-find-your-tailnet-name" aria-label="Link to this section">#</a></h2>
