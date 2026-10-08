@@ -942,12 +942,28 @@ def answerable_as_is(questions, field):
     redacted), so the labels the person clicks are the agent's own."""
     if not field or len(field["items"]) != len(questions):
         return False
-    for (_, _, opts, _), item in zip(questions, field["items"]):
+    for (header, text, opts, _), item in zip(questions, field["items"]):
         if not opts or len(opts) != len(item["options"]):
             return False
         if any(label != o["label"] for (label, _), o in zip(opts, item["options"])):
             return False
+        # The question, its header and each choice's description reach the card whole too
+        # (only cleaned): never answered from a card that showed part of what was asked.
+        if not (shown_whole(text, MAX_QUESTION_TEXT, True) and shown_whole(header, MAX_QUESTION_HEADER)
+                and all(shown_whole(desc, MAX_STEP) for _, desc in opts)):
+            return False
     return True
+
+
+def shown_whole(value, limit, block=False):
+    """Is agent text shown on the card as written: nothing redacted, cut or left out?"""
+    if not isinstance(value, str) or not value.strip():
+        return True
+    if redact(value) != value:
+        return False
+    if block:
+        return text_block(value, limit) == text_block(value, 1 << 30, 1 << 30)
+    return one_line(value, limit) == one_line(value, 1 << 30)
 
 
 def question_field(questions, qid="", answerable=False):

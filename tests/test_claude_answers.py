@@ -193,6 +193,16 @@ class AskMode(unittest.TestCase):
             "no options": qs(q("Which?", [])),
             "an option that isn't an object": {"questions": [{"question": "Which?", "options": ["A", "B"]}]},
             "a question without text": {"questions": [{"header": "H", "options": [{"label": "A"}]}]},
+            # Security review 0.2: the question and the choices' descriptions must reach the
+            # card whole too, or the person answers something they were only partly shown.
+            "a question the card would cut short": qs(q("Delete these?\n" + "\n".join(
+                "- file%d" % i for i in range(12)) + "\nand drop the production database", ["Yes", "No"])),
+            "a question over the card's length": qs(q("Proceed? " + "word " * 120 + "(this deletes prod)",
+                                                      ["Yes", "No"])),
+            "a question it would redact": qs(q("Use ghp_abcdefghijklmnopqrstuvwxyz0123 to push?", ["Yes", "No"])),
+            "a header it would cut": qs(dict(q("Which?", ["A", "B"]), header="H" * 40)),
+            "a description it would cut": {"questions": [{"question": "Which?", "header": "H", "options": [
+                {"label": "A", "description": "fine " * 50 + "but wipes the disk"}, {"label": "B"}]}]},
         }
         for name, ti in cases.items():
             with self.subTest(name):
