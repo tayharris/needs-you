@@ -195,7 +195,11 @@ fi
 # UserPromptSubmit, SessionStart, SessionEnd). Its payloads carry cursor_version and
 # conversation_id, which Claude Code's never do. The cursor hooks handle Cursor; here a Stop
 # would clear the card they just posted (same conversation id), so step aside.
-if [ "$agent" = claude ] && printf '%s' "$input" | grep -Eq '"(cursor_version|conversation_id)"[[:space:]]*:'; then
+# Only top-level keys count (the text before the first nested object or list): a Claude tool's
+# input can name its own arguments conversation_id (an MCP chat tool).
+if [ "$agent" = claude ] &&
+   printf '%s' "$input" | head -c 65536 | tr -d '\r\n' | sed -e 's/^[^{]*{//' -e 's/[{[].*//' |
+     grep -Eq '"(cursor_version|conversation_id)"[[:space:]]*:'; then
   exit 0
 fi
 
@@ -251,11 +255,12 @@ log() {
 
 sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
 
-# A plain string field from the hook JSON. A sed grab avoids a python start-up
-# on every event; the values read this way are ids and fixed words.
+# A plain string field from the hook JSON. A grep avoids a python start-up on every event;
+# the values read this way are ids and fixed words. The first one wins: the agents put their
+# own fields before a tool's input, which may use the same names (an MCP tool's session_id).
 json_str() {
-  printf '%s\n' "$input" |
-    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
+  printf '%s\n' "$input" | grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -n 1 |
+    sed -e 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//' -e 's/"$//'
 }
 
 session_id=$(json_str session_id)

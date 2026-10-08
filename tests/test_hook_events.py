@@ -174,6 +174,19 @@ class PayloadEdgeTests(HookHarness):
         self.assertTrue(body.startswith("bad �� bytes"), body)
         body.encode("utf-8")  # no lone surrogates
 
+    def test_tool_input_keys_are_not_the_payloads(self):
+        # An MCP tool whose arguments are named like Cursor's or Claude's own fields: still
+        # Claude's card, keyed by Claude's session.
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "mcp__chat__send",
+                                 "tool_input": {"conversation_id": "C1", "cursor_version": "1"}})
+        self.assertEqual(len(self.calls()), 1)
+        self.assertEqual(self.opt(self.last(), "--key").rsplit(":", 1)[1], "sess-1234-abcd")
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "mcp__db__query",
+                                 "tool_input": {"session_id": "other-999", "hook_event_name": "Stop"}})
+        self.assertEqual(len(self.calls()), 2)
+        self.assertEqual(self.opt(self.last(), "--key").rsplit(":", 1)[1], "sess-1234-abcd")
+        self.assertEqual(self.marker()["kind"], "permission")
+
 
 class FailureTests(HookHarness):
     def test_stop_failure_card(self):
