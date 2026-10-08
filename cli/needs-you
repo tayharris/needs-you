@@ -1186,9 +1186,10 @@ def _session_name(raw: str) -> str:
     return sess if sess.strip(".") else ""
 
 
-def _agent_process() -> Tuple[int, str]:
+def _agent_process(want: str = "") -> Tuple[int, str]:
     """(pid, start) of the agent that ran this command, found as the hook finds its lease: the
-    first ancestor that isn't a shell. (0, "") when it can't be told."""
+    first ancestor that isn't a shell. (0, "") when it can't be told, or (with `want`) when that
+    ancestor's command name isn't `want`."""
     import subprocess
 
     def ps(field: str, pid: int) -> str:
@@ -1205,6 +1206,8 @@ def _agent_process() -> Tuple[int, str]:
         if not comm or not ppid.isdigit():
             return 0, ""
         if comm not in _LEASE_SKIP:
+            if want and comm != want:
+                return 0, ""
             start = _process_start(pid)
             return (pid, start) if start else (0, "")
         pid, hops = int(ppid), hops + 1
@@ -1217,8 +1220,9 @@ def agent_session() -> Tuple[str, str]:
     (the root session, which its hooks get; before Codex had it, $CODEX_THREAD_ID);
     $NEEDS_YOU_AGENT_SESSION, which any connector can set for its agent's commands (the
     needs-you opencode plugin does, through shell.env); or, in Gemini CLI
-    ($GEMINI_CLI=1), "pid-<pid>" of the Gemini process with its start time. ("", "") outside
-    any of these."""
+    ($GEMINI_CLI=1), "pid-<pid>" of the Gemini process with its start time; the same for Kimi
+    Code, whose Bash tool gives its commands no session id either, only TERM=dumb (the hook's
+    lease names the kimi process). ("", "") outside any of these."""
     env = os.environ
     raw = env.get("ORCA_TERMINAL_HANDLE") or ""
     if not raw and env.get("CLAUDECODE"):
@@ -1226,8 +1230,8 @@ def agent_session() -> Tuple[str, str]:
     raw = raw or env.get("CODEX_SESSION_ID") or env.get("CODEX_THREAD_ID") or env.get("NEEDS_YOU_AGENT_SESSION") or ""
     if raw:
         return _session_name(raw), ""
-    if env.get("GEMINI_CLI") == "1":
-        pid, start = _agent_process()
+    if env.get("GEMINI_CLI") == "1" or env.get("TERM") == "dumb":
+        pid, start = _agent_process("" if env.get("GEMINI_CLI") == "1" else "kimi")
         if pid:
             return "pid-%d" % pid, start
     return "", ""

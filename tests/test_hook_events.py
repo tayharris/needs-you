@@ -720,6 +720,55 @@ class OwnItemTests(HookHarness):
         self.real_cli("add", "--key", "work:ACME-10:x", "--title", "t")
         self.assertTrue(self.agent_turn_ended("gemini", "AfterAgent"))
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "a process named kimi from a symlink: Linux names it so")
+    def test_kimi_outside_orca_by_process(self):
+        # Kimi Code's Bash tool gives commands no session id, only TERM=dumb: the CLI notes the
+        # key for the kimi process, which the hook's lease names too. A stand-in "kimi" (python
+        # under that name) runs both, as the real one does.
+        kimi = os.path.join(self.home, "bin", "kimi")
+        os.makedirs(os.path.dirname(kimi))
+        os.symlink(sys.executable, kimi)
+        # One kimi process for the whole session: it reads [mode, payload] lines and runs each.
+        driver = (
+            "import json, os, subprocess, sys\n"
+            "cli, hook = sys.argv[1:3]\n"
+            "for line in sys.stdin:\n"
+            "    mode, payload = json.loads(line)\n"
+            "    if mode.startswith('add'):\n"
+            "        env = dict(os.environ, TERM='dumb' if mode == 'add' else 'xterm')\n"
+            "        subprocess.run(['/bin/sh', '-c', '\"$0\" \"$1\" add --key work:ACME-11:x --title t',"
+            " os.environ['PY'], cli], env=env, stdin=subprocess.DEVNULL, capture_output=True)\n"
+            "    else:\n"
+            "        subprocess.run(['bash', hook, mode, 'kimi'], input=payload.encode(), capture_output=True)\n"
+            "    print('done', flush=True)\n")
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
+               "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux",
+               "NY_HOOK_BG": "1", "NY_KIMI_TURN_WAIT": "0", "PY": sys.executable,
+               "NEEDS_YOU_URLS": "http://127.0.0.1:9", "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1"}
+        proc = subprocess.Popen([kimi, "-c", driver, CLI, HOOK], env=env, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, text=True, cwd=self.home)
+        self.addCleanup(lambda: (proc.stdin.close(), proc.wait(), proc.stdout.close()))
+
+        def under_kimi(mode, event="Stop", **data):
+            before = len(self.calls())
+            payload = dict({"session_id": "kimi-sess-1", "cwd": self.cwd, "hook_event_name": event}, **data)
+            proc.stdin.write(json.dumps([mode, json.dumps(payload)]) + "\n")
+            proc.stdin.flush()
+            self.assertEqual(proc.stdout.readline().strip(), "done")
+            return len(self.calls()) > before
+
+        self.assertTrue(under_kimi("notify"))
+        under_kimi("add")
+        self.assertFalse(under_kimi("notify"))  # its own card is up: no second one
+        # an approval prompt is another thing to act on
+        self.assertTrue(under_kimi("notify", "PermissionRequest", tool_name="Bash", tool_input={"command": "ls"}))
+        # the session ending forgets it
+        under_kimi("end", "SessionEnd")
+        self.assertTrue(under_kimi("notify"))
+        # a command that isn't Kimi's Bash tool (no TERM=dumb) notes nothing for the process
+        under_kimi("add-plain")
+        self.assertTrue(under_kimi("notify"))
+
     def agent_end(self, agent):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home, "NEEDS_YOU_BIN": self.cli,
                "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1", "NY_HOOK_BG": "1"}

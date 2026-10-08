@@ -1241,7 +1241,7 @@ case "$mode" in
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
     case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
-    if [ "$agent" = gemini ] && [ -d "$items_base" ]; then
+    if { [ "$agent" = gemini ] || [ "$agent" = kimi ]; } && [ -d "$items_base" ]; then
       lease
       [ -n "$lease_pid" ] && rm -rf "$items_base/pid-$lease_pid"
     fi
