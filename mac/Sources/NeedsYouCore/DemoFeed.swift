@@ -32,6 +32,28 @@ public actor DemoFeed: ItemFeed {
         items[id] = item
     }
 
+    /// The hub's answer rules (docs/API.md), so the demo's question cards can be answered.
+    public func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome {
+        guard var item = items[id] else { return .refused(code: "not_found") }
+        guard item.status == .open else { return .refused(code: "not_open") }
+        guard let q = item.question, q.answerable else { return .refused(code: "not_answerable") }
+        if let exp = q.expiresAt, exp <= Date() { return .refused(code: "question_expired") }
+        guard q.id == answer.questionID else { return .refused(code: "question_changed") }
+        guard item.answer == nil else { return .refused(code: "already_answered") }
+        guard answer.answers.count == q.items.count else { return .refused(code: "invalid") }
+        for (a, qi) in zip(answer.answers, q.items) {
+            let labels = Set(qi.options.map(\.label))
+            guard !a.selected.isEmpty, a.selected.allSatisfy(labels.contains),
+                  qi.multiSelect || a.selected.count == 1 else { return .refused(code: "invalid") }
+        }
+        item.answer = answer.answers
+        item.answeredAt = Date()
+        item.answeredBy = "demo"
+        item.updatedAt = Date()
+        items[id] = item
+        return .taken
+    }
+
     /// Simulate a sender: mostly new items, sometimes an upsert on an existing key, and
     /// every so often an urgent one (to exercise snooze breakthrough).
     @discardableResult
@@ -181,9 +203,9 @@ public actor DemoFeed: ItemFeed {
                         ItemQuestionOption(label: "Metrics"),
                         ItemQuestionOption(label: "Tracing", detail: "OpenTelemetry"),
                     ], multiSelect: true),
-                ]),
+                ], answerable: true),
                 source: ItemSource(host: "devbox", agent: "claude-code", project: "acme-web"),
-                createdAt: ago(3)
+                createdAt: ago(3), contentUpdatedAtRaw: HubJSON.formatDate(ago(3))
             ),
             Item(
                 id: "01DEMO00000000000000000005", key: "acme:redo-fixer:run", context: .work,

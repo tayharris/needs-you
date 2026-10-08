@@ -12,6 +12,17 @@ public protocol ItemFeed: Sendable {
     /// The same, also sending the hub's opaque `next` cursor from the last page (only with a
     /// `since`; docs/API.md "The polling loop"). The default ignores `cursor`.
     func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage
+    /// POST /v1/items/{id}/answer: the person's click on a question's options. Throws on
+    /// transport errors and a refused token; the hub's refusals come back as `.refused`.
+    func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome
+}
+
+/// What the hub said to an answer (docs/API.md).
+public enum AnswerOutcome: Equatable, Sendable {
+    case taken
+    /// 400, 404, 409 or 429, with the hub's `error` code (`already_answered`,
+    /// `question_changed`, `question_expired`, `not_open`, `not_answerable`, ...).
+    case refused(code: String)
 }
 
 /// One poll response.
@@ -50,6 +61,11 @@ extension ItemFeed {
 
     public func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage {
         try await fetchPage(since: since)
+    }
+
+    /// Feeds that can't answer (test doubles) refuse.
+    public func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome {
+        .refused(code: "not_answerable")
     }
 }
 
@@ -248,6 +264,28 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
         let body = try HubJSON.makeEncoder().encode(patch)
         let request = Self.makeRequest(url: Self.itemURL(base: config.baseURL, id: id), method: "PATCH", token: config.token, body: body)
         _ = try await send(request)
+    }
+
+    public func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome {
+        let body = try HubJSON.makeEncoder().encode(answer)
+        let url = Self.itemURL(base: config.baseURL, id: id).appendingPathComponent("answer")
+        let request = Self.makeRequest(url: url, method: "POST", token: config.token, body: body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw HubError.invalidResponse }
+        return try Self.answerOutcome(status: http.statusCode, body: data)
+    }
+
+    /// The answer's HTTP status and body as an outcome (pure, so it's tested).
+    public static func answerOutcome(status: Int, body: Data) throws -> AnswerOutcome {
+        switch status {
+        case 200..<300: return .taken
+        case 401, 403: throw HubError.unauthorized
+        case 421: throw HubError.misdirected
+        case 400, 404, 409, 429:
+            let code = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["error"] as? String
+            return .refused(code: code ?? "http_\(status)")
+        default: throw HubError.http(status: status)
+        }
     }
 
     public func health() async throws {

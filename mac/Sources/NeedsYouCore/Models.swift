@@ -90,18 +90,28 @@ public struct ItemStep: Codable, Hashable, Sendable {
 }
 
 /// What an agent asked the person and the choices it offered (`question` in docs/API.md,
-/// ADR 0009). Read-only: the person answers in the agent. Decoding is lenient: missing
-/// optional fields get their defaults, options without a label and questions without text
-/// are skipped, unknown fields are ignored.
+/// ADR 0009). With `answerable`, the sender waits for the person's click on an option
+/// (POST /v1/items/{id}/answer); otherwise the person answers in the agent. Decoding is
+/// lenient: missing optional fields get their defaults, options without a label and
+/// questions without text are skipped, unknown fields are ignored.
 public struct ItemQuestion: Codable, Hashable, Sendable {
     public var id: String?
     public var items: [ItemQuestionItem]
+    /// The sender waits for an answer from the card.
+    public var answerable: Bool
+    /// The sender stops waiting then; no answer is taken after it.
+    public var expiresAt: Date?
 
-    enum CodingKeys: String, CodingKey { case id, items }
+    enum CodingKeys: String, CodingKey {
+        case id, items, answerable
+        case expiresAt = "expires_at"
+    }
 
-    public init(id: String? = nil, items: [ItemQuestionItem]) {
+    public init(id: String? = nil, items: [ItemQuestionItem], answerable: Bool = false, expiresAt: Date? = nil) {
         self.id = id
         self.items = items
+        self.answerable = answerable
+        self.expiresAt = expiresAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -109,6 +119,43 @@ public struct ItemQuestion: Codable, Hashable, Sendable {
         id = try? c.decodeIfPresent(String.self, forKey: .id)
         items = ((try? c.decodeIfPresent([ItemQuestionItem].self, forKey: .items)) ?? [])
             .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        answerable = (try? c.decodeIfPresent(Bool.self, forKey: .answerable)) ?? false
+        expiresAt = (try? c.decodeIfPresent(Date.self, forKey: .expiresAt)) ?? nil
+    }
+}
+
+/// One question's answer: the labels the person clicked, as the hub stores them.
+public struct ItemAnswer: Codable, Hashable, Sendable {
+    public var selected: [String]
+
+    public init(selected: [String]) { self.selected = selected }
+}
+
+/// The body of POST /v1/items/{id}/answer (docs/API.md).
+public struct AnswerRequest: Encodable, Equatable, Sendable {
+    public var questionID: String?
+    /// The item's `content_updated_at` exactly as the hub sent it, so the hub can tell the
+    /// question didn't change under the person.
+    public var contentUpdatedAt: String
+    public var answers: [ItemAnswer]
+
+    enum CodingKeys: String, CodingKey {
+        case questionID = "question_id"
+        case contentUpdatedAt = "content_updated_at"
+        case answers
+    }
+
+    public init(questionID: String?, contentUpdatedAt: String, answers: [ItemAnswer]) {
+        self.questionID = questionID
+        self.contentUpdatedAt = contentUpdatedAt
+        self.answers = answers
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(questionID, forKey: .questionID)  // null when the question has no id
+        try c.encode(contentUpdatedAt, forKey: .contentUpdatedAt)
+        try c.encode(answers, forKey: .answers)
     }
 }
 
@@ -192,6 +239,13 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var steps: [ItemStep]
     /// What an agent asked, if anything; nil from hubs that predate it.
     public var question: ItemQuestion?
+    /// The person's answer to `question` (one entry per question), when it was given and by
+    /// which token; nil until answered (and from hubs that predate answers).
+    public var answer: [ItemAnswer]?
+    public var answeredAt: Date?
+    public var answeredBy: String?
+    /// `content_updated_at` exactly as the hub sent it (an answer echoes it back).
+    public var contentUpdatedAtRaw: String?
     public var source: ItemSource?
     public var status: ItemStatus
     public var createdAt: Date
@@ -203,7 +257,9 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var contentUpdatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, key, context, kind, priority, title, body, links, steps, question, source, status
+        case id, key, context, kind, priority, title, body, links, steps, question, answer, source, status
+        case answeredAt = "answered_at"
+        case answeredBy = "answered_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case seenAt = "seen_at"
@@ -217,7 +273,8 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         links: [ItemLink] = [], steps: [ItemStep] = [], question: ItemQuestion? = nil,
         source: ItemSource? = nil, status: ItemStatus = .open,
         createdAt: Date, updatedAt: Date? = nil, seenAt: Date? = nil, expiresAt: Date? = nil,
-        contentUpdatedAt: Date? = nil
+        contentUpdatedAt: Date? = nil, answer: [ItemAnswer]? = nil, answeredAt: Date? = nil,
+        answeredBy: String? = nil, contentUpdatedAtRaw: String? = nil
     ) {
         self.id = id
         self.key = key
@@ -236,6 +293,10 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         self.seenAt = seenAt
         self.expiresAt = expiresAt
         self.contentUpdatedAt = contentUpdatedAt
+        self.answer = answer
+        self.answeredAt = answeredAt
+        self.answeredBy = answeredBy
+        self.contentUpdatedAtRaw = contentUpdatedAtRaw
     }
 
     public init(from decoder: Decoder) throws {
@@ -263,6 +324,12 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         expiresAt = try c.decodeIfPresent(Date.self, forKey: .expiresAt)
         // Lenient: a hub that predates it (or sends junk) just leaves it nil.
         contentUpdatedAt = try? c.decodeIfPresent(Date.self, forKey: .contentUpdatedAt)
+        contentUpdatedAtRaw = (try? c.decodeIfPresent(String.self, forKey: .contentUpdatedAt)) ?? nil
+        // Lenient: an answer only counts with its question, and a malformed one is ignored.
+        let a: [ItemAnswer]? = (try? c.decodeIfPresent([ItemAnswer].self, forKey: .answer)) ?? nil
+        answer = (question != nil && a?.isEmpty == false) ? a : nil
+        answeredAt = answer == nil ? nil : ((try? c.decodeIfPresent(Date.self, forKey: .answeredAt)) ?? nil)
+        answeredBy = answer == nil ? nil : ((try? c.decodeIfPresent(String.self, forKey: .answeredBy)) ?? nil)
     }
 
     /// Re-animation rule (docs/API.md `content_updated_at`): title, body, priority, steps or
