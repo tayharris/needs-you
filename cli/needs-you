@@ -1153,6 +1153,17 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     return 0
 
 
+def hours_arg(raw: str) -> float:
+    """--expires-in: hours, a finite number within a century (the hub takes dates to 9999)."""
+    try:
+        h = float(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError("not a number of hours: %r" % raw)
+    if h != h or abs(h) > 876000:
+        raise argparse.ArgumentTypeError("hours must be a finite number up to 876000 (100 years)")
+    return h
+
+
 def parse_link(raw: str) -> Dict[str, str]:
     """'Label=URL'. A bare URL (or one whose only '=' is in its query) gets the label 'Link'."""
     label, sep, url = raw.partition("=")
@@ -1255,7 +1266,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")
         sp.add_argument("--project", help="source project")
         sp.add_argument("--host", help="source host (default: this machine's hostname)")
-        sp.add_argument("--expires-in", type=float, metavar="HOURS",
+        sp.add_argument("--expires-in", type=hours_arg, metavar="HOURS",
                         help="expiry (done/info default to 24 h on the hub)")
         if name == "add":
             sp.add_argument("--kind", choices=("needs", "done", "info"), default="needs")
@@ -1349,7 +1360,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
     if len(args.steps_json or []) + len(args.step or []) > MAX_STEPS:
         warn("at most %d steps" % MAX_STEPS)
         return 2
-    rc = deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+    try:
+        item = build_item(args, cfg, kind)
+    except (OSError, UnicodeDecodeError) as e:  # --body-file
+        warn("--body-file: %s" % e)
+        return 2
+    rc = deliver(cfg, "POST", "/v1/items", item, args.quiet, args.json)
     if rc == 0:
         note_session_item(args.key, open_=kind == "needs", expires_in=args.expires_in)
     return rc
@@ -1388,7 +1404,7 @@ def add_run_parser(sub: Any) -> None:
                     help="e.g. Logs=https://...; repeatable, at most 6")
     rp.add_argument("--agent", help="source agent (default run:<command name>)")
     rp.add_argument("--project", help="source project")
-    rp.add_argument("--expires-in", type=float, metavar="HOURS", help="expiry for the failure card")
+    rp.add_argument("--expires-in", type=hours_arg, metavar="HOURS", help="expiry for the failure card")
     rp.add_argument("command", nargs=argparse.REMAINDER, help="-- CMD [ARGS...]")
 
 

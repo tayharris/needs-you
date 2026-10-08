@@ -23,6 +23,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - Server hub: `install-hub.sh --user` with `XDG_CONFIG_HOME` set wrote the config there but a service that read `~/.config/needs-you/hub.json`, so the hub didn't start. The unit now names the paths the installer used.
 - Senders: **with `XDG_CONFIG_HOME` or `XDG_STATE_HOME` set, the 5-minute `needs-you flush` did nothing.** cron and launchd start it without your shell's environment, so it looked in `~/.config` and found no config: queued items were never sent and ended sessions' cards never cleared, with nothing to show for it. The invite installer and `setup-sender.sh` now put those variables (and `NEEDS_YOU_CONFIG`, `NEEDS_YOU_OUTBOX`, `CODEX_HOME`) in the crontab line or the LaunchAgent. Re-run the installer to update the schedule.
 - Senders: setting up (or removing) the flush schedule no longer deletes every blank line in your crontab; only the needs-you line changes.
+- CLI: a `--body-file` that can't be read (missing, not UTF-8) and an `--expires-in` that isn't a finite number of hours (`nan`, `inf`, `1e300`) are usage errors (exit 2, one line) instead of a Python traceback with exit 1.
 
 ## [0.1.3] - 2026-10-07
 

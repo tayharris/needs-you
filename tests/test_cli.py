@@ -439,6 +439,27 @@ class SelfUpdate(CliTestCase):
         self.assertEqual(r.returncode, 1)
 
 
+class UsageErrors(CliTestCase):
+    """Bad arguments are a usage error (exit 2, one line), never a traceback."""
+
+    def test_unreadable_body_file_and_bad_expiry(self):
+        for extra in (["--body-file", os.path.join(self.tmp, "missing")], ["--expires-in", "nan"],
+                      ["--expires-in", "inf"], ["--expires-in", "1e300"]):
+            r = self.run_cli("add", "--key", "k", "--title", "t", *extra, urls=[self.dead])
+            self.assertEqual(r.returncode, 2, (extra, r.stderr))
+            self.assertNotIn("Traceback", r.stderr)
+            self.assertEqual(self.queued(), [])
+        r = self.run_cli("run", "--expires-in", "nan", "--", "true", urls=[self.dead])
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        bad = os.path.join(self.tmp, "latin1.txt")
+        with open(bad, "wb") as fh:
+            fh.write(b"caf\xe9")
+        r = self.run_cli("add", "--key", "k", "--title", "t", "--body-file", bad, urls=[self.dead])
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+
 class SessionItemById(CliTestCase):
     """One card for one wait: the note that keeps a session's "waiting" card off goes away
     when the agent resolves its item by id, as it does when it resolves by key."""
