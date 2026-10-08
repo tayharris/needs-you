@@ -20,6 +20,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - CLI: **`needs-you update --rollback` could put back files from an older update.** The list of backups was never started afresh, so a file the last update didn't touch was restored to what an earlier update had replaced (two versions back). Rollback now undoes the last update only.
 - Claude Code hooks: **`--claude-hooks project` (or `install-hooks.sh --project`) run in your home directory broke the hooks everywhere else.** The project's `.claude` there is the user level, so `~/.claude/settings.json` got `$CLAUDE_PROJECT_DIR/.claude/hooks/...` commands that don't exist in any other project. That case now installs the user-level hooks, with a note.
 - Server hub: **`install-hub.sh --hub-id NAME` on a machine without Tailscale set `public_url` to `http://localhost:8765`,** so every invite link it printed pointed at localhost. It now uses the machine's host name, as without `--hub-id`.
+- Server hub: `install-hub.sh --user` with `XDG_CONFIG_HOME` set wrote the config there but a service that read `~/.config/needs-you/hub.json`, so the hub didn't start. The unit now names the paths the installer used.
 
 ## [0.1.3] - 2026-10-07
 

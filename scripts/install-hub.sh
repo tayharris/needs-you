@@ -210,7 +210,15 @@ fi
 
 # 4. service
 if [ "$MODE" = user ]; then
-  sed "s#@PYTHON@#$PYTHON#" "$SRC/deploy/needs-you-hub.user.service" > "$UNIT_DIR/needs-you-hub.service.tmp"
+  # The paths this install used, quoted for systemd (which also expands % and $).
+  "$PYTHON" - "$SRC/deploy/needs-you-hub.user.service" "$PYTHON" "$PREFIX/hub/needs_you_hub.py" "$CONF" \
+    > "$UNIT_DIR/needs-you-hub.service.tmp" <<'PY'
+import sys
+tmpl, python, hub, conf = sys.argv[1:5]
+q = lambda p: '"%s"' % p.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")
+with open(tmpl) as fh:
+    sys.stdout.write(fh.read().replace("@PYTHON@", q(python)).replace("@HUB@", q(hub)).replace("@CONF@", q(conf)))
+PY
   mv -f "$UNIT_DIR/needs-you-hub.service.tmp" "$UNIT_DIR/needs-you-hub.service"
   SYSTEMCTL=(systemctl --user)
   JOURNAL="journalctl --user -u needs-you-hub"

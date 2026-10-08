@@ -536,6 +536,22 @@ class InstallHubUserPaths(unittest.TestCase):
         self.assertEqual(cfg["hub_id"], "hub-a")
         self.assertEqual(cfg["public_url"], "http://%s:8765" % host)
 
+    def test_unit_uses_the_config_it_wrote_with_xdg_config_home(self):
+        # The unit hard-coded %h/.config/needs-you/hub.json, so with XDG_CONFIG_HOME set the
+        # service started without the config the installer had just written.
+        xdg = os.path.join(self.home, "xdg conf")
+        self.install("--hub-id", "hub-a", XDG_CONFIG_HOME=xdg)
+        conf = os.path.join(xdg, "needs-you", "hub.json")
+        self.assertTrue(os.path.isfile(conf))
+        with open(os.path.join(xdg, "systemd", "user", "needs-you-hub.service")) as fh:
+            unit = fh.read()
+        exec_start = [l for l in unit.splitlines() if l.startswith("ExecStart=")][0]
+        import shlex
+        argv = shlex.split(exec_start[len("ExecStart="):])
+        self.assertEqual(argv[1:], [os.path.join(self.home, ".local", "share", "needs-you", "hub", "needs_you_hub.py"),
+                                    "--config", conf])
+        self.assertTrue(os.path.isfile(argv[1]))
+
 
 if __name__ == "__main__":
     unittest.main()
