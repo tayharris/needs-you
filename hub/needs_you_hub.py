@@ -143,8 +143,11 @@ INVITE_MAX_TTL_HOURS = 24 * 90
 PEER_INVITE_TTL_HOURS = 1.0  # a peer invite carries a long-lived secret: one use, short life
 PEER_INVITE_MAX_TTL_HOURS = 24
 PEER_URL_MAX = 300
-# What a peer invite tells the server to run: the installer and the code come from this hub.
-PEER_JOIN_COMMAND = "curl -fsSL %s/dl/install-hub.sh | sudo bash -s -- --join %s"
+# What a peer invite tells the server to run (ADR 0012): the installer of this hub's release,
+# from GitHub, never from a hub. It installs its own release's code; the hub gives only the link.
+RELEASE_REPO = "tayharris/needs-you"  # the CLI's RELEASE_REPO
+PEER_JOIN_COMMAND = ("curl -fsSL https://github.com/" + RELEASE_REPO
+                     + "/releases/download/v%s/install-hub.sh | sudo bash -s -- --join %s")
 PEER_LINK_HEADER = "X-Needs-You-Peer-Link"  # which link's secret a replication request carries
 PEER_LINK_ID_RE = re.compile(r"^pl_[A-Za-z0-9_-]{8,40}\Z")
 PEER_SYNC_SECONDS = 5.0  # how often a running hub re-reads peer links (the admin tool writes them)
@@ -197,20 +200,7 @@ DOWNLOADS = {
     "agent-instructions.md": ("integrations/agent-instructions/needs-you.md", "text/markdown; charset=utf-8"),
     # Claude Code's usage-limit card, a status line helper next to the CLI (the installer's --usage).
     "needs-you-usage": ("integrations/claude-code/needs-you-usage", "text/x-python; charset=utf-8"),
-    # A server hub, installed straight from this hub (ADR 0012):
-    # curl -fsSL <hub>/dl/install-hub.sh | sudo bash -s -- --join <peer invite link>.
-    # install-hub.sh fetches the rest by /dl/manifest.json's paths and checks each sha256.
-    "install-hub.sh": ("scripts/install-hub.sh", "text/x-shellscript; charset=utf-8"),
-    "needs_you_hub.py": ("hub/needs_you_hub.py", "text/x-python; charset=utf-8"),
-    "needs_you_admin.py": ("hub/needs_you_admin.py", "text/x-python; charset=utf-8"),
-    "join-install.sh": ("hub/join-install.sh", "text/x-shellscript; charset=utf-8"),
-    "needs-you-admin.sh": ("deploy/needs-you-admin.sh", "text/x-shellscript; charset=utf-8"),
-    "needs-you-hub.service": ("deploy/needs-you-hub.service", "text/plain; charset=utf-8"),
-    "needs-you-hub.user.service": ("deploy/needs-you-hub.user.service", "text/plain; charset=utf-8"),
 }
-# The files /dl serves for a server hub rather than a sender (no version stamp needed).
-SERVER_DOWNLOADS = frozenset(("install-hub.sh", "needs_you_hub.py", "needs_you_admin.py", "join-install.sh",
-                              "needs-you-admin.sh", "needs-you-hub.service", "needs-you-hub.user.service"))
 # Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
 # the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
 FILE_VERSION_RE = re.compile(r'(?:needs[-_]you[-_]version"?\s*:\s*"?|^VERSION = ")(\d+\.\d+\.\d+)', re.M)
@@ -469,8 +459,7 @@ def download_manifest(install_dir: str) -> Dict[str, Any]:
                 data = fh.read()
         except OSError:
             continue
-        entry: Dict[str, Any] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
-                                 "path": DOWNLOADS[name][0]}
+        entry: Dict[str, Any] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
         v = file_version(data)
         if v:
             entry["version"] = v
@@ -2599,7 +2588,7 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
     join = "%s/join/%s" % (public_url.rstrip("/"), code)
     if role == PEER_ROLE:
         # Redeemed by the other hub's installer or admin tool, never by a Mac or a sender.
-        return {"join_url": join, "install_command": PEER_JOIN_COMMAND % (public_url.rstrip("/"), _sh_quote(join))}
+        return {"join_url": join, "install_command": PEER_JOIN_COMMAND % (VERSION, _sh_quote(join))}
     out = {"join_url": join,
            "mac_url": "needsyou://connect?hub=%s&code=%s" % (urllib.parse.quote(public_url, safe=""), code)}
     if role == "sender":
@@ -4115,8 +4104,9 @@ def join_markdown(hub: Hub, inv: Dict[str, Any], code: str) -> str:
             "every item to each other. It isn't for a sender or a Mac app, and it sets up no "
             "token. On the server (Linux with systemd, python3 and Tailscale), run:\n\n"
             "    %s\n\n"
-            "It downloads the hub's code from this hub (each file checked against "
-            "`/dl/manifest.json`), installs the hub as a system service, redeems this link (one use) for the pair's replication secret, "
+            "It downloads the installer and the hub's code from that GitHub release (checked "
+            "against its SHA256SUMS and release manifest; nothing comes from this hub), installs "
+            "the hub as a system service, redeems this link (one use) for the pair's replication secret, "
             "which it keeps in the hub's database and never prints, and starts the service. On a "
             "server that already runs a hub, `needs-you-admin peer join <link>` does the same and "
             "the running hub picks it up. If you are an agent, ask the user before installing a "

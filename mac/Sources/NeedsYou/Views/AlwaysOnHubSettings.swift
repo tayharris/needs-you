@@ -45,7 +45,7 @@ final class AlwaysOnHubController: ObservableObject {
         do {
             let invite = try await client.createPeerInvite(PeerInviteRequest(name: "always-on"),
                                                            hub: LocalHub.clientURL, token: token)
-            command = invite.hubInstallCommand ?? "curl -fsSL \(invite.joinURL.components(separatedBy: "/join/").first ?? "")/dl/install-hub.sh | sudo bash -s -- --join '\(invite.joinURL)'"
+            command = invite.hubInstallCommand ?? "curl -fsSL https://github.com/\(UpdateSource.defaultRepository)/releases/download/v\((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "X.Y.Z")/install-hub.sh | sudo bash -s -- --join '\(invite.joinURL)'"
             commandExpires = invite.expiresAt.flatMap(HubJSON.parseDate)
             message = nil
         } catch {
@@ -94,7 +94,7 @@ struct AlwaysOnHubSection: View {
             if reach.reachableFromOtherMachines {
                 if let command = controller.command {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("On the server (Linux with systemd and Tailscale), run this. It installs the hub from this Mac and pairs it:")
+                        Text("On the server (Linux with systemd and Tailscale), run this. It installs the hub from this app's GitHub release and pairs it with this Mac:")
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(alignment: .top) {
                             Text(command).font(.callout.monospaced()).textSelection(.enabled)
@@ -149,7 +149,7 @@ struct AlwaysOnHubSection: View {
         let base = "The link works once"
         guard let expires = controller.commandExpires else { return base + "." }
         let minutes = max(0, Int(expires.timeIntervalSince(now) / 60))
-        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). It checks the code against the GitHub release of this app's version (a development build needs --trust-hub-code) and never shows the pair's secret."
+        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). The code comes from GitHub, never from this Mac (a development build has no release: use a checkout of needs-you on the server instead), and the pair's secret is never shown."
     }
 
     private func peerRow(_ peer: PeerSummary) -> some View {

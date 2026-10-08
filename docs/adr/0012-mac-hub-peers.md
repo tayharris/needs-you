@@ -33,7 +33,7 @@ no focus and gets nothing new (rule 2 of the app).
   defaults to 1 and may be at most 24;
 - is **local to the hub that made it**. It names that hub, so it isn't replicated (an older
   hub would also fail closed on the unknown role and hold replication, see API.md);
-- has a `join_url` and an `install_command` (`curl -fsSL <hub>/dl/install-hub.sh | sudo bash -s -- --join '<join_url>'`), no
+- has a `join_url` and an `install_command` (`curl -fsSL https://github.com/<repo>/releases/download/v<hub version>/install-hub.sh | sudo bash -s -- --join '<join_url>'`), no
   `needsyou://` link, and its `/join/<code>` page says what to run on the server. Its
   `/join/<code>/install.sh` is the failing script (exit 1, "use install-hub.sh --join").
 
@@ -156,15 +156,18 @@ only; nothing in the panel.
 ## Owner decisions (2026-10-08)
 
 - **Accepted**, with [0004](0004-always-on-hub.md) phases 1–2, once merged.
-- **One-liner, yes.** The hub serves `install-hub.sh` and the hub's own code under `/dl/`, and
-  `/dl/manifest.json` gives each file's repo `path`. Without a checkout, `install-hub.sh
-  --join` fetches them from the hub the link names and, before installing anything, checks
-  every file against the hub's manifest and against the GitHub release of the hub's version
-  (SHA256SUMS, release-manifest.json, its build provenance with `gh`); a mismatch, or GitHub out
-  of reach, refuses unless `--trust-hub-code` (a dev build). As root, a checkout is copied to a
-  private directory first (no symlinks, nothing others can write) and only the copy installed.
-  Then it installs and pairs: `curl -fsSL <hub>/dl/install-hub.sh
-  | sudo bash -s -- --join '<link>'`. It never prints the secret. The Mac app bundles the files.
+- **One-liner, yes, from GitHub.** The installer is a release asset (`install-hub.sh`, in
+  `SHA256SUMS` and `release-manifest.json`), and a peer invite's `install_command` is `curl -fsSL
+  https://github.com/<repo>/releases/download/v<hub version>/install-hub.sh | sudo bash -s --
+  --join '<link>'`. Piped, the installer downloads the server tarball of its own embedded
+  version (`INSTALLER_VERSION`) from the same release, checks it against `SHA256SUMS`,
+  `release-manifest.json` and, with `gh`, that manifest's build provenance, refuses a tarball or
+  manifest for another version, and installs only that. A hub supplies only the link: it can't
+  pick the version (no rollback to old authentic code) or the code. An earlier design served
+  the code from the hub's `/dl`, checked against the release of the hub's claimed version; it
+  was dropped because the verifying script itself came from the hub. A dev build has no
+  release: install from a checkout. As root, a checkout is copied to a private directory first
+  (no symlinks, nothing others can write, up to `/`) and only the copy is installed.
 - **Plain http only on the tailnet.** `peer.url` stays https, or http to `*.ts.net`, a tailnet
   address or loopback; LAN names are refused.
 - **Less retention, not more.** Instead of a longer `retention_days`, a resolved item's text

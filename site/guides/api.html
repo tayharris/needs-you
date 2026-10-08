@@ -503,8 +503,9 @@ The prompt ends by having the agent run <code>needs-you doctor</code> and act on
 under each <code>WARN</code> or <code>FAIL</code> line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's <code>public_url</code> (config <code>public_url</code> / <code>--public-url</code>; without it, the first bind address).
 A <code>peer</code> invite's response has no <code>mac_url</code> or <code>agent_prompt</code>; its <code>install_command</code> is what to
-run on the server: <code>curl -fsSL &lt;public_url&gt;/dl/install-hub.sh | sudo bash -s -- --join '&lt;join_url&gt;'</code>
-(the installer and the hub's code come from this hub's <code>/dl</code>, below).</p>
+run on the server: <code>curl -fsSL https://github.com/tayharris/needs-you/releases/download/v&lt;hub version&gt;/install-hub.sh | sudo bash -s -- --join '&lt;join_url&gt;'</code>.
+The installer and the code it installs come from that GitHub release, never from a hub; the hub
+supplies only the link.</p>
 <h3 id="get-v1invites-owner"><code>GET /v1/invites</code> (owner) <a class="anchor" href="#get-v1invites-owner" aria-label="Link to this section">#</a></h3>
 <p><code>{"invites": [{"id", "name", "role", "uses", "left", "created_at", "expires_at"}, ...]}</code>: every
 invite that is neither revoked nor expired, including used-up ones (<code>left: 0</code>), whose
@@ -666,17 +667,13 @@ empty script and exit 0, which reads as success.</p>
 <tr><td><code>needs_you_mcp.py</code></td><td><code>integrations/mcp/needs_you_mcp.py</code> (the MCP server; the installer's <code>--mcp</code>)</td></tr>
 <tr><td><code>needs-you-usage</code></td><td><code>integrations/claude-code/needs-you-usage</code> (Claude's usage-limit status line helper; the installer's <code>--usage</code>)</td></tr>
 <tr><td><code>agent-instructions.md</code></td><td><code>integrations/agent-instructions/needs-you.md</code> (the skill's rules for Codex, Gemini CLI and opencode; <code>--agent-instructions</code>)</td></tr>
-<tr><td><code>install-hub.sh</code></td><td><code>scripts/install-hub.sh</code> (a server hub, installed with <code>--join</code> from a peer invite; it fetches the rest below)</td></tr>
-<tr><td><code>needs_you_hub.py</code>, <code>needs_you_admin.py</code>, <code>join-install.sh</code></td><td><code>hub/</code></td></tr>
-<tr><td><code>needs-you-admin.sh</code>, <code>needs-you-hub.service</code>, <code>needs-you-hub.user.service</code></td><td><code>deploy/</code></td></tr>
 <tr><td><code>manifest.json</code></td><td>generated: see below</td></tr>
 </tbody>
 </table></div>
 <p>Anything else is a <code>404</code>. A file the install directory lacks is a <code>404</code> too.</p>
-<p><code>GET /dl/manifest.json</code> lists what this hub serves, for <code>needs-you update</code> and
-<code>install-hub.sh --join</code>:</p>
+<p><code>GET /dl/manifest.json</code> lists what this hub serves, for <code>needs-you update</code>:</p>
 <div class="code"><pre><code class="language-json">{"version": "0.1.2",
- "files": {"needs-you": {"sha256": "&lt;64 hex&gt;", "size": 51234, "version": "0.1.2", "path": "cli/needs-you"},
+ "files": {"needs-you": {"sha256": "&lt;64 hex&gt;", "size": 51234, "version": "0.1.2"},
            "needs-you-hook.sh": {"sha256": "...", "size": 30211, "version": "0.1.2"},
            "install-hooks.sh": {"sha256": "...", "size": 8122},
            "hooks.json": {"sha256": "...", "size": 2310, "version": "0.1.2"},
@@ -684,9 +681,7 @@ empty script and exit 0, which reads as success.</p>
            "orca-snippet.md": {"sha256": "...", "size": 3456, "version": "0.1.2"}}}</code></pre></div>
 <p><code>version</code> at the top is the hub's; a file's <code>version</code> is its stamp (<code>needs-you-version: X.Y.Z</code>
 in a comment, <code>"_needs_you_version"</code> in <code>hooks.json</code>, <code>VERSION = "X.Y.Z"</code> in the CLI and the MCP server), absent
-when the file has none. <code>path</code> is the file's place in the repo layout (absent from hubs up
-to 0.2.1); <code>install-hub.sh</code> run without a checkout lays the code out by it, refusing any path
-with <code>..</code>, and checks every file's sha256 before installing anything. Files the hub doesn't have are left out. The checksums guard a sender
+when the file has none. Files the hub doesn't have are left out. The checksums guard a sender
 against truncated or mixed-version downloads; they don't make the hub more trustworthy than
 it already is (it minted the sender's token and served its installer).</p>
 <h3 id="invite-replication">Invite replication <a class="anchor" href="#invite-replication" aria-label="Link to this section">#</a></h3>

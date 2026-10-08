@@ -59,8 +59,8 @@ class VersionStamps(unittest.TestCase):
         with open(os.path.join(ROOT, "VERSION")) as fh:
             v = fh.read().strip()
         for name, (rel, _ctype) in hubmod.DOWNLOADS.items():
-            if name == "install-hooks.sh" or name in hubmod.SERVER_DOWNLOADS:
-                continue  # run once by the installer and `update`, never kept; or a server's file
+            if name == "install-hooks.sh":
+                continue  # run once by the installer and `update`, never kept
             with open(os.path.join(ROOT, rel), "rb") as fh:
                 self.assertEqual(hubmod.file_version(fh.read()), v, rel)
 

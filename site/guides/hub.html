@@ -105,21 +105,20 @@ the link lasts an hour. From a terminal on the Mac instead:</p>
   --db ~/Library/Application\ Support/NeedsYou/hub.db \
   --public-url http://&lt;this-mac&gt;.&lt;tailnet&gt;.ts.net:8765 invite create my-server --role peer</code></pre></div>
 <p><strong>2. On the server</strong> (Linux with systemd, python3 and Tailscale), the command Settings showed:</p>
-<div class="code"><pre><code class="language-bash">curl -fsSL http://&lt;this-mac&gt;.&lt;tailnet&gt;.ts.net:8765/dl/install-hub.sh \
+<div class="code"><pre><code class="language-bash">curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
   | sudo bash -s -- --join 'http://&lt;this-mac&gt;.&lt;tailnet&gt;.ts.net:8765/join/nyi_...'</code></pre></div>
-<p>The installer and the hub's code come from the Mac's hub (<code>/dl</code>). Since that code then runs as
-a service, every file is checked twice before anything is installed: against the hub's
-<code>/dl/manifest.json</code>, and against the GitHub release of the hub's version (the release's
-<code>SHA256SUMS</code>, its <code>release-manifest.json</code> and, when <code>gh</code> is installed, that manifest's build
-provenance; without <code>gh</code> it downloads them over https from GitHub only). It refuses if a file
-differs from the release or GitHub can't be reached. A development build of the app has no
-matching release: install from a checkout then, or pass <code>--trust-hub-code</code> (it warns, and
-checks only the hub's own checksums). The piped <code>install-hub.sh</code> itself comes from the hub; to
-trust nothing the hub sends, download <code>install-hub.sh</code> from the release instead. It installs and starts a system-wide hub,
-pairs it with the Mac's hub, and prints no secret. From a checkout instead (or the release's
-server tarball), <code>./scripts/install-hub.sh --user --join '&lt;link&gt;'</code> does the same as your user. Run as
-root, a checkout is first copied to a private directory, refusing symlinks and anything another
-user could write (the files or any directory above them), and only that copy is installed. On a server
+<p><code>vX.Y.Z</code> is the release the Mac app runs. The installer comes from that GitHub release, and so
+does all the code it installs: it downloads the release's server tarball for its own version,
+checks it against the release's <code>SHA256SUMS</code> and <code>release-manifest.json</code> (and, when <code>gh</code> is
+installed, that manifest's build provenance; without <code>gh</code> it talks to GitHub's own hosts over
+https only), refuses a tarball for any other version, and installs nothing if a check fails or
+GitHub can't be reached. The Mac's hub supplies only the link: no code comes from it, so a hub
+can't make a server install anything else. It installs and starts a system-wide hub, pairs it
+with the Mac's hub, and prints no secret. A development build of the app has no matching
+release: install from a checkout then. From a checkout (or the release's server tarball),
+<code>./scripts/install-hub.sh --user --join '&lt;link&gt;'</code> does the same as your user. Run as root, a
+checkout is first copied to a private directory, refusing symlinks and anything another user
+could write (the files or any directory above them), and only that copy is installed. On a server
 that already runs a hub (alone, or in a mesh with its own <code>peer_secret</code>), run
 <code>needs-you-admin peer join '&lt;link&gt;'</code> instead; the running hub picks it up within 5 seconds and
 its other peers are left as they are.</p>
@@ -166,7 +165,6 @@ close it. Raise <code>retention_days</code> on the server if your Mac is often a
 <tr><td><code>--peer-secret S</code></td><td></td><td>The same, inline (visible in <code>ps</code>; prefer the file).</td></tr>
 <tr><td><code>--generate-peer-secret</code></td><td></td><td>Make a new secret and print it once.</td></tr>
 <tr><td><code>--join LINK</code></td><td></td><td>Pair with the hub that made this peer invite (<a href="#with-the-apps-built-in-hub">above</a>). No owner invite is printed.</td></tr>
-<tr><td><code>--trust-hub-code</code></td><td>off</td><td>Without a checkout: install the hub's code even when it can't be checked against the GitHub release of its version.</td></tr>
 <tr><td><code>--reconfigure</code></td><td>off</td><td>Rebuild the config from defaults + flags (keeps the secret).</td></tr>
 <tr><td><code>--no-start</code></td><td>off</td><td>Install files and config only.</td></tr>
 <tr><td><code>--no-invite</code></td><td>off</td><td>Don't print the first owner invite.</td></tr>

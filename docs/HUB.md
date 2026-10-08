@@ -92,23 +92,22 @@ python3 /Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py \
 **2. On the server** (Linux with systemd, python3 and Tailscale), the command Settings showed:
 
 ```bash
-curl -fsSL http://<this-mac>.<tailnet>.ts.net:8765/dl/install-hub.sh \
+curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
   | sudo bash -s -- --join 'http://<this-mac>.<tailnet>.ts.net:8765/join/nyi_...'
 ```
 
-The installer and the hub's code come from the Mac's hub (`/dl`). Since that code then runs as
-a service, every file is checked twice before anything is installed: against the hub's
-`/dl/manifest.json`, and against the GitHub release of the hub's version (the release's
-`SHA256SUMS`, its `release-manifest.json` and, when `gh` is installed, that manifest's build
-provenance; without `gh` it downloads them over https from GitHub only). It refuses if a file
-differs from the release or GitHub can't be reached. A development build of the app has no
-matching release: install from a checkout then, or pass `--trust-hub-code` (it warns, and
-checks only the hub's own checksums). The piped `install-hub.sh` itself comes from the hub; to
-trust nothing the hub sends, download `install-hub.sh` from the release instead. It installs and starts a system-wide hub,
-pairs it with the Mac's hub, and prints no secret. From a checkout instead (or the release's
-server tarball), `./scripts/install-hub.sh --user --join '<link>'` does the same as your user. Run as
-root, a checkout is first copied to a private directory, refusing symlinks and anything another
-user could write (the files or any directory above them), and only that copy is installed. On a server
+`vX.Y.Z` is the release the Mac app runs. The installer comes from that GitHub release, and so
+does all the code it installs: it downloads the release's server tarball for its own version,
+checks it against the release's `SHA256SUMS` and `release-manifest.json` (and, when `gh` is
+installed, that manifest's build provenance; without `gh` it talks to GitHub's own hosts over
+https only), refuses a tarball for any other version, and installs nothing if a check fails or
+GitHub can't be reached. The Mac's hub supplies only the link: no code comes from it, so a hub
+can't make a server install anything else. It installs and starts a system-wide hub, pairs it
+with the Mac's hub, and prints no secret. A development build of the app has no matching
+release: install from a checkout then. From a checkout (or the release's server tarball),
+`./scripts/install-hub.sh --user --join '<link>'` does the same as your user. Run as root, a
+checkout is first copied to a private directory, refusing symlinks and anything another user
+could write (the files or any directory above them), and only that copy is installed. On a server
 that already runs a hub (alone, or in a mesh with its own `peer_secret`), run
 `needs-you-admin peer join '<link>'` instead; the running hub picks it up within 5 seconds and
 its other peers are left as they are.
@@ -159,7 +158,6 @@ Options:
 | `--peer-secret S` | | The same, inline (visible in `ps`; prefer the file). |
 | `--generate-peer-secret` | | Make a new secret and print it once. |
 | `--join LINK` | | Pair with the hub that made this peer invite ([above](#with-the-apps-built-in-hub)). No owner invite is printed. |
-| `--trust-hub-code` | off | Without a checkout: install the hub's code even when it can't be checked against the GitHub release of its version. |
 | `--reconfigure` | off | Rebuild the config from defaults + flags (keeps the secret). |
 | `--no-start` | off | Install files and config only. |
 | `--no-invite` | off | Don't print the first owner invite. |

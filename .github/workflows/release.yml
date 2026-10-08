@@ -108,6 +108,7 @@ jobs:
             ${{ runner.temp }}/release/NeedsYou-*-macos.zip
             ${{ runner.temp }}/release/needs-you-server-*.tar.gz
             ${{ runner.temp }}/release/needs-you-cli-*
+            ${{ runner.temp }}/release/install-hub.sh
             ${{ runner.temp }}/release/release-manifest.json*
             ${{ runner.temp }}/release/SHA256SUMS
       - name: Upload the dry-run assets
@@ -127,4 +128,4 @@ jobs:
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "needs-you ${TAG#v}" --notes-file NOTES.md \
-            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* release-manifest.json* SHA256SUMS
+            NeedsYou-*.dmg NeedsYou-*-macos.zip needs-you-server-*.tar.gz needs-you-cli-* install-hub.sh release-manifest.json* SHA256SUMS

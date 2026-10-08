@@ -93,12 +93,16 @@ class BuildReleaseTests(unittest.TestCase):
         cli = "needs-you-cli-%s" % self.v
         manifest = "release-manifest.json"
         self.assertEqual(sorted(os.listdir(self.out)),
-                         sorted(["NOTES.md", "SHA256SUMS", cli, tarball, manifest]))
+                         sorted(["NOTES.md", "SHA256SUMS", cli, tarball, manifest, "install-hub.sh"]))
         self.assertTrue(os.access(os.path.join(self.out, cli), os.X_OK))
 
         with open(os.path.join(self.out, "SHA256SUMS")) as fh:
             sums = dict(reversed(line.split()) for line in fh if line.strip())
-        self.assertEqual(sorted(sums), sorted([cli, tarball, manifest]))
+        self.assertEqual(sorted(sums), sorted([cli, tarball, manifest, "install-hub.sh"]))
+        with tarfile.open(os.path.join(self.out, tarball)) as tf, \
+                open(os.path.join(self.out, "install-hub.sh"), "rb") as fh:
+            # the asset and the tarball's copy are the same file
+            self.assertEqual(tf.extractfile("needs-you-%s/scripts/install-hub.sh" % self.v).read(), fh.read())
         for name, digest in sums.items():
             with open(os.path.join(self.out, name), "rb") as fh:
                 self.assertEqual(hashlib.sha256(fh.read()).hexdigest(), digest, name)

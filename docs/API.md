@@ -524,8 +524,9 @@ The prompt ends by having the agent run `needs-you doctor` and act on, or relay,
 under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
 A `peer` invite's response has no `mac_url` or `agent_prompt`; its `install_command` is what to
-run on the server: `curl -fsSL <public_url>/dl/install-hub.sh | sudo bash -s -- --join '<join_url>'`
-(the installer and the hub's code come from this hub's `/dl`, below).
+run on the server: `curl -fsSL https://github.com/tayharris/needs-you/releases/download/v<hub version>/install-hub.sh | sudo bash -s -- --join '<join_url>'`.
+The installer and the code it installs come from that GitHub release, never from a hub; the hub
+supplies only the link.
 
 ### `GET /v1/invites` (owner)
 
@@ -745,19 +746,15 @@ Serves files from the hub's install directory (`install_dir`, default: the direc
 | `needs_you_mcp.py` | `integrations/mcp/needs_you_mcp.py` (the MCP server; the installer's `--mcp`) |
 | `needs-you-usage` | `integrations/claude-code/needs-you-usage` (Claude's usage-limit status line helper; the installer's `--usage`) |
 | `agent-instructions.md` | `integrations/agent-instructions/needs-you.md` (the skill's rules for Codex, Gemini CLI and opencode; `--agent-instructions`) |
-| `install-hub.sh` | `scripts/install-hub.sh` (a server hub, installed with `--join` from a peer invite; it fetches the rest below) |
-| `needs_you_hub.py`, `needs_you_admin.py`, `join-install.sh` | `hub/` |
-| `needs-you-admin.sh`, `needs-you-hub.service`, `needs-you-hub.user.service` | `deploy/` |
 | `manifest.json` | generated: see below |
 
 Anything else is a `404`. A file the install directory lacks is a `404` too.
 
-`GET /dl/manifest.json` lists what this hub serves, for `needs-you update` and
-`install-hub.sh --join`:
+`GET /dl/manifest.json` lists what this hub serves, for `needs-you update`:
 
 ```json
 {"version": "0.1.2",
- "files": {"needs-you": {"sha256": "<64 hex>", "size": 51234, "version": "0.1.2", "path": "cli/needs-you"},
+ "files": {"needs-you": {"sha256": "<64 hex>", "size": 51234, "version": "0.1.2"},
            "needs-you-hook.sh": {"sha256": "...", "size": 30211, "version": "0.1.2"},
            "install-hooks.sh": {"sha256": "...", "size": 8122},
            "hooks.json": {"sha256": "...", "size": 2310, "version": "0.1.2"},
@@ -767,9 +764,7 @@ Anything else is a `404`. A file the install directory lacks is a `404` too.
 
 `version` at the top is the hub's; a file's `version` is its stamp (`needs-you-version: X.Y.Z`
 in a comment, `"_needs_you_version"` in `hooks.json`, `VERSION = "X.Y.Z"` in the CLI and the MCP server), absent
-when the file has none. `path` is the file's place in the repo layout (absent from hubs up
-to 0.2.1); `install-hub.sh` run without a checkout lays the code out by it, refusing any path
-with `..`, and checks every file's sha256 before installing anything. Files the hub doesn't have are left out. The checksums guard a sender
+when the file has none. Files the hub doesn't have are left out. The checksums guard a sender
 against truncated or mixed-version downloads; they don't make the hub more trustworthy than
 it already is (it minted the sender's token and served its installer).
 
