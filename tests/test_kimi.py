@@ -511,7 +511,7 @@ class EndToEnd(HubTestCase):
                       "http://127.0.0.1:%d" % free_port())
         outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
         self.assertTrue(wait_until(lambda: os.path.isdir(outbox) and
-                                   any(n.endswith(".json") for n in os.listdir(outbox)), timeout=15))
+                                   any(n.endswith(".json") for n in os.listdir(outbox)), timeout=30))  # the hook posts after its turn wait, in the background
 
 
 class Doctor(unittest.TestCase):
