@@ -86,8 +86,11 @@ class Retention(HubTestCase):
 class NoResurrection(HubTestCase):
     def test_anti_entropy_does_not_bring_purged_items_back(self):
         clock = FakeClock(time.time())
-        a = self.make_hub("hub-a", clock=clock, maintenance_seconds=0)
         b = self.make_hub("hub-b", clock=clock, maintenance_seconds=0)
+        # b must be a's peer: a hub sends its peer secret only to its own peers
+        a = self.make_hub("hub-a", clock=clock, maintenance_seconds=0, start=False)
+        a.set_peers([b.url])
+        a.start()
         rec, _, _ = b.store.upsert_item(fields(key="gone"), None, 0, DAY * 1000)
         b.store.resolve(rec["id"], None)
         keep, _, _ = b.store.upsert_item(fields(key="keep"), None, 0, DAY * 1000)
