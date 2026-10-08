@@ -68,6 +68,10 @@ While something isn't set up yet, the open panel shows a **setup tip**: a card l
 
 Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Invite a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
 
+### Orca worktrees
+
+When the Orca CLI is installed (`/usr/local/bin/orca`, `/opt/homebrew/bin/orca` or inside `/Applications/Orca.app`), the open panel ends with a folded **ORCA** section, for example `ORCA · 2 active of 7`. Click it for a row per worktree (at most 8, those with live terminals first, then unread, then the most recent): its name, workspace status, live terminals, and the paired environment it's on. The app reads them with `orca worktree ps --json` on this Mac and through each paired environment (`orca environment list`, at most 8), off to the side and at most every 45 seconds while the panel is open. Rows are plain text: no links, no buttons, nothing counted, announced or sent to a hub, and a terminal's preview or a worktree's comment is never shown. **Settings → Panel → Orca** turns the section off.
+
 ## Focus: heads-down, except what you choose
 
 Every new item arrives one of three ways:

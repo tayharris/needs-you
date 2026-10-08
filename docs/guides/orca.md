@@ -66,6 +66,8 @@ The hook adds it to every card from an Orca terminal, and the automation block a
 
 The body line stays for anyone reading the card somewhere other than the Mac app.
 
+The Mac app also lists Orca's worktrees in a folded **ORCA** section of the open panel (local `orca worktree ps`, this Mac and its paired environments; read-only): see [Orca worktrees](mac-app.md#orca-worktrees).
+
 ## Automations: add the prompt block
 
 Automations are agent prompts on a schedule, so the change is text: paste the short block `--orca` prints into each automation prompt (or the template they're rendered from). It tells the agent to read and follow `~/.config/needs-you/orca-snippet.md`, which `needs-you update` keeps current, so new rules reach every automation without editing prompts again. The rules in that file post with stable keys (`work:<TICKET>:<reason>`), links the Jira ticket, the PR and the branch, names the worktree and the `orca terminal switch` command in the body, and resolves the same key once it's handled. To add it to an automation you already have:
