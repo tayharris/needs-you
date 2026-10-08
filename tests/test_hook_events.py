@@ -255,7 +255,87 @@ class PermissionTests(HookHarness):
         self.assertEqual(self.opt(self.last(), "--title"), "Claude needs permission: my-repo")
 
 
+class NestedKeyTests(HookHarness):
+    """Scan 2026-10-08: the hook read session_id (and the keys it skips on) with a sed grab
+    over the whole payload, so the same key inside tool_input (an MCP tool's argument) took
+    over the card's key and marker, or made the hook skip the event."""
+
+    def run_raw(self, text, mode="notify"):
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux"}
+        r = subprocess.run([BASH, HOOK, mode], input=text, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0)
+
+    def test_session_id_inside_tool_input_is_not_the_session(self):
+        for order in ("before", "after"):
+            with self.subTest(order):
+                inner = '"tool_input": {"session_id": "other-session", "conversation_id": "c-1"}'
+                top = '"session_id": "sess-1234-abcd", "cwd": %s, "hook_event_name": "PermissionRequest", ' \
+                      '"tool_name": "mcp__x__y"' % json.dumps(self.cwd)
+                text = "{%s, %s}" % ((inner, top) if order == "before" else (top, inner))
+                n = len(self.calls())
+                self.run_raw(text)
+                self.assertEqual(len(self.calls()), n + 1, "the card was skipped")
+                self.assertTrue(self.opt(self.last(), "--key").endswith(":sess-1234-abcd"), self.last())
+                self.assertTrue(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
+                self.assertFalse(os.path.exists(os.path.join(self.state, "other-session")))
+                self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
+
+
+class OddNameTests(HookHarness):
+    """Scan 2026-10-08: names the hub refuses lost the card (the CLI exits 2 and the hook's
+    retries fail the same way), and a session id of '..' named a directory as the marker."""
+
+    def test_long_or_control_character_folder_still_posts(self):
+        for name in ("p" * 150, "a\x1bb\x07c"):
+            with self.subTest(name=name[:10]):
+                d = os.path.join(self.home, "src", name)
+                os.makedirs(d, exist_ok=True)
+                n = len(self.calls())
+                self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                         "cwd": d})
+                self.assertEqual(len(self.calls()), n + 1)
+                argv = self.last()
+                project = self.opt(argv, "--project")
+                self.assertLessEqual(len(project), 100)
+                for field in (project, self.opt(argv, "--title"), self.opt(argv, "--body")):
+                    self.assertFalse(any(ord(c) < 32 and c not in "\n\t" for c in field), repr(field))
+                # what the hub would say about it
+                hubmod.validate_item_input({"title": self.opt(argv, "--title"), "body": self.opt(argv, "--body"),
+                                            "source": {"project": project}})
+                self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
+
+    def test_dot_session_ids_are_not_paths(self):
+        for sid in ("..", "."):
+            with self.subTest(sid):
+                self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                         "session_id": sid})
+                key = self.opt(self.last(), "--key")
+                self.assertFalse(key.endswith(":" + sid), key)
+                self.assertEqual([n for n in os.listdir(os.path.dirname(self.state)) if n.startswith(".")], [])
+
+
 class FailureTests(HookHarness):
+    def test_free_text_on_cards_is_redacted(self):
+        # Scan 2026-10-08: error_message and a notification's message are free text from the
+        # API or the agent, and went onto the card as they came.
+        secrets = ("sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+                   "ny_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+                   "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789")
+        text = "upstream said: %s; Authorization: Bearer abcdefghijklmnop12345 api_key=hunter2hunter2 %s %s" % secrets
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                 "error_message": text})
+        body = self.opt(self.last(), "--body")
+        self.assertIn("upstream said", body)
+        for s in secrets + ("abcdefghijklmnop12345", "hunter2hunter2"):
+            self.assertNotIn(s, body)
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt",
+                                 "message": "waiting " + text}, NEEDS_YOU_AGENT_TURN_CARDS="1")
+        body = self.opt(self.last(), "--body")
+        for s in secrets + ("abcdefghijklmnop12345", "hunter2hunter2"):
+            self.assertNotIn(s, body)
+
     def test_stop_failure_card(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
                                  "error_message": "Rate limit exceeded"})

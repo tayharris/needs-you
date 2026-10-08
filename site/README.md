@@ -57,9 +57,9 @@ python3 -m http.server -d site 8000
 
 `_headers` is only applied by Cloudflare Pages, not by the local server. Because the CSP is strict (`script-src 'self'`, `style-src 'self'`, `font-src 'self'`), don't add inline `<script>` or `<style>` blocks or `style=""` attributes; put them in `site.js` / `styles.css`.
 
-## Before going live
+## GitHub links
 
-- **GitHub links** 404 for visitors while the repo is private. They all come from `REPO_URL` in `site.js` (each link has `data-repo="<path>"` and a matching `href` for no-JS readers; `tests/test_site.py` keeps them equal). Deploy with the public repo.
+- **GitHub links** all come from `REPO_URL` in `site.js` (each link has `data-repo="<path>"` and a matching `href` for no-JS readers; `tests/test_site.py` keeps them equal).
 
 ## Checks before publishing
 

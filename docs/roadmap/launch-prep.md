@@ -1,6 +1,13 @@
 # Launch prep: the site, an installable repo, and the Mac UI pass
 
-Status (2026-10-06): a plan. Nothing here is built. It's the work list for the sessions after 0.1.1, ordered so most of it can be done on a Linux box, with the Mac parts checked by CI's macOS jobs and then by hand on a Mac.
+Status (2026-10-08): almost all built and shipped (0.1.2 to 0.1.5). Built: the site (live at needsyou.app), the DMG, the README's new-user section, the [Claude Code everywhere](../guides/claude-code-everywhere.md) guide, and the Mac UI pass (Settings in sidebar sections, panel and pill size, how loud urgent and other items are, a recordable global shortcut, the age badge and **Dismiss All from &lt;host&gt;**; see the [Mac app guide](../guides/mac-app.md)). The hotkey's "open the top card's link" option was built and later removed; keyboard navigation in the open panel is an idea in [future.md](future.md).
+
+Still open:
+
+- **Donate link** ("Support the project"): needs a URL decision (GitHub Sponsors, Open Collective, Ko-fi). Not on the site or README yet.
+- **GitHub**: repository topics and a social preview image; the site's `og:image` (a 1200×630 PNG) is a TODO in `site/index.html`.
+
+The plan as written on 2026-10-06 follows, for the record.
 
 What's already there, so nobody rebuilds it:
 

@@ -53,8 +53,9 @@
 <li>you run many servers, or senders that can't wait (CI with short-lived runners).</li>
 </ul>
 <p>A hub is one Python file (<code>hub/needs_you_hub.py</code>, standard library and SQLite only) on stock
-<code>python3</code> 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Hubs replicate every write to each other,
-so a sender, the Mac or an invite link can use any of them. The wire contract is in
+<code>python3</code> 3.9+ (Ubuntu 22.04+, Debian 12+, macOS). Server hubs replicate every write to each other
+(not yet with the Mac's own hub, <a href="#with-the-macs-own-hub">below</a>), so a sender, the Mac or an
+invite link can use any of them. The wire contract is in
 <a href="api.html">API</a>.</p>
 <h2 id="two-hubs-in-10-minutes">Two hubs in 10 minutes <a class="anchor" href="#two-hubs-in-10-minutes" aria-label="Link to this section">#</a></h2>
 <p>You need two always-on Linux machines with systemd and Tailscale (MagicDNS on), called
@@ -92,11 +93,19 @@ means a <strong>token or invite</strong> record (a revocation, say) one side can
 skipped, so replication in that direction waits for it (the log says <code>BLOCKED</code>). Upgrade the
 older hub; replication then resumes by itself.</p>
 <h3 id="with-the-macs-own-hub">With the Mac's own hub <a class="anchor" href="#with-the-macs-own-hub" aria-label="Link to this section">#</a></h3>
-<p>To make server hubs and the Mac's hub one mesh, give all of them the same peer secret and list
-each other as peers (servers use <code>--peer http://my-mac.example.ts.net:8765</code>; on the Mac, see
-<a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a> for how the app passes peers and the secret to its hub). The Mac's <code>this-mac</code> owner token then replicates
-to the servers, so the app can read from them while its own hub restarts. Without peering, the
-Mac simply connects to each server hub as a client through an owner invite.</p>
+<p>Today the Mac's own hub doesn't replicate with server hubs: the app starts it without peers,
+so server hubs replicate only with each other. Invites made on the Mac list only the Mac's URL,
+so the senders they set up post only to the Mac. To use server hubs:</p>
+<ul>
+<li>Make the sender invites on a server hub (<code>needs-you-admin invite create my-servers --role sender</code>),
+so senders get every server hub's URL and fail over between them.</li>
+<li>Connect the Mac to a server hub with an owner invite from it (<strong>Settings → Other hubs (advanced)</strong>).
+The app reads one hub at a time, this Mac's first, so items posted to the server hubs show
+while the Mac's own hub is down. To read the server hubs all the time, turn off **Run hub on
+this Mac**.</li>
+</ul>
+<p>Peering the Mac's hub with server hubs is planned (<a data-repo="/blob/main/docs/adr/0004-always-on-hub.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0004-always-on-hub.md">ADR 0004</a>,
+<a data-repo="/blob/main/docs/roadmap/next-big-item.md" href="https://github.com/tayharris/needs-you/blob/main/docs/roadmap/next-big-item.md">next-big-item.md</a>).</p>
 <h2 id="what-install-hubsh---user-sets-up">What <code>install-hub.sh --user</code> sets up <a class="anchor" href="#what-install-hubsh---user-sets-up" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Path</th><th>What</th></tr></thead>
@@ -164,6 +173,7 @@ on <code>needs_you_hub.py</code>, so no file is required: the named flags below,
 <tr><td><code>quiet</code></td><td><code>--quiet</code></td><td>false</td><td>No access log.</td></tr>
 <tr><td><code>access_log</code></td><td></td><td>true</td><td>One stderr line per request. Invite codes in <code>/join/</code> paths (and anything shaped like a code or token) are replaced with <code>&lt;code&gt;</code>/<code>&lt;redacted&gt;</code>, and control characters are escaped.</td></tr>
 <tr><td><code>max_open_per_token</code></td><td></td><td>60</td><td>Volume guard.</td></tr>
+<tr><td><code>max_connections</code> / <code>request_read_seconds</code></td><td></td><td>128 / 10</td><td>Connections served at once, across all binds (kept 64 under the file descriptor limit). When full, a connection open longer than <code>request_read_seconds</code> (a slow request, or an answer its client stopped reading; never a reader's <code>/v1/stream</code>) is closed to make room; otherwise new ones are closed at once.</td></tr>
 <tr><td><code>default_expiry_hours</code></td><td></td><td>24</td><td>Expiry for <code>done</code>/<code>info</code> items without <code>expires_at</code>.</td></tr>
 <tr><td><code>maintenance_seconds</code></td><td></td><td>600</td><td>Purge + WAL checkpoint + incremental vacuum interval.</td></tr>
 <tr><td><code>vacuum_hours</code></td><td></td><td>24</td><td>How often a full <code>VACUUM</code> may run (only when over 25% is free).</td></tr>

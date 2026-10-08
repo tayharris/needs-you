@@ -1,6 +1,6 @@
 # iPhone widget and companion app
 
-Status: plan only.
+Status (2026-10-08): plan only. Nothing is built: no `/v1/summary`, no iOS target. It depends on an always-on hub ([ADR 0004](../adr/0004-always-on-hub.md)) and a paid Apple Developer account; see [next-big-item.md](next-big-item.md).
 
 Goal: a home-screen and lock-screen widget showing the needs-you count and the top items. Tapping an item or one of its links opens the right app (Jira, GitHub, Slack, Orca, ...) through deep links or universal links. A small SwiftUI companion app holds the connection and handles taps.
 
@@ -58,8 +58,8 @@ NeedsYou iOS app (SwiftUI)          NeedsYou widget extension (WidgetKit)
 
 ### Connecting
 
-- The Mac app's **Invite a device** shows a QR code encoding `needsyou://connect?hub=<url-encoded hub>&code=<invite code>` (the same link format the invite work uses on the Mac). The iOS app registers the `needsyou` URL scheme and also has a QR scanner (`DataScannerViewController`).
-- The app redeems the invite (`POST /v1/invites/redeem`, in progress on another branch) for a **reader** token, then stores it in the Keychain with `kSecAttrAccessGroup` set to the shared group and `kSecAttrAccessibleAfterFirstUnlock` (widgets run while the phone is locked).
+- The Mac app's **Invite a device** shows a QR code encoding `needsyou://connect?hub=<url-encoded hub>&code=<invite code>` (the link format Macs already use to connect to a hub). The iOS app registers the `needsyou` URL scheme and also has a QR scanner (`DataScannerViewController`).
+- The app redeems the invite (`POST /v1/invites/redeem`, which exists) for a **reader** token, then stores it in the Keychain with `kSecAttrAccessGroup` set to the shared group and `kSecAttrAccessibleAfterFirstUnlock` (widgets run while the phone is locked).
 - Several hubs, in failover order, like the Mac.
 
 ## Widget families

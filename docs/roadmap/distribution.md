@@ -1,16 +1,16 @@
 # Distribution plan
 
-Status: the release workflow exists (draft GitHub Releases with the app zip, server tarball, CLI and `SHA256SUMS`; see [ci-cd.md](ci-cd.md)) but hasn't cut a release yet. Today people build the app themselves (`mac/scripts/bundle.sh`) and clone the repo for hubs and senders. Test plan for someone new: [fresh-user-test-plan.md](fresh-user-test-plan.md), which also lists what's blocked on open decisions.
+Status (2026-10-08): the repo is public and releases are published on GitHub (latest 0.1.5): `NeedsYou-X.Y.Z.dmg` and `-macos.zip`, the server tarball, the CLI, `release-manifest.json` and `SHA256SUMS`, each with build provenance. Senders install through invite links, and the app and senders update themselves ([updates.md](../guides/updates.md)). Not built: the Homebrew tap, the `curl | bash` server installer from a release (`get-hub.sh`), a Developer ID build. Test plan for someone new: [fresh-user-test-plan.md](fresh-user-test-plan.md).
 
 ## Install paths
 
 | Who | Path | Depends on |
 |---|---|---|
-| Mac users | Download `NeedsYou-X.Y.Z-macos.zip` from GitHub Releases, unzip, drag to `/Applications` | [ci-cd.md](ci-cd.md) phase 2 |
+| Mac users | Download `NeedsYou-X.Y.Z.dmg` (or the zip) from GitHub Releases, drag to `/Applications` | Built |
 | Mac users, later | `brew install --cask tayharris/tap/needs-you` | A signed + notarized build (phase 3); a tap repo |
-| Sender machines | **Invite link** from the Mac app (agent prompt or `curl` one-liner). Installs the CLI to `~/.local/bin` and writes `~/.config/needs-you/env` | Invites (in progress) |
+| Sender machines | **Invite link** from the Mac app (agent prompt or `curl` one-liner). Installs the CLI to `~/.local/bin` and writes `~/.config/needs-you/env` | Built |
 | Server hubs | `curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \| sudo bash -s -- --peer ...` which downloads the server tarball, verifies its SHA256 against `SHA256SUMS`, and runs `scripts/install-hub.sh` | Release assets |
-| CLI only | Download `needs-you-cli-X.Y.Z`, `chmod +x`, put it on `PATH` | Release assets |
+| CLI only | Download `needs-you-cli-X.Y.Z`, `chmod +x`, put it on `PATH` | Built (release asset) |
 
 ### Homebrew tap (later)
 
@@ -47,17 +47,13 @@ Builds stay ad-hoc signed for now. The app no longer keeps anything in the Keych
 
 ## Updates
 
-Today: `mac/scripts/install.sh` builds, quits the running app gracefully, swaps `/Applications/NeedsYou.app` (keeping `NeedsYou.app.previous` for `--rollback`) and relaunches it in the background. Prefs carry a `prefsVersion` with forward-only migrations that never delete keys.
-
-- Phase 1: the app checks the GitHub Releases API at most daily and shows "update available" in Settings (no auto-install). Opt-out setting. This is the only outbound non-tailnet request the app would make, so it must be off by default or clearly disclosed (privacy promise on the site).
-- Later: Sparkle with an EdDSA-signed appcast hosted on the site.
+Built (0.1.2): the Mac app checks GitHub, waits out a soak, verifies the download and installs when idle; senders follow their hub with `needs-you update` (automatic with `--auto-update`). Design: [rollout-updates.md](rollout-updates.md). Sparkle stays a later option, once there's a Developer ID.
 
 ## License
 
-Open-source license TBD at public launch (the project is planned as an open-source non-profit). No LICENSE file until then, and no public release assets before it exists.
+Apache-2.0 (`LICENSE`).
 
 ## Open decisions
 
 1. Personal Developer ID now, or wait for an organization account?
-2. Update checks: off by default, or on with disclosure?
-3. Publish the CLI on PyPI too? (It's one file with no deps; `pipx install needs-you` would be convenient but adds a channel to maintain.)
+2. Publish the CLI on PyPI too? (It's one file with no deps; `pipx install needs-you` would be convenient but adds a channel to maintain.)
