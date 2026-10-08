@@ -91,6 +91,21 @@ class UninstallHooks(unittest.TestCase):
         r = self.cli()
         self.assertIn("no needs-you hooks found", r.stdout)
 
+    def test_an_enclosing_home_is_never_a_project(self):
+        # A temp HOME made under a real home (a sandbox, a test): the real ~/.claude above it is
+        # that account's user level, not a project, and neither uninstall nor doctor may touch it.
+        self.install("--user")
+        before = self.text(self.user_settings())
+        inner = os.path.join(self.home, "tmp", "inner")
+        os.makedirs(inner)
+        env = dict(self.env, HOME=inner)
+        for args in (["uninstall-hooks"], ["uninstall-hooks", "--project"], ["doctor"]):
+            r = subprocess.run([sys.executable, CLI] + args, env=env, capture_output=True, text=True,
+                               timeout=60, cwd=inner)
+            self.assertNotIn(self.user_settings(), r.stdout + r.stderr, args)
+            self.assertNotIn("project hooks", r.stdout.lower(), args)
+        self.assertEqual(self.text(self.user_settings()), before)
+
     def test_project_only_from_inside_it(self):
         self.setup_all()
         r = self.cli("--project", cwd=os.path.join(self.proj, "src"))

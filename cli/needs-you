@@ -278,15 +278,24 @@ def _references_hook(path: str) -> bool:
 def project_claude_dir(start: Optional[str] = None) -> Optional[str]:
     """The project-level .claude directory with needs-you hooks that covers `start` (default:
     the current directory): the nearest one at or above it whose settings.json or
-    settings.local.json references the hook. ~/.claude is the user level, never a project."""
+    settings.local.json references the hook. ~/.claude is the user level, never a project, and
+    so is the .claude of any directory holding $HOME (a temp HOME made under a real home: the
+    real ~/.claude above it) and of the account's own home directory."""
     user = os.path.realpath(_home(".claude"))
+    homes = {os.path.realpath(os.path.expanduser("~"))}
+    try:
+        import pwd
+        homes.add(os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir))
+    except (ImportError, KeyError, OSError):
+        pass
     try:
         d = os.path.realpath(start or os.getcwd())
     except OSError:
         return None
     while True:
         c = os.path.join(d, ".claude")
-        if (os.path.realpath(c) != user and plain_project_dir(c)
+        holds_home = any(h == d or h.startswith(d.rstrip("/") + "/") for h in homes)
+        if (not holds_home and os.path.realpath(c) != user and plain_project_dir(c)
                 and any(_references_hook(os.path.join(c, n)) for n in SETTINGS_NAMES)):
             return c
         parent = os.path.dirname(d)
