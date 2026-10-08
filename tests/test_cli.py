@@ -406,7 +406,7 @@ class Steps(CliTestCase):
         r = self.run_cli("add", "--key", "q", "--title", "Claude asks", "--question-json", "@" + path,
                          urls=[a.url], token=sender)
         self.assertEqual(r.returncode, 0, r.stderr)
-        want = {"id": "toolu_1", "items": [{"header": "DB", "text": "Which?", "multi_select": False,
+        want = {"id": "toolu_1", "answerable": False, "items": [{"header": "DB", "text": "Which?", "multi_select": False,
                                             "options": [{"label": "Postgres", "description": "Durable"}]}]}
         self.assertEqual(self.items(a, reader, "open")[0]["question"], want)
         for bad in ("{not json", '["a list"]', '{"items": []}', "@" + os.path.join(self.tmp, "missing.json")):
@@ -434,6 +434,84 @@ class Steps(CliTestCase):
                 r = self.run_cli("add", "--key", "k", "--title", "t", *extra, urls=[a.url], token=sender)
                 self.assertEqual(r.returncode, 2, r.stderr)
                 self.assertEqual(self.queued(), [])
+
+
+class AnswerWait(CliTestCase):
+    """needs-you answer-wait against a real hub: the answer as JSON (0), a timeout (3), no
+    answer coming (4), and a hub that doesn't know the item yet."""
+    QUESTION = {"id": "toolu_1", "answerable": True, "items": [
+        {"text": "Which database?", "options": [{"label": "Postgres"}, {"label": "SQLite"}]}]}
+
+    def setUp(self):
+        super().setUp()
+        self.hub = self.make_hub("hub-a")
+        self.sender, self.reader = self.tokens(self.hub)
+
+    def ask(self, key="q", question=None):
+        r = self.run_cli("add", "--key", key, "--title", "Claude asks",
+                         "--question-json", json.dumps(question or self.QUESTION),
+                         urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return self.items(self.hub, self.reader, "open")[0]
+
+    def click(self, item, label="SQLite"):
+        return request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+                       {"question_id": "toolu_1", "content_updated_at": item["content_updated_at"],
+                        "answers": [{"selected": [label]}]})
+
+    def test_waits_for_the_click(self):
+        item = self.ask()
+        threading.Timer(1.0, self.click, args=(item,)).start()
+        started = time.time()
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "20", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertLess(time.time() - started, 10)
+        got = json.loads(r.stdout)
+        self.assertEqual((got["id"], got["question_id"], got["answers"]),
+                         (item["id"], "toolu_1", [{"selected": ["SQLite"]}]))
+        # already answered: at once
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "0", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_timeout_is_exit_3_and_never_an_answer(self):
+        self.ask()
+        started = time.time()
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "1", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 3, r.stderr)
+        self.assertEqual(r.stdout, "")
+        self.assertLess(time.time() - started, 10)
+        self.assertIsNone(self.items(self.hub, self.reader, "open")[0]["answer"])
+
+    def test_no_answer_will_come_is_exit_4(self):
+        self.ask("plain", {"items": [{"text": "Ok?", "options": [{"label": "Yes"}]}]})
+        r = self.run_cli("answer-wait", "--key", "plain", "--timeout", "5", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 4, r.stderr)
+        self.ask("closed")
+        self.run_cli("resolve", "--key", "closed", urls=[self.hub.url], token=self.sender)
+        r = self.run_cli("answer-wait", "--key", "closed", "--timeout", "5", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 4, r.stderr)
+
+    def test_unknown_item_or_hub_waits_out_the_timeout(self):
+        for urls in ([self.hub.url], [self.dead]):
+            r = self.run_cli("answer-wait", "--key", "nope", "--timeout", "1", urls=urls, token=self.sender)
+            self.assertEqual(r.returncode, 3, r.stderr)
+
+    def test_failover_to_the_hub_that_answers(self):
+        item = self.ask()
+        self.click(item, "Postgres")
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "5", urls=[self.dead, self.hub.url],
+                         token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["answers"], [{"selected": ["Postgres"]}])
+
+    def test_refused_token_and_usage(self):
+        self.ask()
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "1", urls=[self.hub.url], token=self.reader)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "1", urls=None, token=None)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        r = self.run_cli("answer-wait", "--key", "q", "--timeout", "-1", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 2, r.stderr)
 
 
 class SelfUpdate(CliTestCase):
