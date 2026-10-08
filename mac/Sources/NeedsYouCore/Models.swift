@@ -89,6 +89,79 @@ public struct ItemStep: Codable, Hashable, Sendable {
     }
 }
 
+/// What an agent asked the person and the choices it offered (`question` in docs/API.md,
+/// ADR 0009). Read-only: the person answers in the agent. Decoding is lenient: missing
+/// optional fields get their defaults, options without a label and questions without text
+/// are skipped, unknown fields are ignored.
+public struct ItemQuestion: Codable, Hashable, Sendable {
+    public var id: String?
+    public var items: [ItemQuestionItem]
+
+    enum CodingKeys: String, CodingKey { case id, items }
+
+    public init(id: String? = nil, items: [ItemQuestionItem]) {
+        self.id = id
+        self.items = items
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try? c.decodeIfPresent(String.self, forKey: .id)
+        items = ((try? c.decodeIfPresent([ItemQuestionItem].self, forKey: .items)) ?? [])
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+}
+
+public struct ItemQuestionItem: Codable, Hashable, Sendable {
+    public var header: String
+    public var text: String
+    public var options: [ItemQuestionOption]
+    public var multiSelect: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case header, text, options
+        case multiSelect = "multi_select"
+    }
+
+    public init(header: String = "", text: String, options: [ItemQuestionOption] = [], multiSelect: Bool = false) {
+        self.header = header
+        self.text = text
+        self.options = options
+        self.multiSelect = multiSelect
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        header = (try? c.decodeIfPresent(String.self, forKey: .header)) ?? ""
+        text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        options = ((try? c.decodeIfPresent([ItemQuestionOption].self, forKey: .options)) ?? [])
+            .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        multiSelect = (try? c.decodeIfPresent(Bool.self, forKey: .multiSelect)) ?? false
+    }
+}
+
+/// One choice. `detail` is the wire's `description` (a CodingKey can't be named that).
+public struct ItemQuestionOption: Codable, Hashable, Sendable {
+    public var label: String
+    public var detail: String
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case detail = "description"
+    }
+
+    public init(label: String, detail: String = "") {
+        self.label = label
+        self.detail = detail
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        label = (try? c.decodeIfPresent(String.self, forKey: .label)) ?? ""
+        detail = (try? c.decodeIfPresent(String.self, forKey: .detail)) ?? ""
+    }
+}
+
 public struct ItemSource: Codable, Hashable, Sendable {
     public var host: String?
     public var agent: String?
@@ -117,6 +190,8 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var links: [ItemLink]
     /// The checklist; empty for items without one (and from hubs that predate steps).
     public var steps: [ItemStep]
+    /// What an agent asked, if anything; nil from hubs that predate it.
+    public var question: ItemQuestion?
     public var source: ItemSource?
     public var status: ItemStatus
     public var createdAt: Date
@@ -128,7 +203,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var contentUpdatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, key, context, kind, priority, title, body, links, steps, source, status
+        case id, key, context, kind, priority, title, body, links, steps, question, source, status
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case seenAt = "seen_at"
@@ -139,7 +214,8 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public init(
         id: String, key: String, context: ItemContext = .work, kind: ItemKind = .needs,
         priority: ItemPriority = .normal, title: String, body: String? = nil,
-        links: [ItemLink] = [], steps: [ItemStep] = [], source: ItemSource? = nil, status: ItemStatus = .open,
+        links: [ItemLink] = [], steps: [ItemStep] = [], question: ItemQuestion? = nil,
+        source: ItemSource? = nil, status: ItemStatus = .open,
         createdAt: Date, updatedAt: Date? = nil, seenAt: Date? = nil, expiresAt: Date? = nil,
         contentUpdatedAt: Date? = nil
     ) {
@@ -152,6 +228,7 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         self.body = body
         self.links = links
         self.steps = steps
+        self.question = question
         self.source = source
         self.status = status
         self.createdAt = createdAt
@@ -174,6 +251,10 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         // Lenient: a malformed steps value never costs the item; steps without text are skipped.
         steps = ((try? c.decodeIfPresent([ItemStep].self, forKey: .steps)) ?? [])
             .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // Lenient like steps: a malformed question never costs the item; one with no
+        // readable question is nil.
+        let q: ItemQuestion? = (try? c.decodeIfPresent(ItemQuestion.self, forKey: .question)) ?? nil
+        if let q, !q.items.isEmpty { question = q } else { question = nil }
         source = try c.decodeIfPresent(ItemSource.self, forKey: .source)
         status = try c.decodeIfPresent(ItemStatus.self, forKey: .status) ?? .open
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
@@ -184,9 +265,11 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
         contentUpdatedAt = try? c.decodeIfPresent(Date.self, forKey: .contentUpdatedAt)
     }
 
-    /// Re-animation rule (docs/API.md `content_updated_at`): title, body, priority or steps.
+    /// Re-animation rule (docs/API.md `content_updated_at`): title, body, priority, steps or
+    /// question.
     public func hasVisibleChange(from old: Item) -> Bool {
         title != old.title || body != old.body || priority != old.priority || steps != old.steps
+            || question != old.question
     }
 
     public func isExpired(at now: Date) -> Bool {

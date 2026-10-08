@@ -20,7 +20,56 @@ final class StepsTests: XCTestCase {
         ("testLayoutModes", testLayoutModes),
         ("testSummaryAndLabels", testSummaryAndLabels),
         ("testStepLinkPolicy", testStepLinkPolicy),
+        ("testDecodeQuestion", testDecodeQuestion),
+        ("testMalformedQuestionNeverCostsTheItem", testMalformedQuestionNeverCostsTheItem),
+        ("testQuestionIsAVisibleChange", testQuestionIsAVisibleChange),
     ]
+
+    // MARK: question (docs/API.md, ADR 0009): decoded here with the other item fields
+
+    func testDecodeQuestion() throws {
+        XCTAssertNil(try decode("{\(head)}").question)
+        XCTAssertNil(try decode("{\(head), \"question\": null}").question)
+        let i = try decode("""
+        {\(head), "question": {"id": "toolu_1", "future": 1, "items": [
+          {"header": "Database", "text": "Which database?", "multi_select": false,
+           "options": [{"label": "Postgres", "description": "Durable", "x": 2}, {"label": "SQLite"}]},
+          {"text": "Which extras?", "multi_select": true, "options": [{"label": "Metrics"}]}]}}
+        """)
+        XCTAssertEqual(i.question, ItemQuestion(id: "toolu_1", items: [
+            ItemQuestionItem(header: "Database", text: "Which database?",
+                             options: [ItemQuestionOption(label: "Postgres", detail: "Durable"),
+                                       ItemQuestionOption(label: "SQLite")]),
+            ItemQuestionItem(text: "Which extras?", options: [ItemQuestionOption(label: "Metrics")], multiSelect: true),
+        ]))
+        // round trip through the app's own encoder, wire names kept
+        let data = try HubJSON.makeEncoder().encode(i)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"multi_select\""))
+        XCTAssertEqual(try HubJSON.makeDecoder().decode(Item.self, from: data).question, i.question)
+    }
+
+    func testMalformedQuestionNeverCostsTheItem() throws {
+        XCTAssertNil(try decode("{\(head), \"question\": \"Which?\"}").question)
+        XCTAssertNil(try decode("{\(head), \"question\": {\"items\": []}}").question)
+        XCTAssertNil(try decode("{\(head), \"question\": {\"items\": [{\"text\": \"  \"}]}}").question)
+        let i = try decode("""
+        {\(head), "question": {"id": 5, "items": [{"text": "Ok?", "header": 3, "multi_select": "yes",
+          "options": [{"label": "A", "description": 7}, {"description": "no label"}, {"label": " "}]}]}}
+        """)
+        XCTAssertEqual(i.title, "Ship it")
+        XCTAssertEqual(i.question, ItemQuestion(items: [ItemQuestionItem(text: "Ok?", options: [ItemQuestionOption(label: "A")])]))
+    }
+
+    func testQuestionIsAVisibleChange() {
+        let a = item([])
+        var b = a
+        b.question = ItemQuestion(items: [ItemQuestionItem(text: "Which?")])
+        XCTAssertTrue(b.hasVisibleChange(from: a))
+        var c = b
+        c.question?.items[0].options = [ItemQuestionOption(label: "A")]
+        XCTAssertTrue(c.hasVisibleChange(from: b))
+        XCTAssertFalse(c.hasVisibleChange(from: c))
+    }
 
     private func decode(_ json: String) throws -> Item {
         try HubJSON.makeDecoder().decode(Item.self, from: Data(json.utf8))
