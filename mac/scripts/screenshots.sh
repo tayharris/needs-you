@@ -95,7 +95,6 @@ items = [
               "- Postgres (Recommended) \u2014 Mature, already used by the team.\n- SQLite \u2014 Zero ops, single file.\n\n"
               "**Extras** \u00b7 choose any\nWhich extras should it ship with?\n- Metrics\n- Tracing \u2014 OpenTelemetry\n\n"
               "Answer in Claude.",
-         links=[{"label": "VS Code", "url": "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"}],
          question={"id": "toolu_01SHOT", "items": [
              {"header": "Database", "text": "Which database should the service use?", "multi_select": False,
               "options": [{"label": "Postgres (Recommended)", "description": "Mature, already used by the team."},
@@ -103,7 +102,11 @@ items = [
                           {"label": "DynamoDB", "description": "Managed, but a new dependency."}]},
              {"header": "Extras", "text": "Which extras should it ship with?", "multi_select": True,
               "options": [{"label": "Metrics", "description": ""},
-                          {"label": "Tracing", "description": "OpenTelemetry"}]}]},
+                          {"label": "Tracing", "description": "OpenTelemetry"}]}],
+             "answerable": True},
+         content_updated_at=ago(3),
+         links=[{"label": "VS Code", "url": "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"},
+                {"label": "Terminal", "url": "needsyou://terminal/focus?app=wezterm&pane=1"}],
          source={"host": "devbox", "agent": "claude-code", "project": "acme-api"}),
     item(6, 25, key="ci:nightly", kind="done", title="Nightly e2e: 214 passed, 0 failed",
          source={"host": "ci", "agent": "github-actions"},

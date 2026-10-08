@@ -157,6 +157,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Clicking the summary shows every question and choice.
                 if let item = model.needsItems.first(where: { $0.question != nil }) { model.toggleCardExpanded(item) }
             }),
+            ("6h-question-picked", { model in
+                // An answerable question: options are buttons; picks wait for Send.
+                guard let item = model.needsItems.first(where: { $0.question?.answerable == true }),
+                      let q = item.question else { return }
+                for (i, qi) in q.items.enumerated() {
+                    if let label = qi.options.first?.label { model.pickOption(item, question: i, label: label) }
+                    if qi.multiSelect, qi.options.count > 1 { model.pickOption(item, question: i, label: qi.options[1].label) }
+                }
+            }),
+            ("6i-question-answered", { model in
+                // Send: the demo feed takes it like a hub, and the card shows the answer.
+                if let item = model.needsItems.first(where: { $0.question?.answerable == true }) {
+                    model.sendPickedAnswer(item)
+                }
+            }),
             ("7-summary", { [weak self] model in
                 model.settings.ui.cardBodies = .full
                 model.collapse()
