@@ -149,6 +149,26 @@ class ValidateItemInput(unittest.TestCase):
          "description is longer than 200"),
         ("multi_select not bool", with_(question={"items": [dict(q("a"), multi_select="yes")]}),
          "question.items[0].multi_select must be true or false"),
+        # ADR 0010: U+2028 / U+2029 break a line like \n; refused wherever \n is
+        ("title line separator", with_(title="a b"), "title contains a line break"),
+        ("title paragraph separator", with_(title="a b"), "title contains a line break"),
+        ("title NEL", with_(title="a\u0085b"), "control characters"),
+        ("body line separator ok", with_(body="a b c"), None),
+        ("link label line separator", with_(links=[link("https://a.b", "a b")]),
+         "links[0].label contains a line break"),
+        ("source line separator", with_(source={"agent": "a b"}), "source.agent contains a line break"),
+        ("step text line separator", with_(steps=[step("a b")]), "steps[0].text contains a line break"),
+        ("step link label line separator", with_(steps=[step("a", link=link("https://a.b", "x y"))]),
+         "steps[0].link.label contains a line break"),
+        ("question header line separator", with_(question={"items": [dict(q("a"), header="a b")]}),
+         "question.items[0].header contains a line break"),
+        ("question text line separator ok", with_(question={"items": [q("a b")]}), None),
+        ("option label line separator", with_(question={"items": [q("a", opt("x y"))]}),
+         "question.items[0].options[0].label contains a line break"),
+        ("option description line separator", with_(question={"items": [q("a", opt("x", "d e"))]}),
+         "question.items[0].options[0].description contains a line break"),
+        ("question id line separator", with_(question={"id": "a b", "items": [q("a")]}),
+         "question.id contains a line break"),
         # urlsplit raises on an unbalanced '[' in the host: a 400, never a 500
         ("link unbalanced bracket", with_(links=[link("https://[x/y")]), "links[0].url"),
         ("step link unbalanced bracket", with_(steps=[step("a", link=link("vscode://[::1"))]),

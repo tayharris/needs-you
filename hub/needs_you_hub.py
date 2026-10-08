@@ -246,12 +246,14 @@ ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str = "", field: Optional[str] = None) -> None:
+    def __init__(self, status: int, code: str, message: str = "", field: Optional[str] = None,
+                 headers: Optional[Dict[str, str]] = None) -> None:
         super().__init__(message or code)
         self.status = status
         self.code = code
         self.message = message or code
         self.field = field
+        self.headers = headers
 
 
 def _invalid(field: str, message: str) -> ApiError:
@@ -721,7 +723,39 @@ def validate_item_input(data: Any) -> Dict[str, Any]:
             out["expires_at"] = parse_ts(data["expires_at"])
         except ValueError:
             raise _invalid("expires_at", "expires_at must be an ISO 8601 timestamp")
+    _refuse_line_separators(out)
     return out
+
+
+# U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR: text views break a line at them.
+_LINE_SEP_RE = re.compile("[\u2028\u2029]")
+
+
+def _refuse_line_separators(out: Dict[str, Any]) -> None:
+    """ADR 0010: the one-line fields of a POSTed item (all but body and question text) refuse
+    U+2028/U+2029 as they refuse \\n. Only on POST: replicated records aren't re-checked."""
+    def check(path: str, v: Any) -> None:
+        if isinstance(v, str) and _LINE_SEP_RE.search(v):
+            raise _invalid(path, "%s contains a line break (U+2028/U+2029)" % path)
+
+    check("key", out.get("key"))
+    check("title", out.get("title"))
+    for i, lk in enumerate(out.get("links") or []):
+        check("links[%d].label" % i, lk.get("label"))
+    for i, st in enumerate(out.get("steps") or []):
+        check("steps[%d].text" % i, st.get("text"))
+        if st.get("link"):
+            check("steps[%d].link.label" % i, st["link"].get("label"))
+    question = out.get("question") or {}
+    check("question.id", question.get("id"))
+    for i, it in enumerate(question.get("items") or []):
+        path = "question.items[%d]" % i
+        check(path + ".header", it.get("header"))
+        for j, opt in enumerate(it.get("options") or []):
+            check("%s.options[%d].label" % (path, j), opt.get("label"))
+            check("%s.options[%d].description" % (path, j), opt.get("description"))
+    for name, v in (out.get("source") or {}).items():
+        check("source." + name, v)
 
 
 # ---------------------------------------------------------------------------
@@ -761,6 +795,8 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     cfg.setdefault("answer_rate_window_seconds", 60.0)
     cfg.setdefault("answer_read_rate_limit", 120)
     cfg.setdefault("answer_waits_per_token", 4)
+    cfg.setdefault("post_rate_limit", 120)
+    cfg.setdefault("post_rate_window_seconds", 60.0)
     cfg.setdefault("owner_token_file", None)
     cfg.setdefault("owner_token_name", DEFAULT_OWNER_TOKEN_NAME)
     cfg.setdefault("parent_pid", None)
@@ -3068,7 +3104,9 @@ class Handler(BaseHTTPRequestHandler):
         body = {"error": err.code, "message": err.message}
         if err.field:
             body["field"] = err.field
-        self._send(err.status, body)
+        if err.headers and "Retry-After" in err.headers:  # also in the body: clients read bodies
+            body["retry_after"] = int(err.headers["Retry-After"])
+        self._send(err.status, body, err.headers)
 
     def _body(self, limit: int = MAX_REQUEST_BYTES, per_record: bool = False) -> Any:
         try:
@@ -3477,6 +3515,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post_item(self) -> None:
         tok = self._auth("sender")
+        # ADR 0010: a sender stuck in a loop is held back (every POST counts, re-posts too).
+        if self.hub.post_limiter.blocked(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many posts from this token; try again in a minute",
+                           headers={"Retry-After": str(self.hub.post_limiter.retry_after(tok["id"]))})
+        self.hub.post_limiter.fail(tok["id"])
         fields = validate_item_input(self._body())
         rec, created, changed = self.hub.store.upsert_item(
             fields, tok, int(self.hub.cfg["max_open_per_token"]),
@@ -3499,6 +3542,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "invalid", "send exactly one of id or key")
         if not isinstance(item_id or key, str):
             raise ApiError(400, "invalid", "id/key must be a string")
+        # ADR 0010: a key is checked as POST checks it, so a mangled one isn't "nothing open".
+        if key and (len(key) > MAX_KEY or not KEY_RE.match(key)):
+            raise _invalid("key", "key may only contain letters, digits and . _ : - / @ # + = "
+                           "(at most %d characters)" % MAX_KEY)
         recs = self.hub.store.resolve(item_id, key)
         if recs:
             self.hub.notify()
@@ -3823,7 +3870,7 @@ class _Server(ThreadingHTTPServer):
 
 
 class RateLimiter:
-    """Attempts per client (failed invite redeems per IP, answers per token) in a sliding
+    """Attempts per client (failed invite redeems per IP, answers and posts per token) in a sliding
     window (in memory)."""
 
     def __init__(self, limit: int, window: float) -> None:
@@ -3845,6 +3892,15 @@ class RateLimiter:
             return False
         with self.lock:
             return len(self._recent(ip, time.monotonic())) >= self.limit
+
+    def retry_after(self, ip: str) -> int:
+        """Whole seconds until the oldest attempt in the window drops out (at least 1)."""
+        with self.lock:
+            now = time.monotonic()
+            recent = self._recent(ip, now)
+            if not recent:
+                return 1
+            return max(1, int(recent[0] + self.window - now + 0.999))
 
     def fail(self, ip: str) -> None:
         with self.lock:
@@ -3895,6 +3951,7 @@ class Hub:
         # Answers per token (POST /v1/items/{id}/answer), every attempt counted; the same
         # for reads of an answer (GET /v1/items/answer), and their long polls open at once.
         self.answer_limiter = RateLimiter(int(cfg["answer_rate_limit"]), float(cfg["answer_rate_window_seconds"]))
+        self.post_limiter = RateLimiter(int(cfg["post_rate_limit"]), float(cfg["post_rate_window_seconds"]))
         self.answer_read_limiter = RateLimiter(int(cfg["answer_read_rate_limit"]),
                                                float(cfg["answer_rate_window_seconds"]))
         self.answer_waits = WaitCounter(int(cfg["answer_waits_per_token"]))

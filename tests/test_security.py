@@ -213,8 +213,11 @@ class HubAbuse(HubTestCase):
 
     def test_sql_metacharacters_are_data(self):
         st, body = request("POST", self.hub.url + "/v1/items/resolve", self.sender,
-                           {"key": "x' OR '1'='1"})
+                           {"id": "x' OR '1'='1"})
         self.assertEqual((st, body["resolved"]), (200, 0))
+        st, body = request("POST", self.hub.url + "/v1/items/resolve", self.sender,
+                           {"key": "x' OR '1'='1"})
+        self.assertEqual((st, body["field"]), (400, "key"))  # not a key at all (ADR 0010)
         st, _ = request("GET", self.hub.url + "/v1/items/" + urllib.parse.quote("x' OR 1=1 --", safe=""),
                         self.reader)
         self.assertEqual(st, 404)

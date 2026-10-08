@@ -6,7 +6,20 @@ import socket
 import threading
 import urllib.parse
 
-from support import PEER_SECRET, FakeClock, HubTestCase, hubmod, request
+from support import OPENER, PEER_SECRET, FakeClock, HubTestCase, hubmod, request
+
+
+def request_with_headers(method, url, token, body):
+    """request(), plus the response headers."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method=method,
+                                 headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    try:
+        with OPENER.open(req, timeout=5) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "{}"), dict(resp.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8") or "{}"), dict(e.headers)
 
 
 class ApiTestCase(HubTestCase):
@@ -268,6 +281,17 @@ class Resolve(ApiTestCase):
             with self.subTest(body):
                 self.assertEqual(self.resolve(body)[0], 400)
 
+    def test_key_format_is_checked_as_on_post(self):
+        # ADR 0010: a key no item can have is a 400 naming the field, not "resolved: 0".
+        for key in ("a b", "caf\u00e9", "a'b", "k" * 201, "a\u2028b"):
+            with self.subTest(key):
+                s, r = self.resolve({"key": key})
+                self.assertEqual((s, r.get("error"), r.get("field")), (400, "invalid", "key"), r)
+        _, a = self.post({"key": "x:y/z@1#2+3=4", "title": "t"})
+        s, r = self.resolve({"key": "  x:y/z@1#2+3=4\n"})  # trimmed, as on POST
+        self.assertEqual((s, r["resolved"]), (200, 1))
+        self.assertEqual(self.resolve({"id": "not a key, just an id"})[0], 200)  # ids unchanged
+
 
 class Patch(ApiTestCase):
     def test_seen_and_dismiss(self):
@@ -455,6 +479,33 @@ class VolumeGuard(ApiTestCase):
         self.clock.advance(25 * 3600)
         s, _ = self.post({"key": "loop:62", "title": "t"})
         self.assertEqual(s, 201)
+
+
+class PostRate(ApiTestCase):
+    def test_a_looping_sender_is_held_back(self):
+        # ADR 0010: posts per token in a sliding window; 429 rate_limited with Retry-After.
+        hub = self.make_hub("hub-r", post_rate_limit=5, post_rate_window_seconds=60)
+        sender, reader = self.tokens(hub)
+        url = hub.url + "/v1/items"
+        for i in range(5):
+            self.assertIn(request("POST", url, sender, {"key": "loop", "title": "try %d" % i})[0], (200, 201))
+        status, body, headers = request_with_headers("POST", url, sender, {"key": "loop", "title": "again"})
+        self.assertEqual((status, body["error"]), (429, "rate_limited"))
+        self.assertTrue(1 <= int(headers["Retry-After"]) <= 60, headers)
+        self.assertEqual(body["retry_after"], int(headers["Retry-After"]))
+        _, items = request("GET", url, reader)
+        self.assertEqual([i["title"] for i in items["items"]], ["try 4"])  # the card isn't changed
+        # resolves still go through, and other tokens are unaffected
+        self.assertEqual(request("POST", url + "/resolve", sender, {"key": "loop"})[0], 200)
+        other, _ = hub.store.add_token("other", "sender")
+        self.assertEqual(request("POST", url, other, {"key": "o", "title": "t"})[0], 201)
+
+    def test_zero_turns_it_off(self):
+        hub = self.make_hub("hub-r", post_rate_limit=0)
+        sender, _ = self.tokens(hub)
+        for i in range(200):
+            self.assertIn(request("POST", hub.url + "/v1/items", sender, {"key": "k", "title": "t%d" % i})[0],
+                          (200, 201))
 
 
 class Stream(ApiTestCase):

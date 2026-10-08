@@ -78,11 +78,12 @@ If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ an
 command still exits 0. Every invocation sends the outbox first, and a request goes out only
 behind what is queued, so `resolve K` never overtakes a queued `add K`. While another run is
 sending the outbox, a request waits for it up to 2 s, then stays queued behind it (exit 0).
-A queued item the hub refuses for now (429, the open-items guard) stays queued and is retried
-later; a later resolve of its key cancels it. The outbox is capped (oldest dropped, with a
-warning), so a hub that is gone for weeks can't fill the disk. A resolve that finds nothing
-open on a hub goes on to the next ones (hubs that don't replicate hold only what was posted
-to them); one that couldn't reach a hub is kept for it and sent by `flush` (up to 48 h).
+A queued item the hub refuses for now (429: the open-items guard, or too many posts from
+this token) stays queued and is retried later; a later resolve of its key cancels it. The
+outbox is capped (oldest dropped, with a warning), so a hub that is gone for weeks can't fill
+the disk. A resolve that finds nothing open on a hub goes on to the next ones (hubs that don't
+replicate hold only what was posted to them); one that couldn't reach a hub is kept for it and
+sent by `flush` (up to 48 h).
 
 Steps are a checklist of what the person has to do, in order (at most 10; text <= 200
 chars, limited markdown). `--step "Text=URL"` gives the step a link button labelled
@@ -1132,6 +1133,37 @@ class _Flush:
         self.unreachable: Optional[Unreachable] = None
         self.results: Dict[str, Any] = {}
         self.tried: set = set()
+        self.slowed: Optional[float] = None  # the hub's Retry-After was in force: until (epoch)
+
+
+# The hub's `429 rate_limited` on a post (ADR 0010): queued adds wait until this time (epoch
+# seconds, in a state file), so a sender stuck in a loop doesn't keep hammering it.
+BACKOFF_FILE = "post-retry-after"
+MAX_BACKOFF_SECONDS = 600.0
+
+
+def _backoff_until() -> float:
+    try:
+        with open(os.path.join(state_dir(), BACKOFF_FILE), "r", encoding="utf-8") as fh:
+            until = float(fh.read().strip())
+    except (OSError, ValueError):
+        return 0.0
+    # A clock set back, or a bad file, never stops posting for long.
+    return until if until - time.time() <= MAX_BACKOFF_SECONDS else 0.0
+
+
+def _set_backoff(body: Dict[str, Any]) -> float:
+    try:
+        wait = float(body.get("retry_after") or 60)
+    except (TypeError, ValueError):
+        wait = 60.0
+    until = time.time() + min(max(wait, 1.0), MAX_BACKOFF_SECONDS)
+    try:
+        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
+        _write_atomic(os.path.join(state_dir(), BACKOFF_FILE), ("%.3f\n" % until).encode("ascii"), 0o600)
+    except OSError:
+        pass
+    return until
 
 
 def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None) -> _Flush:
@@ -1144,8 +1176,15 @@ def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None
     So per-key order holds: a later resolve of that key makes the held add moot (it's
     deleted), and a later add of the key replaces it (a re-post is the full current view).
     `mine` is the caller's own entry: a refusal deletes it (the caller reports it) instead of
-    moving it to outbox/failed/ or holding it."""
+    moving it to outbox/failed/ or holding it.
+
+    `429 rate_limited` (too many posts from this token, ADR 0010) holds every add, the
+    caller's own too, until the hub's `retry_after`: they stay queued (one per key: a later
+    add of a key replaces the held one) and go out on a later run. Resolves still go."""
     out = _Flush()
+    until = _backoff_until()
+    if until > time.time():
+        out.slowed = until
     held: Dict[str, List[str]] = {}  # key -> queued adds kept back by 429
 
     def drop_held(key: Optional[str]) -> None:
@@ -1174,6 +1213,13 @@ def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None
             is_resolve = entry["path"].endswith("/resolve")
             key = entry["body"].get("key")
             key = key if isinstance(key, str) and key else None
+            if out.slowed and not is_resolve:
+                if out.slowed > time.time():
+                    if key:
+                        drop_held(key)
+                        held[key] = [path]
+                    continue
+                out.slowed = None
             try:
                 result = send(cfg, entry["method"], entry["path"], entry.get("body"))
                 _remove(path)
@@ -1184,6 +1230,14 @@ def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None
                 if verbose and path != mine:
                     warn("sent queued %s %s via %s" % (entry["method"], entry["path"], result[0]))
             except Rejected as e:
+                if e.status == 429 and e.body.get("error") == "rate_limited" and not is_resolve:
+                    out.slowed = _set_backoff(e.body)
+                    if key:
+                        drop_held(key)
+                        held[key] = [path]
+                    if verbose:
+                        warn("hub asked this token to slow down (%s); kept it queued" % e)
+                    continue
                 out.results[path] = e
                 if path == mine:
                     _remove(path)
@@ -1594,6 +1648,10 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
         _catch_stragglers(cfg, out)
         result = out.results.get(mine)
         if result is None:
+            if os.path.exists(mine) and out.slowed and out.unreachable is None:
+                warn("the hub asked this token to slow down (too many posts); queued %s, sent in %ds or later"
+                     % (os.path.basename(mine), max(1, int(out.slowed - time.time() + 0.999))))
+                return 0
             if os.path.exists(mine):
                 warn("no hub reachable (%s); queued %s" % (out.unreachable, os.path.basename(mine)))
                 return 0
@@ -1784,7 +1842,9 @@ def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, An
         else:
             with open(args.body_file, "r", encoding="utf-8") as fh:
                 body = fh.read()
-    item: Dict[str, Any] = {"key": args.key, "title": args.title, "kind": kind,
+    # U+2028/U+2029 break the one-line title; the hub refuses them (ADR 0010): spaces instead.
+    title = args.title.replace("\u2028", " ").replace("\u2029", " ")
+    item: Dict[str, Any] = {"key": args.key, "title": title, "kind": kind,
                             "context": args.context or cfg.default_context, "priority": args.priority}
     if body:
         item["body"] = body

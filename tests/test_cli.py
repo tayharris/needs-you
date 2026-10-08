@@ -562,6 +562,50 @@ class DefaultContext(CliTestCase):
         self.assertEqual(items, {"a": "personal", "b": "work"})
 
 
+class PostRate(CliTestCase):
+    """ADR 0010: the hub's 429 rate_limited never fails the caller: the post is queued (exit
+    0), held until the hub's retry_after, one per key, and sent by a later run. Resolves go."""
+
+    def test_rate_limited_posts_are_queued_and_sent_later(self):
+        a = self.make_hub("hub-a", post_rate_limit=2, post_rate_window_seconds=2)
+        sender, reader = self.tokens(a)
+        for key in ("a", "b"):
+            r = self.run_cli("add", "--key", key, "--title", "t", urls=[a.url], token=sender)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_cli("add", "--key", "c", "--title", "first", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("slow down", r.stderr)
+        self.assertEqual(len(self.queued()), 1)
+        # held, not sent: a later post of the same key replaces it in the outbox
+        r = self.run_cli("add", "--key", "c", "--title", "second", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_cli("add", "--key", "d", "--title", "t", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.queued()), 2)  # c (second) and d
+        # a resolve still goes at once, and cancels the held post of its key
+        r = self.run_cli("resolve", "--key", "d", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.queued()), 1)
+        self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")), ["a", "b"])
+        time.sleep(2.5)  # the hub's retry_after
+        r = self.run_cli("flush", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.queued(), [])
+        got = {i["key"]: i["title"] for i in self.items(a, reader, "open")}
+        self.assertEqual(got, {"a": "t", "b": "t", "c": "second"})
+
+
+class LineSeparators(CliTestCase):
+    def test_title_line_separators_become_spaces(self):
+        # ADR 0010: the hub refuses U+2028/U+2029 in a title; the CLI turns them into spaces
+        # so a sender that passes one (text copied from a web page) keeps its card.
+        a = self.make_hub("hub-a")
+        sender, reader = self.tokens(a)
+        r = self.run_cli("add", "--key", "ls", "--title", "Deploy api now", urls=[a.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([i["title"] for i in self.items(a, reader, "open")], ["Deploy api now"])
+
+
 def load_cli():
     import importlib.machinery
     import importlib.util

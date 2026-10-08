@@ -218,6 +218,7 @@ on <code>needs_you_hub.py</code>, so no file is required: the named flags below,
 <tr><td><code>answer_rate_limit</code> / <code>answer_rate_window_seconds</code></td><td></td><td>30 / 60</td><td>Answers (<code>POST /v1/items/{id}/answer</code>, counted whether taken or not) per token before <code>429</code>.</td></tr>
 <tr><td><code>answer_read_rate_limit</code></td><td></td><td>120</td><td>Reads of an answer (<code>GET /v1/items/answer</code>) per token per <code>answer_rate_window_seconds</code> before <code>429</code>.</td></tr>
 <tr><td><code>answer_waits_per_token</code></td><td></td><td>4</td><td>Long polls of <code>GET /v1/items/answer</code> one token may hold open at once.</td></tr>
+<tr><td><code>post_rate_limit</code> / <code>post_rate_window_seconds</code></td><td></td><td>120 / 60</td><td>Posts (<code>POST /v1/items</code>, re-posts included) per token before <code>429 rate_limited</code> with <code>Retry-After</code>; a sender stuck in a loop (ADR 0010). 0 = off.</td></tr>
 <tr><td><code>anti_entropy_seconds</code></td><td></td><td>60</td><td>How often each peer is pulled.</td></tr>
 <tr><td><code>outbox_poll_seconds</code></td><td></td><td>2</td><td>Outbox check interval without a wake-up.</td></tr>
 <tr><td><code>retry_base_seconds</code> / <code>retry_max_seconds</code></td><td></td><td>1 / 300</td><td>Push backoff.</td></tr>

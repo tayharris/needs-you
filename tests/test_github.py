@@ -394,6 +394,17 @@ class GithubPoller(HubTestCase):
         self.poll()  # unchanged cards aren't renewed while the outbox has a backlog
         self.assertEqual(len([f for f in os.listdir(outbox) if f.endswith(".json")]), n)
 
+    def test_rate_limited_hub_queues_and_exits_zero(self):
+        # ADR 0010: a hub that says "too many posts" holds the rest back in the outbox (exit 0);
+        # they go out on a later run.
+        self.hub = self.make_hub("hub-r", post_rate_limit=3)
+        self.sender, self.reader = self.tokens(self.hub)
+        self.urls = [self.hub.url]
+        self.poll()
+        self.assertEqual(len(self.open_items()), 3)
+        outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
+        self.assertGreater(len([f for f in os.listdir(outbox) if f.endswith(".json")]), 3)
+
     def test_dry_run_changes_nothing(self):
         r = self.poll(None, "--dry-run")
         self.assertIn("post work:gh:acme/app#20:merge [normal] Merge acme/app#20", r.stdout)

@@ -65,7 +65,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
-  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), or too many answers from one token (30 a minute by default) |
+  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds) |
   | 500 | `internal` | Bug; details are in the hub's log |
 
 - Unknown JSON fields in requests are ignored, so newer clients can send extra fields.
@@ -232,7 +232,9 @@ Control characters are refused in every text field (`title`, `body` except newli
 link labels, `source` fields): C0, DEL, C1 (U+0080–U+009F), and the bidi embedding, override
 and isolate controls U+202A–U+202E and U+2066–U+2069, which can make text read as something
 it isn't. Ordinary right-to-left text, marks (U+200E/U+200F) and joiners (U+200C/U+200D) are
-fine. Link URLs may not contain whitespace or invisible format characters at all (percent-encode
+fine. On `POST /v1/items`, the one-line fields (every text field except `body` and a
+question's `text`) also refuse U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR, which
+break a line as `\n` does (`400 invalid`, `field` names it; [ADR 0010](adr/0010-input-tightening-and-post-rate.md)). Link URLs may not contain whitespace or invisible format characters at all (percent-encode
 a space as `%20`). Item records that arrive by replication keep only links that pass these
 rules. The same goes for steps: their text and link fields follow these rules on POST, and a
 replicated step whose link fails keeps its text and loses the link.
@@ -304,6 +306,11 @@ Semantics:
    item's token becomes the re-posting token. The volume guard does not apply to updates.
 2. Otherwise a new item is created with a new id. If the token already owns 60 open,
    unexpired items, the hub returns `429 too_many_open` instead.
+3. Every `POST /v1/items` counts toward a per-token rate, re-posts of an open key included
+   (`post_rate_limit`, default 120, per `post_rate_window_seconds`, default 60; per hub, in
+   memory; 0 turns it off). Past it the hub answers `429 rate_limited` with a `Retry-After`
+   header (seconds, also as `"retry_after"` in the error body) and changes nothing, so a sender stuck in a loop can't keep moving its card
+   to the top of the panel. Resolves don't count ([ADR 0010](adr/0010-input-tightening-and-post-rate.md)).
 
 Response: `201` when created, `200` when an existing item was updated. The body is the item
 plus `"created": true|false` and `"changed": true|false` (`changed` is true on create and when
@@ -322,7 +329,10 @@ Closes the open item with that key (or that id) as `resolved`. Always `200` and 
 
 If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),
 the response is `{"resolved": 0, "items": []}`. A body with neither or both of `key`/`id` is a
-400, and so is a `key` or `id` that isn't a string (`"id/key must be a string"`).
+400, and so is a `key` or `id` that isn't a string (`"id/key must be a string"`). A `key` is
+checked as `POST /v1/items` checks it (at most 200 characters, only `A-Z a-z 0-9 . _ : - / @ #
++ =`): a key no item can have is `400 invalid` with `"field": "key"`, not `resolved: 0`
+([ADR 0010](adr/0010-input-tightening-and-post-rate.md)). An `id` is not format-checked.
 
 Resolve doesn't check who posted the item. This is intended:
 

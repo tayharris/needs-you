@@ -218,6 +218,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `answer_rate_limit` / `answer_rate_window_seconds` | | 30 / 60 | Answers (`POST /v1/items/{id}/answer`, counted whether taken or not) per token before `429`. |
 | `answer_read_rate_limit` | | 120 | Reads of an answer (`GET /v1/items/answer`) per token per `answer_rate_window_seconds` before `429`. |
 | `answer_waits_per_token` | | 4 | Long polls of `GET /v1/items/answer` one token may hold open at once. |
+| `post_rate_limit` / `post_rate_window_seconds` | | 120 / 60 | Posts (`POST /v1/items`, re-posts included) per token before `429 rate_limited` with `Retry-After`; a sender stuck in a loop (ADR 0010). 0 = off. |
 | `anti_entropy_seconds` | | 60 | How often each peer is pulled. |
 | `outbox_poll_seconds` | | 2 | Outbox check interval without a wake-up. |
 | `retry_base_seconds` / `retry_max_seconds` | | 1 / 300 | Push backoff. |

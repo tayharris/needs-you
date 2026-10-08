@@ -388,6 +388,22 @@ class EndToEnd(HubTestCase):
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"],
                          {"Which database should we use?": "Postgres", "Which features?": "Auth, Search"})
 
+    def test_a_rate_limited_hub_never_fails_the_hook(self):
+        # ADR 0010: past the post rate the CLI queues the card (exit 0) and the hook stays
+        # silent and exits 0, as with a hub that's down.
+        self.hub = self.make_hub("hub-r", peers=[], post_rate_limit=1)
+        self.sender, self.reader = self.tokens(self.hub)
+        for sess in ("rate-1", "rate-2"):
+            r = subprocess.run([BASH, HOOK, "notify"], input=json.dumps({
+                "session_id": sess, "cwd": self.cwd, "hook_event_name": "Notification",
+                "notification_type": "permission_prompt", "message": "Claude needs your permission to use Bash"}),
+                env=self.env(), capture_output=True, text=True, timeout=60)
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+        _, body = request("GET", self.hub.url + "/v1/items?status=open", self.reader)
+        self.assertEqual(len(body["items"]), 1)
+        outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
+        self.assertEqual(len([f for f in os.listdir(outbox) if f.endswith(".json")]), 1)
+
     def waiters(self, pgid):
         """The `needs-you answer-wait` processes still in the hook's process group."""
         out = subprocess.run(["ps", "-eo", "pid=,pgid=,args="], capture_output=True, text=True).stdout

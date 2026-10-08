@@ -360,6 +360,10 @@ def tool_add(arguments: Dict[str, Any], agent: str) -> Dict[str, Any]:
     rc, out, err = run_cli(args, stdin=body or "")
     resp = _sent(rc, out, err)
     if resp is None:
+        if "slow down" in err:  # 429 rate_limited (ADR 0010): this token posts too often
+            return {"ok": True, "queued": True, "key": key,
+                    "message": "The hub asked this token to slow down (too many posts in a minute), so the "
+                               "CLI queued it; it goes out by itself. Don't retry, and post less often."}
         return {"ok": True, "queued": True, "key": key,
                 "message": "No hub answered, so the CLI queued it; it goes out by itself when one does. "
                            "Don't retry." + (" (%s)" % err if err else "")}

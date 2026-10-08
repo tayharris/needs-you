@@ -200,6 +200,21 @@ class Tools(McpTestCase):
             self.assertIn("Don't retry", data["message"])
         self.assertEqual(len(self.queued()), 2)
 
+    def test_rate_limited_is_queued_and_says_slow_down(self):
+        # ADR 0010: an agent stuck in a loop gets "queued, slow down", never a tool error.
+        hub = self.make_hub("hub-r", post_rate_limit=1)
+        sender, _ = self.tokens(hub)
+        out, r = self.session(call(1, "needs_you_add", {"key": "work:x:1", "title": "One"}),
+                              call(2, "needs_you_add", {"key": "work:x:2", "title": "Two"}),
+                              urls=[hub.url], token=sender)
+        err, text, data = self.tool(self.by_id(out)[2])
+        self.assertFalse(err, text)
+        self.assertTrue(data["queued"])
+        self.assertIn("slow down", data["message"])
+        self.assertNotIn("No hub answered", data["message"])
+        self.assertIn("Don't retry", data["message"])
+        self.assertEqual(len(self.queued()), 1)
+
     def test_refusals_are_tool_errors(self):
         cases = [({"key": "k", "title": "t", "links": [{"label": "x", "url": "http://insecure.example.com"}]}, "url"),
                  ({"key": "k", "title": "x" * 101}, "title"),

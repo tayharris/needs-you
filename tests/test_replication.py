@@ -40,6 +40,27 @@ class Mesh(HubTestCase):
         self.assertTrue(ok, "hubs did not converge")
 
 
+class PostRateIsPerHub(Mesh):
+    def test_replicated_items_dont_count_against_the_post_rate(self):
+        # ADR 0010: only POST /v1/items counts; records a peer pushes or pulls don't, so a
+        # token's posts on one hub never use up its rate on another.
+        a, b = self.mesh(["hub-a", "hub-b"], start=False)
+        for h in (a, b):
+            h.cfg["post_rate_limit"] = 3
+            h.post_limiter = hubmod.RateLimiter(3, 60)
+            h.start()
+        sender, reader = self.tokens(a)
+        self.assertConverged([a, b])
+        for i in range(3):
+            self.assertEqual(request("POST", a.url + "/v1/items", sender, {"key": "r%d" % i, "title": "t"})[0], 201)
+        self.assertEqual(request("POST", a.url + "/v1/items", sender, {"key": "r9", "title": "t"})[0], 429)
+        self.assertConverged([a, b])
+        self.assertEqual(request("POST", b.url + "/v1/items", sender, {"key": "r3", "title": "t"})[0], 201)
+        _, body = request("GET", a.url + "/v1/items", reader)
+        patched = request("PATCH", a.url + "/v1/items/" + body["items"][0]["id"], reader, {"status": "dismissed"})
+        self.assertEqual(patched[0], 200)  # readers (the Mac) aren't counted either
+
+
 class WorkerSurvives(Mesh):
     def test_broken_peer_responses_dont_kill_the_worker(self):
         """A peer URL that speaks something other than HTTP, cuts a response short, or answers
