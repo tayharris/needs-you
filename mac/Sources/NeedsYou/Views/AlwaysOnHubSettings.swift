@@ -45,7 +45,7 @@ final class AlwaysOnHubController: ObservableObject {
         do {
             let invite = try await client.createPeerInvite(PeerInviteRequest(name: "always-on"),
                                                            hub: LocalHub.clientURL, token: token)
-            command = invite.hubInstallCommand ?? "./scripts/install-hub.sh --user --join '\(invite.joinURL)'"
+            command = invite.hubInstallCommand ?? "curl -fsSL \(invite.joinURL.components(separatedBy: "/join/").first ?? "")/dl/install-hub.sh | sudo bash -s -- --join '\(invite.joinURL)'"
             commandExpires = invite.expiresAt.flatMap(HubJSON.parseDate)
             message = nil
         } catch {
@@ -94,7 +94,7 @@ struct AlwaysOnHubSection: View {
             if reach.reachableFromOtherMachines {
                 if let command = controller.command {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("On the server, from a copy of needs-you (the repository or the release's server download), run:")
+                        Text("On the server (Linux with systemd and Tailscale), run this. It installs the hub from this Mac and pairs it:")
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(alignment: .top) {
                             Text(command).font(.callout.monospaced()).textSelection(.enabled)
@@ -149,7 +149,7 @@ struct AlwaysOnHubSection: View {
         let base = "The link works once"
         guard let expires = controller.commandExpires else { return base + "." }
         let minutes = max(0, Int(expires.timeIntervalSince(now) / 60))
-        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). The server needs Linux with systemd, python3 and Tailscale."
+        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). It never shows the pair's secret."
     }
 
     private func peerRow(_ peer: PeerSummary) -> some View {

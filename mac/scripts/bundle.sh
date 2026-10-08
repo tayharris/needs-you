@@ -103,6 +103,14 @@ mkdir -p "$RES/scripts"
 cp scripts/install.sh "$RES/scripts/install.sh"
 chmod 755 "$RES/scripts/install.sh"
 
+# A server joining this Mac's hub installs from it (ADR 0012):
+# curl -fsSL <hub>/dl/install-hub.sh | sudo bash -s -- --join <link>. The hub serves these by
+# their repo paths, so the bundle mirrors them too.
+cp "$REPO/scripts/install-hub.sh" "$RES/scripts/install-hub.sh"
+mkdir -p "$RES/deploy"
+cp "$REPO/deploy/needs-you-admin.sh" "$REPO/deploy/needs-you-hub.service" "$REPO/deploy/needs-you-hub.user.service" \
+  "$RES/deploy/"
+
 echo "==> ad-hoc codesign"
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --strict "$APP"

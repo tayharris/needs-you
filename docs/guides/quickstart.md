@@ -71,7 +71,7 @@ Each server gets its own token (named `<invite name>-<hostname>`), so you can re
 
 ## 4. Optional: a server hub
 
-If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). The Mac makes a one-use peer invite (**Settings… → Your inbox → Always-on hub**) and the server runs one command with it (`scripts/install-hub.sh --user --join <link>`). From then on the two hubs replicate every item both ways, and invites made on the Mac list the server too, so senders fail over to it while the Mac sleeps ([HUB.md](../HUB.md#with-the-macs-own-hub)).
+If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). The Mac makes a one-use peer invite (**Settings… → Your inbox → Always-on hub**) and the server runs the one command it shows (`curl -fsSL <mac>/dl/install-hub.sh | sudo bash -s -- --join <link>`). From then on the two hubs replicate every item both ways, and invites made on the Mac list the server too, so senders fail over to it while the Mac sleeps ([HUB.md](../HUB.md#with-the-macs-own-hub)).
 
 ## Done
 

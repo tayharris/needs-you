@@ -878,6 +878,63 @@ class InstallHubJoin(HubTestCase):
         self.assertIn(self.mac.url, r.stdout)
         self.assertNotIn(link["secret"], r.stdout)
 
+    def piped(self, script_text, *args, env=None):
+        """`curl <hub>/dl/install-hub.sh | bash -s -- ...`: the script on stdin, run from an
+        empty directory with no checkout anywhere near it."""
+        cwd = os.path.join(self.tmp, "empty")
+        os.makedirs(cwd, exist_ok=True)
+        return subprocess.run([BASH, "-s", "--", "--user", "--no-start", "--bind", "127.0.0.1",
+                               "--port", str(self.port), "--hub-id", "srv",
+                               "--public-url", "http://127.0.0.1:%d" % self.port] + list(args),
+                              input=script_text, cwd=cwd, env=env or self.env, capture_output=True,
+                              text=True, timeout=120)
+
+    def test_curl_one_liner_installs_from_the_hub(self):
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertEqual(status, 201)
+        self.assertEqual(inv["install_command"],
+                         "curl -fsSL %s/dl/install-hub.sh | sudo bash -s -- --join '%s'" % (self.mac.url, inv["join_url"]))
+        import urllib.request
+        from support import OPENER
+        with OPENER.open(self.mac.url + "/dl/install-hub.sh", timeout=10) as resp:
+            script = resp.read().decode("utf-8")
+        with OPENER.open(self.mac.url + "/dl/manifest.json", timeout=10) as resp:
+            manifest = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(manifest["files"]["install-hub.sh"]["path"], "scripts/install-hub.sh")
+        tmpdir = os.path.join(self.tmp, "t")
+        os.makedirs(tmpdir)
+        r = self.piped(script, "--join", inv["join_url"], env=dict(self.env, TMPDIR=tmpdir))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(os.listdir(tmpdir), [])  # the fetched copy is gone
+        self.assertIn("fetching the hub's code from %s" % self.mac.url, r.stdout)
+        self.assertNotIn("nyp_", r.stdout + r.stderr)
+        share = os.path.join(self.home, ".local", "share", "needs-you")
+        for rel in ("hub/needs_you_hub.py", "hub/needs_you_admin.py", "cli/needs-you",
+                    "integrations/claude-code/needs-you-hook.sh", "integrations/kimi/kimi-hooks.toml"):
+            with open(os.path.join(share, rel), "rb") as fh, open(os.path.join(ROOT, rel), "rb") as src:
+                self.assertEqual(fh.read(), src.read(), rel)
+        (link,) = self.mac.store.peer_links()
+        self.assertEqual(link["hub_id"], "srv")
+
+    def test_curl_without_join_or_from_an_old_hub_fails_loudly(self):
+        with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as fh:
+            script = fh.read()
+        r = self.piped(script)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--join", r.stderr)
+        # a hub whose install dir lacks the server files (an older Mac app)
+        old = os.path.join(self.tmp, "old-install")
+        for rel in ("cli/needs-you", "integrations/claude-code/needs-you-hook.sh"):
+            os.makedirs(os.path.dirname(os.path.join(old, rel)), exist_ok=True)
+            shutil.copy(os.path.join(ROOT, rel), os.path.join(old, rel))
+        oldhub = self.make_hub("oldmac", peer_secret="", maintenance_seconds=0, install_dir=old)
+        oldhub.store.ensure_token("owner-old", "owner", OWNER + "x")
+        _, inv = request("POST", oldhub.url + "/v1/invites", OWNER + "x", {"name": "s", "role": "peer"})
+        r = self.piped(script, "--join", inv["join_url"])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("doesn't serve", r.stderr)
+        self.assertEqual(oldhub.store.peer_links(), [])  # nothing redeemed
+
     def test_a_used_or_bad_link_fails_loudly(self):
         link = self.peer_link()
         self.assertEqual(self.install("--join", link).returncode, 0)

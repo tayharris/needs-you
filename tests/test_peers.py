@@ -109,7 +109,7 @@ class CreatePeerInvite(PeerCase):
         self.assertEqual(body["uses"], 1)
         self.assertEqual(body["join_url"], a.url + "/join/" + body["code"])
         self.assertEqual(body["install_command"],
-                         "./scripts/install-hub.sh --user --join '%s'" % body["join_url"])
+                         "curl -fsSL %s/dl/install-hub.sh | sudo bash -s -- --join '%s'" % (a.url, body["join_url"]))
         self.assertNotIn("mac_url", body)
         self.assertNotIn("agent_prompt", body)
         left = hubmod.parse_ts(body["expires_at"]) - a.store.now_ms()
@@ -433,7 +433,7 @@ class AdminTool(PeerCase):
         a = self.hub("hub-a")
         rc, out, err = self.admin(a, "invite", "create", "pi", "--role", "peer")
         self.assertEqual(rc, 0, err)
-        self.assertIn("install-hub.sh --user --join", out)
+        self.assertIn("/dl/install-hub.sh | sudo bash -s -- --join", out)
         self.assertIn("needs-you-admin peer join", out)
         (inv,) = a.store.list_invites()
         self.assertEqual((inv["role"], inv["uses"]), ("peer", 1))

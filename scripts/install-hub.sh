@@ -4,6 +4,8 @@
 #
 #   ./scripts/install-hub.sh --user [options]     no root: runs as a systemd --user service
 #   sudo ./scripts/install-hub.sh [options]       system-wide: a `needs-you` system user
+#   curl -fsSL <hub>/dl/install-hub.sh | sudo bash -s -- --join <link>   no checkout: the
+#       code comes from that hub's /dl, each file checked against its /dl/manifest.json
 #
 # Options:
 #   --user                 install under your home directory (recommended)
@@ -40,7 +42,7 @@ START=1
 INVITE=1
 JOIN=""
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
@@ -77,8 +79,46 @@ PYTHON=/usr/bin/python3
 "$PYTHON" -c 'import sys, sqlite3; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
   || die "python3 >= 3.9 with the sqlite3 module is required"
 
-SRC=$(cd "$(dirname "$0")/.." && pwd)
-[ -f "$SRC/hub/needs_you_hub.py" ] || die "run this from a checkout of the needs-you repo"
+SRC=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || true)
+if [ ! -f "$SRC/hub/needs_you_hub.py" ]; then
+  # No checkout (curl ... | bash): fetch the code from the hub the --join link names. Its
+  # /dl/manifest.json lists each file with its repo path and sha256; every file must match.
+  # This is integrity, not authenticity: the code comes from the hub you are joining anyway.
+  [ -n "$JOIN" ] || die "run this from a checkout of the needs-you repo, or with --join <peer invite link>"
+  FROM_HUB=${JOIN%%/join/*}
+  SRC=$(mktemp -d "${TMPDIR:-/tmp}/needs-you-hub-src.XXXXXX")
+  trap 'rm -rf "$SRC"' EXIT
+  echo "fetching the hub's code from $FROM_HUB"
+  "$PYTHON" - "$FROM_HUB" "$SRC" <<'PY' || die "couldn't fetch the code from that hub (above); it may run a needs-you too old to serve its own code"
+import hashlib, json, os, re, sys, urllib.request
+base, dest = sys.argv[1].rstrip("/"), sys.argv[2]
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+def get(name):
+    with opener.open(base + "/dl/" + name, timeout=30) as resp:
+        return resp.read()
+manifest = json.loads(get("manifest.json").decode("utf-8"))
+files = manifest.get("files") or {}
+path_re = re.compile(r"^(?:[A-Za-z0-9_][A-Za-z0-9._-]*/)*[A-Za-z0-9_][A-Za-z0-9._-]*$")
+for name, entry in sorted(files.items()):
+    path = entry.get("path")
+    if not isinstance(path, str) or not path_re.match(path) or ".." in path.split("/"):
+        sys.exit("install-hub: the hub's manifest has no usable path for %s" % name)
+    data = get(name)
+    if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
+        sys.exit("install-hub: %s doesn't match the hub's manifest; nothing installed" % name)
+    target = os.path.join(dest, path)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "wb") as fh:
+        fh.write(data)
+PY
+  for f in hub/needs_you_hub.py hub/needs_you_admin.py hub/join-install.sh cli/needs-you \
+           deploy/needs-you-admin.sh deploy/needs-you-hub.service deploy/needs-you-hub.user.service; do
+    [ -f "$SRC/$f" ] || die "that hub doesn't serve $f; update it (the Mac app), or install from a checkout"
+  done
+fi
 
 if [ "$MODE" = user ]; then
   [ "$(id -u)" -ne 0 ] || die "--user installs for the current user; don't run it as root"

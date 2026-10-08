@@ -258,7 +258,7 @@ class JoinAndDownloads(InviteCase):
                 self.assertEqual(status, 200)
                 with open(os.path.join(ROOT, rel), "rb") as fh:
                     self.assertEqual(data, fh.read())
-        for bad in ("hub.db", "..%2Fhub%2Fneeds_you_hub.py", "needs_you_hub.py", "", "needs-you/x"):
+        for bad in ("hub.db", "..%2Fhub%2Fneeds_you_hub.py", "needs_you_hub.pyc", "hub.json", "", "needs-you/x"):
             with self.subTest(bad):
                 self.assertEqual(get_raw(self.hub.url + "/dl/" + bad)[0], 404)
 

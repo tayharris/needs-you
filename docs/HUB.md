@@ -89,13 +89,18 @@ python3 /Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py \
   --public-url http://<this-mac>.<tailnet>.ts.net:8765 invite create my-server --role peer
 ```
 
-**2. On the server**, from a checkout of this repo (or the release's server tarball):
+**2. On the server** (Linux with systemd, python3 and Tailscale), the command Settings showed:
 
 ```bash
-./scripts/install-hub.sh --user --join 'http://<this-mac>.<tailnet>.ts.net:8765/join/nyi_...'
+curl -fsSL http://<this-mac>.<tailnet>.ts.net:8765/dl/install-hub.sh \
+  | sudo bash -s -- --join 'http://<this-mac>.<tailnet>.ts.net:8765/join/nyi_...'
 ```
 
-It installs and starts the hub, pairs it with the Mac's hub, and prints no secret. On a server
+The installer and the hub's code come from the Mac's hub (`/dl`), each file checked against
+its `/dl/manifest.json` before anything is installed (integrity, like the sender installer: the
+code comes from the hub you are joining anyway). It installs and starts a system-wide hub,
+pairs it with the Mac's hub, and prints no secret. From a checkout instead (or the release's
+server tarball), `./scripts/install-hub.sh --user --join '<link>'` does the same as your user. On a server
 that already runs a hub (alone, or in a mesh with its own `peer_secret`), run
 `needs-you-admin peer join '<link>'` instead; the running hub picks it up within 5 seconds and
 its other peers are left as they are.

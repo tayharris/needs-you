@@ -212,7 +212,7 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
                                                           "" if rec["uses"] == 1 else "s", expires))
         print()
         if rec["role"] == hubmod.PEER_ROLE:
-            print("On the other hub (a server), from a checkout of needs-you:")
+            print("On the other hub (a server with Linux, systemd, python3 and Tailscale), run:")
             print("  %s" % links["install_command"])
             print()
             print("Or, where a hub already runs: needs-you-admin peer join %s" % links["join_url"])
