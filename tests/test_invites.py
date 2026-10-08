@@ -87,7 +87,8 @@ class Create(InviteCase):
 
     def test_validation(self):
         for body in ({"name": "bad name"}, {"role": "admin"}, {"uses": 0}, {"uses": 101},
-                     {"uses": "3"}, {"ttl_hours": 0}, {"ttl_hours": 99999}):
+                     {"uses": "3"}, {"ttl_hours": 0}, {"ttl_hours": 99999},
+                     {"name": "srv\n"}):  # $ matched before a final newline: a token "srv\n-box"
             with self.subTest(body):
                 self.assertEqual(self.invite(**body)[0], 400)
 

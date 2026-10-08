@@ -125,8 +125,8 @@ INVITE_GRACE_MS = 24 * 3600 * 1000  # keep revoked invites this long so the revo
 INVITE_MAX_USES = 100
 INVITE_MAX_TTL_HOURS = 24 * 90
 DEFAULT_OWNER_TOKEN_NAME = "this-mac"
-NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$")
-INVITE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}$")
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}\Z")
+INVITE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,39}\Z")
 HUB_DIR = os.path.dirname(os.path.abspath(__file__))
 # GET /dl/<name> serves only these, relative to the hub's install directory (the repo layout).
 DOWNLOADS = {
@@ -176,7 +176,7 @@ FILE_VERSION_RE = re.compile(r'(?:needs[-_]you[-_]version"?\s*:\s*"?|^VERSION = 
 # X-Needs-You-Client: "cli=0.1.1; hook=0.1.1; skill=none; orca=none". Unknown names are ignored.
 CLIENT_HEADER = "X-Needs-You-Client"
 CLIENT_NAMES = ("cli", "hook", "skill", "orca")
-CLIENT_VALUE_RE = re.compile(r"^(\d{1,6}\.\d{1,6}\.\d{1,6}|none|unknown)$")
+CLIENT_VALUE_RE = re.compile(r"^(\d{1,6}\.\d{1,6}\.\d{1,6}|none|unknown)\Z")
 CLIENT_HEADER_MAX = 200
 CLIENT_WRITE_EVERY_MS = 10 * 60 * 1000  # last_seen_at is at most this stale
 
@@ -322,7 +322,7 @@ def sanitize_host(host: Any) -> str:
 # Validation
 # ---------------------------------------------------------------------------
 
-KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+$")
+KEY_RE = re.compile(r"^[A-Za-z0-9._:/@#+=-]+\Z")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # Bidi embedding/override/isolate controls (and the C1 range): they can make a label or title
 # read differently from what it is (e.g. reverse "moc.live" into "evil.com"). Ordinary RTL text
