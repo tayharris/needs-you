@@ -649,10 +649,31 @@ def normalise_binds(bind: Any) -> List[str]:
     return out or [""]
 
 
+def is_any_interface(bind: str) -> bool:
+    """True for every spelling the OS binds as all interfaces: "0.0.0.0" and "::", but also
+    "0", "0x0", "000.0.0.0", "::0", "::ffff:0.0.0.0" (numeric forms only; names aren't looked up)."""
+    b = bind.strip()
+    if b in ANY_INTERFACE:
+        return True
+    try:
+        infos = socket.getaddrinfo(b, None, 0, socket.SOCK_STREAM, 0, socket.AI_NUMERICHOST)
+    except (socket.gaierror, UnicodeError, ValueError):
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(str(info[4][0]).split("%")[0])
+        except ValueError:
+            continue
+        mapped = getattr(ip, "ipv4_mapped", None)
+        if ip.is_unspecified or (mapped is not None and mapped.is_unspecified):
+            return True
+    return False
+
+
 def check_bind(cfg: Dict[str, Any]) -> None:
     binds = normalise_binds(cfg.get("bind"))
     for bind in binds:
-        if bind.strip() in ANY_INTERFACE and not cfg.get("allow_any_interface"):
+        if is_any_interface(bind) and not cfg.get("allow_any_interface"):
             raise SystemExit("refusing to bind to all interfaces (%r); bind to 127.0.0.1 and/or the "
                              "tailnet IP, or pass --allow-any-interface" % bind)
     if cfg.get("peers"):

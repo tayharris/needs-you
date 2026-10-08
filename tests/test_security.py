@@ -290,6 +290,18 @@ class HubAbuse(HubTestCase):
                 with self.assertRaises(SystemExit):
                     hubmod.check_bind({"bind": bind, "hub_id": "h"})
 
+    def test_bind_refusal_other_spellings(self):
+        # Other spellings of the any-address that the OS binds as 0.0.0.0 or :: (scan 2026-10-08).
+        for bind in ("0", "0.0", "000.0.0.0", "0x0", "::0", "0:0:0:0:0:0:0:0", "::ffff:0.0.0.0",
+                     "[::0]", "127.0.0.1,0"):
+            with self.subTest(bind):
+                with self.assertRaises(SystemExit):
+                    hubmod.check_bind({"bind": bind, "hub_id": "h"})
+        for bind in ("127.0.0.1", "::1", "100.64.1.2", "devbox", "hub-a.example.ts.net"):
+            with self.subTest(bind):
+                hubmod.check_bind({"bind": bind, "hub_id": "h"})
+        hubmod.check_bind({"bind": "0", "hub_id": "h", "allow_any_interface": True})
+
 
 class DatabaseFileModes(HubTestCase):
     def test_db_wal_and_shm_are_private(self):
