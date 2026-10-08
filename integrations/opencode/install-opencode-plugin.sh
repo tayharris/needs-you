@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.1.5
+# needs-you-version: 0.2.0
 # install-opencode-plugin.sh: add the needs-you plugin to opencode.
 #
 #   ./install-opencode-plugin.sh                   ~/.config/opencode ($XDG_CONFIG_HOME/opencode)

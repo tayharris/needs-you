@@ -4,6 +4,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-08
+
+Questions on cards and answering them from the Mac, themes and arrival animations, and a round of security fixes.
+
+### Upgrade note
+
+The hub's database moves from schema 6 to 8 the first time 0.2.0 opens it (the Mac app's built-in hub and server hubs alike). An older hub can't open it afterwards, so update server hubs along with the Mac (`git pull && sudo ./scripts/install-hub.sh`). A copy of the old database is kept next to it as `hub.db.bak-6` in case you need to roll back. Run `needs-you update` on each sender machine to get the new hook, CLI and skill.
+
 ### Added
 
 - **Questions and choices on agent cards.** When an agent asks you something, its card now says what it asked and which choices it offered, so you can decide from the pill and go answer. The title names the question (**Claude asks “Which database should we use?”: my-repo**, with `and 1 more` for a multi-part question). The body holds each question under its header with its choices listed ("- Postgres — Relational, robust"). You still answer in the agent. A plan to approve is titled **Claude wants approval for a plan** (and **Kimi wants approval for a plan**, with Kimi's plan options as steps) and shows the plan's first lines. This covers Claude Code's `AskUserQuestion` and plans, Codex's Plan-mode questions, Gemini CLI's `ask_user`, opencode's questions, Kimi's `AskUserQuestion` and plans, and the question an MCP server asks through Copilot CLI. Question and plan text is cleaned and clamped, and anything token-shaped (needs-you tokens, `sk-`, `ghp_`, bearer headers, `password=` values, long hex or base64 runs, private keys) becomes `[redacted]`. `NEEDS_YOU_AGENT_QUESTIONS=0` brings back the old cards with no question text. Codex and Gemini each get one new hook entry; run `needs-you update`, and in Codex trust the new entry once in `/hooks`. Answering from the card is below (opencode and scripts; [ADR 0009](docs/adr/0009-questions-on-cards.md)); [what each agent's hooks carry](docs/roadmap/questions.md).
