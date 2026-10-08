@@ -166,6 +166,8 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `vacuum_hours` | | 24 | How often a full `VACUUM` may run (only when over 25% is free). |
 | `redeem_fail_limit` / `redeem_fail_window_seconds` | | 10 / 600 | Failed invite redeems per client IP before `429`. |
 | `answer_rate_limit` / `answer_rate_window_seconds` | | 30 / 60 | Answers (`POST /v1/items/{id}/answer`, counted whether taken or not) per token before `429`. |
+| `answer_read_rate_limit` | | 120 | Reads of an answer (`GET /v1/items/answer`) per token per `answer_rate_window_seconds` before `429`. |
+| `answer_waits_per_token` | | 4 | Long polls of `GET /v1/items/answer` one token may hold open at once. |
 | `anti_entropy_seconds` | | 60 | How often each peer is pulled. |
 | `outbox_poll_seconds` | | 2 | Outbox check interval without a wake-up. |
 | `retry_base_seconds` / `retry_max_seconds` | | 1 / 300 | Push backoff. |

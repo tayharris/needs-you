@@ -697,6 +697,8 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     cfg.setdefault("redeem_fail_window_seconds", 600.0)
     cfg.setdefault("answer_rate_limit", 30)
     cfg.setdefault("answer_rate_window_seconds", 60.0)
+    cfg.setdefault("answer_read_rate_limit", 120)
+    cfg.setdefault("answer_waits_per_token", 4)
     cfg.setdefault("owner_token_file", None)
     cfg.setdefault("owner_token_name", DEFAULT_OWNER_TOKEN_NAME)
     cfg.setdefault("parent_pid", None)
@@ -1221,7 +1223,10 @@ class Store:
                 })
                 if changed:
                     rec["content_updated_at"] = updated
-                if question_changed:  # an answer belongs to the question it answered
+                # An answer belongs to the question it answered, and to the token that asked
+                # it: only that token reads it back (GET /v1/items/answer), so a re-post by any
+                # other token (which becomes the item's token) never inherits it.
+                if question_changed or (token is not None and token["id"] != cur["token_id"]):
                     rec.update({"answer": None, "answered_at": None, "answered_by": None})
                 self._write_item(rec)
                 self.enqueue("item", rec["id"])
@@ -2253,8 +2258,15 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
             out["question"] = _question_col(validate_question(rec.get("question")))
         except ApiError:
             out["question"] = None
-        # The answer goes with its question: none without one, or when this hub can't read it.
+        # The answer goes with its question: only to an answerable question, and only one this
+        # hub would have taken (offered labels, one per question); else none.
         answer = _peer_answer(rec.get("answer")) if out["question"] else None
+        if answer is not None:
+            q = json.loads(out["question"])
+            try:
+                answer = validate_answers(answer, q) if q.get("answerable") is True else None
+            except ApiError:
+                answer = None
         out["answer"] = json.dumps(answer) if answer else None
         try:
             out["answered_at"] = parse_ts(rec["answered_at"]) if answer and rec.get("answered_at") is not None else None
@@ -3102,6 +3114,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_answer(self, query: Dict[str, List[str]]) -> None:
         tok = self._auth("sender")
+        if self.hub.answer_read_limiter.blocked(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many answer reads from this token; try again in a minute")
+        self.hub.answer_read_limiter.fail(tok["id"])
         key = ((query.get("key") or [""])[0] or "").strip()
         if not key:
             raise _invalid("key", "key is required")
@@ -3112,6 +3127,16 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             raise _invalid("wait", "wait must be a number of seconds")
         deadline = time.monotonic() + max(0.0, min(ANSWER_WAIT_MAX_SECONDS, wait))
+        # A long poll holds a thread and a connection slot: at most `answer_waits_per_token`
+        # at once per token (a waiting connection still gives way when the hub is full).
+        if not self.hub.answer_waits.enter(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many answer waits open for this token")
+        try:
+            self._answer_loop(key, tok, deadline)
+        finally:
+            self.hub.answer_waits.leave(tok["id"])
+
+    def _answer_loop(self, key: str, tok: Dict[str, Any], deadline: float) -> None:
         while True:
             rec = self.hub.store.answer_for(key, tok["id"])
             if rec is None:
@@ -3391,6 +3416,30 @@ class RateLimiter:
                     del self.fails[k]
 
 
+class WaitCounter:
+    """Long polls open at once, per token (GET /v1/items/answer)."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = max(1, int(limit))
+        self.open: Dict[str, int] = {}
+        self.lock = threading.Lock()
+
+    def enter(self, key: str) -> bool:
+        with self.lock:
+            if self.open.get(key, 0) >= self.limit:
+                return False
+            self.open[key] = self.open.get(key, 0) + 1
+            return True
+
+    def leave(self, key: str) -> None:
+        with self.lock:
+            n = self.open.get(key, 0) - 1
+            if n > 0:
+                self.open[key] = n
+            else:
+                self.open.pop(key, None)
+
+
 class Hub:
     def __init__(self, cfg: Dict[str, Any], clock: Callable[[], float] = time.time) -> None:
         check_bind(cfg)
@@ -3403,8 +3452,12 @@ class Hub:
         self.changed = threading.Condition()
         self.workers: Dict[str, PeerWorker] = {}
         self.limiter = RateLimiter(int(cfg["redeem_fail_limit"]), float(cfg["redeem_fail_window_seconds"]))
-        # Answers per token (POST /v1/items/{id}/answer), every attempt counted.
+        # Answers per token (POST /v1/items/{id}/answer), every attempt counted; the same
+        # for reads of an answer (GET /v1/items/answer), and their long polls open at once.
         self.answer_limiter = RateLimiter(int(cfg["answer_rate_limit"]), float(cfg["answer_rate_window_seconds"]))
+        self.answer_read_limiter = RateLimiter(int(cfg["answer_read_rate_limit"]),
+                                               float(cfg["answer_rate_window_seconds"]))
+        self.answer_waits = WaitCounter(int(cfg["answer_waits_per_token"]))
         self._drop_stale_outbox()
         if cfg.get("owner_token_file"):
             self._provision_owner_token(str(cfg["owner_token_file"]))

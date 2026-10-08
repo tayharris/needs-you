@@ -282,8 +282,9 @@ when given, `answerable` as a boolean, `expires_at` only when given (in the hub'
 form); an item without one has `"question": null`. An answerable question with an item that has
 no options is refused (`400`, `question.answerable`): only offered labels can be answered.
 Senders keep the question's text in `body` as well, for clients and views that don't show the
-field. A re-post that changes the question (any part of it) clears the item's `answer`; an
-unchanged re-post keeps it.
+field. A re-post that changes the question (any part of it), or a re-post by a different
+token, clears the item's `answer`: an answer is only ever read back by the token that asked.
+An unchanged re-post by the same token keeps it.
 
 Semantics:
 
@@ -376,6 +377,11 @@ item with that key, else the last one updated.
 
 - `wait`: seconds to hold the request while there is no answer (a long poll), `0` to `25`,
   default `25`.
+
+A token may read at most 120 times a minute (`answer_read_rate_limit`) and hold at most 4
+long polls at once (`answer_waits_per_token`); past either, `429 rate_limited` at once. A
+waiting request is not kept when the hub runs out of connections (it gives way like any
+request older than `request_read_seconds`), so long polls can't starve the hub.
 
 | Status | Body | When |
 |---|---|---|
@@ -717,8 +723,10 @@ their own copies have no steps. `question` works the same way: carried as the ob
 `null`), kept when a record without the key has the receiver's `content_updated_at`. A
 replicated question this hub would refuse on POST is dropped (the item stays). `answer`,
 `answered_at` and `answered_by` work the same way (a record without an `answer` key keeps the
-receiver's answer when `content_updated_at` matches); an answer this hub couldn't read is
-dropped. Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
+receiver's answer when `content_updated_at` matches). A replicated answer is kept only if
+this hub would have taken it: the record's question is answerable and the answer names
+offered labels, one entry per question, one label for a single choice. Otherwise it is
+dropped with its `answered_at` and `answered_by` (the item stays). Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
 token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ### Push: `POST /v1/replicate`

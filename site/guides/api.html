@@ -302,8 +302,9 @@ when given, <code>answerable</code> as a boolean, <code>expires_at</code> only w
 form); an item without one has <code>"question": null</code>. An answerable question with an item that has
 no options is refused (<code>400</code>, <code>question.answerable</code>): only offered labels can be answered.
 Senders keep the question's text in <code>body</code> as well, for clients and views that don't show the
-field. A re-post that changes the question (any part of it) clears the item's <code>answer</code>; an
-unchanged re-post keeps it.</p>
+field. A re-post that changes the question (any part of it), or a re-post by a different
+token, clears the item's <code>answer</code>: an answer is only ever read back by the token that asked.
+An unchanged re-post by the same token keeps it.</p>
 <p>Semantics:</p>
 <ol>
 <li>If an item with this <code>key</code> is open (and not expired), it is updated **in place, keeping its
@@ -379,6 +380,10 @@ item with that key, else the last one updated.</p>
 <li><code>wait</code>: seconds to hold the request while there is no answer (a long poll), <code>0</code> to <code>25</code>,
 default <code>25</code>.</li>
 </ul>
+<p>A token may read at most 120 times a minute (<code>answer_read_rate_limit</code>) and hold at most 4
+long polls at once (<code>answer_waits_per_token</code>); past either, <code>429 rate_limited</code> at once. A
+waiting request is not kept when the hub runs out of connections (it gives way like any
+request older than <code>request_read_seconds</code>), so long polls can't starve the hub.</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Status</th><th>Body</th><th>When</th></tr></thead>
 <tbody>
@@ -646,8 +651,10 @@ their own copies have no steps. <code>question</code> works the same way: carrie
 <code>null</code>), kept when a record without the key has the receiver's <code>content_updated_at</code>. A
 replicated question this hub would refuse on POST is dropped (the item stays). <code>answer</code>,
 <code>answered_at</code> and <code>answered_by</code> work the same way (a record without an <code>answer</code> key keeps the
-receiver's answer when <code>content_updated_at</code> matches); an answer this hub couldn't read is
-dropped. Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
+receiver's answer when <code>content_updated_at</code> matches). A replicated answer is kept only if
+this hub would have taken it: the record's question is answerable and the answer names
+offered labels, one entry per question, one label for a single choice. Otherwise it is
+dropped with its <code>answered_at</code> and <code>answered_by</code> (the item stays). Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}</code></pre></div>

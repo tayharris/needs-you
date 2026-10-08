@@ -234,6 +234,92 @@ class ReadAnswer(AnswerCase):
         self.assertGreaterEqual(time.time() - started, 0.9)
 
 
+class AnswerSecurity(AnswerCase):
+    """Only the token that posted the question reads its answer, whoever re-posts the key."""
+
+    def test_another_sender_reposting_the_key_never_reads_the_answer(self):
+        item = self.ask()
+        self.assertEqual(self.answer(item)[0], 200)
+        other, _ = self.hub.store.add_token("sender-other", "sender")
+        self.clock.advance(1)
+        status, again = self.post({"key": "q", "title": "Claude asks", "question": QUESTION}, token=other)
+        self.assertEqual(status, 200)
+        self.assertFalse(again["changed"])
+        # the answer was the first sender's: it is gone, not handed to the re-poster
+        self.assertIsNone(again["answer"])
+        status, got = self.read(token=other)
+        self.assertNotEqual(status, 200, got)
+        self.assertNotIn("answers", got)
+        # and the first sender no longer owns the item: the same answer as "no such item"
+        status, err = self.read()
+        self.assertEqual(status, 404)
+        self.assertEqual(err, self.read(key="never-posted")[1])
+
+    def test_a_repost_by_the_same_sender_keeps_the_answer(self):
+        item = self.ask()
+        self.answer(item)
+        self.clock.advance(1)
+        self.assertIsNotNone(self.ask()["answer"])
+        self.assertEqual(self.read()[0], 200)
+
+    def test_long_polls_per_token_are_capped(self):
+        hub = self.make_hub("hub-c", answer_waits_per_token=1)
+        sender, _ = self.tokens(hub)
+        request("POST", hub.url + "/v1/items", sender, {"key": "q", "title": "t", "question": QUESTION})
+        url = hub.url + "/v1/items/answer?key=q&wait=3"
+        first = {}
+        t = threading.Thread(target=lambda: first.update(r=request("GET", url, sender, timeout=10)))
+        t.start()
+        time.sleep(0.5)
+        started = time.time()
+        status, err = request("GET", url, sender, timeout=10)
+        self.assertEqual((status, err.get("error")), (429, "rate_limited"))
+        self.assertLess(time.time() - started, 1.5)  # refused at once, not held
+        t.join(10)
+        self.assertEqual(first["r"][0], 204)
+
+    def test_reads_are_rate_limited(self):
+        hub = self.make_hub("hub-r2", answer_read_rate_limit=3)
+        sender, _ = self.tokens(hub)
+        url = hub.url + "/v1/items/answer?key=q&wait=0"
+        for _ in range(3):
+            self.assertEqual(request("GET", url, sender)[0], 404)
+        status, err = request("GET", url, sender)
+        self.assertEqual((status, err["error"]), (429, "rate_limited"))
+
+
+class PeerAnswers(HubTestCase):
+    def rec(self, **kw):
+        base = {"id": "01AAAAAAAAAAAAAAAAAAAAAAAA", "key": "k", "context": "work", "kind": "needs",
+                "priority": "normal", "title": "t", "status": "open",
+                "created_at": "2026-10-06T10:00:00.000Z", "updated_at": "2026-10-06T10:00:01.000Z",
+                "content_updated_at": "2026-10-06T10:00:00.000Z", "updated_by": "hub-a",
+                "question": QUESTION, "answered_at": "2026-10-06T10:00:01.000Z", "answered_by": "mac"}
+        base.update(kw)
+        return base
+
+    def test_a_peer_answer_must_fit_the_question(self):
+        st = self.make_hub("hub-x", start=False).store
+        iid = self.rec()["id"]
+        made_up = [
+            [{"selected": ["MySQL"]}, {"selected": ["Metrics"]}],          # not an offered label
+            [{"selected": ["Postgres", "SQLite"]}, {"selected": ["Metrics"]}],  # two for single choice
+            [{"selected": ["Postgres"]}],                                   # one question short
+        ]
+        for n, bad in enumerate(made_up):
+            st.apply_item(self.rec(answer=bad, updated_at="2026-10-06T10:00:0%d.000Z" % (n + 2)))
+            wire = hubmod.item_wire(st.get_item(iid))
+            self.assertIsNone(wire["answer"], bad)
+            self.assertIsNone(wire["answered_by"], bad)
+        # an answer to a question nobody can answer
+        plain = dict(QUESTION, answerable=False)
+        st.apply_item(self.rec(question=plain, answer=GOOD, updated_at="2026-10-06T10:00:09.000Z"))
+        self.assertIsNone(hubmod.item_wire(st.get_item(iid))["answer"])
+        # a good one is kept
+        st.apply_item(self.rec(answer=GOOD, updated_at="2026-10-06T10:00:10.000Z"))
+        self.assertEqual(hubmod.item_wire(st.get_item(iid))["answer"], GOOD)
+
+
 class Replication(HubTestCase):
     def rec(self, **kw):
         base = {"id": "01AAAAAAAAAAAAAAAAAAAAAAAA", "key": "k", "context": "work", "kind": "needs",
