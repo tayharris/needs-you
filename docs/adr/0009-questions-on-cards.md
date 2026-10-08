@@ -84,17 +84,20 @@ field.
      "items": [{
        "header": "Database",              // <= 30 chars
        "text": "Which database should we use?",   // <= 500 chars
-       "options": [{"label": "Postgres", "description": "Durable"}],  // 2-8, label <= 80, description <= 200
+       "options": [{"label": "Postgres", "description": "Durable"}],  // 0-8, label <= 80, description <= 200
        "multi_select": false
      }],                                   // 1-4 items
-     "answerable": true,                   // the sender is waiting for an answer
-     "expires_at": "2026-10-08T17:04:05Z"  // the sender stops waiting then
+     "answerable": true,                   // B2: the sender is waiting for an answer
+     "expires_at": "2026-10-08T17:04:05Z"  // B2: the sender stops waiting then
    }
    ```
 
    Same text rules as every field (no control or bidi characters), validated by the hub and
    mirrored in `Models.swift`. Unknown fields stay ignored both ways. `steps` stays for
-   to-do lists; a hook that sends `question` stops sending the choices as steps.
+   to-do lists; a hook that sends `question` stops sending the choices as steps and lists
+   them in the body instead (for clients that don't show the field yet). B1 (built on
+   `tay/question-field`) has `id` and `items`; `answerable` and `expires_at` come with B2.
+   Options may be empty (a free-text question, as Gemini and Claude's extended form allow).
 2. **Answer** `POST /v1/items/{id}/answer` (reader or owner token; the Mac app):
    `{"question_id": "toolu_01ABC", "content_updated_at": "...", "answers": [{"selected": ["Postgres"]}]}`.
    The hub accepts it only while the item is open, `answerable`, not expired, the

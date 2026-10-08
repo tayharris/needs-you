@@ -85,11 +85,12 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
      "link": {"label": "PR #42", "url": "https://github.com/example/app/pull/42"}},
     {"text": "Re-run the push", "done": false}
   ],
+  "question": null,                          // what an agent asked and the choices it offered; null when none
   "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
   "updated_at": "2026-10-06T18:04:05.456Z",  // moves on EVERY write (re-post, resolve, patch)
-  "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority or steps change
+  "content_updated_at": "2026-10-06T17:04:05.123Z", // moves only when title, body, priority, steps or question change
   "seen_at": null,
   "expires_at": null,                        // done/info default to created/re-posted + 24 h
   "superseded_by": null                      // set when this item lost a same-key merge (see Replication)
@@ -99,8 +100,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 ### Change detection: `content_updated_at`
 
 `content_updated_at` is the re-animation signal. It is set at creation and changes only when a
-re-post changes `title`, `body`, `priority` or `steps` (any step's text, link or `done`, or
-the list itself). Re-posting identical content, changing only
+re-post changes `title`, `body`, `priority`, `steps` (any step's text, link or `done`, or
+the list itself) or `question` (any part of it, or adding or removing it). Re-posting identical content, changing only
 links/source/kind/context, resolving, dismissing and setting `seen_at` all move `updated_at`
 but never `content_updated_at`.
 
@@ -153,6 +154,7 @@ Create an item, or update the open item with the same `key`.
 | `priority` | string | `urgent`, `normal` or `low` (case-insensitive) | `normal` |
 | `links` | array | ≤ 6 of `{"label": ≤ 80 chars, "url": ≤ 2,000 chars}` | `[]` |
 | `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
+| `question` | object | what an agent asked, see below | `null` |
 | `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |
 | `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h (the hub's `default_expiry_hours`, see [HUB.md](HUB.md)); `needs`: none |
 | `status` | | **rejected** whenever the key is present, even `"status": null` (use resolve or PATCH) | |
@@ -245,21 +247,46 @@ hub returns every step as `{"text", "done"}` plus `"link"` when it has one; an i
 steps has `"steps": []`. Steps are the sender's view: there is no endpoint to tick one, and
 the Mac app keeps the person's ticks locally (it offers Done once every step is ticked).
 
+**Question** ([ADR 0009](adr/0009-questions-on-cards.md)) is what an agent asked the person
+and the choices it offered, so a client can show them as choices rather than as a checklist.
+It is read-only: the person answers in the agent (an answer path is planned, not built).
+
+```jsonc
+"question": {
+  "id": "toolu_01ABC",            // optional, ≤ 200 chars: the agent's own id for the request
+  "items": [{                     // 1–4 questions, in order
+    "header": "Database",         // optional, ≤ 30 chars, one line
+    "text": "Which database should we use?",  // required, 1–500 chars; newlines allowed
+    "options": [                  // 0–8; none for a free-text question
+      {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
+    ],
+    "multi_select": false         // true: the agent takes several options
+  }]
+}
+```
+
+Text follows the same rules as every field (trimmed, no control or bidi characters; only
+`text` may hold newlines). Unknown fields are ignored. Errors name the part, for example
+`question.items[1].options[0].label`. The hub returns it normalised: `header` and
+`description` as `""` when left out, `options` as `[]`, `multi_select` as a boolean, `id` only
+when given; an item without one has `"question": null`. Senders keep the question's text in
+`body` as well, for clients and views that don't show the field.
+
 Semantics:
 
 1. If an item with this `key` is open (and not expired), it is updated **in place, keeping its
    id**. A re-post is the sender's full current view: `title`, `body`, `context`, `kind`,
-   `priority`, `links`, `steps`, `source` and `expires_at` are all replaced (omitted optional
-   fields become empty/default). `updated_at` always moves (strictly forward, even within one
-   millisecond). `content_updated_at` moves only if `title`, `body`, `priority` or `steps`
-   changed. The
+   `priority`, `links`, `steps`, `question`, `source` and `expires_at` are all replaced (omitted
+   optional fields become empty/default). `updated_at` always moves (strictly forward, even
+   within one millisecond). `content_updated_at` moves only if `title`, `body`, `priority`,
+   `steps` or `question` changed. The
    item's token becomes the re-posting token. The volume guard does not apply to updates.
 2. Otherwise a new item is created with a new id. If the token already owns 60 open,
    unexpired items, the hub returns `429 too_many_open` instead.
 
 Response: `201` when created, `200` when an existing item was updated. The body is the item
 plus `"created": true|false` and `"changed": true|false` (`changed` is true on create and when
-title/body/priority/steps changed).
+title/body/priority/steps/question changed).
 
 ### `POST /v1/items/resolve` (sender)
 
@@ -621,7 +648,9 @@ made this version). `steps` is carried as the array. A record **without** a `ste
 from a hub that predates steps: the receiver keeps its own steps for that id when the record's
 `content_updated_at` equals its own (a resolve, dismiss, seen or unchanged re-post on the old
 hub), and otherwise stores none. An empty array clears them. Older hubs ignore the field, so
-their own copies have no steps. Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
+their own copies have no steps. `question` works the same way: carried as the object (or
+`null`), kept when a record without the key has the receiver's `content_updated_at`. A
+replicated question this hub would refuse on POST is dropped (the item stays). Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
 token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ### Push: `POST /v1/replicate`
@@ -699,7 +728,7 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
    - the **lowest id wins** (ULIDs start with the creation time, so the earliest-minted item
      survives);
    - the winner takes the **freshest content**: the `title`, `body`, `priority`, `context`,
-     `kind`, `links`, `steps`, `source`, `expires_at` and `content_updated_at` of whichever record has the
+     `kind`, `links`, `steps`, `question`, `source`, `expires_at` and `content_updated_at` of whichever record has the
      greatest `(content_updated_at, updated_at, updated_by)`; `created_at` becomes the earliest,
      `seen_at` the latest;
    - every loser becomes `status: "resolved"` with `superseded_by: <winner id>`;
