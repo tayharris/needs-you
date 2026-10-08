@@ -118,6 +118,11 @@
 #                             question" and a plan card shows no plan text (default:
 #                             the question, its choices as steps and the plan's first
 #                             lines, cleaned, token-shaped text redacted, clamped)
+#   NEEDS_YOU_USAGE_ALERT_PCT, NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT, NEEDS_YOU_USAGE_ACCOUNT
+#                             Codex: on Stop, a low `info` card once its 5-hour or weekly
+#                             limit is this full (the same settings and card as
+#                             needs-you-usage for Claude), read from the newest
+#                             token_count rate_limits in the session file. Off unless set
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -277,7 +282,8 @@ fi
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
            NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
-           NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS NEEDS_YOU_ANSWER_TIMEOUT; do
+           NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS NEEDS_YOU_ANSWER_TIMEOUT \
+           NEEDS_YOU_USAGE_ALERT_PCT NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT NEEDS_YOU_USAGE_ACCOUNT; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -1642,8 +1648,163 @@ def context():
     return rc
 
 
+# ---------------------------------------------------------------- Codex usage
+# The same card as integrations/claude-code/needs-you-usage, from what Codex writes to its
+# session file: `token_count` events carry `rate_limits` = {limit_id, primary: {used_percent,
+# window_minutes: 300, resets_at}, secondary: {... 10080 ...}, plan_type, ...}. Only those
+# numbers are read; no credentials, no network but the CLI's post.
+USAGE_WINDOWS = (("primary", "5h", "5-hour", 5.0), ("secondary", "7d", "weekly", 24.0))
+USAGE_STEP = 5  # re-post only when the percentage moved this many points
+
+
+def codex_rate_limits(path):
+    """The newest `rate_limits` of Codex's own limit (limit_id "codex" or none) in the tail
+    of the session file, or None."""
+    if not path or not os.path.isfile(path):
+        return None
+    for size in (256 * 1024, 2 * 1024 * 1024):
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, 2)
+                end = fh.tell()
+                start = max(0, end - size)
+                fh.seek(start)
+                buf = fh.read(end - start)
+        except OSError:
+            return None
+        lines = buf.split(b"\n")
+        if start > 0:
+            lines = lines[1:]  # partial first line
+        for raw in reversed(lines):
+            if b'"rate_limits"' not in raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except Exception:
+                continue
+            p = d.get("payload") if isinstance(d, dict) else None
+            if not isinstance(p, dict) or p.get("type") != "token_count":
+                continue
+            rl = p.get("rate_limits")
+            if isinstance(rl, dict) and rl.get("limit_id") in (None, "codex"):
+                return rl
+        if start == 0:
+            break
+    return None
+
+
+def usage_windows(rl):
+    out = {}
+    for name, short, _, _ in USAGE_WINDOWS:
+        w = rl.get(name)
+        if not isinstance(w, dict):
+            continue
+        try:
+            pct = float(w.get("used_percent"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            resets = int(w.get("resets_at") or 0)
+        except (TypeError, ValueError):
+            resets = 0
+        out[short] = {"pct": max(0, min(100, int(pct))), "resets_at": resets}
+    return out
+
+
+def usage_pct(name):
+    try:
+        v = float(os.environ.get(name) or 0)
+    except ValueError:
+        return 0.0
+    return v if 0 < v <= 100 else 0.0
+
+
+def codex_usage():
+    account = os.environ.get("NEEDS_YOU_USAGE_ACCOUNT") or ""
+    if not re.match(r"^[A-Za-z0-9._-]{0,40}$", account):
+        account = ""
+    path = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                        "needs-you", "usage", "codex%s.json" % ("-" + account if account else ""))
+    five = usage_pct("NEEDS_YOU_USAGE_ALERT_PCT")
+    weekly_raw = os.environ.get("NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT")
+    weekly = five if weekly_raw in (None, "") else usage_pct("NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT")
+    thresholds = {"5h": five, "7d": weekly}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            state = json.load(fh)
+        state = state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        state = {}
+    if not five and not weekly and not state:
+        return 0
+    rl = codex_rate_limits(field("transcript_path"))
+    seen = usage_windows(rl) if rl else {}
+    now = time.time()
+    changed = False
+    for _, short, label, fallback_h in USAGE_WINDOWS:
+        key = "agent:%s:codex-usage%s:%s" % (host, ":" + account if account else "", short)
+        prior = state.get(short)
+        cur = seen.get(short)
+        thr = thresholds[short]
+        if cur is not None and 0 < cur["resets_at"] <= now:
+            cur = {"pct": 0, "resets_at": cur["resets_at"]}  # that window has reset since
+        if cur is None and thr:
+            continue  # no numbers this time (an API key login, or none written yet)
+        if not thr or cur is None or cur["pct"] < thr:
+            if prior is not None:
+                try:
+                    subprocess.run([os.environ["NY_CLI"], "resolve", "--key", key], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+                except Exception:
+                    pass
+                state.pop(short, None)
+                changed = True
+            continue
+        if (isinstance(prior, dict) and prior.get("resets_at") == cur["resets_at"]
+                and abs(int(prior.get("pct", -100)) - cur["pct"]) < USAGE_STEP):
+            continue
+        when = ""
+        if cur["resets_at"] > now:
+            when = time.strftime("%H:%M" if cur["resets_at"] - now < 20 * 3600 else "%a %H:%M",
+                                 time.localtime(cur["resets_at"]))
+        title = "Codex %s limit %d%% used%s" % (label, cur["pct"], ": resets " + when if when else "")
+        if account:
+            title += " (%s)" % account
+        body = ("This Codex account has used %d%% of its %s limit across every session, as Codex "
+                "records it in its session file. Pace the work, move it to a smaller model, or plan "
+                "around the reset%s." % (cur["pct"], label, " at " + when if when else ""))
+        hours = (cur["resets_at"] - now) / 3600.0 if cur["resets_at"] > now else fallback_h
+        args = [os.environ["NY_CLI"], "add", "--kind", "info", "--priority", "low", "--key", key,
+                "--title=" + title, "--body=" + body, "--agent", AGENT_ID,
+                "--expires-in", "%.2f" % max(0.05, hours)]
+        if os.environ.get("NEEDS_YOU_AGENT_CONTEXT") in ("work", "personal"):
+            args += ["--context", os.environ["NEEDS_YOU_AGENT_CONTEXT"]]
+        try:
+            rc = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=15).returncode
+        except Exception:
+            rc = 1
+        if rc == 0:
+            state[short] = cur
+            changed = True
+    if changed:
+        if state:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = "%s.%d.tmp" % (path, os.getpid())
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(state, fh)
+            os.replace(tmp, path)
+        else:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return 0
+
+
 try:
-    rc = {"notify": notify, "context": context, "ask": ask, "reply": reply}.get(mode, lambda: 0)()
+    rc = {"notify": notify, "context": context, "ask": ask, "reply": reply,
+          "codex_usage": codex_usage}.get(mode, lambda: 0)()
 except Exception:
     rc = 1
 raise SystemExit(rc)
@@ -1767,6 +1928,16 @@ case "$mode" in
     # as notificationType) and Kimi (Stop).
     ntype=$(json_str notification_type)
     [ -n "$ntype" ] || ntype=$(json_str notificationType)
+    # Codex's turn ended: the usage-limit card (off unless NEEDS_YOU_USAGE_ALERT_PCT or
+    # NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT is set; with neither, python starts only to clear a card
+    # it posted before). Before the turn card, which may be skipped below.
+    if [ "$agent" = codex ] && [ "$(json_str hook_event_name)" = Stop ]; then
+      usage_glob=("${XDG_STATE_HOME:-$HOME/.local/state}"/needs-you/usage/codex*.json)
+      if [ -n "$NEEDS_YOU_USAGE_ALERT_PCT$NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT" ] || [ -f "${usage_glob[0]}" ]; then
+        run_py codex_usage >/dev/null
+        log "codex usage $host -> $?"
+      fi
+    fi
     # A question card the turn ended under no longer applies: the question was answered (its
     # PostToolUse resolves first) or never shown (Codex refuses request_user_input outside Plan
     # mode after its PreToolUse ran; Kimi's auto mode denies AskUserQuestion). Clear it here, so

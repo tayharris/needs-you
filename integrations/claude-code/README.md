@@ -208,6 +208,8 @@ Then in `~/.config/needs-you/env`:
 | `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
 | `NEEDS_YOU_USAGE_ACCOUNT` | none | A label (letters, digits, `.` `_` `-`) for a machine with more than one Claude login, e.g. per `CLAUDE_CONFIG_DIR`; it goes in the key and the title |
 
+Codex gets the same card from these settings through its hooks (read from its session file; see [integrations/codex](../codex/README.md#what-gets-posted)).
+
 The card is keyed `agent:<host>:claude-usage[:<account>]:5h` (or `:7d`), so every session on the machine updates the same one. It expires when the window resets, is re-posted only when the percentage moved 5 points, and is resolved when usage is back under the threshold. The post runs detached, so the status line never waits on the hub. State is in `~/.local/state/needs-you/usage/`.
 
 ## Skill

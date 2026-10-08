@@ -100,7 +100,7 @@ How others do multi-account: **Orca** registers each login (`orca account add`, 
 Principles: numbers only, read locally by the agent's own machine, never credentials, never a token or email to the hub. The agent pushes; needs-you doesn't fetch.
 
 1. **Threshold cards (built, Claude):** `needs-you-usage` wraps the status line, posts a low `info` card at `NEEDS_YOU_USAGE_ALERT_PCT` (weekly: `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT`), key `agent:<host>:claude-usage[:<account>]:5h|7d`, expiring at the reset, re-posted per 5 points, resolved below the line. `NEEDS_YOU_USAGE_ACCOUNT` separates logins (e.g. one per `CLAUDE_CONFIG_DIR`).
-2. **Codex threshold cards** (next, no wire change): the same check on the Codex `Stop` hook path, reading the newest `token_count.rate_limits` from the tail of the session JSONL (the hook already tails Claude transcripts the same way). Touches the shared hook: wait for the questions/choices work to land.
+2. **Codex threshold cards** (**built**, no wire change; the same settings as Claude's): the same check on the Codex `Stop` hook path, reading the newest `token_count.rate_limits` from the tail of the session JSONL (the hook already tails Claude transcripts the same way). Touches the shared hook: wait for the questions/choices work to land.
 3. **Orca accounts poller** (after checking real `rateLimits` values): `needs-you usage --from orca` run by `flush` every 5 minutes on a host with Orca accounts, the same thresholds per provider and account (label = a hash or the account's Orca id, never the email).
 4. **A meter in the pill/panel** (wire change): a small two-bar meter (5 h, weekly) per provider/account next to the count, colour only past the threshold. Needs the numbers on the Mac: either the status record from 2C (`status` key `usage:claude:<account>` with `progress` and `resets_at`), or a dedicated `usage` object. Either is an **ADR + api-change**. Config in Settings: which providers, session vs weekly vs both, thresholds, hide when under N%. Until then the threshold card is the meter.
 
@@ -111,7 +111,7 @@ Principles: numbers only, read locally by the agent's own machine, never credent
 | 1 | Claude usage threshold card (`needs-you-usage`) | medium | small | none | **built**; default thresholds, and whether `--claude-hooks` should install it into `statusLine` (it would wrap any existing one) |
 | 2 | GitHub poller `merged` reason → `done` card | high | small | none | **built**, on by default (`-merged` turns it off); the owner can flip the default |
 | 3 | Doctor INFO "many worktrees → Orca" + installer hint | low-medium | small | none | **built** (3+ git worktrees in the current repo; names Orca and the needs-you Orca guide, no outside link). Open: recommend Orca by name/link? The join page sentence isn't done |
-| 4 | Codex usage threshold card from session JSONL | medium | small-medium | none (shared hook) | same thresholds as Claude? |
+| 4 | Codex usage threshold card from session JSONL | medium | small-medium | none (shared hook) | **built**, sharing Claude's settings (`NEEDS_YOU_USAGE_ALERT_PCT`...); separate Codex thresholds only if the owner wants them |
 | 5 | Mac status strip from local Orca (`worktree ps`), all paired environments | high for Orca users | medium | none (app-only) | show it by default when `orca` is present? |
 | 6 | `needs-you orca` read-only summary for agents | low-medium | small | none | — |
 | 7 | Orca accounts usage poller | medium | medium | none | after verifying `rateLimits` values on a host with managed accounts |

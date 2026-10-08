@@ -49,7 +49,7 @@ def opt(argv, name):
     raise ValueError(name)
 
 
-class CodexHook(unittest.TestCase):
+class CodexHookBase(unittest.TestCase):
     """The hook with a fake `needs-you` that records its argv."""
 
     def setUp(self):
@@ -90,6 +90,8 @@ class CodexHook(unittest.TestCase):
                                  "tool_name": tool, "tool_input": tool_input})
         return self.calls()[-1]
 
+
+class CodexHook(CodexHookBase):
     # -- cards -------------------------------------------------------------
     def test_bash_names_only_the_program(self):
         argv = self.permission("Bash", {"command": "FOO=1 sudo make deploy TOKEN=%s" % SECRET,
@@ -268,6 +270,134 @@ class CodexHook(unittest.TestCase):
         self.run_hook("start", {"hook_event_name": "SessionStart", "source": "compact"}, NY_HOOK_PPID=daemon)
         self.assertEqual([c[2] for c in self.wait_calls(n + 1)[n:]], [opt(self.calls()[n - 1], "--key")])
         self.assertTrue(os.path.exists(os.path.join(self.state, "019a-other")))
+
+
+def token_count(primary, secondary, limit_id="codex", resets=(None, None)):
+    now = int(time.time())
+    return {"timestamp": "2026-10-08T09:00:00.000Z", "type": "event_msg",
+            "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 1}},
+                        "rate_limits": {"limit_id": limit_id, "limit_name": None,
+                                        "primary": {"used_percent": primary, "window_minutes": 300,
+                                                    "resets_at": resets[0] or now + 3 * 3600},
+                                        "secondary": {"used_percent": secondary, "window_minutes": 10080,
+                                                      "resets_at": resets[1] or now + 4 * 86400},
+                                        "credits": None, "plan_type": "plus"}}}
+
+
+class CodexUsage(CodexHookBase):
+    """The usage-limit card on Codex's Stop, from `token_count.rate_limits` in its session file."""
+
+    def setUp(self):
+        super().setUp()
+        self.rollout = os.path.join(self.home, ".codex", "sessions", "2026", "10", "08", "rollout-x.jsonl")
+        os.makedirs(os.path.dirname(self.rollout))
+        self.usage_state = os.path.join(self.home, ".local", "state", "needs-you", "usage")
+
+    def write_rollout(self, *events):
+        with open(self.rollout, "a") as fh:
+            for e in events:
+                fh.write(json.dumps(e) + "\n")
+
+    def stop(self, **env):
+        self.run_hook("notify", {"hook_event_name": "Stop", "transcript_path": self.rollout}, **env)
+
+    def usage_calls(self):
+        return [c for c in self.calls() if any("codex-usage" in a for a in c)]
+
+    def test_off_by_default(self):
+        self.write_rollout(token_count(99.0, 99.0))
+        self.stop()
+        self.assertEqual(self.usage_calls(), [])
+        self.assertEqual([c[0] for c in self.calls()], ["add"])  # just the turn card
+        self.assertFalse(os.path.exists(self.usage_state))
+
+    def test_card_past_the_threshold_then_resolved(self):
+        self.write_rollout({"type": "session_meta", "payload": {"id": "x"}}, token_count(10.0, 5.0),
+                           {"type": "response_item", "payload": {"type": "message", "content": SECRET}},
+                           token_count(51.0, 41.0), token_count(97.0, 97.0, limit_id="codex_other"))
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="50", NEEDS_YOU_AGENT_TURN_CARDS="0")
+        calls = self.usage_calls()
+        self.assertEqual(len(calls), 1, self.calls())  # 7d at 41% is under the line; codex_other ignored
+        argv = calls[0]
+        self.assertEqual(argv[:2], ["add", "--kind"])
+        self.assertEqual(opt(argv, "--kind"), "info")
+        self.assertEqual(opt(argv, "--priority"), "low")
+        self.assertRegex(opt(argv, "--key"), r"^agent:[A-Za-z0-9._-]+:codex-usage:5h$")
+        self.assertRegex(opt(argv, "--title"), r"^Codex 5-hour limit 51% used: resets \d\d:\d\d$")
+        self.assertEqual(opt(argv, "--agent"), "codex")
+        self.assertAlmostEqual(float(opt(argv, "--expires-in")), 3.0, delta=0.1)
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
+        self.assertEqual(self.calls(), calls)  # turn cards off: the usage card still posts
+
+        # The same numbers again: no re-post. 5 points more: re-posted.
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="50", NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertEqual(len(self.usage_calls()), 1)
+        self.write_rollout(token_count(56.0, 41.0))
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="50", NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertEqual(len(self.usage_calls()), 2)
+        self.assertIn("56%", opt(self.usage_calls()[-1], "--title"))
+
+        # A weekly threshold of its own.
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="50", NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT="40",
+                  NEEDS_YOU_AGENT_TURN_CARDS="0")
+        weekly = self.usage_calls()[-1]
+        self.assertTrue(opt(weekly, "--key").endswith(":codex-usage:7d"))
+        self.assertRegex(opt(weekly, "--title"), r"^Codex weekly limit 41% used: resets \w{3} \d\d:\d\d$")
+
+        # Back under the line (a new window): both resolved, the state file gone.
+        self.write_rollout(token_count(3.0, 1.0))
+        n = len(self.calls())
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="50", NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertEqual(sorted(c[2].rsplit(":", 1)[1] for c in self.calls()[n:] if c[0] == "resolve"), ["5h", "7d"])
+        self.assertFalse(os.path.exists(os.path.join(self.usage_state, "codex.json")))
+
+    def test_threshold_turned_off_clears_the_card(self):
+        self.write_rollout(token_count(90.0, 10.0))
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="80")
+        key = opt(self.usage_calls()[0], "--key")
+        self.stop()  # setting removed: the state file alone brings python back to clear it
+        self.assertEqual(self.usage_calls()[-1], ["resolve", "--key", key])
+        self.assertFalse(os.path.exists(os.path.join(self.usage_state, "codex.json")))
+
+    def test_window_that_has_reset_is_cleared(self):
+        self.write_rollout(token_count(90.0, 10.0))
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="80")
+        self.write_rollout(token_count(90.0, 10.0, resets=(int(time.time()) - 60, None)))
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="80")
+        self.assertEqual(self.usage_calls()[-1][0], "resolve")
+
+    def test_account_label_and_env_file(self):
+        conf = os.path.join(self.home, ".config", "needs-you")
+        os.makedirs(conf)
+        with open(os.path.join(conf, "env"), "w") as fh:
+            fh.write("NEEDS_YOU_USAGE_ALERT_PCT=80\nNEEDS_YOU_USAGE_ACCOUNT=team-2\nNEEDS_YOU_AGENT_CONTEXT=personal\n")
+        self.write_rollout(token_count(85.0, 10.0))
+        self.stop()
+        argv = self.usage_calls()[0]
+        self.assertTrue(opt(argv, "--key").endswith(":codex-usage:team-2:5h"))
+        self.assertTrue(opt(argv, "--title").endswith(" (team-2)"))
+        self.assertEqual(opt(argv, "--context"), "personal")
+        self.assertTrue(os.path.exists(os.path.join(self.usage_state, "codex-team-2.json")))
+
+    def test_no_numbers_no_card(self):
+        for path in (None, os.path.join(self.home, "missing.jsonl"), self.rollout):
+            self.run_hook("notify", {"hook_event_name": "Stop", "transcript_path": path},
+                          NEEDS_YOU_USAGE_ALERT_PCT="1")
+        with open(self.rollout, "w") as fh:
+            fh.write("not json\n" + json.dumps({"type": "event_msg", "payload": {"type": "token_count",
+                                                                                  "rate_limits": None}}) + "\n")
+        self.stop(NEEDS_YOU_USAGE_ALERT_PCT="1")
+        self.assertEqual(self.usage_calls(), [])
+
+    def test_only_on_stop_and_only_for_codex(self):
+        self.write_rollout(token_count(99.0, 99.0))
+        self.permission("Bash", {"command": "ls"})
+        self.run_hook("notify", {"hook_event_name": "Stop", "transcript_path": self.rollout},
+                      agent="kimi", NEEDS_YOU_USAGE_ALERT_PCT="50")
+        self.run_hook("stop", {"hook_event_name": "Stop", "transcript_path": self.rollout},
+                      agent=None, NEEDS_YOU_USAGE_ALERT_PCT="50")
+        time.sleep(0.5)
+        self.assertEqual(self.usage_calls(), [])
 
 
 class CodexHooksJson(unittest.TestCase):
