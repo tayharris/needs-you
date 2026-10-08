@@ -161,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // An answerable question: options are buttons; picks wait for Send.
                 guard let item = model.needsItems.first(where: { $0.question?.answerable == true }),
                       let q = item.question else { return }
+                model.settings.ui.cardBodies = .full  // every option shown, as by default
                 model.scrollTarget = item.id  // the whole card, Send included, in view
                 for (i, qi) in q.items.enumerated() {
                     if let label = qi.options.first?.label { model.pickOption(item, question: i, label: label) }
