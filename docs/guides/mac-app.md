@@ -220,8 +220,7 @@ Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a s
 <img src="../../site/img/settings-inbox.png" width="380" alt="Settings, Built-in hub: How it works in three lines, then Run hub on this Mac, on and Running."> <img src="../../site/img/settings-connect.png" width="380" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite.">
 
 - **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up, and **Move to Applications** when the app runs from anywhere else ([above](#opened-it-from-downloads-or-the-disk-image)).
-- **Your inbox:** three lines on how it works (your machines and agents send alerts, this Mac holds them because it's the hub, the pill shows them), **Run hub on this Mac** (on by default) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
-- **General:** your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.
+
 Under **Hubs and machines**:
 
 - **Built-in hub:** three lines on how it works (senders post alerts, a hub stores them and this app has one built in, the pill shows them), **Run hub on this Mac** (on by default; off to use only a server hub) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
