@@ -143,7 +143,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     title: "feature/old-search has 2 unpushed commits",
                     source: ItemSource(host: "devbox", agent: "cron:cleanup"), createdAt: Date())
             }),
+            ("6e-preview-question", { model in
+                // An agent's question arriving: the question and its first choices.
+                model.previewItem = model.needsItems.first { $0.question != nil }
+            }),
+            ("6f-question-compact", { model in
+                // Card text "First lines": the question card says "Asks: … · N choices".
+                model.previewItem = nil
+                model.settings.ui.cardBodies = .preview
+                model.expand(byUser: true, focusing: model.needsItems.first { $0.question != nil }?.id)
+            }),
+            ("6g-question-all", { model in
+                // Clicking the summary shows every question and choice.
+                if let item = model.needsItems.first(where: { $0.question != nil }) { model.toggleCardExpanded(item) }
+            }),
             ("7-summary", { [weak self] model in
+                model.settings.ui.cardBodies = .full
                 model.collapse()
                 model.previewItem = nil
                 self?.phase3?.showSummaryNow()

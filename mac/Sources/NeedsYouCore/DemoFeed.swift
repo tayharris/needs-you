@@ -108,7 +108,8 @@ public actor DemoFeed: ItemFeed {
     ]
 
     /// The seed set. Covers every kind, priority and context, an allowed and a disallowed
-    /// link, and a body using the full limited-markdown feature set.
+    /// link, a body using the full limited-markdown feature set, steps, and an agent's
+    /// question with its choices.
     public static func fixture(now: Date = Date()) -> [Item] {
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
         return [
@@ -162,6 +163,27 @@ public actor DemoFeed: ItemFeed {
                 ],
                 source: ItemSource(host: "photos", agent: "cron:backup"),
                 createdAt: ago(300)
+            ),
+            Item(
+                id: "01DEMO00000000000000000007", key: "claude-code:devbox:acme-web", context: .work,
+                kind: .needs, priority: .normal,
+                title: "Claude asks \u{201C}Which database should the service use?\u{201D} and 1 more: acme-web",
+                body: "**Database** · choose one\nWhich database should the service use?\n- Postgres — Mature, already used by the team.\n- SQLite — Zero ops, single file.\n\n"
+                    + "**Extras** · choose any\nWhich extras should it ship with?\n- Metrics\n- Tracing — OpenTelemetry\n\nAnswer in Claude.\n\nFolder: `~/src/acme-web`",
+                links: [ItemLink(label: "VS Code", url: "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-web")],
+                question: ItemQuestion(id: "toolu_demo", items: [
+                    ItemQuestionItem(header: "Database", text: "Which database should the service use?", options: [
+                        ItemQuestionOption(label: "Postgres (Recommended)", detail: "Mature, already used by the team."),
+                        ItemQuestionOption(label: "SQLite", detail: "Zero ops, single file."),
+                        ItemQuestionOption(label: "DynamoDB", detail: "Managed, but a new dependency."),
+                    ]),
+                    ItemQuestionItem(header: "Extras", text: "Which extras should it ship with?", options: [
+                        ItemQuestionOption(label: "Metrics"),
+                        ItemQuestionOption(label: "Tracing", detail: "OpenTelemetry"),
+                    ], multiSelect: true),
+                ]),
+                source: ItemSource(host: "devbox", agent: "claude-code", project: "acme-web"),
+                createdAt: ago(3)
             ),
             Item(
                 id: "01DEMO00000000000000000005", key: "acme:redo-fixer:run", context: .work,
