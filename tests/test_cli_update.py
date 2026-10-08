@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -163,6 +164,39 @@ class Update(UpdateCase):
         self.assertEqual(sorted(os.listdir(self.bin)), ["needs-you"])    # no temp files
         r = self.run_cli("update", urls=[h.url])
         self.assertIn("already up to date", r.stdout)
+
+    def test_one_update_at_a_time(self):
+        # Two updates at once (two hooks both told "update requested") interleaved: the second
+        # backed up files the first had already replaced, so --rollback put the new ones "back".
+        import fcntl
+        h = self.hub()
+        old = b"old skill\n# needs-you-version: 0.0.1\n"
+        skill = self.install(".claude/skills/needs-you/SKILL.md", data=old)
+        state = os.path.join(self.home, ".local", "state", "needs-you")
+        os.makedirs(state, exist_ok=True)
+        with open(os.path.join(state, "update.lock"), "a") as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+            e = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "2",
+                 "NEEDS_YOU_HOST": "testbox", "NEEDS_YOU_URLS": h.url, "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_GH": "none"}
+            p = subprocess.Popen([sys.executable, self.cli, "-q", "update"], env=e, cwd=self.tmp,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            time.sleep(1.5)
+            self.assertIsNone(p.poll())          # waiting for the other update
+            self.assertEqual(read(skill), old)
+        p.communicate(timeout=60)
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual(read(skill), read(SKILL))
+        for _ in range(3):  # and two at once leave a rollback that restores the old files
+            with open(skill, "wb") as fh:
+                fh.write(old)
+            ps = [subprocess.Popen([sys.executable, self.cli, "-q", "update"], env=e, cwd=self.tmp,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
+            for q in ps:
+                q.communicate(timeout=60)
+            self.run_cli("update", "--rollback", urls=[h.url])
+            self.assertEqual(read(skill), old)
+            with open(self.cli, "wb") as fh:  # rollback put the old CLI back too: the new one again
+                fh.write(read(CLI))
 
     def test_check_changes_nothing(self):
         h = self.hub()

@@ -3106,8 +3106,47 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
     return "updated %s: %s -> %s" % (_tilde(path), change["from"] or "?", change["to"])
 
 
+UPDATE_LOCK_WAIT_SECONDS = 120.0
+
+
+def _update_lock():  # type: ignore[no-untyped-def]
+    """One update (or rollback) at a time on this machine: two at once (two hooks both told
+    "update requested") interleave, and the second backs up files the first already replaced,
+    so --rollback restores the new ones. Waits for the other run (then re-plans: usually
+    nothing is left to do); None when it can't be had."""
+    try:
+        import fcntl
+        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
+        fd = os.open(os.path.join(state_dir(), "update.lock"),
+                     os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        fh = os.fdopen(fd, "a")
+    except (OSError, ImportError):
+        return None
+    deadline = time.monotonic() + UPDATE_LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fh
+        except OSError:
+            if time.monotonic() >= deadline:
+                fh.close()
+                return None
+            time.sleep(0.2)
+
+
 def rollback(quiet: bool, as_json: bool) -> int:
     """`needs-you update --rollback`: put back the files the last update replaced."""
+    lock = _update_lock()
+    if lock is None:
+        warn("another needs-you update is running; try --rollback again when it's done")
+        return 1
+    try:
+        return _rollback(quiet, as_json)
+    finally:
+        lock.close()
+
+
+def _rollback(quiet: bool, as_json: bool) -> int:
     backups = _read_state().get("backups") or {}
     restored, errors = [], []
     for name, info in sorted(backups.items(), key=lambda kv: kv[0] == "needs-you"):
@@ -3179,6 +3218,23 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
            allow_downgrade: bool = False, from_flush: bool = False) -> int:
     """`needs-you update`. Exit 0 when up to date or updated (always with --auto); 1 when the
     update hub couldn't serve one, it was refused, or a file couldn't be replaced."""
+    if check:
+        return _update(cfg, check, auto, quiet, as_json, allow_downgrade, from_flush)
+    lock = _update_lock()
+    if lock is None:
+        if not quiet:
+            warn("another needs-you update is running; not starting a second one")
+        if as_json:
+            print(json.dumps({"ok": False, "errors": ["another update is running"]}, sort_keys=True))
+        return 0 if auto else 1
+    try:
+        return _update(cfg, check, auto, quiet, as_json, allow_downgrade, from_flush)
+    finally:
+        lock.close()
+
+
+def _update(cfg: Config, check: bool, auto: bool, quiet: bool, as_json: bool, allow_downgrade: bool,
+            from_flush: bool) -> int:
     result: Dict[str, Any] = {"ok": False, "cli": VERSION, "hub": None, "hub_version": None,
                               "changes": [], "applied": [], "notes": [], "errors": []}
     say = (lambda msg: None) if quiet or as_json else print  # noqa: E731
