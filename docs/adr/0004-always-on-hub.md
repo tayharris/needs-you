@@ -2,6 +2,7 @@
 
 - Status: **Proposed**
 - Date: 2026-10-06
+- Phases 1–2 (the Mac's hub peering with an always-on hub, the conformance suite): designed in [0012](0012-mac-hub-peers.md)
 
 ## Context
 

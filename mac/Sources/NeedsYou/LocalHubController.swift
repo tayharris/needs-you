@@ -41,7 +41,7 @@ final class LocalHubController: ObservableObject {
     private let log = Logger(subsystem: AppIdentity.logSubsystem, category: "hub")
 
     private var process: Process?
-    private var plan: LocalHubPlan?
+    private(set) var plan: LocalHubPlan?
     private var generation = 0
     private var stopping = false
     private var backoff: TimeInterval = 1
@@ -66,6 +66,11 @@ final class LocalHubController: ObservableObject {
 
     static var dbURL: URL { supportDirectory.appendingPathComponent("hub.db") }
     static var ownerTokenURL: URL { supportDirectory.appendingPathComponent("owner.token") }
+    /// A mesh secret for hand-set peers (ADR 0012; peers from a peer invite don't use it).
+    static var peerSecretURL: URL { supportDirectory.appendingPathComponent("peer-secret") }
+    /// Hand-set peers: `defaults write <app id> localHubPeers -array http://hub-a.<tailnet>.ts.net:8765`,
+    /// with the mesh's secret in `peerSecretURL` (mode 600). Advanced; peer invites need neither.
+    static let handSetPeersKey = "localHubPeers"
 
     /// The hub script: NEEDS_YOU_HUB_SCRIPT, else the bundle, else the repo (for `swift run`).
     static func hubScript() -> URL? {
@@ -222,6 +227,9 @@ final class LocalHubController: ObservableObject {
             let ip = TailnetAddress.current()
             return (ip, ip == nil ? nil : Self.magicDNSName())
         }.value
+        let handSet = UserDefaults.standard.stringArray(forKey: Self.handSetPeersKey) ?? []
+        let secretPath: String? = !handSet.isEmpty && PeerSecretFile.usable(at: Self.peerSecretURL)
+            ? Self.peerSecretURL.path : nil
         return LocalHubPlan(
             script: script,
             dbPath: Self.dbURL.path,
@@ -229,7 +237,9 @@ final class LocalHubController: ObservableObject {
             hubID: LocalHub.hubID(fromHostName: Self.localHostName()),
             tailnetIP: ip,
             magicDNSName: dns,
-            parentPID: getpid()
+            parentPID: getpid(),
+            peers: handSet,
+            peerSecretPath: secretPath
         )
     }
 

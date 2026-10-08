@@ -9,6 +9,8 @@
 #                                 (needs hdiutil, so macOS only; skipped with a message elsewhere)
 #   needs-you-server-X.Y.Z.tar.gz hub, CLI, scripts, deploy, integrations, docs (git archive HEAD)
 #   needs-you-cli-X.Y.Z           the sender CLI, one file
+#   install-hub.sh                the server installer (curl ... | sudo bash -s -- --join <link>);
+#                                 it installs this release's server tarball
 #   release-manifest.json         version, commit, workflow run, test result, min macOS,
 #                                 and each asset above with its sha256 and size. The Mac
 #                                 app's updater installs only releases that carry it
@@ -56,7 +58,8 @@ for f in integrations/claude-code/needs-you-hook.sh integrations/claude-code/ski
          integrations/grok/grok-hooks.json integrations/grok/install-grok-hooks.sh \
          integrations/cursor/cursor-hooks.json integrations/cursor/install-cursor-hooks.sh \
          integrations/cline/install-cline-hooks.sh integrations/aider/install-aider-notifications.sh \
-         integrations/agent-instructions/needs-you.md integrations/claude-code/needs-you-usage; do
+         integrations/agent-instructions/needs-you.md integrations/claude-code/needs-you-usage \
+         scripts/install-hub.sh; do
   got=$(sed -n 's/.*needs[-_]you[-_]version"\{0,1\}: *"\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$ROOT/$f" | head -n 1)
   [ "$got" = "$V" ] || die "$f has version stamp ${got:-none}, VERSION file has $V"
 done
@@ -94,6 +97,9 @@ git -C "$ROOT" archive --format=tar.gz --prefix="needs-you-$V/" -o "$OUT/needs-y
   hub cli scripts deploy integrations docs README.md CHANGELOG.md VERSION LICENSE
 cp "$ROOT/cli/needs-you" "$OUT/needs-you-cli-$V"
 chmod 755 "$OUT/needs-you-cli-$V"
+# The server installer on its own, from the same commit as the tarball: a peer invite's
+# one-liner pipes it from this release, and it installs this release's tarball (ADR 0012).
+git -C "$ROOT" show HEAD:scripts/install-hub.sh >"$OUT/install-hub.sh"
 
 if command -v sha256sum >/dev/null 2>&1; then sum() { sha256sum "$@"; }; else sum() { shasum -a 256 "$@"; }; fi
 min_macos=$(sed -n 's/.*\.macOS(\.v\([0-9][0-9]*\)).*/\1/p' "$ROOT/mac/Package.swift" | head -n 1)
@@ -102,7 +108,7 @@ commit=${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD)}
 (
   cd "$OUT"
   assets=()
-  for f in "NeedsYou-$V-macos.zip" "NeedsYou-$V.dmg" "needs-you-server-$V.tar.gz" "needs-you-cli-$V"; do
+  for f in "NeedsYou-$V-macos.zip" "NeedsYou-$V.dmg" "needs-you-server-$V.tar.gz" "needs-you-cli-$V" install-hub.sh; do
     [ -f "$f" ] && assets+=("$f")
   done
   # Written only here, after the release job's `needs: test`, and listing every asset, so

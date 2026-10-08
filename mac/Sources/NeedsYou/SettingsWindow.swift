@@ -293,6 +293,10 @@ struct SettingsView: View {
             thisMacSection
             if let reach = runningReach {
                 addressesSection(reach)
+                // Talks to the hub on this Mac, so not in a snapshot tour.
+                if showcase == nil, settings.localHubToken != nil {
+                    AlwaysOnHubSection(settings: settings, reach: reach, hubID: localHub.plan?.hubID)
+                }
             }
             extra[.inbox]
         case .connect:
@@ -544,7 +548,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("You don't need anything here: this app already runs its built-in hub. Use this page only to:")
                 Text("• **Join another hub:** show alerts from a hub another Mac or a server runs, with a link made for this Mac.")
-                Text("• **Use an always-on server hub,** so alerts land somewhere while this Mac sleeps.")
+                Text("• **Read about always-on server hubs,** which keep alerts while this Mac sleeps (you add one in Built-in hub).")
                 Text("• **Add a hub by URL and token,** if you were given those instead of a link.")
             }
             .font(.callout)
@@ -554,10 +558,14 @@ struct SettingsView: View {
 
     private var serverHubsSection: some View {
         Section {
-            Text("A server hub is the same hub, running all the time on a Linux server or VM on your tailnet. Set it up on the server with `scripts/install-hub.sh`, then join it here with a link from its admin. Server hubs copy alerts to each other, not yet to this app's built-in hub: the app shows one hub at a time, the built-in one first, so to see a server hub's alerts all the time turn off Run hub on this Mac.")
+            Text("A server hub is the same hub, running all the time on a Linux server or VM on your tailnet. To add one, use Built-in hub → Always-on hub: it makes a one-use link, and one command on the server installs a hub and pairs it with this app's built-in hub. The two then copy every alert to each other, and links you make here list both, so senders use the server while this Mac sleeps. You don't join it here.")
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
-            Link("Server hub guide (HUB.md)", destination: SettingsLinks.serverHubGuide())
-                .font(.callout)
+            HStack {
+                Link("Server hub guide (HUB.md)", destination: SettingsLinks.serverHubGuide())
+                    .font(.callout)
+                Spacer()
+                Button("Built-in hub…") { navigation.tab = .inbox }
+            }
         } header: {
             Text("Always-on server hubs")
         } footer: {
@@ -1063,7 +1071,7 @@ struct SettingsView: View {
     }
 
     private func copyButton(_ title: String, _ text: String) -> some View {
-        CopyButton(title: title, text: text)
+        SettingsCopyButton(title: title, text: text)
     }
 
     private func isWorking(_ status: ConnectController.Status?) -> Bool {
@@ -1309,7 +1317,7 @@ private struct SettingsPageHeader: View {
 }
 
 /// A Copy button that says "Copied" for a moment after a click.
-private struct CopyButton: View {
+struct SettingsCopyButton: View {
     let title: String
     let text: String
     @State private var copied = false
@@ -1342,7 +1350,7 @@ private struct AddressRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            CopyButton(title: "Copy", text: url)
+            SettingsCopyButton(title: "Copy", text: url)
         }
     }
 }

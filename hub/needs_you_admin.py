@@ -10,20 +10,30 @@
     needs_you_admin.py token revoke ci-myrepo
     needs_you_admin.py token request-update devbox           # ask that machine to update
     needs_you_admin.py token clear-update devbox             # withdraw the request
+    needs_you_admin.py invite create hub-b --role peer       # pair another hub with this one
+    needs_you_admin.py peer join http://hub-a.example.ts.net:8765/join/nyi_...  # redeem one here
+    needs_you_admin.py peer list                             # every peer (never the secrets)
+    needs_you_admin.py peer remove hub-b                     # by hub id, URL or name
 
 Config: --config, else $NEEDS_YOU_HUB_CONFIG, else ~/.config/needs-you/hub.json (user
 install), else /etc/needs-you/hub.json (system install). --db overrides the database path.
 
 Tokens and invite codes are stored as sha256 hashes; the plaintext is printed once. Changes
 are queued in the hub's peer outbox, so the running hub replicates them to every peer.
+Peer secrets (from `peer join`, or a peer invite another hub redeemed here) stay in the
+database and are never printed; the running hub picks up added and removed peers within 5 s.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import socket
 import sys
-from typing import List, Optional
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -77,16 +87,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     isub = inv.add_subparsers(dest="cmd")
     ic = isub.add_parser("create", help="create an invite link (printed once)")
     ic.add_argument("name", help="name prefix for the tokens it mints, e.g. my-server (-> my-server-<host>)")
-    ic.add_argument("--role", choices=hubmod.ROLES, default="sender")
+    ic.add_argument("--role", choices=hubmod.INVITE_ROLES, default="sender",
+                    help="sender, reader, owner (a Mac app), or peer (another hub; one use)")
     ic.add_argument("--uses", type=int, default=1, help="how many machines may redeem it (default 1)")
-    ic.add_argument("--ttl", type=float, default=72.0, metavar="HOURS", help="lifetime (default 72)")
+    ic.add_argument("--ttl", type=float, default=None, metavar="HOURS",
+                    help="lifetime (default 72; a peer invite 1, at most 24)")
     il = isub.add_parser("list", help="list live invites")
     il.add_argument("--all", action="store_true", help="include used-up, revoked and expired ones")
     ir = isub.add_parser("revoke", help="revoke an invite by name or id")
     ir.add_argument("name_or_id")
 
+    peer = sub.add_parser("peer", help="hubs this hub replicates with")
+    psub = peer.add_subparsers(dest="cmd")
+    pj = psub.add_parser("join", help="redeem another hub's peer invite (its join URL) for this hub")
+    pj.add_argument("link", help="the peer invite's join URL, http(s)://<hub>/join/nyi_...")
+    psub.add_parser("list", help="list peers (never shows secrets)")
+    pr = psub.add_parser("remove", help="stop replicating with a peer from a peer invite")
+    pr.add_argument("which", help="its hub id, URL or name")
+
     args = p.parse_args(argv)
-    if args.group not in ("token", "invite") or not args.cmd:
+    if args.group not in ("token", "invite", "peer") or not args.cmd:
         p.print_help()
         return 2
 
@@ -101,6 +121,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.group == "token":
             return token_cmd(args, cfg, store)
+        if args.group == "peer":
+            return peer_cmd(args, cfg, store)
         return invite_cmd(args, cfg, store)
     finally:
         store.close()
@@ -170,8 +192,10 @@ def token_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
 
 def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
     if args.cmd == "create":
+        ttl = args.ttl if args.ttl is not None else (
+            hubmod.PEER_INVITE_TTL_HOURS if args.role == hubmod.PEER_ROLE else 72.0)
         try:
-            code, rec = store.create_invite(args.name, args.role, args.uses, args.ttl, created_by="admin")
+            code, rec = store.create_invite(args.name, args.role, args.uses, ttl, created_by="admin")
         except hubmod.ApiError as e:
             sys.stderr.write("error: %s\n" % e.message)
             return 1
@@ -187,7 +211,12 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
         print("Invite %r: role %s, %d use%s, expires %s" % (rec["name"], rec["role"], rec["uses"],
                                                           "" if rec["uses"] == 1 else "s", expires))
         print()
-        if rec["role"] == "sender":
+        if rec["role"] == hubmod.PEER_ROLE:
+            print("On the other hub (a server with Linux, systemd, python3 and Tailscale), run:")
+            print("  %s" % links["install_command"])
+            print()
+            print("Or, where a hub already runs: needs-you-admin peer join %s" % links["join_url"])
+        elif rec["role"] == "sender":
             print("Join URL (open it to read what it does):")
             print("  %s" % links["join_url"])
             print()
@@ -227,6 +256,122 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
             return 1
         for r in recs:
             print("revoked invite %s (%s); tokens it already minted stay valid" % (r["name"], r["id"]))
+        return 0
+    return 2
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """The invite code is a credential: never follow a redirect with it."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        return None
+
+
+def parse_join_link(link: str) -> Tuple[str, str]:
+    """(hub URL, code) from a peer invite's join URL: http(s)://<hub>[/prefix]/join/<code>."""
+    parts = urllib.parse.urlsplit(link.strip())
+    head, sep, code = parts.path.rstrip("/").rpartition("/join/")
+    if parts.scheme not in ("http", "https") or not parts.hostname or not sep or "@" in parts.netloc \
+            or not code.startswith("nyi_") or "/" in code or parts.query or parts.fragment:
+        raise ValueError("not a join URL (http(s)://<hub>/join/nyi_...)")
+    return "%s://%s%s" % (parts.scheme, parts.netloc, head), code
+
+
+def redeem_peer(hub: str, code: str, me: Dict[str, Any], timeout: float = 15.0) -> Dict[str, Any]:
+    """POST the peer invite to the hub that made it. Raises RuntimeError with a sentence."""
+    body = json.dumps({"code": code, "host": socket.gethostname().split(".")[0], "peer": me}).encode("utf-8")
+    req = urllib.request.Request(hub + "/v1/invites/redeem", data=body, method="POST",
+                                 headers={"Content-Type": "application/json"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            out = json.loads(resp.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode("utf-8") or "{}")
+        except ValueError:
+            err = {}
+        msg = hubmod.safe_text(err.get("message") or "HTTP %d" % e.code, 300)
+        if e.code == 404:
+            msg = "the link is unknown, expired or already used; make a new peer invite"
+        raise RuntimeError("%s refused the peer invite: %s" % (hub, msg))
+    except (OSError, ValueError) as e:
+        raise RuntimeError("could not reach %s: %s" % (hub, hubmod.safe_text(str(e), 200)))
+    if not isinstance(out, dict) or out.get("role") != hubmod.PEER_ROLE \
+            or not isinstance(out.get("peer_secret"), str) or len(out["peer_secret"]) < 16 \
+            or not isinstance(out.get("link_id"), str) or not hubmod.PEER_LINK_ID_RE.match(out["link_id"]):
+        raise RuntimeError("%s did not answer like a needs-you hub that supports peer invites" % hub)
+    return out
+
+
+def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
+    if args.cmd == "join":
+        try:
+            hub, code = parse_join_link(args.link)
+        except ValueError as e:
+            sys.stderr.write("error: %s\n" % e)
+            return 2
+        me = {"url": args.public_url or public_url(cfg), "hub_id": str(cfg["hub_id"]),
+              "schema": hubmod.SCHEMA_VERSION}
+        try:
+            me["url"] = hubmod.normalise_peer_url(me["url"])
+        except ValueError:
+            sys.stderr.write("error: this hub's public_url %r isn't an http(s)://host[:port] URL\n" % me["url"])
+            return 2
+        host = urllib.parse.urlsplit(me["url"]).hostname or ""
+        if host in ("127.0.0.1", "localhost", "::1") and urllib.parse.urlsplit(hub).hostname not in (
+                "127.0.0.1", "localhost", "::1"):
+            sys.stderr.write("warning: this hub's public_url is %s, which the other hub can't reach. "
+                             "Set public_url (the MagicDNS URL) first.\n" % me["url"])
+        try:
+            out = redeem_peer(hub, code, me)
+        except RuntimeError as e:
+            sys.stderr.write("error: %s\n" % e)
+            return 1
+        try:
+            url = hubmod.normalise_peer_url(out.get("hub_url") or hub)
+        except ValueError:
+            url = hubmod.normalise_peer_url(hub)
+        hub_id = out.get("hub_id") if isinstance(out.get("hub_id"), str) and hubmod.HUB_ID_RE.match(
+            out.get("hub_id") or "") else ""
+        name = out.get("name") if isinstance(out.get("name"), str) else ""
+        link = store.add_peer_link(url, out["link_id"], hub_id, hubmod.safe_text(name, 40), out["peer_secret"])
+        if args.json:
+            print(json.dumps({"url": link["url"], "hub_id": link["hub_id"], "name": link["name"]}))
+        else:
+            print("joined %s (%s): this hub now replicates with it" % (link["url"], link["hub_id"] or "?"))
+            their = out.get("schema")
+            if isinstance(their, int) and not isinstance(their, bool) and their > hubmod.SCHEMA_VERSION:
+                sys.stderr.write("note: %s runs a newer needs-you (schema %d, this hub %d); upgrade this "
+                                 "hub so it keeps every field\n" % (url, their, hubmod.SCHEMA_VERSION))
+        return 0
+    if args.cmd == "list":
+        rows = [{"url": p, "hub_id": None, "name": None, "source": "config", "added_at": None}
+                for p in cfg["peers"]]
+        for link in store.peer_links():
+            rows = [r for r in rows if r["url"] != link["url"]]
+            rows.append({"url": link["url"], "hub_id": link["hub_id"] or None, "name": link["name"] or None,
+                         "source": "invite", "added_at": hubmod.fmt_ts(link["added_at"])})
+        if args.json:
+            print(json.dumps(rows, indent=2))
+            return 0
+        print("%-40s  %-20s  %-16s  %-7s  %s" % ("URL", "HUB ID", "NAME", "SOURCE", "ADDED"))
+        for r in rows:
+            print("%-40s  %-20s  %-16s  %-7s  %s" % (r["url"], r["hub_id"] or "-", r["name"] or "-",
+                                                    r["source"], r["added_at"] or "-"))
+        return 0
+    if args.cmd == "remove":
+        removed = store.remove_peer_link(args.which)
+        if not removed:
+            if args.which.rstrip("/") in cfg["peers"]:
+                sys.stderr.write("%s is in the config's peers; remove it there (install-hub.sh --peer ...) "
+                                 "and restart the hub\n" % args.which)
+            else:
+                sys.stderr.write("no peer with hub id, URL or name %r\n" % args.which)
+            return 1
+        for r in removed:
+            print("removed %s (%s); its secret is gone, so remove this hub on that side too"
+                  % (r["url"], r["hub_id"] or "?"))
         return 0
     return 2
 

@@ -144,7 +144,7 @@ Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/
                          optional: always-on server hubs ────┘ (the app can read from them)
 ```
 
-Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md). Today they replicate only with each other, not with the app's built-in hub, and invites made on the Mac list only the Mac's URL; [HUB.md](docs/HUB.md#with-the-apps-built-in-hub) says how to set it up.
+Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md): a server joins the app's built-in hub with a one-use peer invite, they replicate every item both ways, and invites made on the Mac then list the server too ([HUB.md](docs/HUB.md#with-the-apps-built-in-hub)).
 
 **[Quickstart](docs/guides/quickstart.md)** walks through all of it.
 

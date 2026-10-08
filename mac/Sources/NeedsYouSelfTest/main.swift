@@ -23,6 +23,7 @@ let entries =
     + testEntries(HubListMergeTests.self, HubListMergeTests.allTests)
     + testEntries(InviteClientTests.self, InviteClientTests.allTests, async: InviteClientTests.asyncTests)
     + testEntries(LocalHubTests.self, LocalHubTests.allTests)
+    + testEntries(PeersTests.self, PeersTests.allTests, async: PeersTests.asyncTests)
     + testEntries(PruningTests.self, PruningTests.allTests)
     + testEntries(TokenStoreTests.self, TokenStoreTests.allTests)
     + testEntries(MenuBarTests.self, MenuBarTests.allTests)

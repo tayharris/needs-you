@@ -13,7 +13,10 @@ import subprocess
 import time
 import unittest
 
-from support import ROOT, HubTestCase, free_port, request
+from support import ROOT, HubTestCase, free_port, hubmod, request
+
+with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as _fh:
+    INSTALLER_VERSION = __import__("re").search(r"^INSTALLER_VERSION=(\S+)", _fh.read(), __import__("re").M).group(1)
 
 OWNER = "owner-secret-0123456789abcdef"
 REAL_HOME = os.path.expanduser("~")
@@ -814,6 +817,306 @@ class InstallHubUserPaths(unittest.TestCase):
         self.assertEqual(argv[1:], [os.path.join(self.home, ".local", "share", "needs-you", "hub", "needs_you_hub.py"),
                                     "--config", conf])
         self.assertTrue(os.path.isfile(argv[1]))
+
+
+class InstallHubJoin(HubTestCase):
+    """install-hub.sh --user --join <peer invite>: the server pairs with a hub (here an
+    in-process one standing in for the Mac's) without a secret on the command line or the
+    terminal. --no-start: no systemd is touched."""
+
+    def setUp(self):
+        super().setUp()
+        self.mac = self.make_hub("mac", peer_secret="", maintenance_seconds=0)
+        self.mac.store.ensure_token("this-mac", "owner", OWNER)
+        self.home = os.path.join(self.tmp, "home")
+        stub = os.path.join(self.tmp, "stub")
+        os.makedirs(self.home)
+        os.makedirs(stub)
+        with open(os.path.join(stub, "tailscale"), "w") as fh:  # not on a tailnet
+            fh.write("#!/bin/sh\nexit 1\n")
+        os.chmod(os.path.join(stub, "tailscale"), 0o755)
+        self.env = {"HOME": self.home, "PATH": stub + ":/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C",
+                    # no real gh and never the real GitHub: a stand-in release (fake_release)
+                    "NEEDS_YOU_GH": "none", "NEEDS_YOU_RELEASE_OFFLINE": "1"}
+        self.script = os.path.join(ROOT, "scripts", "install-hub.sh")
+        self.port = free_port()
+
+    def fake_release(self, version=None, tar_version=None, manifest_version=None, tamper_sums=False,
+                     private=True):
+        """A stand-in GitHub release (SHA256SUMS, the server tarball, release-manifest.json)
+        built from this checkout, and a fake `gh` that serves it and logs each call to
+        self.gh_log. `tar_version`/`manifest_version`: what the tarball's top directory and the
+        manifest claim, if not `version`. Returns env for the installer."""
+        import hashlib
+        import tarfile
+        v = version or INSTALLER_VERSION
+        rel = os.path.join(self.tmp, "release")
+        shutil.rmtree(rel, ignore_errors=True)
+        os.makedirs(rel)
+        tarball = "needs-you-server-%s.tar.gz" % v
+        with tarfile.open(os.path.join(rel, tarball), "w:gz") as tf:
+            for d in ("hub", "cli", "scripts", "deploy", "integrations"):
+                tf.add(os.path.join(ROOT, d), "needs-you-%s/%s" % (tar_version or v, d),
+                       filter=lambda ti: None if "__pycache__" in ti.name else ti)
+
+        def sha(name):
+            with open(os.path.join(rel, name), "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest()
+        with open(os.path.join(rel, "release-manifest.json"), "w") as fh:
+            json.dump({"schema": 1, "version": manifest_version or v,
+                       "assets": [{"name": tarball, "sha256": sha(tarball)}]}, fh)
+        with open(os.path.join(rel, "SHA256SUMS"), "w") as fh:
+            for n in (tarball, "release-manifest.json"):
+                fh.write("%s  %s\n" % ("0" * 64 if tamper_sums and n == tarball else sha(n), n))
+        self.gh_log = os.path.join(self.tmp, "gh.log")
+        gh = os.path.join(self.tmp, "stub", "gh")
+        with open(gh, "w") as fh:
+            fh.write("""#!/bin/sh
+# fake gh: release download copies the stand-in release; no attestations; the repo is private
+echo "$*" >> "%s"
+case "$1 $2" in
+  "release download")
+    dir=""; while [ $# -gt 0 ]; do [ "$1" = --dir ] && dir=$2; shift; done
+    cp "%s"/* "$dir"/ ;;
+  "attestation verify") echo "no attestations found" >&2; exit 1 ;;
+  "api repos/tayharris/needs-you") echo %s ;;
+  *) exit 2 ;;
+esac
+""" % (self.gh_log, rel, "true" if private else "false"))
+        os.chmod(gh, 0o755)
+        return dict(self.env, NEEDS_YOU_GH=gh)
+
+    def peer_link(self):
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertEqual(status, 201, inv)
+        return inv["join_url"]
+
+    def install(self, *args):
+        return subprocess.run([BASH, self.script, "--user", "--no-start", "--bind", "127.0.0.1",
+                               "--port", str(self.port), "--hub-id", "srv",
+                               "--public-url", "http://127.0.0.1:%d" % self.port] + list(args),
+                              env=self.env, capture_output=True, text=True, timeout=120)
+
+    def test_join_pairs_both_hubs_and_never_shows_the_secret(self):
+        r = self.install("--join", self.peer_link())
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (link,) = self.mac.store.peer_links()
+        self.assertEqual((link["url"], link["hub_id"]), ("http://127.0.0.1:%d" % self.port, "srv"))
+        self.assertNotIn(link["secret"], r.stdout + r.stderr)
+        self.assertNotIn("nyp_", r.stdout + r.stderr)
+        self.assertNotIn("needsyou://", r.stdout)  # no owner invite: the Mac's owner replicates here
+        self.assertIn("now replicates with", r.stdout)
+        conf = os.path.join(self.home, ".config", "needs-you", "hub.json")
+        with open(conf) as fh:
+            cfg = json.load(fh)
+        self.assertNotIn("peer_secret", cfg)  # the pair's secret lives in the database
+        self.assertEqual(cfg.get("peers"), [])
+        import sqlite3
+        db = sqlite3.connect(cfg["db"])
+        try:
+            rows = db.execute("SELECT url, hub_id, secret FROM peer_links").fetchall()
+        finally:
+            db.close()
+        self.assertEqual(rows, [(self.mac.url, "mac", link["secret"])])
+        self.assertEqual(stat.S_IMODE(os.stat(cfg["db"]).st_mode), 0o600)
+        self.assertIn("http://127.0.0.1:%d" % self.port, self.mac.hub_urls())
+
+        # the admin wrapper lists it without the secret
+        admin = os.path.join(self.home, ".local", "bin", "needs-you-admin")
+        r = subprocess.run([admin, "peer", "list"], env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(self.mac.url, r.stdout)
+        self.assertNotIn(link["secret"], r.stdout)
+
+    def piped(self, script_text, *args, env=None):
+        """`curl <release>/install-hub.sh | bash -s -- ...`: the script on stdin, run from an
+        empty directory with no checkout anywhere near it."""
+        cwd = os.path.join(self.tmp, "empty")
+        os.makedirs(cwd, exist_ok=True)
+        return subprocess.run([BASH, "-s", "--", "--user", "--no-start", "--bind", "127.0.0.1",
+                               "--port", str(self.port), "--hub-id", "srv",
+                               "--public-url", "http://127.0.0.1:%d" % self.port] + list(args),
+                              input=script_text, cwd=cwd, env=env or self.env, capture_output=True,
+                              text=True, timeout=120)
+
+    def _script(self):
+        with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as fh:
+            return fh.read()
+
+    def test_the_one_liner_comes_from_the_github_release(self):
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertEqual(status, 201)
+        self.assertEqual(inv["install_command"],
+                         "curl -fsSL https://github.com/tayharris/needs-you/releases/download/v%s/install-hub.sh"
+                         " | sudo bash -s -- --join '%s'" % (hubmod.VERSION, inv["join_url"]))
+        # the hub serves no server code (only the sender's files)
+        from support import OPENER
+        import urllib.error
+        for name in ("install-hub.sh", "needs_you_hub.py", "needs-you-hub.service"):
+            with self.assertRaises(urllib.error.HTTPError):
+                OPENER.open(self.mac.url + "/dl/" + name, timeout=10)
+
+    def test_piped_installer_installs_its_own_release(self):
+        link = self.peer_link()
+        tmpdir = os.path.join(self.tmp, "t")
+        os.makedirs(tmpdir)
+        r = self.piped(self._script(), "--join", link, env=dict(self.fake_release(), TMPDIR=tmpdir))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(os.listdir(tmpdir), [])  # the downloaded copy is gone
+        self.assertIn("installing release v%s from GitHub" % INSTALLER_VERSION, r.stdout)
+        self.assertNotIn("nyp_", r.stdout + r.stderr)
+        with open(self.gh_log) as fh:
+            calls = fh.read()
+        self.assertIn("release download v%s --repo tayharris/needs-you" % INSTALLER_VERSION, calls)
+        share = os.path.join(self.home, ".local", "share", "needs-you")
+        for rel in ("hub/needs_you_hub.py", "hub/needs_you_admin.py", "cli/needs-you",
+                    "integrations/claude-code/needs-you-hook.sh", "integrations/kimi/kimi-hooks.toml"):
+            with open(os.path.join(share, rel), "rb") as fh, open(os.path.join(ROOT, rel), "rb") as src:
+                self.assertEqual(fh.read(), src.read(), rel)
+        (link_row,) = self.mac.store.peer_links()
+        self.assertEqual(link_row["hub_id"], "srv")
+
+    def test_a_hub_claiming_an_older_version_changes_nothing(self):
+        """Rollback: the inviting hub says it runs 0.0.1 (old, authentic, vulnerable code).
+        The installer still downloads only its own release; the hub supplies no code."""
+        old = hubmod.VERSION
+        hubmod.VERSION = "0.0.1"
+        self.addCleanup(setattr, hubmod, "VERSION", old)
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertIn("/download/v0.0.1/", inv["install_command"])
+        r = self.piped(self._script(), "--join", inv["join_url"], env=self.fake_release())
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.gh_log) as fh:
+            calls = fh.read()
+        self.assertNotIn("v0.0.1", calls)
+        self.assertIn("release download v%s " % INSTALLER_VERSION, calls)
+
+    def test_a_release_for_another_version_is_refused(self):
+        for kw, why in (({"tar_version": "0.0.1"}, "not needs-you %s" % INSTALLER_VERSION),
+                        ({"manifest_version": "0.0.1"}, "isn't for this installer's version"),
+                        ({"tamper_sums": True}, "doesn't match its SHA256SUMS")):
+            with self.subTest(**kw):
+                r = self.piped(self._script(), "--join", self.peer_link(), env=self.fake_release(**kw))
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn(why, r.stderr)
+                self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "share", "needs-you")))
+        self.assertEqual(self.mac.store.peer_links(), [])  # no link was spent
+
+    def test_the_release_repo_is_the_clis(self):
+        import re
+        with open(os.path.join(ROOT, "cli", "needs-you")) as fh:
+            cli = re.search(r'^RELEASE_REPO = "([^"]+)"', fh.read(), re.M).group(1)
+        self.assertIn('REPO = "%s"  # fixed here' % cli, self._script())
+        self.assertEqual(hubmod.RELEASE_REPO, cli)
+
+    def test_the_installer_version_is_the_release(self):
+        with open(os.path.join(ROOT, "VERSION")) as fh:
+            self.assertEqual(INSTALLER_VERSION, fh.read().strip())
+
+    def test_unreachable_github_refuses(self):
+        r = self.piped(self._script(), "--join", self.peer_link())  # no gh, GitHub "offline"
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("GitHub isn't reachable", r.stderr)
+        self.assertIn("install from a checkout", r.stderr)
+        self.assertEqual(self.mac.store.peer_links(), [])
+
+    def test_a_public_release_without_provenance_is_refused(self):
+        link = self.peer_link()
+        r = self.piped(self._script(), "--join", link, env=self.fake_release(private=False))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no valid build provenance", r.stderr)
+
+    def test_a_checkout_with_a_symlink_is_refused_as_root(self):
+        src = self._checkout_copy()
+        target = os.path.join(src, "hub", "needs_you_admin.py")
+        os.rename(target, target + ".real")
+        os.symlink(target + ".real", target)
+        r = self._run_checkout(src)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("symlink", r.stderr)
+
+    def _checkout_copy(self):
+        src = os.path.join(self.tmp, "checkout")
+        for d in ("hub", "cli", "deploy", "scripts", "integrations"):
+            shutil.copytree(os.path.join(ROOT, d), os.path.join(src, d),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+        for d, _dirs, files in os.walk(src):  # whatever the umask: only the owner may write
+            for p in [d] + [os.path.join(d, f) for f in files]:
+                os.chmod(p, os.stat(p).st_mode & ~0o022)
+        return src
+
+    def _run_checkout(self, src, env=None):
+        return subprocess.run([BASH, os.path.join(src, "scripts", "install-hub.sh"), "--user", "--no-start",
+                               "--no-invite", "--bind", "127.0.0.1", "--hub-id", "srv"],
+                              env=dict(env or self.env, NEEDS_YOU_INSTALL_CHECK_OWNERSHIP="1"),
+                              capture_output=True, text=True, timeout=120)
+
+    def test_as_root_only_the_private_copy_is_installed(self):
+        """As root a clean checkout installs, from the private copy made while checking (each
+        file is read through the descriptor its checks ran on)."""
+        src = self._checkout_copy()
+        r = self._run_checkout(src)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        share = os.path.join(self.home, ".local", "share", "needs-you")
+        with open(os.path.join(share, "hub", "needs_you_hub.py"), "rb") as a, \
+                open(os.path.join(src, "hub", "needs_you_hub.py"), "rb") as b:
+            self.assertEqual(a.read(), b.read())
+
+    def test_piped_run_never_takes_code_from_the_directory_around_it(self):
+        """Under `curl | sudo bash` $0 is "bash": the script used to treat the parent of the
+        current directory as a checkout, so a hub/ planted there was installed and run."""
+        _, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        planted = os.path.join(self.tmp, "shared")
+        os.makedirs(os.path.join(planted, "hub"))
+        os.makedirs(os.path.join(planted, "work"))
+        with open(os.path.join(planted, "hub", "needs_you_hub.py"), "w") as fh:
+            fh.write("PLANTED = True\n")
+        with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as fh:
+            script = fh.read()
+        r = subprocess.run(["bash", "-s", "--", "--user", "--no-start", "--bind", "127.0.0.1",
+                            "--port", str(self.port), "--hub-id", "srv",
+                            "--public-url", "http://127.0.0.1:%d" % self.port, "--join", inv["join_url"]],
+                           input=script, cwd=os.path.join(planted, "work"), env=self.fake_release(), executable=BASH,
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("installing release v%s from GitHub" % INSTALLER_VERSION, r.stdout)
+        with open(os.path.join(self.home, ".local", "share", "needs-you", "hub", "needs_you_hub.py")) as fh:
+            self.assertNotIn("PLANTED", fh.read())
+
+    def test_a_checkout_others_can_write_is_refused_when_run_as_root(self):
+        """As root, a checkout (or its files) writable by others, or owned by someone other
+        than root or the sudo user, is refused. Forced here by the check's test switch."""
+        src = os.path.join(self.tmp, "checkout")
+        for d in ("hub", "cli", "deploy", "scripts", "integrations"):
+            shutil.copytree(os.path.join(ROOT, d), os.path.join(src, d),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+        for d, _dirs, files in os.walk(src):  # whatever the umask: only the owner may write
+            for p in [d] + [os.path.join(d, f) for f in files]:
+                os.chmod(p, os.stat(p).st_mode & ~0o022)
+        os.chmod(os.path.join(src, "hub", "needs_you_hub.py"), 0o666)
+        r = subprocess.run([BASH, os.path.join(src, "scripts", "install-hub.sh"), "--user", "--no-start",
+                            "--no-invite", "--bind", "127.0.0.1", "--hub-id", "srv"],
+                           env=dict(self.env, NEEDS_YOU_INSTALL_CHECK_OWNERSHIP="1"),
+                           capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("writable by others", r.stderr)
+        os.chmod(os.path.join(src, "hub", "needs_you_hub.py"), 0o644)
+        r = subprocess.run([BASH, os.path.join(src, "scripts", "install-hub.sh"), "--user", "--no-start",
+                            "--no-invite", "--bind", "127.0.0.1", "--hub-id", "srv"],
+                           env=dict(self.env, NEEDS_YOU_INSTALL_CHECK_OWNERSHIP="1"),
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_a_used_or_bad_link_fails_loudly(self):
+        link = self.peer_link()
+        self.assertEqual(self.install("--join", link).returncode, 0)
+        r = self.install("--join", link)  # one use
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("unknown, expired or already used", r.stderr)
+        self.assertIn("make a new peer invite", r.stderr)
+        r = self.install("--join", "needsyou://connect?hub=x&code=nyi_x")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--join takes a peer invite link", r.stderr)
 
 
 if __name__ == "__main__":

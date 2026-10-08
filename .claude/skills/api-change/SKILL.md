@@ -20,6 +20,7 @@ description: Checklist for changing the needs-you wire contract (an endpoint, a 
 | 1 | `docs/API.md` | Update the contract first: field table, semantics, errors, examples |
 | 2 | `hub/needs_you_hub.py` | Validation (`validate_*`), storage/schema (add columns with a migration that tolerates old DBs), handlers, replication record fields |
 | 3 | `tests/test_validation.py`, `tests/test_api.py`, `tests/test_replication.py` | Table-driven cases for the new rule, and a mixed-version / missing-field replication case |
+| 3b | `protocol/conformance/test_conformance.py` | The black-box case every hub implementation must pass (`tests/test_conformance.py` runs it against the reference hub) |
 | 4 | `cli/needs-you` | New flags, docstring usage block at the top of the file |
 | 5 | `tests/test_cli.py` | The flag end to end against a real hub |
 | 6 | `mac/Sources/NeedsYouCore/Models.swift`, `HubClient.swift` | Decode the field (optional, tolerant of absence); PATCH bodies |
@@ -37,6 +38,8 @@ Bump `VERSION` in the hub/CLI only as part of a release (see the `release` skill
 - Grep for the old name/shape across the repo: `grep -rn '<field>' hub cli mac/Sources docs integrations tests`.
 - Python stays 3.9-compatible and stdlib-only.
 
-## Future
+## Conformance suite
 
-When `protocol/` exists (docs/roadmap/ai-first.md, ADR 0004), also update the machine-readable spec there and the shared conformance suite, and run it against every hub implementation.
+`protocol/conformance/` (ADR 0004, 0012) is the shared black-box suite. Update it with every
+wire change and run it against every hub implementation (see its README). A machine-readable
+spec under `protocol/` is still to come (docs/roadmap/ai-first.md).

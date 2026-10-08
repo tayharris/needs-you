@@ -21,6 +21,9 @@ final class LocalHubTests: XCTestCase {
         ("testTailscaleInstalledCheck", testTailscaleInstalledCheck),
         ("testReadinessTimesOutThenKeepsChecking", testReadinessTimesOutThenKeepsChecking),
         ("testNotAnsweringMessage", testNotAnsweringMessage),
+        ("testHandSetPeersPassOnlyTheSecretFile", testHandSetPeersPassOnlyTheSecretFile),
+        ("testRestartWhenHandSetPeersChange", testRestartWhenHandSetPeersChange),
+        ("testPeerSecretFileNeedsSixteenCharacters", testPeerSecretFileNeedsSixteenCharacters),
     ]
 
     func testReadinessTimesOutThenKeepsChecking() {
@@ -204,6 +207,56 @@ final class LocalHubTests: XCTestCase {
         try FileManager.default.removeItem(at: file)
         XCTAssertEqual(try OwnerToken.loadOrCreate(at: file, fallback: "from-keychain"), "from-keychain")
         XCTAssertNotEqual(OwnerToken.generate(), OwnerToken.generate())
+    }
+
+    func testHandSetPeersPassOnlyTheSecretFile() {
+        var p = plan()
+        p.peers = ["http://hub-a.example.ts.net:8765", "HTTP://Hub-B.example.ts.net:8765/", "http://hub-a.example.ts.net:8765",
+                   "ftp://x.example.ts.net", "http://u@hub-c.example.ts.net:8765", "http://hub-d.example.ts.net:8765/path",
+                   "http://mac.tail1.ts.net:8765"]   // this hub itself
+        // Without a secret file the hub would refuse peers and not start: none are passed.
+        XCTAssertEqual(p.effectivePeers, [])
+        XCTAssertEqual(p.arguments, plan().arguments)
+        let secret = "/Users/u/Library/Application Support/NeedsYou/peer-secret"
+        p.peerSecretPath = secret
+        XCTAssertEqual(p.effectivePeers, ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"])
+        XCTAssertEqual(Array(p.arguments.suffix(6)), [
+            "--peer-secret-file", secret,
+            "--peer", "http://hub-a.example.ts.net:8765",
+            "--peer", "http://hub-b.example.ts.net:8765",
+        ])
+        // Only the path is on the command line; nothing else secret-shaped.
+        XCTAssertFalse(p.arguments.contains(where: { $0.hasPrefix("nyp_") || $0.contains("--peer-secret=") }))
+        XCTAssertFalse(p.arguments.contains("--peer-secret"))
+    }
+
+    func testRestartWhenHandSetPeersChange() {
+        var a = plan(), b = plan()
+        a.peerSecretPath = "/s"; b.peerSecretPath = "/s"
+        a.peers = ["http://hub-a.example.ts.net:8765"]
+        XCTAssertTrue(a.needsRestart(comparedTo: b))
+        b.peers = ["http://hub-a.example.ts.net:8765/"]
+        XCTAssertFalse(a.needsRestart(comparedTo: b))
+        b.peerSecretPath = "/other"
+        XCTAssertTrue(a.needsRestart(comparedTo: b))
+        // Peers without a secret file aren't passed, so they don't restart anything.
+        var c = plan(), d = plan()
+        c.peers = ["http://hub-a.example.ts.net:8765"]
+        XCTAssertFalse(c.needsRestart(comparedTo: d))
+        d.peerSecretPath = "/s"
+        XCTAssertFalse(c.needsRestart(comparedTo: d))
+    }
+
+    func testPeerSecretFileNeedsSixteenCharacters() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("needsyou-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("peer-secret")
+        XCTAssertFalse(PeerSecretFile.usable(at: file))
+        try Data("short\n".utf8).write(to: file)
+        XCTAssertFalse(PeerSecretFile.usable(at: file))
+        try Data("0123456789abcdef\n".utf8).write(to: file)
+        XCTAssertTrue(PeerSecretFile.usable(at: file))
     }
 }
 
