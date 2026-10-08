@@ -1,12 +1,16 @@
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Panel → Open panel: whether a click elsewhere closes it, and its dragged height.
+/// Settings → Panel → Open panel: whether it opens when the app starts, whether a click
+/// elsewhere closes it, and its dragged height.
 struct OpenPanelSettingsSection: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
         Section {
+            Toggle(isOn: $settings.openPanelAtLaunch) {
+                LabelWithDetail("Open the panel when Needs You starts", "When you start the app yourself, the panel opens once so you can see your items, without taking focus. It closes when the pointer leaves it, you click elsewhere, or after a few seconds. At login only the pill shows.")
+            }
             Toggle(isOn: $settings.ui.collapseOnClickOutside) {
                 LabelWithDetail("Collapse when clicking elsewhere", "On: a click anywhere else closes it. Off: it stays up, even after you open a card's link, so you can keep reading the card.")
             }

@@ -19,6 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// needsyou:// URLs that arrived before launch finished.
     private var pendingURLs: [URL] = []
     private var launched = false
+    /// The launch's open-application Apple event said "launched as a login item". Read in
+    /// applicationWillFinishLaunching, while that event is still the current one.
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedAsLoginItem = LaunchContext.appleEventSaysLoginItem()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -100,6 +107,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // up, the pill shows a "set up" state; clicking it is what opens Settings.
         if let dir = AppSettings.snapshotDirectory {
             runSnapshotTour(into: dir)
+        }
+        openPanelIfLaunchedByPerson()
+    }
+
+    /// LaunchOpen: started by the person, the panel opens once (after the first poll, or
+    /// LaunchOpen.firstPollWait at most) so they see their items and where the pill is. At
+    /// login or right after an update relaunch, only the pill. Never key, never activates.
+    private func openPanelIfLaunchedByPerson() {
+        let attempt = updates.updatesDirectory.appendingPathComponent(UpdatePaths.attemptFile)
+        let kind = LaunchOpen.kind(appleEventSaysLogin: launchedAsLoginItem,
+                                   secondsSinceLogin: LaunchContext.secondsSinceConsoleLogin(),
+                                   updateAttemptAge: LaunchContext.age(ofFileAt: attempt))
+        let open = LaunchOpen.shouldOpen(kind: kind, settingOn: settings.openPanelAtLaunch,
+                                         panelHidden: model.visibility == .hidden,
+                                         snapshotTour: AppSettings.snapshotDirectory != nil)
+        NSLog("NeedsYou: launch \(kind.rawValue) (login-item event: \(launchedAsLoginItem)); \(open ? "opening the panel once" : "pill only")")
+        Task { @MainActor [weak self] in
+            let deadline = Date().addingTimeInterval(LaunchOpen.firstPollWait)
+            while open, let model = self?.model, model.lastCheck == nil, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard let self else { return }
+            if open { self.model.openAtLaunch() }
+            self.panel.logPlacement()
         }
     }
 

@@ -34,6 +34,7 @@ final class AppSettings: ObservableObject {
         static let urgentShowsHiddenPanel = "urgentShowsHiddenPanel"
         static let panelHidden = "panelHidden"
         static let snapToCorners = "snapToCorners"
+        static let openPanelAtLaunch = "openPanelAtLaunch"
         static let hotKey = "hotKey"
         static let allowFocusLinks = "allowFocusLinks"
         static let terminalAppleScript = "terminalAppleScript"
@@ -195,6 +196,11 @@ final class AppSettings: ObservableObject {
     @Published var snapToCorners: Bool {
         didSet { defaults.set(snapToCorners, forKey: Key.snapToCorners) }
     }
+    /// Settings → Panel → Open the panel when Needs You starts. Default on: a launch by the
+    /// person (not at login, not an update's relaunch) opens the panel once (LaunchOpen).
+    @Published var openPanelAtLaunch: Bool {
+        didSet { defaults.set(openPanelAtLaunch, forKey: Key.openPanelAtLaunch) }
+    }
     /// Remote hubs were configured when tokens moved out of the Keychain (PrefsMigrator 3).
     @Published var tokensNeedReconnect: Bool {
         didSet { defaults.set(tokensNeedReconnect, forKey: PrefsMigrator.reconnectKey) }
@@ -213,6 +219,7 @@ final class AppSettings: ObservableObject {
             Key.urgentShowsHiddenPanel: false,
             Key.panelHidden: false,
             Key.snapToCorners: false,
+            Key.openPanelAtLaunch: true,
             Key.allowFocusLinks: false,
             Key.terminalAppleScript: false,
             Key.showSetupTips: true,
@@ -232,6 +239,7 @@ final class AppSettings: ObservableObject {
         urgentShowsHiddenPanel = defaults.bool(forKey: Key.urgentShowsHiddenPanel)
         tokensNeedReconnect = defaults.bool(forKey: PrefsMigrator.reconnectKey)
         snapToCorners = defaults.bool(forKey: Key.snapToCorners)
+        openPanelAtLaunch = defaults.bool(forKey: Key.openPanelAtLaunch)
         ui = UIPrefs.load(from: defaults)
         delivery = DeliveryDefaults.load(from: defaults)
         bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))

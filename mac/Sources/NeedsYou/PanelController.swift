@@ -242,12 +242,13 @@ final class PanelController {
         }
     }
 
-    /// A click in another app. With Settings → Panel → Collapse when clicking elsewhere on,
-    /// the panel collapses. Off (the default) it stays open, so a card can still be read
+    /// A click in another app. With Settings → Panel → Collapse when clicking elsewhere on
+    /// (the default), the panel collapses. Off it stays open, so a card can still be read
     /// next to the link it opened, and stops swallowing Escape, which belongs to the app
-    /// that was clicked. Escape, the chevron and the shortcut still close it.
+    /// that was clicked. Escape, the chevron and the shortcut still close it. The panel the
+    /// launch opened (not the person) always closes: the person is busy elsewhere.
     private func clickedElsewhere() {
-        if model.settings.ui.collapseOnClickOutside {
+        if model.settings.ui.collapseOnClickOutside || model.openedAtLaunch {
             model.collapse()
         } else {
             escapeReleased = true
@@ -376,8 +377,31 @@ final class PanelController {
         PanelGeometry.configurationKey(NSScreen.screens.map(\.frame))
     }
 
+    /// The saved placement for this screen layout, if the collapsed pill lies fully on its
+    /// display there. Otherwise (its display isn't connected, or the spot is off the
+    /// display's usable area) the pill goes to the default corner of the main display and
+    /// the log says why. The saved placement is kept: a drag replaces it.
     private func loadPlacement() {
-        placement = model.settings.placement(forLayout: layoutKey())
+        let saved = model.settings.placement(forLayout: layoutKey())
+        let screens = NSScreen.screens.map { (id: PanelGeometry.screenID($0.frame), bounds: bounds(of: $0)) }
+        // The collapsed pill's size: a peek or the open list is checked as the count pill.
+        let shown = model.display
+        let size = panelSize(for: shown.isPeek || shown == .expanded ? .waiting : shown)
+        let checked = PanelGeometry.launchPlacement(saved, size: size, screens: screens, margin: Self.edgeMargin)
+        if let problem = checked.problem {
+            NSLog("NeedsYou: the saved pill position isn't used because \(problem.description); the pill goes to the top right of the main display")
+        }
+        placement = checked.placement
+    }
+
+    /// One log line at launch: which display the pill is on and where, so "I can't see
+    /// it" can be checked from the log.
+    func logPlacement() {
+        let screens = NSScreen.screens
+        let index = PanelGeometry.bestScreen(for: panel.frame, screens: screens.map(\.frame))
+        let which = index.map { $0 == 0 ? "the main display" : "display \($0 + 1) of \(screens.count)" } ?? "no display"
+        let corner = placement?.corner.rawValue ?? "topRight (default)"
+        NSLog("NeedsYou: pill on \(which), \(corner), frame \(NSStringFromRect(panel.frame)), visible \(panel.isVisible)")
     }
 
     private func screensChanged() {
