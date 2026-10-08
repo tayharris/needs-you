@@ -124,6 +124,26 @@ class UninstallHooks(unittest.TestCase):
         self.assertEqual(len(baks), 2, baks)
         self.assertIn(mine, baks)
 
+    def test_uninstall_with_nothing_installed_leaves_the_file_alone(self):
+        # Empty events or an empty "hooks" of the person's own aren't ours to tidy away: with
+        # no needs-you hook in the file, uninstall must not rewrite (or back up) anything.
+        for rel, installer in ((".claude/settings.json", INSTALL_HOOKS),
+                               (".codex/hooks.json", os.path.join(ROOT, "integrations", "codex",
+                                                                  "install-codex-hooks.sh")),
+                               (".gemini/settings.json", os.path.join(ROOT, "integrations", "gemini",
+                                                                      "install-gemini-hooks.sh"))):
+            for text in ('{"hooks": {"Stop": []}}', '{\n\t"hooks": {}\n}\n'):
+                with self.subTest(installer=os.path.basename(installer), text=text):
+                    path = os.path.join(self.home, rel)
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w") as fh:
+                        fh.write(text)
+                    r = subprocess.run([BASH, installer, "--uninstall"], env=self.env, capture_output=True,
+                                       text=True, timeout=60, cwd=self.tmp)
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                    self.assertEqual(self.text(path), text)
+                    self.assertEqual([n for n in os.listdir(os.path.dirname(path)) if ".bak-" in n], [])
+
     def test_project_only_from_inside_it(self):
         self.setup_all()
         r = self.cli("--project", cwd=os.path.join(self.proj, "src"))

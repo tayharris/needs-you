@@ -187,23 +187,26 @@ if not isinstance(hooks, dict):
 
 # 1. Remove every existing needs-you hook, from every event, leaving other
 #    hooks (and their groups) exactly as they were.
+removed = False  # did we take anything out (only then may an event or "hooks" go)
 for event in list(hooks):
     groups = hooks[event]
     if not isinstance(groups, list):
         continue
-    new_groups = []
+    new_groups, touched = [], False
     for group in groups:
         if isinstance(group, dict) and isinstance(group.get("hooks"), list):
             kept = [h for h in group["hooks"] if not ours(h)]
             if len(kept) != len(group["hooks"]):
+                touched = True
                 if not kept:
                     continue  # the group only held our hook
                 group = dict(group, hooks=kept)
         new_groups.append(group)
-    if new_groups:
+    removed = removed or touched
+    if new_groups or not touched:
         hooks[event] = new_groups
     else:
-        del hooks[event]
+        del hooks[event]  # it held only ours
 
 # 2. Add ours back (install only).
 if action == "install":
@@ -214,7 +217,7 @@ if action == "install":
                 h["command"] = h["command"].replace(USER_SNIPPET_PREFIX, cmd_prefix)
             hooks.setdefault(event, []).append(group)
 
-if hooks:
+if hooks or (not removed and "hooks" in settings):  # (an empty one of the person's own stays)
     settings["hooks"] = hooks
 else:
     settings.pop("hooks", None)
