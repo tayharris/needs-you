@@ -75,7 +75,9 @@ behind what is queued, so `resolve K` never overtakes a queued `add K`. While an
 sending the outbox, a request waits for it up to 2 s, then stays queued behind it (exit 0).
 A queued item the hub refuses for now (429, the open-items guard) stays queued and is retried
 later; a later resolve of its key cancels it. The outbox is capped (oldest dropped, with a
-warning), so a hub that is gone for weeks can't fill the disk.
+warning), so a hub that is gone for weeks can't fill the disk. A resolve that finds nothing
+open on a hub goes on to the next ones (hubs that don't replicate hold only what was posted
+to them); one that couldn't reach a hub is kept for it and sent by `flush` (up to 48 h).
 
 Steps are a checklist of what the person has to do, in order (at most 10; text <= 200
 chars, limited markdown). `--step "Text=URL"` gives the step a link button labelled
@@ -823,28 +825,143 @@ def _sha256_file(path: str) -> Optional[str]:
 _UPDATE_REQUESTED_BY: Optional[str] = None
 
 
+RESOLVE_PATH = "/v1/items/resolve"
+
+
+def _resolved_nothing(path: str, resp: Dict[str, Any]) -> bool:
+    return path == RESOLVE_PATH and not resp.get("resolved") and not resp.get("items")
+
+
 def send(cfg: Config, method: str, path: str, body: Optional[Dict[str, Any]]) -> Tuple[str, int, Dict[str, Any]]:
     """Try each hub in order. 2xx -> result. 4xx -> Rejected (no failover: every hub
     would say the same), except 421. Network errors, timeouts, 421 and 5xx -> next hub;
-    none -> Unreachable."""
+    none -> Unreachable.
+
+    A resolve that a hub answers with nothing resolved goes on to the next hub: hubs that
+    don't replicate to each other (the Mac's built-in hub has no peers) each hold only what
+    was posted to them, and the item may have gone to a later hub while an earlier one was
+    down. The first hub that resolves something ends it. Resolving is idempotent, so a hub
+    that couldn't be reached then gets the resolve kept for it (`needs-you flush` sends it)."""
     errors = []
+    first: Optional[Tuple[str, int, Dict[str, Any]]] = None  # the first "nothing to resolve"
+    missed: List[str] = []  # hubs a resolve didn't reach
     for url in cfg.urls:
         try:
             status, parsed = _call(url, cfg.token, method, path, body, cfg.timeout)
         except (OSError, ValueError) as e:  # URLError, timeouts, refused, bad JSON
             errors.append("%s: %s" % (url, getattr(e, "reason", e)))
+            missed.append(url)
             continue
         if 200 <= status < 300:
             if parsed.get("update_requested") is True:
                 global _UPDATE_REQUESTED_BY
                 _UPDATE_REQUESTED_BY = url
+            if _resolved_nothing(path, parsed):
+                first = first or (url, status, parsed)
+                continue
             return url, status, parsed
         # 421: that hub doesn't answer to this URL's host name (its DNS-rebinding check);
         # a URL problem, not a request problem, so the next hub may well take it.
         if 400 <= status < 500 and status != 421:
-            raise Rejected(status, parsed)
+            if first is None:
+                raise Rejected(status, parsed)
+            continue  # a later hub that refuses this token: it has nothing of ours to resolve
         errors.append("%s: HTTP %d" % (url, status))
+        if status >= 500:
+            missed.append(url)
+    if first is not None:
+        if missed and isinstance(body, dict):
+            keep_resolve_for(missed, body)
+        return first
     raise Unreachable("; ".join(errors) or "no hub URL configured")
+
+
+# ---------------------------------------------------------------------------
+# Resolves kept for one hub: a resolve that found nothing open on the hubs it reached, while
+# another configured hub was down. Kept apart from the outbox (whose order a hub that stays
+# down must not hold up), sent by `needs-you flush` to that hub only while it is still
+# configured, dropped once sent, refused, too old (a card expires in 48 h by default), or when
+# an add of the same key goes out (the resolve is for the card before it).
+
+KEPT_MAX_AGE_S = 48 * 3600.0
+
+
+def kept_dir() -> str:
+    return os.path.join(outbox_dir(), "kept-resolves")
+
+
+def keep_resolve_for(urls: List[str], body: Dict[str, Any]) -> None:
+    """Never raises: a resolve that can't be kept is the same as before this existed."""
+    try:
+        d = kept_dir()
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        for url in urls:
+            name = "%020d-%05d.json" % (time.time_ns(), os.getpid() % 100000)
+            entry = {"url": url, "body": {k: body[k] for k in ("key", "id") if isinstance(body.get(k), str)}}
+            if not entry["body"]:
+                return
+            _write_atomic(os.path.join(d, name), json.dumps(entry).encode("utf-8"), 0o600)
+        _prune_dir(d, 200, KEPT_MAX_AGE_S)
+    except (OSError, ValueError):
+        pass
+
+
+def _kept() -> List[Tuple[str, Dict[str, Any]]]:
+    d = kept_dir()
+    out = []
+    try:
+        names = sorted(n for n in os.listdir(d) if n.endswith(".json") and not n.startswith("."))
+    except OSError:
+        return out
+    for n in names:
+        path = os.path.join(d, n)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                entry = json.load(fh)
+        except (OSError, ValueError):
+            entry = None
+        out.append((path, entry if isinstance(entry, dict) else {}))
+    return out
+
+
+def drop_kept_resolves(key: str) -> None:
+    """An add of `key` went out: a kept resolve of it would close the new card."""
+    for path, entry in _kept():
+        if (entry.get("body") or {}).get("key") == key:
+            _remove(path)
+
+
+def send_kept_resolves(cfg: Config, verbose: bool = False) -> int:
+    """`needs-you flush`: send each kept resolve to its hub. Returns how many went out."""
+    if not cfg.ok or not os.path.isdir(kept_dir()):
+        return 0
+    _prune_dir(kept_dir(), 200, KEPT_MAX_AGE_S)
+    sent = 0
+    down: set = set()
+    for path, entry in _kept():
+        url, body = entry.get("url"), entry.get("body")
+        # Only to a hub this machine still names, with only a key or an id: the token goes
+        # nowhere else.
+        if (url not in cfg.urls or not isinstance(body, dict) or not body
+                or set(body) - {"key", "id"} or not all(isinstance(v, str) for v in body.values())):
+            _remove(path)
+            continue
+        if url in down:
+            continue
+        try:
+            status, _ = _call(url, cfg.token, "POST", RESOLVE_PATH, body, cfg.timeout)
+        except (OSError, ValueError):
+            down.add(url)
+            continue
+        if status == 421 or status >= 500:
+            down.add(url)
+            continue
+        _remove(path)  # resolved, nothing open there, or refused: done either way
+        if 200 <= status < 300:
+            sent += 1
+            if verbose:
+                warn("sent a kept resolve to %s" % url)
+    return sent
 
 
 # ---------------------------------------------------------------------------
@@ -1336,6 +1453,8 @@ def _after_sent(path: str, body: Dict[str, Any], resp: Dict[str, Any]) -> None:
                     note_session_item(item["key"], open_=False)
             return
         key, item_id = body.get("key"), resp.get("id")
+        if isinstance(key, str) and key:
+            drop_kept_resolves(key)
         if not (isinstance(key, str) and isinstance(item_id, str) and body.get("kind", "needs") == "needs"):
             return
         _SENT_IDS[key] = item_id
@@ -1775,6 +1894,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "flush":
         reaped = reap_leases(cfg, verbose=not args.quiet)
+        lock = _lock(wait=LOCK_WAIT_SECONDS)  # (beside the outbox's own runs)
+        if lock is not None:
+            try:
+                send_kept_resolves(cfg, verbose=not args.quiet)
+            finally:
+                lock.close()
         if not args.quiet:
             print("sent %d, dropped %d, %d still queued" % (sent, dropped, remaining)
                   + (", resolved %d from ended sessions" % reaped if reaped else ""))
