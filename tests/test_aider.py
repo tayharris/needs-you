@@ -121,6 +121,13 @@ class Installer(unittest.TestCase):
         self.run_installer("--uninstall")
         self.assertEqual(self.conf_text(), mine + "\n")
 
+    def test_an_empty_config_keeps_its_mode(self):
+        open(self.conf, "w").close()
+        os.chmod(self.conf, 0o600)
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.stat(self.conf).st_mode & 0o777, 0o600)
+
     def test_crlf_file_comes_back_byte_for_byte(self):
         mine = b"model: gpt-4o\r\nread: [CONVENTIONS.md]\r\n"
         for uninstall in ([BASH, INSTALLER, "--uninstall"], [sys.executable, CLI, "uninstall-hooks", "--aider"]):

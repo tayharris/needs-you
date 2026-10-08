@@ -144,6 +144,8 @@ if text:
     with os.fdopen(bfd, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
     mode = os.stat(path).st_mode & 0o777
+elif os.path.exists(path):
+    mode = os.stat(path).st_mode & 0o777  # an empty file of the person's: its mode stays
 else:
     mode = 0o644
 if action == "uninstall" and not new.strip():
