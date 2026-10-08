@@ -362,6 +362,38 @@ class InstallInstructions(CliCase):
                     baks.append(fh.read())
             self.assertIn(data, baks, rel)  # the install's backup is the file as it was
 
+    def test_no_final_newline_comes_back_byte_for_byte(self):
+        # A last line with no newline: the install ends it to append the block, and the
+        # uninstall takes that newline out again (it used to stay). A re-install in between
+        # keeps the file as it is.
+        cases = {".codex/AGENTS.md": b"# My rules\n\nAlways run the tests.",
+                 ".codex/config.toml": b'model = "o3"',
+                 ".gemini/GEMINI.md": b"one line\r\nno end"}
+        for rel, data in cases.items():
+            os.makedirs(os.path.dirname(self.p(rel)), exist_ok=True)
+            with open(self.p(rel), "wb") as fh:
+                fh.write(data)
+        for _ in range(2):
+            self.assertEqual(self.run_cli("install-instructions", "--from", INSTR, "codex,gemini").returncode, 0)
+            r = self.run_cli("install-mcp", "codex")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("already registered", r.stdout)
+        self.assertEqual(len(self.backups(".codex/config.toml")), 1)
+        self.assertTrue(self.text(".codex/config.toml").startswith('model = "o3"\n\n# >>> needs-you MCP server'))
+        r = self.run_cli("uninstall-hooks", "--instructions", "--mcp")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for rel, data in cases.items():
+            with open(self.p(rel), "rb") as fh:
+                self.assertEqual(fh.read(), data, rel)
+        # with something of the person's added after the block, the line break stays
+        for rel in (".codex/AGENTS.md",):
+            self.assertEqual(self.run_cli("install-instructions", "--from", INSTR, "codex").returncode, 0)
+            with open(self.p(rel), "ab") as fh:
+                fh.write(b"\nAdded later.\n")
+            self.assertEqual(self.run_cli("uninstall-hooks", "--instructions").returncode, 0)
+            with open(self.p(rel), "rb") as fh:
+                self.assertEqual(fh.read(), cases[rel] + b"\n\nAdded later.\n")
+
     def test_symlinked_file_and_broken_block_are_left_alone(self):
         real = self.write("dotfiles/GEMINI.md", "mine\n")
         os.makedirs(self.p(".gemini"))

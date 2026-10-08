@@ -4541,14 +4541,30 @@ def _split_block(text: str, begin: str, end: str) -> Optional[Tuple[str, str, st
     raise ValueError("a needs-you block with no end marker")
 
 
+# On the end marker of a block appended to a file whose last line had no newline: the
+# uninstall then takes that newline out again, so the file comes back byte for byte.
+NO_EOL_FLAG = " (the file had no newline at its end)"
+
+
+def _flag_no_eol(block: str, end: str) -> str:
+    lines = block.splitlines(True)
+    if lines and lines[-1].startswith(end) and NO_EOL_FLAG not in lines[-1]:
+        lines[-1] = end + NO_EOL_FLAG + lines[-1][len(end):]
+    return "".join(lines)
+
+
 def _with_block(text: Optional[str], block: str, begin: str, end: str) -> str:
     """text with the marked block replaced, or appended after a blank line."""
     if not text:
         return block
     parts = _split_block(text, begin, end)
     if parts:
+        if NO_EOL_FLAG in parts[1].splitlines()[-1]:
+            block = _flag_no_eol(block, end)
         return parts[0] + block + parts[2]
-    return text + ("\n" if text.endswith("\n") else "\n\n") + block
+    if text.endswith("\n"):
+        return text + "\n" + block
+    return text + "\n\n" + _flag_no_eol(block, end)
 
 
 def _without_block(text: str, begin: str, end: str) -> Optional[str]:
@@ -4556,7 +4572,9 @@ def _without_block(text: str, begin: str, end: str) -> Optional[str]:
     parts = _split_block(text, begin, end)
     if not parts:
         return None
-    before, _, after = parts
+    before, block, after = parts
+    if NO_EOL_FLAG in block.splitlines()[-1] and not after and before.endswith("\n\n"):
+        return before[:-2]
     if before.endswith("\n\n"):
         before = before[:-1]
     return before + after
@@ -4689,7 +4707,7 @@ def _mcp_install_one(agent: str, server: str, dry_run: bool, say: Any) -> Option
         except ValueError as e:
             warn("%s: %s; fix it first, nothing was changed" % (_tilde(path), e))
             return None
-        if parts and parts[1] == block:
+        if parts and parts[1].replace(NO_EOL_FLAG, "", 1) == block:
             say("the needs-you MCP server is already registered with Codex")
             return False
         if not parts and _codex_other(text or ""):
