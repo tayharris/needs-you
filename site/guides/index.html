@@ -31,29 +31,35 @@
 
   <main id="main" class="wrap doc">
     <h1>Guides</h1>
-    <p class="lede">Setting up needs-you and connecting the things that should alert you. New here? Start with the <a href="testers.html">install guide</a> or the <a href="quickstart.html">quickstart</a>.</p>
-    <section aria-labelledby="get-started">
-      <h2 id="get-started">Get started</h2>
+    <p class="lede">Setting up needs-you and connecting the things that should alert you. New here? Start with the <a href="quickstart.html">quickstart</a>, or the <a href="testers.html">tester guide</a> if you were invited to try it.</p>
+    <section aria-labelledby="start-here">
+      <h2 id="start-here">Start here</h2>
       <ul class="guide-list">
-        <li><a href="testers.html">Testers</a> <span>Trying needs-you: download, first run, what to try and how to report problems, on one page.</span></li>
         <li><a href="quickstart.html">Quickstart</a> <span>The whole setup, step by step: the Mac app, Claude Code on the Mac, servers.</span></li>
+        <li><a href="testers.html">Testers</a> <span>Trying needs-you: download, first run, what to try and how to report problems, on one page.</span></li>
         <li><a href="concepts.html">Words</a> <span>Words: hub, sender, reader, owner, invite link, server hub, tailnet, and the Settings page for each.</span></li>
         <li><a href="mac-app.html">Mac app</a> <span>Installing and using NeedsYou.app: the pill, the cards, Settings.</span></li>
       </ul>
     </section>
-    <section aria-labelledby="connect-machines-and-agents">
-      <h2 id="connect-machines-and-agents">Connect machines and agents</h2>
+    <section aria-labelledby="agents">
+      <h2 id="agents">Agents</h2>
       <ul class="guide-list">
-        <li><a href="add-a-sender.html">Add a sender</a> <span>Invite links, the installer&#x27;s options, CI and cron, removing a sender.</span></li>
-        <li><a href="tailscale.html">Tailscale</a> <span>Putting the Mac and your servers on one tailnet, and checking they can reach each other.</span></li>
         <li><a href="claude-code.html">Claude Code</a> <span>Claude Code hooks for &quot;agent is waiting&quot; cards, and the skill: what gets installed and what each hook posts.</span></li>
         <li><a href="claude-code-everywhere.html">Claude Code everywhere</a> <span>Alerts from Claude Code sessions on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca.</span></li>
         <li><a href="codex.html">Codex CLI</a> <span>OpenAI Codex CLI hooks: a card when a session wants approval or is waiting for your next message.</span></li>
         <li><a href="gemini.html">Gemini CLI</a> <span>Gemini CLI hooks: a card when a session wants approval or is waiting for your next message.</span></li>
         <li><a href="opencode.html">opencode</a> <span>An opencode plugin: a card when a session asks for permission, asks a question or goes idle.</span></li>
         <li><a href="orca.html">Orca</a> <span>Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example.</span></li>
-        <li><a href="github.html">GitHub</a> <span>Review requests, deploy approvals, failed CI and your PRs&#x27; state, from one poller.</span></li>
+        <li><a href="mcp.html">MCP server</a> <span>A stdlib-Python MCP server so agents without a shell can post, resolve and run doctor through MCP tools.</span></li>
         <li><a href="custom-connector.html">Custom connector</a> <span>Connect any agent or tool: the exact item format, and which fields are required or optional.</span></li>
+      </ul>
+    </section>
+    <section aria-labelledby="servers-ci-and-tools">
+      <h2 id="servers-ci-and-tools">Servers, CI and tools</h2>
+      <ul class="guide-list">
+        <li><a href="add-a-sender.html">Add a sender</a> <span>Invite links, the installer&#x27;s options, CI and cron, removing a sender.</span></li>
+        <li><a href="tailscale.html">Tailscale</a> <span>Putting the Mac and your servers on one tailnet, and checking they can reach each other.</span></li>
+        <li><a href="github.html">GitHub</a> <span>Review requests, deploy approvals, failed CI and your PRs&#x27; state, from one poller.</span></li>
       </ul>
     </section>
     <section aria-labelledby="run-it">

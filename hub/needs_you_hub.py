@@ -163,6 +163,11 @@ CLAUDE_INSTALL_FLAGS = "--claude-hooks user --skill --alerts"
 CODEX_INSTALL_FLAG = "--codex-hooks user"
 GEMINI_INSTALL_FLAG = "--gemini-hooks user"
 OPENCODE_INSTALL_FLAG = "--opencode-plugin"
+# The end of every sender invite's agent prompt: verify, and what to do when something failed.
+# The Mac app has the same text (InviteResponse.agentPromptCheck) for hubs that predate it.
+AGENT_PROMPT_CHECK = ("Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next "
+                      "step printed under it, or tell me if it needs me. If the installer says the link is "
+                      "unknown, expired or used up, ask me for a new one.")
 
 ANY_INTERFACE = ("", "0.0.0.0", "::", "[::]", "*")
 
@@ -1108,22 +1113,17 @@ class Store:
                 args.append(now)
             elif status == "dismissed":
                 sql += " AND status = 'dismissed'"
-            # By seq, so a listing cut short by `limit` can continue after its last item.
+            # By seq, so a page cut short by `limit` continues by its `next`: every version
+            # stored after the last row it returned (the rest of the set, and any change
+            # since), then the expiries after now.
             sql += " ORDER BY seq LIMIT ?"
             args.append(limit + 1)
             rows = [dict(r) for r in self.conn.execute(sql, args).fetchall()]
-            if len(rows) > limit:
-                # Cut short: both cursors continue after the last item returned, so polling on
-                # brings the rest (as changes; with them, items in other states, which pollers
-                # handle anyway). For `since`: just before the earliest version not returned.
-                rows = rows[:limit]
-                last = rows[-1]["seq"]
-                first_left = self.conn.execute("SELECT MIN(local_at) FROM items WHERE seq > ?",
-                                               (last,)).fetchone()[0]
-                server_time = min(now, first_left if first_left is not None else now) - 1
-                return rows, server_time, True, ListCursor(epoch, last, now)
+        more = len(rows) > limit
+        rows = rows[:limit]
+        nxt = ListCursor(epoch, rows[-1]["seq"] if more else max_seq, now)
         # 1 ms behind "now": a write landing in this same millisecond is still after the cursor.
-        return rows, now - 1, False, ListCursor(epoch, max_seq, now)
+        return rows, now - 1, more, nxt
 
     def _list_by_cursor(self, cur: "ListCursor", limit: int, now: int
                         ) -> Tuple[List[Dict[str, Any]], int, bool, "ListCursor"]:
@@ -2048,9 +2048,9 @@ def invite_links(public_url: str, code: str, role: str) -> Dict[str, str]:
         out["install_command"] = "curl -fsSL %s/install.sh | bash -s -- --yes %s" % (join, CLAUDE_INSTALL_FLAGS)
         out["agent_prompt"] = ("Set up needs-you alerts on this machine: read %s and follow it. "
                                "If this machine runs Claude Code, use %s. If it runs OpenAI Codex CLI, "
-                               "add %s; Gemini CLI, add %s; opencode, add %s."
+                               "add %s; Gemini CLI, add %s; opencode, add %s. %s"
                                % (join, CLAUDE_INSTALL_FLAGS, CODEX_INSTALL_FLAG, GEMINI_INSTALL_FLAG,
-                                  OPENCODE_INSTALL_FLAG))
+                                  OPENCODE_INSTALL_FLAG, AGENT_PROMPT_CHECK))
     return out
 
 
@@ -3227,8 +3227,10 @@ health check (a line like `<hub url>  OK  hub=... token=<name> role=sender`). Ne
 
 - The PATH change reaches new shells only: in the shell you ran it from, call
   `~/.local/bin/needs-you` by its full path. With `--no-path`, tell the user the line it printed.
-- Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule)
-  and report any `WARN` or `FAIL` lines with their fixes. `--json` gives the same as data.
+- Then run `needs-you doctor` (read-only: config, PATH, hubs, outbox, hooks, flush schedule).
+  Each `WARN` or `FAIL` line has one next step under it (after `->`): run it if it's a command
+  for this machine, otherwise tell the user exactly what it asks for. `--json` gives the same
+  as data (`hint`).
 - If you added `--codex-hooks user`, tell the user to start Codex, open `/hooks` and trust the
   needs-you entries once: Codex skips hooks nobody has trusted.
 - If you added `--claude-hooks` without `--alerts`, tell the user the hooks stay quiet until

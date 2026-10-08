@@ -765,7 +765,7 @@ class DoctorUpdate(UpdateCase):
         checks = {c["check"]: c for c in json.loads(r.stdout)["checks"]}
         self.assertEqual(checks["update"]["status"], "WARN")
         self.assertIn("newer on the hub: needs-you", checks["update"]["detail"])
-        self.assertEqual(checks["update"]["hint"], "needs-you update")
+        self.assertEqual(checks["update"]["hint"], "run: needs-you update")
         self.assertEqual(read(self.cli), self.old_cli)   # doctor never changes anything
 
 

@@ -121,13 +121,26 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
     /// GET /v1/items?status=open[&since=<ts>[&cursor=<next>]]. The cursor goes only with a
     /// `since`: a hub that predates it ignores it and uses `since`, and so does a newer hub
     /// whose database was replaced since it issued the cursor.
-    public static func listURL(base: URL, since: Date?, cursor: String? = nil) -> URL {
-        var components = URLComponents(url: base.appendingPathComponent("v1/items"), resolvingAgainstBaseURL: false)!
+    public static func listURL(base: URL, since: Date?, cursor: String? = nil, limit: Int? = nil) -> URL {
         var query = [URLQueryItem(name: "status", value: "open")]
         if let since {
             query.append(URLQueryItem(name: "since", value: HubJSON.formatDate(since)))
             if let cursor, !cursor.isEmpty { query.append(URLQueryItem(name: "cursor", value: cursor)) }
         }
+        return listURL(base: base, query: query, limit: limit)
+    }
+
+    /// GET /v1/items?cursor=<next>&limit=<n>: the rest of a full poll the hub cut short.
+    /// No `since`: falling back to it can't continue a full poll, so a cursor the hub can't
+    /// read any more is a 400 and the next poll starts over (docs/API.md).
+    public static func continueURL(base: URL, cursor: String, limit: Int) -> URL {
+        listURL(base: base, query: [URLQueryItem(name: "cursor", value: cursor)], limit: limit)
+    }
+
+    private static func listURL(base: URL, query: [URLQueryItem], limit: Int?) -> URL {
+        var components = URLComponents(url: base.appendingPathComponent("v1/items"), resolvingAgainstBaseURL: false)!
+        var query = query
+        if let limit { query.append(URLQueryItem(name: "limit", value: String(limit))) }
         components.queryItems = query
         // "+" is legal in a query but many servers read it as a space; encode it.
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
@@ -159,6 +172,9 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
 
     /// Most pages fetched in one poll while the hub says `more`.
     public static let maxPagesPerPoll = 10
+    /// `limit` for a full poll: the most a hub serves (docs/API.md), so even a hub that can't
+    /// continue a full poll (0.1.3 and older) gives the whole set up to this size.
+    public static let fullPollLimit = 2000
 
     /// docs/API.md "The polling loop": with `since`, closed items come back too (that's how
     /// a sender's resolve or dismiss reaches the Mac), `next` and `server_time` are the next
@@ -171,9 +187,10 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
     /// that sends `next` pages by it (always moving on, `limit` at most); an older one by
     /// `server_time`.
     public func fetchPage(since: Date?, cursor: String?) async throws -> FeedPage {
-        var page = try await fetchOnePage(since: since, cursor: since == nil ? nil : cursor)
+        guard let since else { return try await fetchFullPoll() }
+        var page = try await fetchOnePage(since: since, cursor: cursor)
         var pages = 1
-        while page.more, since != nil, let serverTime = page.cursor, pages < Self.maxPagesPerPoll {
+        while page.more, let serverTime = page.cursor, pages < Self.maxPagesPerPoll {
             let next = try await fetchOnePage(since: serverTime, cursor: page.next)
             page = FeedPage(items: page.items + next.items, isFullSnapshot: false,
                             cursor: next.cursor ?? serverTime, more: next.more, next: next.next)
@@ -182,9 +199,32 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
         return page
     }
 
+    /// Every open item. A hub with more than `fullPollLimit` cuts the response short (`more`)
+    /// and its `next` continues it as changes; those pages are followed here. Only a single
+    /// complete page is authoritative: hubs up to 0.1.3 send a `next` that skips the rest, so
+    /// a paged one is merged without dropping what's missing (the cursor polls after it
+    /// still bring every close).
+    private func fetchFullPoll() async throws -> FeedPage {
+        var page = try await fetchOnePage(url: Self.listURL(base: config.baseURL, since: nil, limit: Self.fullPollLimit),
+                                          since: nil)
+        var pages = 1
+        while page.more, let next = page.next, pages < Self.maxPagesPerPoll {
+            let rest = try await fetchOnePage(url: Self.continueURL(base: config.baseURL, cursor: next, limit: Self.fullPollLimit),
+                                              since: page.cursor ?? Date())
+            page = FeedPage(items: page.items + rest.items, isFullSnapshot: false,
+                            cursor: rest.cursor ?? page.cursor, more: rest.more, next: rest.next ?? next)
+            pages += 1
+        }
+        return page
+    }
+
     private func fetchOnePage(since: Date?, cursor: String?) async throws -> FeedPage {
-        let request = Self.makeRequest(url: Self.listURL(base: config.baseURL, since: since, cursor: cursor),
-                                       method: "GET", token: config.token)
+        try await fetchOnePage(url: Self.listURL(base: config.baseURL, since: since, cursor: cursor), since: since)
+    }
+
+    /// `since` only picks how the page is read: nil is a full poll's first page.
+    private func fetchOnePage(url: URL, since: Date?) async throws -> FeedPage {
+        let request = Self.makeRequest(url: url, method: "GET", token: config.token)
         let data = try await send(request)
         do {
             return try Self.page(from: data, since: since)

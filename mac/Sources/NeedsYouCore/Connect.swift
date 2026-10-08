@@ -225,14 +225,22 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     public static let geminiFlag = "--gemini-hooks user"
     public static let opencodeFlag = "--opencode-plugin"
 
-    /// What to paste into an agent on the new machine. A hub that predates the Claude
-    /// flags sends a shorter prompt; this one is used instead.
+    /// The end of the agent prompt: check the setup, and what to do when something failed
+    /// (doctor prints one next step under each WARN or FAIL). Same text as the hub's.
+    public static let agentPromptCheck = "Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, "
+        + "run the next step printed under it, or tell me if it needs me. If the installer says the link is "
+        + "unknown, expired or used up, ask me for a new one."
+
+    /// What to paste into an agent on the new machine. A hub that predates the Claude flags
+    /// or the doctor step sends a shorter prompt; this one is used instead.
     public var agentPrompt: String {
-        if let hubAgentPrompt, hubAgentPrompt.contains("--claude-hooks") { return hubAgentPrompt }
+        if let hubAgentPrompt, hubAgentPrompt.contains("--claude-hooks"), hubAgentPrompt.contains("needs-you doctor") {
+            return hubAgentPrompt
+        }
         return "Set up needs-you alerts on this machine: read \(joinURL) and follow it. "
             + "If this machine runs Claude Code, use \(Self.claudeFlags). "
             + "If it runs OpenAI Codex CLI, add \(Self.codexFlag); Gemini CLI, add \(Self.geminiFlag); "
-            + "opencode, add \(Self.opencodeFlag)."
+            + "opencode, add \(Self.opencodeFlag). " + Self.agentPromptCheck
     }
     /// What to run on the new machine: the full Claude Code setup.
     public var shellOneLiner: String {

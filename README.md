@@ -10,7 +10,7 @@ Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
 
 ## Get started
 
-Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page.
+Trying it out? Start with **[the tester guide](docs/guides/testers.md)**: download, first run and how to report problems, on one page. Every guide is also on the site, in reading order: **[needsyou.app/guides](https://needsyou.app/guides/)**.
 
 Words used below: the **hub** holds your alerts (the Mac app runs one, so your Mac is the hub); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [Words](docs/guides/concepts.md).
 
@@ -66,6 +66,8 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 
 ## Guides
 
+The same guides, grouped for a first read, are at **[needsyou.app/guides](https://needsyou.app/guides/)**.
+
 | Guide | For |
 |---|---|
 | [Testers](docs/guides/testers.md) | Invited testers: access, install, first run, reporting problems |
@@ -73,6 +75,7 @@ Re-posting the same key updates the item instead of stacking duplicates, and the
 | [Words](docs/guides/concepts.md) | Hub, sender, reader, owner, invite link, server hub, tailnet, and the Settings page for each |
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
+| [MCP server](docs/guides/mcp.md) | Agents with MCP but no shell: post, resolve and check the setup as tool calls |
 | [Custom connector](docs/guides/custom-connector.md) | Connect any agent, tool or service: the item format, mapping its events to cards, examples, testing |
 | [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting" and the skill: what gets installed, what each hook posts, checking and uninstalling |
 | [Claude Code everywhere](docs/guides/claude-code-everywhere.md) | Alerts from local, SSH, tmux, VS Code Remote-SSH and Orca sessions |
@@ -108,7 +111,7 @@ needs-you/
 ├── cli/            needs-you: the sender CLI, one Python file
 ├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
-├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd), github/ (poller)
+├── integrations/   claude-code/ (hooks, skill), orca/ (prompt snippets), ci/ (Actions, cron, systemd), github/ (poller), mcp/ (MCP server)
 ├── deploy/         systemd units and an example hub config
 └── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, roadmap/, adr/
 ```

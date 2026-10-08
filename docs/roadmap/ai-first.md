@@ -55,6 +55,8 @@ Do these as one coordinated change with redirects (old paths as stubs or symlink
 
 ## 4. MCP server
 
+**Built, design Accepted** ([ADR 0008](../adr/0008-mcp-server.md), `integrations/mcp/needs_you_mcp.py`, [guide](../guides/mcp.md)). As built: `needs_you_add` (with `kind` instead of a separate done tool), `needs_you_resolve` and `needs_you_doctor`; it runs the CLI as a subprocess rather than importing it (the CLI writes to stdout, the protocol channel). No status/list tool: it needs a sender-scoped read endpoint, an owner decision. Not yet served from `/dl` or set up by the installer. The original plan:
+
 A `needs-you` MCP server so agents call tools instead of shelling out:
 
 | Tool | Maps to |

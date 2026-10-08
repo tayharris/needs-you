@@ -76,6 +76,7 @@ Where people read the shortcut (Settings, tooltips) it's spelled out, "Control-O
 - It listens on `127.0.0.1:8765` and, if the Mac is on a tailnet, on its Tailscale address (100.64.0.0/10). Never on `0.0.0.0`.
 - Other machines are told to use the Mac's MagicDNS name (from `tailscale status --json`), else its Tailscale IP, else `http://127.0.0.1:8765`.
 - Data lives in `~/Library/Application Support/NeedsYou/` (`hub.db`, plus `owner.token`, mode 600). The hub's output goes to the unified log, not to files: `log stream --predicate 'subsystem == "app.needsyou.mac"'`.
+- If it starts but doesn't answer its health check within 30 s, the pill says *Hub not answering* and the panel shows a card saying so with **Restart hub** (it restarts in place, nothing takes focus; Settings → Your inbox has the same button and the hub's last output). The app keeps checking every 5 s and clears it if the hub answers after all.
 - If the hub exits it's restarted with backoff. When the network changes or the Mac wakes, the app re-checks the Tailscale address and restarts the hub if it moved. Quitting the app stops the hub (and the hub exits by itself if the app dies).
 - This Mac is always first in the hub list, with an owner token, so **Connect a machine** works straight away.
 
@@ -184,6 +185,7 @@ NEEDS_YOU_SUPPORT_DIR=$(mktemp -d) dist/NeedsYou.app/Contents/MacOS/NeedsYou &  
 | `NEEDS_YOU_HUB_PORT=n` | Run the local hub on port n instead of 8765 (test copies next to the real app) |
 | `NEEDS_YOU_HUB_LOOPBACK_ONLY=1` | Local hub on 127.0.0.1 only; skip the tailnet address and `tailscale status` |
 | `NEEDS_YOU_HUB_SCRIPT=path` | Run this `needs_you_hub.py` instead of the bundled one |
+| `NEEDS_YOU_HUB_READY_TIMEOUT=n` | Wait n s (default 30) for the local hub's first health check before saying it isn't answering |
 
 **Screenshots.** `scripts/screenshots.sh [out-dir]` makes the site's and the guides' screenshots (`site/img/`) from example items: it builds a throwaway copy with its own bundle id and defaults suite (like `upgrade-test.sh`), runs the snapshot tour with no items (the idle pill) and with its example items, then quits it. Safe next to the running app: no hub, no shortcut, nothing in `/Applications` or the real defaults. Its pill shows on screen for about half a minute per run. Look at every image before committing it.
 

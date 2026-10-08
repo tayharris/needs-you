@@ -142,6 +142,31 @@ class NextCursor(PagingCase):
                 self.assertEqual(s, 400)
                 self.assertEqual(body.get("field"), "cursor")
 
+    def test_truncated_full_poll_continues_by_next(self):
+        """A full poll cut short by `limit` (`more`): its `next` delivers the rest, then the
+        changes after it, as the polling loop says."""
+        made = [self.post({"key": "s%d" % i, "title": "t"})["id"] for i in range(7)]
+        resolved = self.post({"key": "gone", "title": "t"})["id"]
+        request("POST", self.hub.url + "/v1/items/resolve", self.sender, {"key": "gone"})
+        s, body = self.list(limit="3")
+        self.assertEqual(s, 200, body)
+        self.assertTrue(body["more"])
+        self.assertEqual(len(body["items"]), 3)
+        self.assertTrue(all(i["status"] == "open" for i in body["items"]))
+        first = [i["id"] for i in body["items"]]
+        # an item changed and one posted while the client pages are delivered too
+        request("POST", self.hub.url + "/v1/items/resolve", self.sender, {"key": "s0"})
+        late = self.post({"key": "late", "title": "t"})["id"]
+        rest, sizes, last = self.drain(3, cursor=body["next"])
+        self.assertTrue(all(n <= 3 for n in sizes), sizes)
+        self.assertIsInstance(last.get("next"), str)
+        got = set(first) | set(rest)
+        self.assertTrue(set(made) | {late} <= got, (made, got))
+        self.assertNotIn(resolved, first)
+        # the close of an item from the first page comes with the rest
+        _, again = self.list(cursor=body["next"], limit="100")
+        self.assertIn((made[0], "resolved"), [(i["id"], i["status"]) for i in again["items"]])
+
     def test_status_is_ignored_with_a_cursor(self):
         q = self.first_cursor()
         a = self.post({"key": "a", "title": "t"})
@@ -152,8 +177,8 @@ class NextCursor(PagingCase):
 
 class TruncatedFullListing(PagingCase):
     """A full listing cut short by `limit` (`more: true`) continues where it stopped: polling
-    on with its `next` / `server_time` brings the items it left out. Its cursors used to point
-    past every one of them, so they never arrived until they changed."""
+    on with its `next` (and `since`, as clients send both) brings the items it left out, with
+    closed items mixed in."""
 
     def setUp(self):
         super().setUp()
@@ -182,6 +207,3 @@ class TruncatedFullListing(PagingCase):
 
     def test_with_next(self):
         self.check(lambda b: {"cursor": b["next"], "since": b["server_time"]})
-
-    def test_with_since_only(self):
-        self.check(lambda b: {"since": b["server_time"]})

@@ -314,10 +314,12 @@ struct SetupCardActions: View {
                         model.runSetup(button.action, for: card.tip)
                     }
                 }
-                ActionButton(title: "Dismiss", symbol: "xmark", size: model.metrics.actionFont) {
-                    model.dismissSetupTip(card.tip)
+                if card.dismissible {
+                    ActionButton(title: "Dismiss", symbol: "xmark", size: model.metrics.actionFont) {
+                        model.dismissSetupTip(card.tip)
+                    }
+                    .help("Don't show this tip again (Settings → Panel → Setup tips brings it back)")
                 }
-                .help("Don't show this tip again (Settings → Panel → Setup tips brings it back)")
                 Spacer()
             }
         }
