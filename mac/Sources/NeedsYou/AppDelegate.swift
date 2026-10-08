@@ -201,6 +201,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
+            // Settings → Alerts → Preview on the pill: a sample urgent item arriving.
+            ("14-arrival-preview", { model in
+                model.settings.ui.theme = .standard
+                model.previewArrival(.urgent)
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",

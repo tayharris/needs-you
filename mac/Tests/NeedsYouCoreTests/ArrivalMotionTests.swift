@@ -23,6 +23,7 @@ final class ArrivalMotionTests: XCTestCase {
         ("testKeyframes", testKeyframes),
         ("testPrefsRoundTripAndFallback", testPrefsRoundTripAndFallback),
         ("testReminder", testReminder),
+        ("testPreviewPlaysAnArrival", testPreviewPlaysAnArrival),
     ]
 
     private var suite = ""
@@ -242,5 +243,39 @@ final class ArrivalMotionTests: XCTestCase {
         XCTAssertEqual(UrgentReminder.sanitized(7), 0)
         XCTAssertEqual(UrgentReminder.title(0), "Off")
         XCTAssertEqual(UrgentReminder.title(10), "Every 10 min")
+    }
+
+    /// Settings → Alerts → the arrival preview: before, the pill springs out to the new
+    /// item while the animation plays (bounce and shake once it has landed), then back.
+    func testPreviewPlaysAnArrival() {
+        let look = AlertStyle.look(.normal, priority: .urgent, basePulses: 2)
+        for animation in ArrivalAnimation.allCases where animation != .none {
+            let plan = ArrivalMotion.plan(animation, look: look)
+            let script = ArrivalPreview.script(plan, previewSeconds: 14)
+            XCTAssertEqual(script.events.map(\.stage), [.before, .arrived, .after], animation.rawValue)
+            XCTAssertTrue(script.lead > 0)
+            // The animation starts with the arrival, or once the spring has landed.
+            let delay = animation == .bounce || animation == .shake ? ArrivalPreview.settleDelay : 0
+            XCTAssertTrue(abs(script.motionStart - (script.lead + delay)) < 1e-9)
+            XCTAssertTrue(ArrivalPreview.settleDelay >= ArrivalPreview.springSeconds)
+            // The whole animation plays while the preview is out.
+            XCTAssertTrue(script.hold >= delay + plan.totalSeconds, animation.rawValue)
+            XCTAssertTrue(script.hold <= max(ArrivalPreview.maxHold, delay + plan.totalSeconds))
+        }
+        // A short real preview time shortens the sample too, never below the animation.
+        let slow = ArrivalMotion.plan(.bounce, look: look, speed: .slow, repeats: 5)
+        let short = ArrivalPreview.script(slow, previewSeconds: 5)
+        XCTAssertTrue(short.hold >= ArrivalPreview.settleDelay + slow.totalSeconds)
+        let quick = ArrivalPreview.script(ArrivalMotion.plan(.glow, look: look, speed: .fast, repeats: 1), previewSeconds: 5)
+        XCTAssertTrue(abs(quick.hold - ArrivalPreview.minHold) < 1e-9)
+        // "Until clicked" (0) still ends in Settings.
+        let untilClicked = ArrivalPreview.script(slow, previewSeconds: 0).hold
+        XCTAssertTrue(untilClicked <= max(ArrivalPreview.maxHold, ArrivalPreview.settleDelay + slow.totalSeconds))
+        // The sample is marked as a preview and never looks like a real item from a hub.
+        let item = ArrivalPreview.sampleItem(.urgent)
+        XCTAssertEqual(item.priority, .urgent)
+        XCTAssertTrue(item.title.hasPrefix("Preview"))
+        XCTAssertTrue(item.links.isEmpty)
+        XCTAssertEqual(ArrivalPreview.waitingBefore().count, 1)
     }
 }

@@ -769,11 +769,21 @@ final class AppModel: ObservableObject {
         return ui.arrivalPlan(for: request.priority, basePulses: request.times, reduceMotion: reduceMotion)
     }
 
-    /// Settings → Alerts → Preview: plays the chosen arrival on the pill without posting
-    /// anything. Only changes what's drawn; never shows, orders front or focuses the panel.
+    /// Settings → Alerts → Preview on the pill: a sample item arrives the way a real one
+    /// does (the announcer: the pill springs out to its preview with the arrival animation,
+    /// the preview stays out for Show new items for, then the pill goes back). Nothing is
+    /// posted or counted. Only changes what's drawn; never shows, orders front or focuses
+    /// the panel.
     func previewArrival(_ priority: ItemPriority) {
         guard isPanelVisible else { return }
-        pulse = PulseRequest(times: priority == .urgent ? 2 : 1, priority: priority)
+        if isExpanded { collapse() }
+        digest = nil
+        let sample = ArrivalPreview.sampleItem(priority)
+        if let announcer {
+            announcer(self, [sample])
+        } else {
+            pulse = PulseRequest(times: priority == .urgent ? 2 : 1, priority: priority)
+        }
     }
 
     /// Settings → Alerts → Remind about unseen urgent items: plays urgent's arrival again

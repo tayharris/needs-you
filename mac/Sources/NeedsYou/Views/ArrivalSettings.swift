@@ -43,7 +43,7 @@ struct ArrivalSettingsSection: View {
             }
             HStack {
                 LabelWithDetail("Preview on the pill", model.isPanelVisible
-                                ? "Plays your choice on the floating pill. Nothing is posted."
+                                ? "A sample item arrives on the floating pill the way a real one does. Nothing is posted."
                                 : "Show the floating panel to preview it.")
                 Spacer()
                 Button("Urgent") { model.previewArrival(.urgent) }

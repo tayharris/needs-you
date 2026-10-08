@@ -159,7 +159,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 
-The Panel and Appearance pages show a sample card as you change things, and the Alerts page plays each alert. **Alerts → Arrivals → Preview on the pill** (**Urgent** or **Normal**) plays your choice on the real pill without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back.
+The Panel and Appearance pages show a sample card as you change things; Appearance draws the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. The Alerts page shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Alerts → Arrivals → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back.
 
 ### Themes
 
