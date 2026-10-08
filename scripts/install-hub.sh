@@ -5,7 +5,8 @@
 #   ./scripts/install-hub.sh --user [options]     no root: runs as a systemd --user service
 #   sudo ./scripts/install-hub.sh [options]       system-wide: a `needs-you` system user
 #   curl -fsSL <hub>/dl/install-hub.sh | sudo bash -s -- --join <link>   no checkout: the
-#       code comes from that hub's /dl, each file checked against its /dl/manifest.json
+#       code comes from that hub's /dl, each file checked against its /dl/manifest.json and
+#       the GitHub release of the hub's version
 #
 # Options:
 #   --user                 install under your home directory (recommended)
@@ -20,6 +21,8 @@
 #   --generate-peer-secret make a new secret and print it once (copy it to the other hub)
 #   --join LINK            pair with another hub (the Mac's, or a server) by its peer invite
 #                          (http(s)://<hub>/join/nyi_...): no secret to copy; it stays in the DB
+#   --trust-hub-code       without a checkout: install the hub's code even if it can't be
+#                          checked against the GitHub release of its version (a dev build)
 #   --reconfigure          rebuild the config from defaults + flags (keeps the secret)
 #   --no-start             install files and config, don't start the service
 #   --no-invite            don't print an owner invite at the end
@@ -41,8 +44,9 @@ RECONFIGURE=0
 START=1
 INVITE=1
 JOIN=""
+TRUST_HUB_CODE=0
 
-usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
@@ -58,6 +62,7 @@ while [ $# -gt 0 ]; do
     --peer-secret-file) PEER_SECRET=$(tr -d '\r\n' < "${2:?}"); shift 2 ;;
     --generate-peer-secret) GEN_SECRET=1; shift ;;
     --join) JOIN=${2:?--join needs the peer invite link}; shift 2 ;;
+    --trust-hub-code) TRUST_HUB_CODE=1; shift ;;
     --reconfigure) RECONFIGURE=1; shift ;;
     --no-start) START=0; shift ;;
     --no-invite) INVITE=0; shift ;;
@@ -79,71 +84,268 @@ PYTHON=/usr/bin/python3
 "$PYTHON" -c 'import sys, sqlite3; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
   || die "python3 >= 3.9 with the sqlite3 module is required"
 
-# A checkout only when this script was run from a real file: piped (`curl ... | bash`), $0 is
-# "bash" and the directory around the caller must never be taken for one (a hub/ planted in
-# the parent of the current directory would be installed and run as root).
-SRC=""
+# Where the code comes from. Everything is installed from STAGE, a fresh private directory:
+# - a checkout, when this script runs from a real file (piped, `curl ... | bash`, $0 is "bash",
+#   and the directory around the caller must never be taken for one). As root (or with
+#   NEEDS_YOU_INSTALL_CHECK_OWNERSHIP=1, a test switch that only adds checks) the files are
+#   first copied into STAGE, refusing symlinks and anything (file or any directory above it)
+#   others could write, and only that copy is installed, so nothing can change in between;
+# - otherwise the hub the --join link names (/dl), each file checked against its
+#   /dl/manifest.json and then against the GitHub release of the hub's version (SHA256SUMS,
+#   release-manifest.json, and its build provenance when `gh` is installed). A hub whose code
+#   doesn't match a release (a dev build) needs a checkout, or --trust-hub-code.
+CHECKOUT=""
 SELF=${BASH_SOURCE[0]:-}
 if [ -n "$SELF" ] && [ -f "$SELF" ] && [ ! -L "$SELF" ]; then
-  SRC=$(cd "$(dirname "$SELF")/.." 2>/dev/null && pwd -P || true)
-  [ -f "$SRC/hub/needs_you_hub.py" ] || SRC=""
+  CHECKOUT=$(cd "$(dirname "$SELF")/.." 2>/dev/null && pwd -P || true)
+  [ -f "$CHECKOUT/hub/needs_you_hub.py" ] || CHECKOUT=""
 fi
-if [ -n "$SRC" ] && { [ "$(id -u)" -eq 0 ] || [ "${NEEDS_YOU_INSTALL_CHECK_OWNERSHIP:-}" = 1 ]; }; then
-  # As root, install only code that only root or the sudo user could have changed.
-  "$PYTHON" - "$SRC" "${SUDO_UID:-$(id -u)}" <<'PY' || die "refusing to install as root from $SRC (above)"
+STAGE=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/needs-you-hub-src.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT
+if [ -n "$CHECKOUT" ] && { [ "$(id -u)" -ne 0 ] && [ "${NEEDS_YOU_INSTALL_CHECK_OWNERSHIP:-}" != 1 ]; }; then
+  SRC=$CHECKOUT
+elif [ -n "$CHECKOUT" ]; then
+  "$PYTHON" - "$CHECKOUT" "$STAGE" "${SUDO_UID:-$(id -u)}" <<'PY' || die "refusing to install as root from $CHECKOUT (above)"
 import os, stat, sys
-src, uid = sys.argv[1], int(sys.argv[2])
-ok_owners = {0, uid}
-bad = []
-for top in ("", "hub", "cli", "deploy", "scripts", "integrations"):
-    root = os.path.join(src, top)
-    walk = [(root, [], [])] if top == "" else os.walk(root)
-    for d, _dirs, files in walk:
-        for p in [d] + [os.path.join(d, f) for f in files]:
-            st = os.lstat(p)
-            if st.st_uid not in ok_owners:
-                bad.append("%s is owned by uid %d" % (p, st.st_uid))
-            elif stat.S_IMODE(st.st_mode) & 0o022:
-                bad.append("%s is writable by others" % p)
+src, dest, uid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+owners = {0, uid}
+bad, seen = [], {}
+
+def check_dir_chain(path):
+    """Every directory from / down to `path`: a real directory (no symlink), owned by root or
+    the installing user, and not writable by others (a root-owned sticky dir like /tmp is fine)."""
+    parts = os.path.abspath(path).split("/")
+    cur = "/"
+    for part in [""] + parts[1:]:
+        cur = os.path.join(cur, part) if part else cur
+        if cur in seen:
+            continue
+        st = os.lstat(cur)
+        seen[cur] = True
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+            bad.append("%s is a symlink or not a directory" % cur)
+        elif st.st_uid not in owners:
+            bad.append("%s is owned by uid %d" % (cur, st.st_uid))
+        elif stat.S_IMODE(st.st_mode) & 0o022 and not (st.st_uid == 0 and st.st_mode & stat.S_ISVTX):
+            bad.append("%s is writable by others" % cur)
+
+copies = []
+for top in ("hub", "cli", "deploy", "scripts", "integrations"):
+    for d, dirs, files in os.walk(os.path.join(src, top), followlinks=False):
+        check_dir_chain(d)
+        for n in dirs:
+            if os.path.islink(os.path.join(d, n)):
+                bad.append("%s is a symlink" % os.path.join(d, n))
+        for n in files:
+            if n.endswith((".pyc", ".DS_Store")):
+                continue
+            p = os.path.join(d, n)
+            try:
+                fd = os.open(p, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            except OSError:
+                bad.append("%s is a symlink or can't be read" % p)
+                continue
+            with os.fdopen(fd, "rb") as fh:
+                st = os.fstat(fh.fileno())  # the file actually opened, not its name
+                if not stat.S_ISREG(st.st_mode):
+                    bad.append("%s is not a regular file" % p)
+                elif st.st_uid not in owners:
+                    bad.append("%s is owned by uid %d" % (p, st.st_uid))
+                elif stat.S_IMODE(st.st_mode) & 0o022:
+                    bad.append("%s is writable by others" % p)
+                else:
+                    copies.append((os.path.relpath(p, src), fh.read(), st.st_mode & 0o111))
 if bad:
     sys.stderr.write("install-hub: %s%s\n" % ("; ".join(bad[:5]), " ..." if len(bad) > 5 else ""))
     sys.exit(1)
+for rel, data, exe in copies:
+    target = os.path.join(dest, rel)
+    os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o755 if exe else 0o644)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
 PY
-fi
-if [ -z "$SRC" ]; then
-  # No checkout (curl ... | bash): fetch the code from the hub the --join link names. Its
-  # /dl/manifest.json lists each file with its repo path and sha256; every file must match.
-  # This is integrity, not authenticity: the code comes from the hub you are joining anyway.
+  SRC=$STAGE
+else
   [ -n "$JOIN" ] || die "run this from a checkout of the needs-you repo, or with --join <peer invite link>"
   FROM_HUB=${JOIN%%/join/*}
-  SRC=$(mktemp -d "${TMPDIR:-/tmp}/needs-you-hub-src.XXXXXX")
-  trap 'rm -rf "$SRC"' EXIT
   echo "fetching the hub's code from $FROM_HUB"
-  "$PYTHON" - "$FROM_HUB" "$SRC" <<'PY' || die "couldn't fetch the code from that hub (above); it may run a needs-you too old to serve its own code"
-import hashlib, json, os, re, sys, urllib.request
-base, dest = sys.argv[1].rstrip("/"), sys.argv[2]
+  "$PYTHON" - "$FROM_HUB" "$STAGE" "$TRUST_HUB_CODE" <<'PY' || die "nothing installed (above)"
+import hashlib, json, os, re, shutil, stat, subprocess, sys, tarfile, tempfile, urllib.error, urllib.parse, urllib.request
+base, dest, trust = sys.argv[1].rstrip("/"), sys.argv[2], sys.argv[3] == "1"
+REPO = "tayharris/needs-you"  # fixed here, never from the hub (the CLI's RELEASE_REPO)
+WORKFLOW = REPO + "/.github/workflows/release.yml"
+SLSA = "https://slsa.dev/provenance/v1"
+GITHUB_HOSTS = {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+CAPS = {"SHA256SUMS": 64 << 10, "release-manifest.json": 1 << 20}
+TAR_CAP = 64 << 20
+
+def die(msg, code=1):
+    sys.stderr.write("install-hub: %s\n" % msg)
+    sys.exit(code)
+
+# 1. the hub's files, each against the hub's own manifest (integrity)
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-def get(name):
-    with opener.open(base + "/dl/" + name, timeout=30) as resp:
-        return resp.read()
-manifest = json.loads(get("manifest.json").decode("utf-8"))
-files = manifest.get("files") or {}
+hub = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+def hub_get(name):
+    with hub.open(base + "/dl/" + name, timeout=30) as resp:
+        return resp.read(TAR_CAP + 1)
+try:
+    manifest = json.loads(hub_get("manifest.json").decode("utf-8"))
+    files = manifest.get("files") or {}
+except (OSError, ValueError, AttributeError) as e:
+    die("couldn't read %s/dl/manifest.json (%s); it may run a needs-you too old to serve its own code"
+        % (base, type(e).__name__))
+version = str(manifest.get("version") or "")
 path_re = re.compile(r"^(?:[A-Za-z0-9_][A-Za-z0-9._-]*/)*[A-Za-z0-9_][A-Za-z0-9._-]*$")
+got = {}
 for name, entry in sorted(files.items()):
-    path = entry.get("path")
+    path = entry.get("path") if isinstance(entry, dict) else None
     if not isinstance(path, str) or not path_re.match(path) or ".." in path.split("/"):
-        sys.exit("install-hub: the hub's manifest has no usable path for %s" % name)
-    data = get(name)
-    if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
-        sys.exit("install-hub: %s doesn't match the hub's manifest; nothing installed" % name)
+        die("the hub's manifest has no usable path for %s" % name)
+    try:
+        data = hub_get(name)
+    except OSError as e:
+        die("couldn't download %s from the hub (%s)" % (name, type(e).__name__))
+    if hashlib.sha256(data).hexdigest() != str(entry.get("sha256") or "").lower():
+        die("%s doesn't match the hub's manifest; nothing installed" % name)
+    got[path] = data
+for need in ("hub/needs_you_hub.py", "hub/needs_you_admin.py", "hub/join-install.sh", "cli/needs-you",
+             "deploy/needs-you-admin.sh", "deploy/needs-you-hub.service", "deploy/needs-you-hub.user.service"):
+    if need not in got:
+        die("that hub doesn't serve %s; update it (the Mac app), or install from a checkout" % need)
+
+# 2. the same bytes in the GitHub release of the hub's version (authenticity)
+def release_files(v, tmp):
+    """SHA256SUMS, the server tarball and release-manifest.json of release vV, with gh when
+    installed, else over https to GitHub only. Returns (dir, gh or None); exits 4 if
+    GitHub can't be reached."""
+    names = ["SHA256SUMS", "needs-you-server-%s.tar.gz" % v, "release-manifest.json"]
+    forced = os.environ.get("NEEDS_YOU_GH")
+    gh = (forced if forced != "none" and os.access(forced, os.X_OK) else None) if forced else shutil.which("gh")
+    if gh:
+        args = [gh, "release", "download", "v" + v, "--repo", REPO, "--dir", tmp]
+        for n in names:
+            args += ["--pattern", n]
+        try:
+            r = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
+        except (OSError, subprocess.SubprocessError) as e:
+            die("gh failed (%s)" % type(e).__name__, 4)
+        if r.returncode != 0:
+            die("gh couldn't download release v%s of %s (%s)" % (v, REPO, (r.stderr.strip().splitlines() or [""])[-1][:200]), 4)
+        return gh
+    if os.environ.get("NEEDS_YOU_RELEASE_OFFLINE") == "1":  # tests: GitHub is unreachable
+        die("GitHub isn't reachable (NEEDS_YOU_RELEASE_OFFLINE=1)", 4)
+    class GitHubOnly(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            u = urllib.parse.urlsplit(newurl)
+            if u.scheme != "https" or u.hostname not in GITHUB_HOSTS or u.port not in (None, 443) \
+                    or u.username or u.password:
+                raise urllib.error.HTTPError(newurl, code, "redirect off GitHub refused", headers, fp)
+            return urllib.request.HTTPRedirectHandler.redirect_request(self, req, fp, code, msg, headers, newurl)
+    opener = urllib.request.build_opener(GitHubOnly())
+    for n in names:
+        cap = CAPS.get(n, TAR_CAP)
+        try:
+            with opener.open("https://github.com/%s/releases/download/v%s/%s" % (REPO, v, n), timeout=60) as resp:
+                data = resp.read(cap + 1)
+        except (OSError, ValueError) as e:
+            die("couldn't download %s of release v%s from GitHub (%s)" % (n, v, type(e).__name__), 4)
+        if len(data) > cap:
+            die("%s of release v%s is larger than expected" % (n, v), 3)
+        with open(os.path.join(tmp, n), "wb") as fh:
+            fh.write(data)
+    return None
+
+def provenance(gh, path, sha, v):
+    if not gh:
+        return "build provenance not checked (install gh to check it)"
+    r = subprocess.run([gh, "attestation", "verify", path, "--repo", REPO, "--signer-workflow", WORKFLOW,
+                        "--source-ref", "refs/tags/v" + v, "--predicate-type", SLSA,
+                        "--deny-self-hosted-runners", "--format", "json"],
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+    if r.returncode == 0:
+        try:
+            for e in json.loads(r.stdout):
+                vr = e["verificationResult"]
+                st, cert = vr["statement"], vr["signature"]["certificate"]
+                digests = {str((s.get("digest") or {}).get("sha256") or "").lower() for s in st.get("subject") or []}
+                if (sha in digests and st.get("predicateType") == SLSA
+                        and cert.get("sourceRepositoryURI") == "https://github.com/" + REPO
+                        and cert.get("sourceRepositoryRef") == "refs/tags/v" + v
+                        and str(cert.get("buildSignerURI") or "").startswith("https://github.com/%s@" % WORKFLOW)
+                        and cert.get("runnerEnvironment") == "github-hosted"):
+                    return "build provenance verified"
+        except (ValueError, KeyError, TypeError, AttributeError):
+            pass
+        die("release v%s's build provenance doesn't fit; nothing installed" % v, 3)
+    p = subprocess.run([gh, "api", "repos/" + REPO, "--jq", ".private"],
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    if p.returncode == 0 and p.stdout.strip() == "true":
+        return "no build provenance to check (%s is private)" % REPO
+    die("release v%s has no valid build provenance; nothing installed" % v, 3)
+
+def sha_file(p):
+    h = hashlib.sha256()
+    with open(p, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+if trust:
+    sys.stderr.write("\nWARNING: --trust-hub-code: installing the hub's code (to run as a service) WITHOUT\n"
+                     "checking it against a GitHub release. Only the hub's own checksums were checked.\n\n")
+else:
+    if not re.match(r"^\d{1,6}\.\d{1,6}\.\d{1,6}$", version):
+        die("the hub's version %r isn't X.Y.Z" % version[:40], 3)
+    tmp = tempfile.mkdtemp(prefix="needs-you-release-")
+    try:
+        gh = release_files(version, tmp)
+        tarball = "needs-you-server-%s.tar.gz" % version
+        sums = {}
+        with open(os.path.join(tmp, "SHA256SUMS"), "r", encoding="utf-8") as fh:
+            for line in fh:
+                p = line.split()
+                if len(p) == 2:
+                    sums[p[1].lstrip("*")] = p[0].lower()
+        tar_path, rm_path = os.path.join(tmp, tarball), os.path.join(tmp, "release-manifest.json")
+        if os.path.getsize(tar_path) > TAR_CAP or sha_file(tar_path) != sums.get(tarball):
+            die("release v%s's %s doesn't match its SHA256SUMS" % (version, tarball), 3)
+        rm_sha = sha_file(rm_path)
+        if rm_sha != sums.get("release-manifest.json"):
+            die("release v%s's release-manifest.json doesn't match its SHA256SUMS" % version, 3)
+        with open(rm_path, "r", encoding="utf-8") as fh:
+            rm = json.load(fh)
+        listed = {str(a.get("name")): str(a.get("sha256") or "").lower() for a in rm.get("assets") or []}
+        if rm.get("version") != version or listed.get(tarball) != sums.get(tarball):
+            die("release v%s's release-manifest.json doesn't list this %s" % (version, tarball), 3)
+        note = provenance(gh, rm_path, rm_sha, version)
+        with tarfile.open(tar_path, "r:gz") as tf:
+            for path, data in sorted(got.items()):
+                try:
+                    member = tf.extractfile("needs-you-%s/%s" % (version, path))
+                except KeyError:
+                    member = None
+                if member is None or hashlib.sha256(member.read()).hexdigest() != hashlib.sha256(data).hexdigest():
+                    die("%s from the hub doesn't match release v%s on GitHub; nothing installed. Install from a "
+                        "checkout, or pass --trust-hub-code if you trust this hub's code (a dev build)" % (path, version), 3)
+        print("the hub's code matches release v%s on GitHub (%s)" % (version, note))
+    except (OSError, ValueError, AttributeError, TypeError, tarfile.TarError) as e:
+        die("couldn't check release v%s (%s); nothing installed" % (version, type(e).__name__), 3)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+# 3. lay it out, only now
+for path, data in got.items():
     target = os.path.join(dest, path)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "wb") as fh:
+    os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+    with os.fdopen(fd, "wb") as fh:
         fh.write(data)
 PY
+  SRC=$STAGE
   for f in hub/needs_you_hub.py hub/needs_you_admin.py hub/join-install.sh cli/needs-you \
            deploy/needs-you-admin.sh deploy/needs-you-hub.service deploy/needs-you-hub.user.service; do
     [ -f "$SRC/$f" ] || die "that hub doesn't serve $f; update it (the Mac app), or install from a checkout"

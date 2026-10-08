@@ -158,8 +158,12 @@ only; nothing in the panel.
 - **Accepted**, with [0004](0004-always-on-hub.md) phases 1–2, once merged.
 - **One-liner, yes.** The hub serves `install-hub.sh` and the hub's own code under `/dl/`, and
   `/dl/manifest.json` gives each file's repo `path`. Without a checkout, `install-hub.sh
-  --join` fetches them from the hub the link names, checks every sha256 before installing
-  anything (integrity, as for senders), installs and pairs: `curl -fsSL <hub>/dl/install-hub.sh
+  --join` fetches them from the hub the link names and, before installing anything, checks
+  every file against the hub's manifest and against the GitHub release of the hub's version
+  (SHA256SUMS, release-manifest.json, its build provenance with `gh`); a mismatch, or GitHub out
+  of reach, refuses unless `--trust-hub-code` (a dev build). As root, a checkout is copied to a
+  private directory first (no symlinks, nothing others can write) and only the copy installed.
+  Then it installs and pairs: `curl -fsSL <hub>/dl/install-hub.sh
   | sudo bash -s -- --join '<link>'`. It never prints the secret. The Mac app bundles the files.
 - **Plain http only on the tailnet.** `peer.url` stays https, or http to `*.ts.net`, a tailnet
   address or loopback; LAN names are refused.

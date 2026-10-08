@@ -149,7 +149,7 @@ struct AlwaysOnHubSection: View {
         let base = "The link works once"
         guard let expires = controller.commandExpires else { return base + "." }
         let minutes = max(0, Int(expires.timeIntervalSince(now) / 60))
-        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). It never shows the pair's secret."
+        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). It checks the code against the GitHub release of this app's version (a development build needs --trust-hub-code) and never shows the pair's secret."
     }
 
     private func peerRow(_ peer: PeerSummary) -> some View {
