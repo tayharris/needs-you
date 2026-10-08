@@ -10,10 +10,22 @@
 	<string>app.needsyou.mac</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- The unlocalized name must match the file name (NeedsYou.app), or Finder and Spotlight
+	     ignore the localized "Needs You" from en.lproj/InfoPlist.strings and show
+	     "NeedsYou". Everything the app shows reads the localized one. -->
 	<key>CFBundleName</key>
-	<string>Needs You</string>
+	<string>NeedsYou</string>
 	<key>CFBundleDisplayName</key>
-	<string>Needs You</string>
+	<string>NeedsYou</string>
+	<!-- Finder, Spotlight and Alfred show "Needs You" from en.lproj/InfoPlist.strings
+	     instead of the file name, which stays NeedsYou.app. -->
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
+	<!-- Contents/Resources/AppIcon.icns, built by scripts/bundle.sh from Resources/AppIcon.png. -->
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

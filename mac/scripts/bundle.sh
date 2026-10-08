@@ -44,6 +44,26 @@ fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
+# "Needs You" with a space in Finder, Spotlight and Alfred while the file stays
+# NeedsYou.app (install.sh, the updater, the login item and the docs use that path):
+# LSHasLocalizedDisplayName in Info.plist plus this strings file.
+mkdir -p "$APP/Contents/Resources/en.lproj"
+cp Resources/en.lproj/InfoPlist.strings "$APP/Contents/Resources/en.lproj/InfoPlist.strings"
+plutil -lint "$APP/Contents/Resources/en.lproj/InfoPlist.strings" >/dev/null
+
+# The app icon (CFBundleIconFile AppIcon): every iconset size from the committed 1024 px
+# master (Resources/AppIcon.png, drawn from Resources/AppIcon.svg), with sips and
+# iconutil, which ship with macOS.
+echo "==> app icon"
+ICONSET="$(mktemp -d)/AppIcon.iconset"
+mkdir -p "$ICONSET"
+for s in 16 32 128 256 512; do
+  sips -z "$s" "$s" Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+  sips -z $((s * 2)) $((s * 2)) Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "$(dirname "$ICONSET")"
+
 # The hub that runs inside the app, plus what it hands to joining machines (/dl).
 # Contents/Resources mirrors the repo layout (hub/, cli/, integrations/claude-code/) so
 # the hub finds its siblings the same way in the repo and in the bundle.

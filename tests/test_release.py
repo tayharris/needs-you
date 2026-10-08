@@ -8,8 +8,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import plistlib
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -170,6 +172,37 @@ class BundleScriptTests(unittest.TestCase):
         with open(os.path.join(ROOT, "mac", "scripts", "bundle.sh")) as fh:
             s = fh.read()
         self.assertIn('cp scripts/install.sh "$RES/scripts/install.sh"', s)
+
+    def test_bundle_builds_the_app_icon_and_localized_name(self):
+        with open(os.path.join(ROOT, "mac", "scripts", "bundle.sh")) as fh:
+            s = fh.read()
+        self.assertIn('iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"', s)
+        self.assertIn("cp Resources/en.lproj/InfoPlist.strings", s)
+        # Built before the signature, so codesign covers both.
+        self.assertLess(s.index("iconutil -c icns"), s.index("codesign --force"))
+        self.assertLess(s.index("cp Resources/en.lproj/InfoPlist.strings"), s.index("codesign --force"))
+
+    def test_info_plist_names_and_icon(self):
+        with open(os.path.join(ROOT, "mac", "Resources", "Info.plist"), "rb") as fh:
+            info = plistlib.load(fh)
+        self.assertEqual(info["CFBundleIconFile"], "AppIcon")
+        self.assertIs(info["LSHasLocalizedDisplayName"], True)
+        # Finder and Spotlight use the localized name only when the unlocalized one matches
+        # the file name, NeedsYou.app (checked on macOS 15).
+        self.assertEqual(info["CFBundleName"], "NeedsYou")
+        self.assertEqual(info["CFBundleDisplayName"], "NeedsYou")
+        with open(os.path.join(ROOT, "mac", "Resources", "en.lproj", "InfoPlist.strings")) as fh:
+            strings = fh.read()
+        self.assertIn('"CFBundleDisplayName" = "Needs You";', strings)
+        self.assertIn('"CFBundleName" = "Needs You";', strings)
+
+    def test_icon_master_is_1024_rgba_png(self):
+        with open(os.path.join(ROOT, "mac", "Resources", "AppIcon.png"), "rb") as fh:
+            head = fh.read(33)
+        self.assertEqual(head[:8], b"\x89PNG\r\n\x1a\n")
+        width, height, depth, colour = struct.unpack(">IIBB", head[16:26])
+        self.assertEqual((width, height, depth, colour), (1024, 1024, 8, 6))  # 6 = RGBA
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, "mac", "Resources", "AppIcon.svg")))
 
     def test_install_sh_records_rollbacks(self):
         with open(os.path.join(ROOT, "mac", "scripts", "install.sh")) as fh:

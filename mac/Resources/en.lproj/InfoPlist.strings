@@ -1,0 +1,4 @@
+/* The name Finder, Spotlight and Alfred show for NeedsYou.app (Info.plist sets
+   LSHasLocalizedDisplayName). The file name stays NeedsYou.app. */
+"CFBundleDisplayName" = "Needs You";
+"CFBundleName" = "Needs You";
