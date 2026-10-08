@@ -298,6 +298,49 @@ class InstallScript(HubTestCase):
         self.assertNotIn(hint, r.stdout)
         self.assertTrue(os.path.exists(os.path.join(self.home, ".config", "needs-you", "orca-snippet.md")))
 
+    def test_auto_update_is_on_by_default_and_kept_on_rerun(self):
+        inv = self.invite(uses=3)
+        r = self.install(inv, "--yes", "--host", "box9", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile()["NEEDS_YOU_AUTO_UPDATE"], "1")
+        self.assertIn("update  -> daily", r.stdout)
+        with open(self.cron) as fh:           # the flush that runs it is scheduled
+            self.assertEqual(fh.read().count("needs-you-flush"), 1)
+        # Opting out sticks: a later run without either flag keeps it off.
+        r = self.install(inv, "--yes", "--host", "box9", "--no-auto-update", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile()["NEEDS_YOU_AUTO_UPDATE"], "0")
+        self.assertIn("update  -> off", r.stdout)
+        r = self.install(inv, "--yes", "--host", "box9", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile()["NEEDS_YOU_AUTO_UPDATE"], "0")
+        r = self.install(inv, "--yes", "--host", "box9", "--auto-update", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile()["NEEDS_YOU_AUTO_UPDATE"], "1")
+        with open(os.path.join(self.home, ".config", "needs-you", "env")) as fh:
+            self.assertEqual(fh.read().count("NEEDS_YOU_AUTO_UPDATE="), 1)
+        with open(self.cron) as fh:
+            self.assertEqual(fh.read().count("needs-you-flush"), 1)
+
+    def test_older_install_without_the_setting_gets_it_on_rerun(self):
+        # A machine set up before auto-update was the default has no NEEDS_YOU_AUTO_UPDATE line
+        # (and maybe no flush entry): re-running the one-liner turns both on.
+        inv = self.invite(uses=2)
+        r = self.install(inv, "--yes", "--host", "box10", "--no-schedule", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("won't run until you schedule", r.stderr)
+        env_path = os.path.join(self.home, ".config", "needs-you", "env")
+        with open(env_path) as fh:
+            lines = [l for l in fh if not l.startswith("NEEDS_YOU_AUTO_UPDATE=")]
+        with open(env_path, "w") as fh:
+            fh.writelines(lines)
+        self.assertFalse(os.path.exists(self.cron))
+        r = self.install(inv, "--yes", "--host", "box10", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.envfile()["NEEDS_YOU_AUTO_UPDATE"], "1")
+        with open(self.cron) as fh:
+            self.assertEqual(fh.read().count("needs-you-flush"), 1)
+
     def test_schedule_keeps_the_rest_of_the_crontab_as_it_was(self):
         mine = "MAILTO=me\n\n# backups\n0 3 * * * /usr/local/bin/backup\n\n# end\n"
         with open(self.cron, "w") as fh:
