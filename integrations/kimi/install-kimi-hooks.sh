@@ -141,8 +141,14 @@ else:
     # [[hooks]] tables can be appended to any TOML file, unless `hooks` is already something
     # else there: a root key (hooks = [...]) or a [hooks] / [hooks.x] table.
     root = True
+    depth = 0  # open brackets of a multi-line array value: its rows aren't table headers
     for line in rest.splitlines():
         s = line.strip()
+        inside = depth > 0
+        bare = re.sub(r'"(?:[^"\\]|\\.)*"|\'[^\']*\'|#.*', "", s)  # strings and comments out
+        depth = max(0, depth + bare.count("[") - bare.count("]"))
+        if inside:
+            continue
         if s.startswith("["):
             if re.match(r"^\[\s*hooks\s*[\].]", s):
                 die("%s defines [hooks] as a table; Kimi expects [[hooks]] entries. Nothing was "
