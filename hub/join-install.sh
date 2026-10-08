@@ -179,6 +179,7 @@ fi
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"
 ENV_FILE="$CONF_DIR/env"
 BIN_DIR="${NEEDS_YOU_BIN_DIR:-$HOME/.local/bin}"
+case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac  # it goes into crontab and the profile
 CLI="$BIN_DIR/needs-you"
 SKILL_DIR="$HOME/.claude/skills/needs-you"
 LABEL="io.needs-you.flush"
