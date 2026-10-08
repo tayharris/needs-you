@@ -1391,6 +1391,14 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
         if result is None:
             if os.path.exists(mine):
                 warn("no hub reachable (%s); queued %s" % (out.unreachable, os.path.basename(mine)))
+                return 0
+            # Another run's flush took our entry between queue() and the lock: it moves a
+            # refused one to outbox/failed/ and deletes a sent one.
+            if os.path.exists(os.path.join(os.path.dirname(mine), "failed", os.path.basename(mine))):
+                warn("hub rejected the request (sent by another needs-you run); it is in outbox/failed/")
+                return 2
+            if not quiet:
+                warn("sent by another needs-you run that was sending the outbox")
             return 0
     if isinstance(result, Rejected):
         e = result
