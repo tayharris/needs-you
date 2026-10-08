@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -430,6 +431,23 @@ class InstallScript(HubTestCase):
         import plistlib
         with open(os.path.join(self.home, "Library", "LaunchAgents", "io.needs-you.flush.plist"), "rb") as fh:
             self.assertEqual(plistlib.load(fh)["EnvironmentVariables"], xdg)
+
+    def test_a_rerun_never_downgrades_the_cli(self):
+        # `needs-you update` refuses to go back, but re-running the one-liner replaced a newer
+        # CLI with the hub's older one.
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--host", "dg1", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        with open(cli) as fh:
+            newer = re.sub(r'^VERSION = "[0-9.]+"', 'VERSION = "99.0.0"', fh.read(), count=1, flags=re.M)
+        with open(cli, "w") as fh:
+            fh.write(newer)
+        r = self.install(inv, "--yes", "--host", "dg1", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("kept %s (99.0.0, newer than the hub's)" % cli, r.stdout)
+        with open(cli) as fh:
+            self.assertEqual(fh.read(), newer)
 
     def test_needs_you_config_is_where_the_token_goes(self):
         # The flush schedule and the CLI read NEEDS_YOU_CONFIG, but the installer wrote the

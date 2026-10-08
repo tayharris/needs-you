@@ -237,6 +237,23 @@ say "needs-you sender setup on $HOST_SHORT"
 [ -f "$ENV_FILE" ] && info "existing config: $ENV_FILE (values you don't change are kept)"
 
 # ---------------------------------------------------------------- 1. CLI install
+# cli_newer INSTALLED NEW: the installed CLI's version when it is newer than NEW's (a
+# heredoc in a function, not in $(...): bash 3.2 misparses those).
+cli_newer() {
+  python3 - "$1" "$2" 2>/dev/null <<'PY'
+import re, sys
+def version(path):
+    try:
+        m = re.search(r'^VERSION = "(\d+)\.(\d+)\.(\d+)"', open(path, encoding="utf-8").read(), re.M)
+    except OSError:
+        return None
+    return tuple(int(x) for x in m.groups()) if m else None
+have, new = version(sys.argv[1]), version(sys.argv[2])
+if have and new and have > new:
+    print("%d.%d.%d" % have)
+PY
+}
+
 install_cli() {
   local src=$1 dest="$BIN_DIR/needs-you" tmp
   mkdir -p "$BIN_DIR"
@@ -265,7 +282,12 @@ PY
     rm -f "$tmp"; die "$src is not valid Python 3"
   fi
   chmod 755 "$tmp"
-  if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
+  # Never a downgrade (a stale checkout, an older hub): `needs-you update` refuses one too.
+  local newer
+  newer=$(cli_newer "$dest" "$tmp")
+  if [ -n "$newer" ]; then
+    rm -f "$tmp"; info "CLI kept: $dest ($newer, newer than $src)"
+  elif [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
     rm -f "$tmp"; info "CLI already up to date: $dest"
   else
     mv -f "$tmp" "$dest"; info "installed CLI: $dest"

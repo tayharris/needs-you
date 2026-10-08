@@ -558,10 +558,33 @@ assert src.startswith("#!") and "needs-you" in src
 compile(src, "needs-you", "exec")
 PY
 mkdir -p "$BIN_DIR"
-cp "$TMP/needs-you" "$BIN_DIR/.needs-you.new"
-chmod 755 "$BIN_DIR/.needs-you.new"
-mv -f "$BIN_DIR/.needs-you.new" "$CLI"
-say "installed $CLI"
+# A re-run never downgrades: a CLI newer than the hub's (a release installed since, as
+# `needs-you update` refuses to go back) is kept.
+# cli_newer INSTALLED NEW: the installed CLI's version when it is newer than NEW's (a
+# heredoc in a function, not in $(...): bash 3.2 misparses those).
+cli_newer() {
+  python3 - "$1" "$2" 2>/dev/null <<'PY'
+import re, sys
+def version(path):
+    try:
+        m = re.search(r'^VERSION = "(\d+)\.(\d+)\.(\d+)"', open(path, encoding="utf-8").read(), re.M)
+    except OSError:
+        return None
+    return tuple(int(x) for x in m.groups()) if m else None
+have, new = version(sys.argv[1]), version(sys.argv[2])
+if have and new and have > new:
+    print("%d.%d.%d" % have)
+PY
+}
+newer=$(cli_newer "$CLI" "$TMP/needs-you")
+if [ -n "$newer" ]; then
+  say "kept $CLI ($newer, newer than the hub's)"
+else
+  cp "$TMP/needs-you" "$BIN_DIR/.needs-you.new"
+  chmod 755 "$BIN_DIR/.needs-you.new"
+  mv -f "$BIN_DIR/.needs-you.new" "$CLI"
+  say "installed $CLI"
+fi
 
 # ---------------------------------------------------------------- token + config
 mkdir -p "$CONF_DIR"

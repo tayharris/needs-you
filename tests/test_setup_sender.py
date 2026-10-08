@@ -7,6 +7,7 @@ A temporary HOME and stub `crontab`, `launchctl` and `uname` first on PATH keep 
 from __future__ import annotations
 
 import os
+import re
 import stat
 import subprocess
 
@@ -72,6 +73,18 @@ class SetupSender(HubTestCase):
         self.assertIn("NEEDS_YOU_AUTO_UPDATE=1\n", self.env_text())
         r = self.run_setup("--no-path", "--no-schedule")
         self.assertIn("won't run until you schedule", r.stderr)
+
+    def test_install_cli_never_downgrades(self):
+        self.run_setup("--no-path", "--no-schedule")
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        with open(cli) as fh:
+            newer = re.sub(r'^VERSION = "[0-9.]+"', 'VERSION = "99.0.0"', fh.read(), count=1, flags=re.M)
+        with open(cli, "w") as fh:
+            fh.write(newer)
+        r = self.run_setup("--no-path", "--no-schedule")
+        self.assertIn("CLI kept", r.stdout + r.stderr)
+        with open(cli) as fh:
+            self.assertEqual(fh.read(), newer)
 
     def test_env_file_honours_needs_you_config(self):
         # The CLI, the hooks and the cron line read NEEDS_YOU_CONFIG; the token went elsewhere.
