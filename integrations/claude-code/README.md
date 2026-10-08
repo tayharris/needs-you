@@ -21,7 +21,7 @@ integrations/claude-code/
 └── skill/needs-you/SKILL.md
 ```
 
-The same hook serves OpenAI Codex CLI, Gemini CLI, opencode and GitHub Copilot CLI when started with a `codex`, `gemini`, `opencode` or `copilot` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md), [integrations/gemini](../gemini/README.md), [integrations/opencode](../opencode/README.md) and [integrations/copilot](../copilot/README.md).
+The same hook serves OpenAI Codex CLI, Gemini CLI, opencode, GitHub Copilot CLI, Kimi Code CLI and Grok Build when started with a `codex`, `gemini`, `opencode`, `copilot`, `kimi` or `grok` argument (`needs-you-hook.sh notify codex`): see [integrations/codex](../codex/README.md), [integrations/gemini](../gemini/README.md), [integrations/opencode](../opencode/README.md), [integrations/copilot](../copilot/README.md), [integrations/kimi](../kimi/README.md) and [integrations/grok](../grok/README.md).
 
 ## Hooks
 
@@ -53,7 +53,7 @@ The installer:
 - records a project install in `~/.local/state/needs-you/claude-projects.json` (and forgets it on `--uninstall`), so `needs-you doctor`, `needs-you update` and `needs-you uninstall-hooks` can find it,
 - refuses a project whose `.claude`, `.claude/hooks`, hook script or settings file is a symlink (a repo's `.claude` is untrusted).
 
-**Grok Build** runs these hooks from `~/.claude/settings.json` too (on by default). The hook knows it by `$GROK_HOOK_EVENT`: its cards say Grok ("Grok is waiting for you" from `idle_prompt`, "Grok needs permission", source agent `grok`), it reads Grok's `notificationType`, skips the context check on `Stop`, and hands the work to a background copy, since Grok waits for its hooks.
+**Grok Build** runs these hooks from `~/.claude/settings.json` too (on by default). The hook knows it by `$GROK_HOOK_EVENT`. When needs-you's own Grok hooks are installed (`${GROK_HOME:-~/.grok}/hooks/needs-you.json`, [integrations/grok](../grok/README.md)), these do nothing in a Grok session, so a wait is posted once. Without them, they post for Grok: its cards say Grok ("Grok is waiting for you" from `idle_prompt`, "Grok needs permission", source agent `grok`), they read Grok's `notificationType`, skip the context check on `Stop`, and hand the work to a background copy, since Grok waits for its hooks.
 
 **One card for one wait.** `needs-you add` (kind `needs`) run by an agent notes the key in `~/.local/state/needs-you/session-items/<id>/` (one file per key with `key=` and `expires=<epoch>`, at most 48 hours), where `<id>` is the session as the hook names it, sanitized as the hook does: `$ORCA_TERMINAL_HANDLE` (any agent), else Claude Code's `$CLAUDE_CODE_SESSION_ID` (with `$CLAUDECODE` set), Codex's `$CODEX_SESSION_ID` (older Codex: `$CODEX_THREAD_ID`), or `$NEEDS_YOU_AGENT_SESSION`, which any connector can set for its agent's commands (the opencode plugin does, through `shell.env`). Each is the `session_id` that agent's hooks get. Gemini CLI gives its commands no session id (only `GEMINI_CLI=1`), so there the CLI notes the key under `pid-<pid>` of the Gemini process (the first ancestor that isn't a shell, as the hook finds its lease) with its `start=` time, and the hook matches it against its lease. `notify` skips `idle_prompt` and `agent_needs_input` (and the Codex `Stop`, Gemini `AfterAgent` and opencode `Stop` cards) while an unexpired note exists for its session. `needs-you resolve` and a `done`/`info` with the same key remove the note; `end` removes the session's directory (for Gemini, its process's).
 

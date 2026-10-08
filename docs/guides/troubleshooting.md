@@ -140,6 +140,42 @@ Copilot-specific causes:
 - **Another `COPILOT_HOME`.** Copilot then reads `$COPILOT_HOME/hooks/` instead; run the installer and doctor with the same value.
 - **A card stays after Esc.** Cancelling a permission prompt runs no hook in Copilot; the card goes with your next prompt or the end of the session.
 
+## Kimi Code hooks
+
+`needs-you doctor` has a `kimi hooks` line, and `kimi doctor` checks that Kimi accepts `config.toml`. In `kimi` mode the hook finishes in the background, so log to a file:
+
+```bash
+echo '{"hook_event_name":"PermissionRequest","session_id":"session_t1","cwd":"'"$PWD"'","tool_name":"Bash","display":{"command":"make test"}}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.kimi-code/hooks/needs-you-hook.sh notify kimi
+sleep 2; cat /tmp/ny-hook.log
+```
+
+Kimi-specific causes:
+
+- **Not restarted.** Kimi reads `config.toml` when it starts.
+- **Kimi refuses the config.** Any key Kimi doesn't know, in any `[[hooks]]` entry, makes it refuse the whole file; `kimi doctor` names it. The needs-you block uses only `event`, `matcher`, `command` and `timeout`.
+- **The installer stopped.** Your `config.toml` defines `hooks` as a table or an inline list: copy the entries from `integrations/kimi/kimi-hooks.toml` into it by hand.
+- **Another `KIMI_CODE_HOME`.** Kimi then reads `$KIMI_CODE_HOME/config.toml`; run the installer and doctor with the same value.
+- **No "waiting" card from `kimi -p`.** By design: the run has exited, so nobody is waiting (the log says `skipped: kimi has exited`).
+- **A card stays after Ctrl-C.** Kimi runs no `SessionEnd` hook then; the 5-minute `needs-you flush` clears the card once Kimi has exited. Leave with `/exit` to clear it at once.
+
+## Grok Build hooks
+
+`needs-you doctor` has a `grok hooks` line, and `grok inspect` lists the hooks Grok loaded. In `grok` mode the hook finishes in the background, so log to a file:
+
+```bash
+echo '{"hook_event_name":"Notification","notificationType":"permission_prompt","session_id":"t1","cwd":"'"$PWD"'"}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.grok/hooks/needs-you-hook.sh notify grok
+sleep 2; cat /tmp/ny-hook.log
+```
+
+Grok-specific causes:
+
+- **The "waiting" card comes a minute late.** By design: it comes from Grok's `idle_prompt` notification, about 60 seconds after the turn, and not at all if you type first.
+- **Not restarted, or switched off.** Grok reads `~/.grok/hooks/*.json` when it starts; an entry switched off in `/hooks` stays off (`~/.grok/disabled-hooks`), and an organization policy with `allow_managed_hooks_only` turns off every user hook. Doctor reports both.
+- **Cards say Grok but come from the Claude Code hooks.** Without needs-you's own Grok hooks, Grok runs the Claude Code ones, which post for it. With both installed, only the Grok ones post.
+- **Another `GROK_HOME`.** Grok then reads `$GROK_HOME/hooks/`; run the installer and doctor with the same value.
+
 ## GitHub poller
 
 - `needs-you-github -v` prints what it saw (notifications, PRs) and any `gh` error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "GitHub alerts stopped on <host>".
