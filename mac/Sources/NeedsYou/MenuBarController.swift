@@ -168,6 +168,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         if model.settings.hasOwnerHub && !model.isDemo {
             menu.addItem(ClosureMenuItem(title: "Connect a Machine…") { [weak model] in model?.openInvite() })
         }
+        // The quiet nudge for a copy outside Applications (no launch alert: it would take focus).
+        if AppMover.shared.canMove {
+            menu.addItem(ClosureMenuItem(title: "Move to Applications…") { [weak model] in model?.openSettings(page: .general) })
+        }
         menu.addItem(ClosureMenuItem(title: "Settings…") { [weak model] in model?.openSettings() })
         menu.addItem(ClosureMenuItem(title: "About Needs You") { AboutPanel.show() })
         menu.addItem(.separator())

@@ -120,6 +120,8 @@ final class AppModel: ObservableObject {
     var openSettingsHandler: (() -> Void)?
     /// Set by the app delegate: opens Settings at the invite section (activates the app).
     var openInviteHandler: (() -> Void)?
+    /// Set by the app delegate: opens Settings at a page (the menu's Move to Applications…).
+    var openSettingsPageHandler: ((SettingsTab) -> Void)?
     /// Set by the panel controller: forget the saved position for this screen layout.
     var resetPositionHandler: (() -> Void)?
 
@@ -1114,6 +1116,10 @@ final class AppModel: ObservableObject {
     }
 
     func openSettings() { openSettingsHandler?() }
+
+    func openSettings(page: SettingsTab) {
+        if let openSettingsPageHandler { openSettingsPageHandler(page) } else { openSettings() }
+    }
 }
 
 /// The line under a setup card after its button ran.

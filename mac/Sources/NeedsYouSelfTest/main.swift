@@ -59,6 +59,7 @@ let entries =
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
     + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
+    + testEntries(AppLocationTests.self, AppLocationTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

@@ -46,7 +46,7 @@ Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `release-m
 
 ## 3. Install and first launch
 
-1. Open the DMG and drag `NeedsYou.app` onto the **Applications** link in the same window. Eject the DMG.
+1. Open the DMG and drag `NeedsYou.app` onto the **Applications** link in the same window. Eject the DMG. (If you open it straight from the DMG or Downloads instead, **Settings → General → Move to Applications** does the move for you, settings included; [details](mac-app.md#opened-it-from-downloads-or-the-disk-image).)
 2. Open `NeedsYou.app` from Applications. The app is **ad-hoc signed, not notarized** (there's no paid Apple Developer ID yet), so macOS blocks the first launch once:
    - **macOS 15 and later:** macOS says it can't verify that "NeedsYou" is free of malware. Click **Done** (not Move to Trash). Open **System Settings → Privacy & Security**, scroll down to the **Security** section, where it says *"NeedsYou" was blocked*, click **Open Anyway**, then confirm with **Open Anyway** and your password or Touch ID.
    - **macOS 14:** right-click (or Control-click) the app → **Open**, then **Open** in the dialog.

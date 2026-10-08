@@ -200,6 +200,7 @@ struct SettingsView: View {
     @State private var rows: [HubRow] = []
     @State private var message: String?
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
+    @ObservedObject private var mover = AppMover.shared
     @State private var loginMessage: String?
     @State private var linkDraft = ""
     @State private var inviteName = ""
@@ -280,6 +281,8 @@ struct SettingsView: View {
     private func pageContent(_ page: SettingsTab) -> some View {
         switch page {
         case .general:
+            // First, so the first thing a new user clicks through to shows it (no launch alert).
+            if mover.canMove && showcase == nil { MoveToApplicationsSection(mover: mover) }
             if isFirstRun { welcome }
             youSection
             startupSection
@@ -398,7 +401,12 @@ struct SettingsView: View {
     private var startupSection: some View {
         Section {
             Toggle(isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) })) {
-                LabelWithDetail("Open at login", "Starts Needs You when you log in. Move the app to /Applications first.")
+                LabelWithDetail("Open at login", "Starts Needs You when you log in.")
+            }
+            // macOS ties the login item to the app's path: only a copy in Applications sets it.
+            .disabled(mover.canMove && showcase == nil)
+            if showcase == nil, mover.canMove, let why = mover.location.loginExplanation {
+                Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let loginMessage {
                 Text(loginMessage).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -1171,16 +1179,8 @@ struct SettingsView: View {
     }
 
     private func setOpenAtLogin(_ on: Bool) {
-        do {
-            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-            loginMessage = nil
-        } catch {
-            loginMessage = "Couldn't change the login item: \(error.localizedDescription). Run the app from /Applications."
-        }
-        openAtLogin = SMAppService.mainApp.status == .enabled
-        if SMAppService.mainApp.status == .requiresApproval {
-            loginMessage = "Approve Needs You in System Settings → General → Login Items."
-        }
+        loginMessage = LoginItem.set(on, defaults: settings.defaults)
+        openAtLogin = LoginItem.status == .enabled
     }
 }
 
