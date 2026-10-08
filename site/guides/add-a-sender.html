@@ -138,6 +138,9 @@
 <li><strong>Kind:</strong> <code>needs</code> (you must act, raises the count), <code>done</code> (FYI, finished), <code>info</code>. <code>done</code> and <code>info</code> expire after 24 h.</li>
 </ul>
 <h2 id="cron-systemd-ci">Cron, systemd, CI <a class="anchor" href="#cron-systemd-ci" aria-label="Link to this section">#</a></h2>
+<p>For one command, wrap it in <code>needs-you run</code>:</p>
+<div class="code"><pre><code class="language-bash">needs-you run --key "personal:devbox:nightly-backup" --title "Nightly backup failed" -- ./backup.sh</code></pre></div>
+<p>It runs the command (no shell) and passes its output and exit code through. On failure it posts a <code>needs</code> card with the exit code and the last 5 lines of stderr (obvious tokens redacted; <code>--no-output</code> leaves them out). On success it resolves the key, and if the run took at least <code>--done-after</code> seconds (default 300) it posts a <code>done</code> FYI, so a long build you were waiting on says it finished. <code>needs-you run --help</code> lists the options; <a href="agent-guide.html#wrapping-a-command-needs-you-run">Agent guide</a> has the rules.</p>
 <p>Ready-made pieces are in <a data-repo="/blob/main/integrations/ci/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/ci/README.md">integrations/ci</a>: a wrapper that alerts on failure and resolves on success, an <code>OnFailure=</code> systemd template, and a GitHub Actions step that joins the tailnet.</p>
 <h2 id="removing-a-sender">Removing a sender <a class="anchor" href="#removing-a-sender" aria-label="Link to this section">#</a></h2>
 <ol>
