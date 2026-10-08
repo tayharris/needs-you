@@ -46,7 +46,7 @@
 <h2 id="install">Install <a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
 <p>Prerequisite: the agent's MCP client runs on a machine you set up (or are setting up) with an invite link: <a href="add-a-sender.html">Add a sender</a>. Add <code>--mcp</code> and the agents to register it with to the invite's one line:</p>
 <div class="code"><pre><code class="language-bash">curl -fsSL &lt;invite link&gt;/install.sh | bash -s -- --yes --mcp claude,codex</code></pre></div>
-<p><code>--mcp</code> takes a comma-separated list of <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>opencode</code> and <code>copilot</code>. The installer downloads the server from the hub (checked against the sha256 on the invite page), installs it as <code>~/.local/bin/needs-you-mcp</code> next to the CLI, and registers it under the name <code>needs-you</code> in each agent's user-level config:</p>
+<p><code>--mcp</code> takes a comma-separated list of <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>opencode</code>, <code>copilot</code> and <code>cursor</code>. The installer downloads the server from the hub (checked against the sha256 on the invite page), installs it as <code>~/.local/bin/needs-you-mcp</code> next to the CLI, and registers it under the name <code>needs-you</code> in each agent's user-level config:</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Agent</th><th>Where</th><th>Entry</th></tr></thead>
 <tbody>
@@ -55,6 +55,7 @@
 <tr><td>Gemini CLI</td><td><code>~/.gemini/settings.json</code></td><td><code>mcpServers.needs-you</code>: <code>command</code>, <code>args</code></td></tr>
 <tr><td>opencode</td><td><code>~/.config/opencode/opencode.json</code></td><td><code>mcp.needs-you</code>: <code>{"type": "local", "command": ["&lt;python3&gt;", "&lt;server&gt;"], "enabled": true}</code></td></tr>
 <tr><td>GitHub Copilot CLI</td><td><code>~/.copilot/mcp-config.json</code> (or <code>$COPILOT_HOME</code>)</td><td><code>mcpServers.needs-you</code>: <code>type</code> <code>local</code>, <code>command</code>, <code>args</code>, <code>tools: ["*"]</code></td></tr>
+<tr><td>Cursor</td><td><code>~/.cursor/mcp.json</code> (its global MCP config)</td><td><code>mcpServers.needs-you</code>: <code>{"type": "stdio", "command": "&lt;python3&gt;", "args": ["&lt;server&gt;"]}</code></td></tr>
 </tbody>
 </table></div>
 <p>As with the hooks: a config file is backed up (<code>&lt;file&gt;.bak-&lt;time&gt;</code>) before it changes, nothing changes when the entry is already right, a symlinked config or one that isn't valid JSON is left alone with a warning (that agent is listed under "Not set up:" and the rest still installs), and a <code>needs-you</code> server that isn't this one is never replaced. Claude Code is registered only through its own <code>claude</code> command; without it on PATH, the installer prints the command to run. opencode's <code>opencode.jsonc</code> isn't edited: the installer prints the entry to add.</p>

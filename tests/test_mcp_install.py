@@ -156,6 +156,30 @@ class InstallMcp(CliCase):
         self.assertEqual(len(self.backups(".codex/config.toml")), 1)
         self.assertEqual(self.text("claude-calls.log").count("add-json"), 1)
 
+    def test_cursor_global_mcp_json(self):
+        # Cursor's global config: ~/.cursor/mcp.json, mcpServers, a stdio server (cursor.com docs).
+        mine = json.dumps({"mcpServers": {"docs": {"command": "docs-mcp"}}}, indent=2) + "\n"
+        self.write(".cursor/mcp.json", mine)
+        r = self.run_cli("install-mcp", "cursor")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        got = self.json(".cursor/mcp.json")
+        self.assertEqual(got["mcpServers"]["docs"], {"command": "docs-mcp"})
+        self.assertEqual(got["mcpServers"]["needs-you"],
+                         {"type": "stdio", "command": self.python, "args": [self.server]})
+        self.assertEqual(len(self.backups(".cursor/mcp.json")), 1)
+        r = self.run_cli("doctor")
+        self.assertIn("registered with Cursor", r.stdout)
+        r = self.run_cli("uninstall-hooks", "--mcp")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.json(".cursor/mcp.json"), json.loads(mine))
+        # no Cursor config yet: created, and removed again on uninstall
+        os.remove(self.p(".cursor/mcp.json"))
+        shutil.copy(MCP, self.server)
+        self.assertEqual(self.run_cli("install-mcp", "cursor").returncode, 0)
+        self.assertIn("needs-you", self.json(".cursor/mcp.json")["mcpServers"])
+        self.run_cli("uninstall-hooks", "--mcp")
+        self.assertFalse(os.path.exists(self.p(".cursor/mcp.json")))
+
     def test_uninstall_removes_exactly_what_was_added(self):
         self.seed()
         before = {rel: self.text(rel) for rel in (".claude.json", ".codex/config.toml", ".gemini/settings.json")}

@@ -111,7 +111,7 @@ Options:
                                 ~/.gemini/GEMINI.md or ~/.config/opencode/AGENTS.md
   --mcp AGENTS                  install the MCP server as ~/.local/bin/needs-you-mcp and
                                 register it with these agents (comma-separated: claude,
-                                codex, gemini, opencode, copilot)
+                                codex, gemini, opencode, copilot, cursor)
   --auto-update                 let `needs-you flush` run `needs-you update` once a day
                                 (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
   --context-alert PCT           card suggesting /compact or /clear once a session's
@@ -169,7 +169,7 @@ while [ $# -gt 0 ]; do
     --grok-hooks) GROK_HOOKS=${2:-}; shift 2 || die "--grok-hooks needs user or none" ;;
     --grok-hooks=*) GROK_HOOKS=${1#*=}; shift ;;
     --skill) SKILL=1; shift ;;
-    --mcp) MCP=${2-}; shift 2 || die "--mcp needs agents: claude,codex,gemini,opencode,copilot" ;;
+    --mcp) MCP=${2-}; shift 2 || die "--mcp needs agents: claude,codex,gemini,opencode,copilot,cursor" ;;
     --mcp=*) MCP=${1#*=}; shift ;;
     --agent-instructions) INSTRUCTIONS=${2-}; shift 2 || die "--agent-instructions needs agents: codex,gemini,opencode" ;;
     --agent-instructions=*) INSTRUCTIONS=${1#*=}; shift ;;
@@ -220,7 +220,7 @@ check_agents() {
     [ "$ok" -eq 1 ] || die "$flag: unknown agent '$a' (pick from: $*)"
   done
 }
-check_agents --mcp "$MCP" claude codex gemini opencode copilot
+check_agents --mcp "$MCP" claude codex gemini opencode copilot cursor
 check_agents --agent-instructions "$INSTRUCTIONS" codex gemini opencode
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac

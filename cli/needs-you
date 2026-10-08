@@ -29,7 +29,7 @@
                                                      installs, the MCP server and
                                                      the instruction blocks; offline
   needs-you install-mcp AGENTS [--dry-run]           register needs-you-mcp (next to this CLI)
-                                                     with claude,codex,gemini,opencode,copilot
+                                                     with claude,codex,gemini,opencode,copilot,cursor
   needs-you install-instructions --from FILE AGENTS  the needs-you rules as a marked block in
                                                      codex,gemini,opencode's instruction files
                                                      (the invite installer runs these two)
@@ -3879,9 +3879,9 @@ Doctor.update = _doctor_update  # type: ignore[attr-defined]
 MCP_NAME = "needs-you"      # the server's name in every client's config (Gemini: no "_" in it)
 MCP_FILE = "needs-you-mcp"  # /dl/needs_you_mcp.py, installed next to the CLI
 MCP_DL = "needs_you_mcp.py"
-MCP_AGENTS = ("claude", "codex", "gemini", "opencode", "copilot")
+MCP_AGENTS = ("claude", "codex", "gemini", "opencode", "copilot", "cursor")
 AGENT_LABELS = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "opencode",
-                "copilot": "Copilot CLI"}
+                "copilot": "Copilot CLI", "cursor": "Cursor"}
 CODEX_MCP_BEGIN = "# >>> needs-you MCP server"
 CODEX_MCP_END = "# <<< needs-you MCP server"
 INSTR_DL = "agent-instructions.md"
@@ -3901,7 +3901,9 @@ def mcp_config_path(agent: str) -> str:
             "codex": os.path.join(codex_home(), "config.toml"),
             "gemini": os.path.join(gemini_home(), "settings.json"),
             "opencode": os.path.join(opencode_dir(), "opencode.json"),
-            "copilot": os.path.join(copilot_home(), "mcp-config.json")}[agent]
+            "copilot": os.path.join(copilot_home(), "mcp-config.json"),
+            # Cursor's global MCP config (cursor.com/docs/context/mcp, "Global Configuration")
+            "cursor": os.path.join(cursor_dir(), "mcp.json")}[agent]
 
 
 def instructions_path(agent: str) -> str:
@@ -3918,7 +3920,7 @@ def _mcp_python() -> str:
 
 def mcp_entry(agent: str, server: str) -> Dict[str, Any]:
     py = _mcp_python()
-    if agent == "claude":
+    if agent in ("claude", "cursor"):
         return {"type": "stdio", "command": py, "args": [server]}
     if agent == "opencode":
         return {"type": "local", "command": [py, server], "enabled": True}
@@ -4492,7 +4494,7 @@ def _doctor_mcp(self: "Doctor") -> None:
             problems.append("%s runs %s, which doesn't exist" % (AGENT_LABELS[agent], _tilde(target)))
     if not registered:
         homes = {"claude": _home(".claude"), "codex": codex_home(), "gemini": gemini_home(),
-                 "opencode": opencode_dir(), "copilot": copilot_home()}
+                 "opencode": opencode_dir(), "copilot": copilot_home(), "cursor": cursor_dir()}
         here = [a for a in MCP_AGENTS if _detected(a, homes[a])]
         if here:
             self.add("mcp server", "INFO", "not registered (optional: agents post through MCP tools, no shell needed)",
