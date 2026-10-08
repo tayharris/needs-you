@@ -810,16 +810,19 @@ _BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f­؜᠎​-‏ -‮"
 _SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
                          r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|nyi?_[A-Za-z0-9_-]{8,}"
                          r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*)")
-# A name ending in a secret's keyword, then its value. Built to run in linear time on any
-# input (no nested or unbounded runs that backtrack): one lazy run from a word start, and a
-# bare "pass" only after _ or - (DB_PASS, not bypass).
-_SECRET_KV = re.compile(r"(?i)\b(\w{0,64}?(?:password|passwd|(?:(?<=[_-])|(?<!\w))pass(?:phrase)?|token|secret"
+# A name ending in a secret's keyword, then its value. Each pattern starts on a literal (the
+# keyword, "://") and never runs a variable-length prefix, so it takes linear time on any input
+# without capping what it catches: a name's prefix (PGPASSWORD, X_API_KEY, client_secret)
+# isn't matched at all, only the keyword at its end. Keywords other than "password" start a
+# word or follow _ or - (DB_PASS, not bypass; auth_token, not maxtoken).
+_SECRET_KV = re.compile(r"(?i)(password|(?<![a-z0-9])(?:passwd|pass(?:phrase)?|token|secret"
                         r"|(?:api|access|secret|private)[_-]?key|auth|credentials?))"
-                        r"([\"']?\s*(?:=>|[:=])\s*)(\"[^\"]{0,4096}\"|'[^']{0,4096}'|\S+)")
-# A command line's --password VALUE (with a space)
-_SECRET_FLAG = re.compile(r"(?i)(--(?:[a-z0-9]{1,32}-){0,4}(?:password|passwd|token|secret|api-key))([ \t]+)(?!-)(\S+)")
-# A password in a URL's user part: scheme://user:<password>@host
-_URL_CREDS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]{0,30}://[^\s/:@]{0,256}:)[^\s/@]{1,256}@")
+                        r"([\"']?\s*(?:=>|[:=])\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+# A command line's --password VALUE (with a space): the keyword, then _flag() checks it ends a
+# --flag by walking back over the flag's name.
+_SECRET_FLAG = re.compile(r"(?i)(?<=-)(password|passwd|token|secret|api-key)([ \t]+)(?!-)(\S+)")
+# A password in a URL's user part: ://user:<password>@ (the scheme before it stays)
+_URL_CREDS = re.compile(r"(://[^\s/:@]*:)[^\s/@]+@")
 _SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
 _PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
 _LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
@@ -836,12 +839,21 @@ def _long_run(m):
     return s
 
 
+def _flag(m):
+    i = m.start()
+    while i > 0 and (m.string[i - 1].isalnum() or m.string[i - 1] in "-_"):
+        i -= 1
+    if m.string.startswith("--", i):
+        return m.group(1) + m.group(2) + REDACTED
+    return m.group(0)
+
+
 def redact(text):
     text = _PEM.sub(REDACTED, text)
     text = _URL_CREDS.sub(lambda m: m.group(1) + REDACTED + "@", text)
     text = _SECRET_RAW.sub(REDACTED, text)
     text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
-    text = _SECRET_FLAG.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _SECRET_FLAG.sub(_flag, text)
     text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
     text = _LONG_HEX.sub(REDACTED, text)
     return _LONG_RUN.sub(_long_run, text)

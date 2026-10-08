@@ -459,6 +459,20 @@ class FailureTests(HookHarness):
         for kept in ('"password"', "mysql --password", "DB_PASS=", "passphrase:"):
             self.assertIn(kept, body)
 
+    def test_long_names_and_passwords_are_redacted_whole(self):
+        # The linear-time patterns must not cap what they catch: a 300-character URL password,
+        # an 80-character name before _PASSWORD=, a long --flag name.
+        pw = "qx7" * 100  # one case only: not a base64-like run either
+        cases = [("postgres://app:%s@db/app" % pw, pw[:30]),
+                 ("%s_password=vb62nn" % ("a" * 80), "vb62nn"),
+                 ("mysql --%s-password mk40ff" % "-".join(["opt"] * 30), "mk40ff")]
+        for text, leak in cases:
+            with self.subTest(text=text[:20]):
+                self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
+                                         "error_message": text})
+                self.assertNotIn(leak, self.opt(self.last(), "--body"))
+                self.assertIn("[redacted]", self.opt(self.last(), "--body"))
+
     def test_redaction_takes_linear_time(self):
         # Security review 0.2: ~100 KB of text built to make the redaction patterns backtrack
         # (names glued with "_", "-" runs before "://", "--a-a-a" flags) must not stall the hook.
