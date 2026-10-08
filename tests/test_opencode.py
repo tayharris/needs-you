@@ -16,7 +16,7 @@ import tempfile
 import time
 import unittest
 
-from hook_case import fixture, step_texts
+from hook_case import fixture, choice_texts
 from support import CLI, ROOT, free_port, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -186,9 +186,10 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
                          "opencode asks \u201cWhich branch should the release come from? (key [redacted])\u201d "
                          "and 1 more: my-repo")
         self.assertIn("**Platforms** \u00b7 choose any\nWhich platforms?", opt(argv, "--body"))
-        self.assertEqual(step_texts(argv), [
+        self.assertEqual(choice_texts(argv), [
             "Branch: main \u2014 Everything merged today", "Branch: release/1.4 \u2014 Only the fixes",
             "Platforms: macOS \u2014 arm64 and x64", "Platforms: Linux \u2014 x64", "Platforms: Windows \u2014 x64"])
+        self.assertEqual(json.loads(opt(argv, "--question-json"))["id"], "que_01JABCDEF")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
 
     def test_events_post_and_resolve(self):

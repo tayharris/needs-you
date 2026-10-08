@@ -21,7 +21,7 @@ import tempfile
 import time
 import unittest
 
-from hook_case import fixture, posted_item, step_texts
+from hook_case import fixture, posted_item, step_texts, choice_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -150,10 +150,13 @@ class KimiHook(unittest.TestCase):
         self.assertEqual(opt(argv, "--title"),
                          "Kimi asks \u201cWhich database should the service use?\u201d and 1 more: my-repo")
         body = opt(argv, "--body")
-        self.assertTrue(body.startswith("**Database** \u00b7 choose one\nWhich database should the service use?"
-                                        "\n\n**Question 2** \u00b7 choose any\nWhich extras do you want?"), body)
+        self.assertTrue(body.startswith(
+            "**Database** \u00b7 choose one\nWhich database should the service use?\n"
+            "- Postgres (Recommended) \u2014 Mature, already used by the team.\n- SQLite \u2014 Zero ops, single file."
+            "\n\n**Question 2** \u00b7 choose any\nWhich extras do you want?\n- Metrics\n- Tracing \u2014 OpenTelemetry"), body)
+        self.assertEqual(json.loads(opt(argv, "--question-json"))["id"], "call_AskUserQuestion_1")
         self.assertIn("Answer in Kimi", body)
-        self.assertEqual(step_texts(argv), [
+        self.assertEqual(choice_texts(argv), [
             "Database: Postgres (Recommended) \u2014 Mature, already used by the team.",
             "Database: SQLite \u2014 Zero ops, single file.", "Metrics", "Tracing \u2014 OpenTelemetry"])
         self.assertEqual(self.marker()["kind"], "question")

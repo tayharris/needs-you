@@ -119,7 +119,7 @@ export const NeedsYou = async ({ directory, worktree }) => {
             break
           }
           case "question.asked":
-            notify(sid, { hook_event_name: "Question", questions: questions(p.questions) })
+            notify(sid, { hook_event_name: "Question", question_id: str(p.id).slice(0, 200), questions: questions(p.questions) })
             break
           case "session.idle":
             notify(sid, { hook_event_name: "Stop" })
