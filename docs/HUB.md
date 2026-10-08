@@ -165,6 +165,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `maintenance_seconds` | | 600 | Purge + WAL checkpoint + incremental vacuum interval. |
 | `vacuum_hours` | | 24 | How often a full `VACUUM` may run (only when over 25% is free). |
 | `redeem_fail_limit` / `redeem_fail_window_seconds` | | 10 / 600 | Failed invite redeems per client IP before `429`. |
+| `answer_rate_limit` / `answer_rate_window_seconds` | | 30 / 60 | Answers (`POST /v1/items/{id}/answer`, counted whether taken or not) per token before `429`. |
 | `anti_entropy_seconds` | | 60 | How often each peer is pulled. |
 | `outbox_poll_seconds` | | 2 | Outbox check interval without a wake-up. |
 | `retry_base_seconds` / `retry_max_seconds` | | 1 / 300 | Push backoff. |
@@ -271,6 +272,10 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   without it drops the field from replicated items, and keeps nothing to hand back; the
   upgraded hubs keep theirs through its resolves and seen marks. An older hub refuses a
   database at schema 7 (it backs up before migrating), so upgrade every hub together.
+- **Answers (schema 8):** the same for an item's `answer`, `answered_at` and `answered_by`
+  ([API.md](API.md#post-v1itemsidanswer-reader)): a hub without them drops them from replicated
+  items, and the upgraded hubs keep theirs through its resolves and seen marks. Upgrade every
+  hub together.
 
 ## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`

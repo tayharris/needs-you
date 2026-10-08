@@ -178,6 +178,7 @@ on <code>needs_you_hub.py</code>, so no file is required: the named flags below,
 <tr><td><code>maintenance_seconds</code></td><td></td><td>600</td><td>Purge + WAL checkpoint + incremental vacuum interval.</td></tr>
 <tr><td><code>vacuum_hours</code></td><td></td><td>24</td><td>How often a full <code>VACUUM</code> may run (only when over 25% is free).</td></tr>
 <tr><td><code>redeem_fail_limit</code> / <code>redeem_fail_window_seconds</code></td><td></td><td>10 / 600</td><td>Failed invite redeems per client IP before <code>429</code>.</td></tr>
+<tr><td><code>answer_rate_limit</code> / <code>answer_rate_window_seconds</code></td><td></td><td>30 / 60</td><td>Answers (<code>POST /v1/items/{id}/answer</code>, counted whether taken or not) per token before <code>429</code>.</td></tr>
 <tr><td><code>anti_entropy_seconds</code></td><td></td><td>60</td><td>How often each peer is pulled.</td></tr>
 <tr><td><code>outbox_poll_seconds</code></td><td></td><td>2</td><td>Outbox check interval without a wake-up.</td></tr>
 <tr><td><code>retry_base_seconds</code> / <code>retry_max_seconds</code></td><td></td><td>1 / 300</td><td>Push backoff.</td></tr>
@@ -268,6 +269,10 @@ them. Upgrade peers together to avoid the gap.</li>
 without it drops the field from replicated items, and keeps nothing to hand back; the
 upgraded hubs keep theirs through its resolves and seen marks. An older hub refuses a
 database at schema 7 (it backs up before migrating), so upgrade every hub together.</li>
+<li><strong>Answers (schema 8):</strong> the same for an item's <code>answer</code>, <code>answered_at</code> and <code>answered_by</code>
+(<a href="api.html#post-v1itemsidanswer-reader">API</a>): a hub without them drops them from replicated
+items, and the upgraded hubs keep theirs through its resolves and seen marks. Upgrade every
+hub together.</li>
 </ul>
 <h2 id="operations">Operations <a class="anchor" href="#operations" aria-label="Link to this section">#</a></h2>
 <ul>

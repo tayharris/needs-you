@@ -103,10 +103,11 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>403</td><td><code>forbidden</code></td><td>Valid token, wrong role for the endpoint</td></tr>
 <tr><td>404</td><td><code>not_found</code></td><td>Unknown endpoint, unknown id on <code>GET</code>/<code>PATCH /v1/items/{id}</code>, or nothing to revoke on <code>DELETE /v1/invites/…</code> / <code>/v1/tokens/…</code></td></tr>
 <tr><td>409</td><td><code>self</code></td><td>A hub tried to replicate to itself (replication only)</td></tr>
+<tr><td>409</td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code>, <code>question_changed</code>, <code>already_answered</code></td><td>An answer that can't be taken (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>421</td><td><code>misdirected</code></td><td>The <code>Host</code> header names something this hub isn't (below). Clients fail over to their next hub URL</td></tr>
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB (8 MiB for <code>/v1/replicate</code>)</td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>The token already has 60 open items (the volume guard)</td></tr>
-<tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default)</td></tr>
+<tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), or too many answers from one token (30 a minute by default)</td></tr>
 <tr><td>500</td><td><code>internal</code></td><td>Bug; details are in the hub's log</td></tr>
 </tbody>
 </table></div></li>
@@ -129,6 +130,9 @@ Clients must likewise ignore unknown response fields.</p></li>
     {"text": "Re-run the push", "done": false}
   ],
   "question": null,                          // what an agent asked and the choices it offered; null when none
+  "answer": null,                            // the person's answer to `question`: [{"selected": ["Postgres"]}], or null
+  "answered_at": null,                       // when it was answered
+  "answered_by": null,                       // the name of the token that answered (a person's Mac)
   "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
@@ -273,7 +277,10 @@ steps has <code>"steps": []</code>. Steps are the sender's view: there is no end
 the Mac app keeps the person's ticks locally (it offers Done once every step is ticked).</p>
 <p><strong>Question</strong> (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>) is what an agent asked the person
 and the choices it offered, so a client can show them as choices rather than as a checklist.
-It is read-only: the person answers in the agent (an answer path is planned, not built).</p>
+By default it is read-only: the person answers in the agent. With <code>"answerable": true</code> the
+sender is waiting for an answer from a client too: the person's Mac posts the options they
+click (<a href="#post-v1itemsidanswer-reader"><code>POST /v1/items/{id}/answer</code></a>) and the sender reads them
+back (<a href="#get-v1itemsanswerkeykey-sender"><code>GET /v1/items/answer</code></a>).</p>
 <div class="code"><pre><code class="language-jsonc">"question": {
   "id": "toolu_01ABC",            // optional, ≤ 200 chars: the agent's own id for the request
   "items": [{                     // 1–4 questions, in order
@@ -283,14 +290,20 @@ It is read-only: the person answers in the agent (an answer path is planned, not
       {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
     ],
     "multi_select": false         // true: the agent takes several options
-  }]
+  }],
+  "answerable": false,            // optional: true when the sender waits for an answer (every item needs options)
+  "expires_at": "2026-10-08T17:04:05.000Z"  // optional: the sender stops waiting then; no answer is taken after it
 }</code></pre></div>
 <p>Text follows the same rules as every field (trimmed, no control or bidi characters; only
 <code>text</code> may hold newlines). Unknown fields are ignored. Errors name the part, for example
 <code>question.items[1].options[0].label</code>. The hub returns it normalised: <code>header</code> and
 <code>description</code> as <code>""</code> when left out, <code>options</code> as <code>[]</code>, <code>multi_select</code> as a boolean, <code>id</code> only
-when given; an item without one has <code>"question": null</code>. Senders keep the question's text in
-<code>body</code> as well, for clients and views that don't show the field.</p>
+when given, <code>answerable</code> as a boolean, <code>expires_at</code> only when given (in the hub's timestamp
+form); an item without one has <code>"question": null</code>. An answerable question with an item that has
+no options is refused (<code>400</code>, <code>question.answerable</code>): only offered labels can be answered.
+Senders keep the question's text in <code>body</code> as well, for clients and views that don't show the
+field. A re-post that changes the question (any part of it) clears the item's <code>answer</code>; an
+unchanged re-post keeps it.</p>
 <p>Semantics:</p>
 <ol>
 <li>If an item with this <code>key</code> is open (and not expired), it is updated **in place, keeping its
@@ -331,6 +344,52 @@ outside the inbox can't resolve anything.</li>
 </ul>
 <p>At least one is required. Moves <code>updated_at</code>, never <code>content_updated_at</code>. Returns <code>200</code> with
 the item, or <code>404</code> for an unknown id. Patching an already-closed item is allowed.</p>
+<h3 id="post-v1itemsidanswer-reader"><code>POST /v1/items/{id}/answer</code> (reader) <a class="anchor" href="#post-v1itemsidanswer-reader" aria-label="Link to this section">#</a></h3>
+<p>The person's answer to the item's <code>question</code>, from an explicit click on one of its options
+(reader or owner token; sender tokens get <code>403</code>, so one agent machine can't answer another
+agent's question).</p>
+<div class="code"><pre><code class="language-json">{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
+ "answers": [{"selected": ["Postgres"]}, {"selected": ["Auth", "Export"]}]}</code></pre></div>
+<ul>
+<li><code>question_id</code>: the question's <code>id</code> as the client saw it (<code>null</code> or absent when it has none).</li>
+<li><code>content_updated_at</code>: the item's <code>content_updated_at</code> as the client saw it.</li>
+<li><code>answers</code>: one entry per question item, in order. <code>selected</code> holds labels from that item's
+<code>options</code>, exactly as given, no repeats: exactly one for a single-choice item, at least one
+for <code>multi_select</code>. There is no free text.</li>
+</ul>
+<p>A <code>question_id</code> that isn't a string or <code>null</code>, or a <code>content_updated_at</code> that isn't a
+timestamp, is <code>400 invalid</code>. Then the hub takes the answer only if, in this order: the item exists (<code>404 not_found</code>), is open
+and unexpired (<code>409 not_open</code>), has a question with <code>answerable: true</code> (<code>409 not_answerable</code>)
+whose <code>expires_at</code> hasn't passed (<code>409 question_expired</code>), <code>question_id</code> and
+<code>content_updated_at</code> match the item's (<code>409 question_changed</code>: the question changed under the
+person), and it has no answer yet (<code>409 already_answered</code>: the first answer wins). Then
+<code>answers</code> is checked (<code>400 invalid</code>, with <code>field</code> such as <code>answers[0].selected[1]</code>). A token
+may send at most 30 answer requests a minute (<code>answer_rate_limit</code> per
+<code>answer_rate_window_seconds</code>, see <a href="hub.html">Server hubs</a>); past that, <code>429 rate_limited</code>.</p>
+<p>On success the item's <code>answer</code>, <code>answered_at</code> and <code>answered_by</code> (the token's name) are set,
+<code>updated_at</code> moves (<code>content_updated_at</code> doesn't) and the item replicates like any write. The
+item stays open: the sender resolves it once it has acted on the answer. Returns <code>200</code> with the
+item.</p>
+<h3 id="get-v1itemsanswerkeykey-sender"><code>GET /v1/items/answer?key=&lt;key&gt;</code> (sender) <a class="anchor" href="#get-v1itemsanswerkeykey-sender" aria-label="Link to this section">#</a></h3>
+<p>How a sender reads back the answer to its own question: only the token that posted the item
+(its last re-post) may read it; for any other token, or no item with that key, the hub says
+<code>404 not_found</code>. A sender still can't read anything else of the inbox. The item is the open
+item with that key, else the last one updated.</p>
+<ul>
+<li><code>wait</code>: seconds to hold the request while there is no answer (a long poll), <code>0</code> to <code>25</code>,
+default <code>25</code>.</li>
+</ul>
+<div class="table-wrap"><table class="doc-table">
+<thead><tr><th>Status</th><th>Body</th><th>When</th></tr></thead>
+<tbody>
+<tr><td><code>200</code></td><td><code>{"id", "key", "status", "question_id", "answers", "answered_at", "answered_by"}</code></td><td>The item has an answer (also after it was resolved)</td></tr>
+<tr><td><code>204</code></td><td>none</td><td>No answer yet when <code>wait</code> ran out: ask again</td></tr>
+<tr><td><code>404</code></td><td><code>not_found</code></td><td>No such item for this token (yet: a post still in the sender's outbox)</td></tr>
+<tr><td><code>409</code></td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code></td><td>No answer will come: the item closed, has no answerable question, or the question expired</td></tr>
+</tbody>
+</table></div>
+<p><code>answers</code> has the shape posted to <code>POST /v1/items/{id}/answer</code>. <code>needs-you answer-wait</code> wraps
+this (see the <a href="agent-guide.html">agent guide</a>).</p>
 <h3 id="get-v1items-reader"><code>GET /v1/items</code> (reader) <a class="anchor" href="#get-v1items-reader" aria-label="Link to this section">#</a></h3>
 <p>Query parameters:</p>
 <div class="table-wrap"><table class="doc-table">
@@ -585,7 +644,10 @@ from a hub that predates steps: the receiver keeps its own steps for that id whe
 hub), and otherwise stores none. An empty array clears them. Older hubs ignore the field, so
 their own copies have no steps. <code>question</code> works the same way: carried as the object (or
 <code>null</code>), kept when a record without the key has the receiver's <code>content_updated_at</code>. A
-replicated question this hub would refuse on POST is dropped (the item stays). Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
+replicated question this hub would refuse on POST is dropped (the item stays). <code>answer</code>,
+<code>answered_at</code> and <code>answered_by</code> work the same way (a record without an <code>answer</code> key keeps the
+receiver's answer when <code>content_updated_at</code> matches); an answer this hub couldn't read is
+dropped. Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}</code></pre></div>
@@ -647,7 +709,7 @@ unexpired item with the same key, it merges them:</p>
 <li>the <strong>lowest id wins</strong> (ULIDs start with the creation time, so the earliest-minted item
 survives);</li>
 <li>the winner takes the <strong>freshest content</strong>: the <code>title</code>, <code>body</code>, <code>priority</code>, <code>context</code>,
-<code>kind</code>, <code>links</code>, <code>steps</code>, <code>question</code>, <code>source</code>, <code>expires_at</code> and <code>content_updated_at</code> of whichever record has the
+<code>kind</code>, <code>links</code>, <code>steps</code>, <code>question</code> (with its <code>answer</code>, <code>answered_at</code> and <code>answered_by</code>), <code>source</code>, <code>expires_at</code> and <code>content_updated_at</code> of whichever record has the
 greatest <code>(content_updated_at, updated_at, updated_by)</code>; <code>created_at</code> becomes the earliest,
 <code>seen_at</code> the latest;</li>
 <li>every loser becomes <code>status: "resolved"</code> with <code>superseded_by: &lt;winner id&gt;</code>;</li>
@@ -671,6 +733,9 @@ CLI sends to the first reachable hub in a fixed order, so in practice a sender's
 resolve land on the same hub.</li>
 <li>A resolve on one hub concurrent with a re-post on another is decided by LWW: the later write
 wins.</li>
+<li>First answer wins on each hub. Two clicks on different hubs within the replication delay can
+both be taken; LWW then keeps the later one on every hub, and a sender that read the earlier
+one has already acted on it.</li>
 <li>Closed items are purged after <code>retention_days</code>. A hub that was offline for longer than that
 can still hold (and push) open versions of items the others resolved and purged; wipe such a
 hub's database before bringing it back (see HUB.md).</li>
