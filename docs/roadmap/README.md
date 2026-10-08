@@ -11,6 +11,7 @@ Mostly plans. Each file's status line says what exists; `ci-cd.md` phases 1–2 
 | [ios-widget.md](ios-widget.md) | iPhone companion app and widgets: reaching a hub from a phone, refresh and push options, shared Swift core, opening the right app |
 | [sharing-checklist.md](sharing-checklist.md) | What's done to share the repo, what waits on decisions (license, visibility, history, bundle id, Developer ID), and license options |
 | [fresh-user-test-plan.md](fresh-user-test-plan.md) | Install from a release on a second Mac or user account: Gatekeeper, no Command Line Tools, firewall, Invite and Access |
+| [test-plan-2026-10-08.md](test-plan-2026-10-08.md) | The owner's checklist after 0.1.4: preview layout, hub restart, real-model agent checks (Codex, Gemini, opencode, Copilot, Kimi, Grok, Cursor, Cline, Aider), `--mcp`, `--agent-instructions`, the site demo |
 | [friends-message.md](friends-message.md) | Draft message inviting testers, with the links they need ([testers.md](../guides/testers.md) is their install page) |
 | [doc-test-findings.md](doc-test-findings.md) | The 2026-10-06 doc walk-through and the bugs it found (fixed) |
 | [future.md](future.md) | GitHub org webhooks, Discord/Slack fallback for urgent items, team mode, in-app help and onboarding, jumping to an agent's terminal from a card |
