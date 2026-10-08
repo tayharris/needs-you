@@ -52,9 +52,14 @@ enum OrcaJumpRunner {
         return ok
     }
 
+    /// The first `orca` CLI found at one of the fixed paths (never PATH).
+    static var cliPath: String? {
+        OrcaJump.cliPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
     /// stdout of `orca <arguments>`, or nil if it didn't start or timed out. A non-zero
-    /// exit still returns stdout: Orca reports errors as JSON.
-    private static func runOrca(_ cli: String, _ arguments: [String]) -> Data? {
+    /// exit still returns stdout: Orca reports errors as JSON. Call off the main thread.
+    static func runOrca(_ cli: String, _ arguments: [String], timeout: TimeInterval = 5) -> Data? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: cli)
         p.arguments = arguments
@@ -74,7 +79,7 @@ enum OrcaJumpRunner {
         var data = Data()
         let reader = DispatchQueue(label: "orca-jump-read")
         reader.async { data = out.fileHandleForReading.readDataToEndOfFile() }
-        if done.wait(timeout: .now() + 5) == .timedOut {
+        if done.wait(timeout: .now() + timeout) == .timedOut {
             p.terminate()
             log.error("orca \(arguments.first ?? "", privacy: .public) timed out")
             return nil

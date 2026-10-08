@@ -39,6 +39,7 @@ final class AppSettings: ObservableObject {
         static let terminalAppleScript = "terminalAppleScript"
         static let pillLastOpenedAt = "pillLastOpenedAt"
         static let showSetupTips = "showSetupTips"
+        static let showOrcaWorktrees = "showOrcaWorktrees"
         static let setupTipsDone = "setupTipsDone"
         static let setupTipsDismissed = "setupTipsDismissed"
     }
@@ -109,6 +110,11 @@ final class AppSettings: ObservableObject {
     /// (SetupChecklist). Default on.
     @Published var showSetupTips: Bool {
         didSet { defaults.set(showSetupTips, forKey: Key.showSetupTips) }
+    }
+    /// Settings → Panel → Orca: the open panel lists Orca's worktrees (OrcaWorktrees) when the
+    /// `orca` CLI is installed. Local only. Default on (it shows nothing without Orca).
+    @Published var showOrcaWorktrees: Bool {
+        didSet { defaults.set(showOrcaWorktrees, forKey: Key.showOrcaWorktrees) }
     }
     /// Setup tips whose condition was met once (SetupTip raw values); they never come back.
     @Published var setupTipsDone: Set<String> {
@@ -210,6 +216,7 @@ final class AppSettings: ObservableObject {
             Key.allowFocusLinks: false,
             Key.terminalAppleScript: false,
             Key.showSetupTips: true,
+            Key.showOrcaWorktrees: true,
         ])
         runLocalHub = defaults.bool(forKey: Key.runLocalHub)
         hubURLStrings = defaults.stringArray(forKey: Key.hubURLs) ?? []
@@ -239,6 +246,7 @@ final class AppSettings: ObservableObject {
             defaults.set(Date().timeIntervalSince1970, forKey: Key.pillLastOpenedAt)
         }
         showSetupTips = defaults.bool(forKey: Key.showSetupTips)
+        showOrcaWorktrees = defaults.bool(forKey: Key.showOrcaWorktrees)
         setupTipsDone = Set(defaults.stringArray(forKey: Key.setupTipsDone) ?? [])
         setupTipsDismissed = Set(defaults.stringArray(forKey: Key.setupTipsDismissed) ?? [])
         previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard

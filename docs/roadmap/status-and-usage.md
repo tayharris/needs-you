@@ -112,7 +112,7 @@ Principles: numbers only, read locally by the agent's own machine, never credent
 | 2 | GitHub poller `merged` reason → `done` card | high | small | none | **built**, on by default (`-merged` turns it off); the owner can flip the default |
 | 3 | Doctor INFO "many worktrees → Orca" + installer hint | low-medium | small | none | **built** (3+ git worktrees in the current repo; names Orca and the needs-you Orca guide, no outside link). Open: recommend Orca by name/link? The join page sentence isn't done |
 | 4 | Codex usage threshold card from session JSONL | medium | small-medium | none (shared hook) | **built**, sharing Claude's settings (`NEEDS_YOU_USAGE_ALERT_PCT`...); separate Codex thresholds only if the owner wants them |
-| 5 | Mac status strip from local Orca (`worktree ps`), all paired environments | high for Orca users | medium | none (app-only) | show it by default when `orca` is present? |
+| 5 | Mac status strip from local Orca (`worktree ps`), all paired environments | high for Orca users | medium | none (app-only) | **built** as a folded ORCA section at the bottom of the open panel, on by default when the CLI is found (Settings → Panel → Orca); the owner can flip the default |
 | 6 | `needs-you orca` read-only summary for agents | low-medium | small | none | **built** (without the open-cards column: the rows carry no terminal handles to match cards to) |
 | 7 | Orca accounts usage poller | medium | medium | none | after verifying `rateLimits` values on a host with managed accounts |
 | 8 | Deploy-finished recipe for CI | medium | docs | none | — |
