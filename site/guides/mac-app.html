@@ -62,7 +62,9 @@
 <p>While the Mac sleeps its hub is offline: senders queue items and deliver them within about 5 minutes of it waking. Always-on <a href="hub.html">server hubs</a> avoid the wait.</p>
 <p>The exact settings and how the app passes options to its hub are in <a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a>.</p>
 <h2 id="using-it">Using it <a class="anchor" href="#using-it" aria-label="Link to this section">#</a></h2>
-<p class="doc-img"><img src="../img/panel.png" width="376" height="926" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/panel.png" width="376" height="926" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze." loading="lazy" decoding="async"></div>
+</figure>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>You see</th><th>It means</th></tr></thead>
 <tbody>
@@ -75,10 +77,16 @@
 </tbody>
 </table></div>
 <p>The pill when nothing needs you, with 4 work items and 1 personal one waiting (count only, then split work | personal and count and top item), and a new item springing out:</p>
-<p class="doc-img"><img src="../img/pill-idle.png" width="147" height="34" alt="The idle pill: Nothing needs you." loading="lazy" decoding="async"> <img src="../img/pill-count.png" width="66" height="38" alt="The count pill: 4, with 1 personal shown faintly, in a red ring." loading="lazy" decoding="async"> <img src="../img/pill-split.png" width="90" height="38" alt="The split pill: W 4, P 1." loading="lazy" decoding="async"> <img src="../img/pill-top-item.png" width="248" height="38" alt="The pill showing the count and the top item&#x27;s title." loading="lazy" decoding="async"></p>
-<p class="doc-img"><img src="../img/preview.png" width="336" height="94" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/pill-idle.png" width="147" height="34" alt="The idle pill: Nothing needs you." loading="lazy" decoding="async"> <img src="../img/pill-count.png" width="66" height="38" alt="The count pill: 4, with 1 personal shown faintly, in a red ring." loading="lazy" decoding="async"> <img src="../img/pill-split.png" width="90" height="38" alt="The split pill: W 4, P 1." loading="lazy" decoding="async"> <img src="../img/pill-top-item.png" width="248" height="38" alt="The pill showing the count and the top item&#x27;s title." loading="lazy" decoding="async"></div>
+</figure>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/preview.png" width="336" height="94" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow." loading="lazy" decoding="async"></div>
+</figure>
 <p>The open panel shows one context at a time; the tab in its header switches (here, Personal):</p>
-<p class="doc-img"><img src="../img/panel-personal.png" width="376" height="266" alt="The open panel on the Personal tab with one low-priority card: Renew example.org, it expires in 9 days, with a Registrar link." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/panel-personal.png" width="376" height="266" alt="The open panel on the Personal tab with one low-priority card: Renew example.org, it expires in 9 days, with a Registrar link." loading="lazy" decoding="async"></div>
+</figure>
 <ul>
 <li><strong>Click</strong> the pill to expand the cards. A click anywhere else closes it, as do <strong>Escape</strong>, the chevron, a double-click on the header bar and the shortcut. To keep it up while you read a card next to the page its link opened, turn off <strong>Settings → Panel → Open panel → Collapse when clicking elsewhere</strong>. If the glass is hard to read over bright windows, raise <strong>Settings → Panel → Opacity → Background darkness</strong>.</li>
 <li>Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or <strong>Settings → Panel → Open panel → Automatic</strong>, to go back to fitting the cards.</li>
@@ -133,7 +141,7 @@
 <li><strong>You can see it.</strong> The pill shows a small link badge next to the moon, and <strong>Focus</strong> in the menus has <strong>Set by a link · Turn off</strong>.</li>
 </ul>
 <p>From a script or Terminal, use <code>open -g</code> so nothing comes forward:</p>
-<div class="code"><pre><code class="language-bash">open -g 'needsyou://focus?level=urgent&amp;minutes=60'
+<div class="code" data-copy><pre><code class="language-bash">open -g 'needsyou://focus?level=urgent&amp;minutes=60'
 open -g 'needsyou://focus?level=off'</code></pre></div>
 <p>To follow a macOS Focus, first turn on <strong>Allow focus links from other apps</strong> (otherwise each automation run asks), then make two personal automations in the <strong>Shortcuts</strong> app → <strong>Automation</strong> → <strong>+</strong>:</p>
 <ol>
@@ -173,8 +181,10 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 </tbody>
 </table></div>
 <p>The Panel tab shows a sample card as you change things, and the Alerts tab plays each alert. <strong>Advanced → Reset to defaults</strong> puts the look and alerts back.</p>
-<p class="doc-img"><img src="../img/settings-opacity.png" width="530" height="352" alt="Settings, Panel, Opacity: Background darkness 30%, Collapsed pill 85%, Collapsed pill pointer over it 100%, Open panel 100%, Open panel pointer over it 100%, each with a one-line explanation." loading="lazy" decoding="async"></p>
-<p><em>Settings → Panel → Opacity, at the defaults.</em></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/settings-opacity.png" width="530" height="352" alt="Settings, Panel, Opacity: Background darkness 30%, Collapsed pill 85%, Collapsed pill pointer over it 100%, Open panel 100%, Open panel pointer over it 100%, each with a one-line explanation." loading="lazy" decoding="async"></div>
+<figcaption>Settings → Panel → Opacity, at the defaults.</figcaption>
+</figure>
 <h2 id="terminal-button">Terminal button <a class="anchor" href="#terminal-button" aria-label="Link to this section">#</a></h2>
 <p>Agent cards from the Claude Code hook (and Orca) carry a <strong>Terminal</strong> button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done.</p>
 <div class="table-wrap"><table class="doc-table">
@@ -200,7 +210,9 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <p>If a CLI switch fails (the pane is gone), the command goes on the clipboard. Logs: Console, subsystem <code>app.needsyou.mac</code>, category <code>terminal-jump</code>. Setting the hook up, including SSH sessions: <a href="claude-code-everywhere.html#terminal-button">Claude Code alerts everywhere → Terminal button</a>.</p>
 <h2 id="settings">Settings <a class="anchor" href="#settings" aria-label="Link to this section">#</a></h2>
 <p>Right-click the pill (or the menu bar icon) → <strong>Settings…</strong>. Settings is a sidebar of short pages, like System Settings. The look, alerts and shortcut are under <strong>Make it yours</strong> above; the pages:</p>
-<p class="doc-img"><img src="../img/settings-inbox.png" width="380" height="274" alt="Settings, Your inbox: How it works in three lines, then Run hub on this Mac, on and Running." loading="lazy" decoding="async"> <img src="../img/settings-connect.png" width="380" height="274" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/settings-inbox.png" width="380" height="274" alt="Settings, Your inbox: How it works in three lines, then Run hub on this Mac, on and Running." loading="lazy" decoding="async"> <img src="../img/settings-connect.png" width="380" height="274" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite." loading="lazy" decoding="async"></div>
+</figure>
 <ul>
 <li><strong>General:</strong> your name (shown as "needs &lt;name&gt;"), open at login, demo mode. A first-run welcome shows here when no hub is set up.</li>
 <li><strong>Your inbox:</strong> three lines on how it works (your machines and agents send alerts, this Mac holds them because it's the hub, the pill shows them), <strong>Run hub on this Mac</strong> (on by default) and its two addresses, each with <strong>Copy</strong>: <strong>On this Mac</strong> (<code>http://127.0.0.1:8765</code>, for agents on the Mac) and <strong>From your other machines (Tailscale)</strong> (<code>http://&lt;name&gt;.&lt;tailnet&gt;.ts.net:8765</code>). Without Tailscale it says other machines can't reach the hub and links to the <a href="tailscale.html">Tailscale guide</a>.</li>

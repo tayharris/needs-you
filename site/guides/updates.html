@@ -65,7 +65,7 @@
 <li><strong>How to get it:</strong> 0.1.1 has no in-app updater, so install the new zip by hand, or run <code>mac/scripts/install.sh --app &lt;new NeedsYou.app&gt;</code>. It finds the running app by its path, quits it, and swaps it at the same <code>/Applications/NeedsYou.app</code>; <code>install.sh --rollback</code> goes back. A build with the updater but the old id refuses an update with the new id; install that one update the same way, and later ones are automatic again.</li>
 </ul>
 <h2 id="sender-machines">Sender machines <a class="anchor" href="#sender-machines" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">needs-you update --check     # what would change, and from where
+<div class="code" data-copy><pre><code class="language-bash">needs-you update --check     # what would change, and from where
 needs-you update             # do it
 needs-you update --rollback  # put back the files the last update replaced</code></pre></div>
 <p><code>needs-you update</code> updates what's already installed on the machine (it never adds a piece): the CLI, the Claude Code hook and its entries in <code>~/.claude/settings.json</code> (re-merged by <code>install-hooks.sh</code>, which keeps a <code>.bak</code>), a project's own hooks when you run it inside that project, the skill, and the Orca snippet. It:</p>

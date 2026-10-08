@@ -78,7 +78,7 @@
 <p><code>scripts/setup-sender.sh</code> (the manual sender setup) doesn't install the hooks. It writes the same settings (<code>--alerts</code> and the rest) to the env file and tells you to run <code>integrations/claude-code/install-hooks.sh</code>.</p>
 <h3 id="without-an-invite-from-a-checkout">Without an invite: from a checkout <a class="anchor" href="#without-an-invite-from-a-checkout" aria-label="Link to this section">#</a></h3>
 <p>On a machine that's already a sender (<code>needs-you</code> works in a shell there):</p>
-<div class="code"><pre><code class="language-bash">integrations/claude-code/install-hooks.sh                                  # every repo (user level)
+<div class="code" data-copy><pre><code class="language-bash">integrations/claude-code/install-hooks.sh                                  # every repo (user level)
 integrations/claude-code/install-hooks.sh --project ~/src/my-repo          # one repo, committed
 integrations/claude-code/install-hooks.sh --project ~/src/my-repo --local  # one repo, just you (settings.local.json)
 integrations/claude-code/install-hooks.sh --dry-run                        # show the diff, write nothing</code></pre></div>
@@ -137,7 +137,7 @@ integrations/claude-code/install-hooks.sh --dry-run                        # sho
 <tr><td><code>NEEDS_YOU_AGENT_ALERTS=0</code></td><td>off, even in Orca</td></tr>
 </tbody>
 </table></div>
-<div class="code"><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 claude      # one session</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 claude      # one session</code></pre></div>
 <p>The environment wins over the file. The hooks read the same env file as the CLI: <code>$XDG_CONFIG_HOME/needs-you/env</code> when <code>XDG_CONFIG_HOME</code> is set (<code>~/.config/needs-you/env</code> otherwise), or the file <code>NEEDS_YOU_CONFIG</code> names; <code>NEEDS_YOU_ENV_FILE</code> points only the hooks somewhere else. A good pattern: leave it off on your laptop, turn it on for the VMs where agents run unattended.</p>
 <h2 id="options">Options <a class="anchor" href="#options" aria-label="Link to this section">#</a></h2>
 <p>Set in the environment or as lines in <code>~/.config/needs-you/env</code>:</p>
@@ -159,7 +159,7 @@ cp -R integrations/claude-code/skill/needs-you ~/.claude/skills/     # or &lt;re
 <p>Tell it your conventions in the repo's <code>CLAUDE.md</code>, for example:</p>
 <div class="code"><pre><code class="language-markdown">needs-you: use key prefix `acme:` and context `work` for this repo.</code></pre></div>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">needs-you doctor</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">needs-you doctor</code></pre></div>
 <p>It's read-only and never posts. The Claude Code lines:</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Line</th><th>OK means</th><th>Otherwise</th></tr></thead>

@@ -8,7 +8,12 @@
    Dark-first: :root is the dark theme; the light variant is the same neutral
    ramp inverted, applied only when the reader's system asks for light.
    One accent (amber) spent on the button, link underlines and focus, never on
-   decoration. No gradients, no shadows, one border weight. */
+   decoration. No gradients, no shadows, one border weight. The one exception is the
+   demo pill's arrival ring (.pv.is-arriving), which copies the app's own glow.
+
+   The pill preview (.pv) and the live demo (.demo) use the Mac app's priority colours
+   and link-button look (mac/Sources/NeedsYou/Views/Theme.swift), always dark. */
+
 /* IBM Plex, bundled (SIL OFL 1.1, fonts/OFL.txt): the Latin1 subsets from IBM's
    @ibm/plex-sans 1.1.0 and @ibm/plex-mono 2.5.0 packages. Characters outside
    the subset (the arrows) fall back to the next font in the stack. */
@@ -33,6 +38,7 @@
   unicode-range: U+0000, U+000D, U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013-2014, U+2018-201A, U+201C-201E, U+2020-2022, U+2026, U+2030, U+2039-203A, U+2044, U+20AC, U+2122, U+2212, U+FB01-FB02;
 }
 
+
 :root {
   /* ---- Primitives ---- */
   --neutral-0: #ffffff;
@@ -51,26 +57,38 @@
   --amber-300: #f5cd72;
   --amber-400: #e8b13c;
   --amber-600: #a87513;
+  /* The Mac app's priority colours (mac/Sources/NeedsYou/Views/Theme.swift). */
+  --red-400: #f87171;
+  --yellow-300: #fcd34d;
+  --slate-400: #94a3b8;
+  --green-400: #4ade80;
 
   --font-sans: "IBM Plex Sans", "Roboto", "Helvetica", "Arial", sans-serif;
   --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
-  --size-display: 2.5rem;   /* 40px */
+  --size-display: 2.75rem;  /* 44px */
   --size-h1: 2rem;          /* 32px */
+  --size-h2: 1.5rem;        /* 24px */
   --size-h4: 1.125rem;      /* 18px */
+  --size-body: 1rem;        /* 16px */
   --size-h5: 0.9375rem;     /* 15px */
+  --size-small: 0.875rem;   /* 14px */
   --size-h6: 0.8125rem;     /* 13px */
   --size-caption: 0.6875rem;/* 11px */
-  --size-mono: 0.75rem;     /* 12px */
+  --size-mono: 0.8125rem;   /* 13px */
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
   --radius: 6px;
+  --radius-stage: 12px;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --measure: 40rem;         /* the longest a line of body text gets: about 75 characters */
   --tap: 44px;              /* minimum tap target */
 
   /* ---- Semantic (dark, the default) ---- */
@@ -78,7 +96,7 @@
   --surface-raised: var(--neutral-900);
   --surface-hover: var(--neutral-800);
   --surface-sunken: var(--neutral-950);
-  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-subtle: rgba(255, 255, 255, 0.06);
   --border-strong: var(--neutral-700);
   --text-primary: var(--neutral-50);
   --text-secondary: var(--neutral-300);
@@ -87,16 +105,30 @@
   --brand-focus: var(--amber-400);
   --brand-contrast: var(--neutral-1000);
 
-  /* The pill mock is always dark, like the app's HUD panel, in both themes. */
+  /* Where screenshots and the demo sit: a quiet "desktop" the dark app reads against. */
+  --stage-bg: var(--neutral-900);
+  --stage-border: rgba(255, 255, 255, 0.06);
+  --desk-bar: var(--neutral-800);
+  --desk-text: var(--neutral-300);
+
+  /* The pill is always dark, like the app's HUD panel, in both themes. */
   --hud-surface: var(--neutral-950);
-  --hud-raised: var(--neutral-900);
-  --hud-chip: var(--neutral-800);
+  --hud-fill: var(--neutral-700);
+  --hud-idle: var(--neutral-800);
   --hud-border: rgba(255, 255, 255, 0.08);
-  --hud-text: var(--neutral-50);
+  --hud-text: var(--neutral-0);
   --hud-secondary: var(--neutral-300);
-  --hud-muted: var(--neutral-400);
-  /* The mock's item is normal priority: the app's amber (mac/Sources/NeedsYou/Views/Theme.swift). */
-  --prio-normal: var(--amber-300);
+  --hud-muted: rgba(255, 255, 255, 0.55);
+  --hud-faint: rgba(255, 255, 255, 0.35);
+  --hud-link-fill: rgba(255, 255, 255, 0.14);
+  --hud-link-fill-hover: rgba(255, 255, 255, 0.26);
+  --hud-link-stroke: rgba(255, 255, 255, 0.18);
+  --hud-link-stroke-hover: rgba(255, 255, 255, 0.5);
+  --hud-link-dest: rgba(255, 255, 255, 0.62);
+  --prio-urgent: var(--red-400);
+  --prio-normal: var(--yellow-300);
+  --prio-low: var(--slate-400);
+  --ok: var(--green-400);
 
   color-scheme: dark light;
 }
@@ -113,6 +145,10 @@
     --text-secondary: var(--neutral-600);
     --text-muted: var(--neutral-500);
     --brand-focus: var(--amber-600);
+    --stage-bg: var(--neutral-200);
+    --stage-border: rgba(0, 0, 0, 0.06);
+    --desk-bar: var(--neutral-100);
+    --desk-text: var(--neutral-600);
   }
 }
 
@@ -124,7 +160,7 @@ body {
   margin: 0;
   background: var(--surface-default);
   color: var(--text-primary);
-  font: var(--weight-regular) var(--size-h5)/1.6 var(--font-sans);
+  font: var(--weight-regular) var(--size-body)/1.6 var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -140,8 +176,13 @@ a:hover { color: var(--text-primary); text-decoration-thickness: 2px; }
 
 :focus-visible { outline: 2px solid var(--brand-focus); outline-offset: 2px; border-radius: var(--radius); }
 
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
 .skip {
-  position: absolute; left: var(--space-4); top: -4rem; z-index: 1;
+  position: absolute; left: var(--space-4); top: -4rem; z-index: 2;
   background: var(--brand-main); color: var(--brand-contrast);
   padding: var(--space-2) var(--space-3); border-radius: var(--radius);
   font-weight: var(--weight-medium); text-decoration: none;
@@ -161,7 +202,7 @@ a:hover { color: var(--text-primary); text-decoration-thickness: 2px; }
 .brand {
   display: inline-flex; align-items: center; gap: var(--space-2);
   min-height: var(--tap);
-  font-weight: var(--weight-semibold); text-decoration: none;
+  font-weight: var(--weight-semibold); text-decoration: none; white-space: nowrap;
 }
 .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--brand-main); }
 .top nav { display: flex; gap: var(--space-1); }
@@ -169,61 +210,99 @@ a:hover { color: var(--text-primary); text-decoration-thickness: 2px; }
   display: inline-flex; align-items: center;
   min-height: var(--tap); padding: 0 var(--space-3); border-radius: var(--radius);
   color: var(--text-secondary); font-weight: var(--weight-medium); text-decoration: none;
+  white-space: nowrap;
 }
 .top nav a:hover { color: var(--text-primary); background: var(--surface-hover); }
 
 /* Type */
 h1 {
-  font-size: clamp(var(--size-h1), 1.5rem + 2vw, var(--size-display));
+  font-size: clamp(var(--size-h1), 1.4rem + 2.4vw, var(--size-display));
   font-weight: var(--weight-semibold);
-  line-height: 1.15; letter-spacing: -0.015em;
+  line-height: 1.12; letter-spacing: -0.02em;
   margin: var(--space-8) 0 var(--space-4);
   text-wrap: balance;
 }
 h2 {
-  font-size: var(--size-h5); font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
+  font-size: var(--size-h2); font-weight: var(--weight-semibold);
+  line-height: 1.25; letter-spacing: -0.01em;
   margin: 0 0 var(--space-3);
 }
+h3 { font-size: var(--size-h4); font-weight: var(--weight-semibold); line-height: 1.35; }
 p { margin: 0 0 var(--space-3); }
-.lede { font-size: var(--size-h4); color: var(--text-secondary); max-width: 36rem; }
-.note { color: var(--text-muted); font-size: var(--size-h6); }
+.lede { font-size: var(--size-h4); line-height: 1.55; color: var(--text-secondary); max-width: 34rem; }
+.note { color: var(--text-muted); font-size: var(--size-small); line-height: 1.6; }
 strong { font-weight: var(--weight-semibold); }
 
 section { padding: var(--space-6) 0; border-top: 1px solid var(--border-subtle); }
-section.intro { border-top: 0; padding-top: 0; }
 
 code, pre { font-family: var(--font-mono); }
 :not(pre) > code {
-  font-size: var(--size-mono);
+  font-size: 0.875em;
   background: var(--surface-raised); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius); padding: 0.1em 0.4em;
+  border-radius: var(--radius); padding: 0.05em 0.35em;
   overflow-wrap: anywhere;
 }
 
-/* How it works: three outlined cards, numbered in mono. */
+/* ---- The landing page ----
+   One column of text, at most --measure wide, and on wide screens a rail on the right
+   where the live demo stays in view. Every block in a section is spaced by one rule
+   (the "flow" margins below), so text, code, figures and notes keep the same rhythm. */
+.wrap-home { max-width: 44rem; }
+.home > section { padding: var(--space-12) 0; }
+.home > section.intro { border-top: 0; padding: var(--space-12) 0 var(--space-8); }
+.home section > * { margin-top: 0; margin-bottom: 0; }
+.home section > * + * { margin-top: var(--space-4); }
+.home section > h2 + * { margin-top: var(--space-4); }
+.home section > :is(.code, .shot, .arch, .table-wrap, .see, .works, .how),
+.home section > :is(.code, .shot, .arch, .table-wrap, .see, .works, .how) + * { margin-top: var(--space-8); }
+.home section > h3 { margin-top: var(--space-12); }
+.home section > h3 + * { margin-top: var(--space-3); }
+.home section > :is(p, .shot figcaption) { max-width: var(--measure); }
+.home .intro h1 { margin: 0; }
+@media (min-width: 46rem) { .h1-quote { display: inline-block; } }
+.home .intro .lede { margin-top: var(--space-6); }
+.home .intro .hero-sub { margin-top: var(--space-3); color: var(--text-muted); }
+
+@media (min-width: 68rem) {
+  .wrap-home { max-width: 72rem; }
+  .home {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    column-gap: var(--space-16);
+    align-items: start;
+  }
+  .home > section { grid-column: 1; }
+  /* The rail: the demo spans every row, so it can stick for the whole page. */
+  .home > .demo {
+    grid-column: 2; grid-row: 1 / span 12;
+    position: sticky; top: var(--space-6);
+    margin-top: var(--space-12);
+  }
+}
+
+/* How it works: three outlined steps, numbered in mono (they happen in this order). */
 .how {
-  list-style: none; margin: 0; padding: 0;
+  list-style: none; padding: 0;
   display: grid; gap: var(--space-2);
   counter-reset: step;
 }
 .how li {
   counter-increment: step;
   position: relative;
-  padding: var(--space-3) var(--space-4) var(--space-3) 3rem;
+  padding: var(--space-4) var(--space-4) var(--space-4) 3.25rem;
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
+  font-size: var(--size-h5);
 }
 .how li::before {
   content: counter(step, decimal-leading-zero);
-  font-family: var(--font-mono); font-size: var(--size-mono);
+  font-family: var(--font-mono); font-size: var(--size-h6);
   color: var(--text-muted);
-  position: absolute; left: var(--space-4); top: calc(var(--space-3) + 0.2em);
+  position: absolute; left: var(--space-4); top: calc(var(--space-4) + 0.15em);
 }
-.how + .note { margin: var(--space-3) 0 0; }
 
-/* Install */
+/* Buttons and code */
 .button {
   display: inline-flex; align-items: center; justify-content: center;
   min-height: var(--tap); padding: 0 var(--space-6);
@@ -241,8 +320,8 @@ code, pre { font-family: var(--font-mono); }
 }
 .code pre {
   margin: 0; padding: var(--space-3) var(--space-4);
-  font-size: var(--size-h6);
-  white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: var(--size-mono); line-height: 1.6;
+  white-space: pre; overflow-x: auto;
 }
 .code.has-copy pre { padding-right: 5.5rem; }
 .copy {
@@ -255,82 +334,214 @@ code, pre { font-family: var(--font-mono); }
 }
 .copy:hover { color: var(--text-primary); background: var(--surface-hover); }
 
-/* The pill and card mock. Flat, outlined, always dark. */
-.mock {
-  margin: var(--space-8) 0 var(--space-4);
-  display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-3);
-  padding: var(--space-6);
-  border-radius: var(--radius);
-  background: var(--hud-surface);
-  border: 1px solid var(--hud-border);
+/* Screenshots and figures. A figure is a stage (the screenshot, centred on a quiet
+   backdrop with room around it, at a size set here rather than by the PNG) and a caption
+   under it, outside the frame, in the page's own text colours. */
+.shot { margin: 0; }
+.stage {
+  display: flex; justify-content: center; align-items: center;
+  padding: clamp(var(--space-4), 5vw, var(--space-8));
+  background: var(--stage-bg);
+  border: 1px solid var(--stage-border);
+  border-radius: var(--radius-stage);
+}
+.stage img { display: block; max-width: 100%; height: auto; }
+.shot .stage img { width: 100%; }
+.stage-window { padding: clamp(var(--space-2), 4vw, var(--space-8)); }
+.stage-window img { border-radius: 10px; outline: 1px solid var(--hud-border); }
+.shot figcaption, .arch figcaption, .doc-fig figcaption {
+  margin-top: var(--space-3);
+  font-size: var(--size-small); line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* What it looks like: the open panel beside the pill's states. */
+.see { display: grid; gap: var(--space-8); grid-template-columns: minmax(0, 1fr); }
+.see-panel .stage img { max-width: 17rem; }
+.states { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-6); align-content: start; }
+.states li { display: grid; gap: var(--space-3); }
+.states p { margin: 0; font-size: var(--size-h5); color: var(--text-secondary); }
+.states strong { color: var(--text-primary); }
+.state-shot {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-4);
+  min-height: 5rem; padding: var(--space-4);
+  background: var(--stage-bg); border: 1px solid var(--stage-border); border-radius: var(--radius-stage);
+}
+.state-shot img { display: block; max-width: 100%; height: auto; }
+@media (min-width: 46rem) {
+  .see { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+}
+
+/* ---- The pill preview (.pv): the app's arrival card, drawn in HTML. Always dark.
+   The live demo animates it; the agents section shows it still. Layout as in the app:
+   title and meta on full-width lines, the link button on its own row below them. */
+.pv {
+  --pv-color: var(--prio-normal);
+  position: relative;
+  width: 100%; max-width: 22rem;
   color: var(--hud-text);
+  background: var(--hud-fill);
+  background: color-mix(in srgb, var(--pv-color) 9%, var(--hud-fill));
+  border: 1.5px solid var(--pv-color);
+  border-radius: 14px;
+  font-family: var(--font-sans);
 }
-.pill {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-1) var(--space-3) var(--space-1) 0.625rem;
+.pv-urgent { --pv-color: var(--prio-urgent); }
+.pv-normal { --pv-color: var(--prio-normal); }
+.pv-low { --pv-color: var(--prio-low); }
+.pv p { margin: 0; }
+.pv-idle { display: none; }
+.pv-body { padding: 10px 14px 12px 12px; }
+.pv-head { display: flex; align-items: flex-start; gap: 10px; }
+.pv-dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--pv-color); }
+.pv-dot-ok { background: var(--ok); margin-top: 0; }
+.pv-text { min-width: 0; }
+.pv-title { font-size: var(--size-h6); font-weight: var(--weight-semibold); line-height: 1.4; color: var(--hud-text); }
+.pv-meta { margin-top: 1px; font-size: var(--size-caption); line-height: 1.45; color: var(--hud-muted); }
+.pv-kind { color: var(--pv-color); }
+.pv-actions { display: grid; justify-items: start; margin-top: 8px; padding-left: 17px; }
+.pv-link, .pv-done { grid-area: 1 / 1; }
+.pv-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  font-size: var(--size-caption); font-weight: var(--weight-medium); line-height: 1.4;
+  white-space: nowrap;
+  background: var(--hud-link-fill);
+  border: 1px solid var(--hud-link-stroke);
   border-radius: 999px;
-  background: var(--hud-raised);
-  border: 1px solid var(--prio-normal);
-  font-size: var(--size-h6); font-weight: var(--weight-semibold);
 }
-.pill-count { font-family: var(--font-mono); font-size: var(--size-mono); font-weight: var(--weight-regular); }
-.pill-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--prio-normal); }
-.card {
-  width: 100%; max-width: 20rem;
-  background: var(--hud-raised);
-  border: 1px solid var(--hud-border);
-  border-radius: var(--radius);
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+.pv-dest { font-weight: var(--weight-regular); color: var(--hud-link-dest); }
+.pv-arrow { width: 8px; height: 8px; margin-left: 1px; }
+.pv-arrow path, .pv-done path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pv-done {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 0;
+  font-size: var(--size-caption); line-height: 1.4; color: var(--ok);
+  visibility: hidden;
 }
-.card p { margin: 0; }
-.card-head { display: flex; align-items: center; gap: var(--space-2); }
-.prio { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--prio-normal); flex: none; }
-.card-title { font-size: var(--size-h6); font-weight: var(--weight-semibold); }
-.card .card-body { font-size: 0.75rem; color: var(--hud-secondary); margin-top: var(--space-1); }
-.card .card-meta {
-  font-family: var(--font-mono); font-size: var(--size-caption);
-  color: var(--hud-muted); margin-top: var(--space-1);
-}
-.card-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: var(--space-3); }
-.chip {
-  font-size: var(--size-caption); font-weight: var(--weight-medium);
-  line-height: 20px; height: 20px; padding: 0 var(--space-2);
-  border-radius: var(--radius);
-  background: var(--hud-chip); color: var(--hud-secondary);
-}
-.chip-link { color: var(--prio-normal); }
+.pv-done svg { width: 10px; height: 10px; }
+.stage-pv .pv { max-width: 21rem; }
 
-@media (prefers-reduced-motion: no-preference) {
-  .card { animation: rise 0.6s ease-out both 0.2s; }
-  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* The mini schematic of an arrival, for the states list. */
+.pv-mini {
+  display: flex; align-items: flex-start; gap: 7px;
+  width: 9.5rem; padding: 7px 9px;
+  background: var(--hud-fill);
+  border: 1.5px solid var(--prio-urgent); border-radius: 10px;
+}
+.pv-mini .pv-dot { --pv-color: var(--prio-urgent); width: 5px; height: 5px; margin-top: 2px; }
+.pv-mini-lines { flex: 1; display: grid; gap: 4px; justify-items: start; }
+.pv-mini-lines span { display: block; height: 5px; width: 92%; border-radius: 3px; background: var(--hud-faint); }
+.pv-mini-lines span + span { width: 60%; height: 4px; background: var(--hud-link-fill); }
+.pv-mini-lines .pv-mini-chip { width: 45%; height: 9px; margin-top: 2px; border-radius: 999px; border: 1px solid var(--hud-link-stroke); }
+
+/* ---- The live demo. A slice of a Mac screen: the menu bar, and the pill hanging at the
+   top right, where the app puts it. site.js adds .is-live and steps it through the
+   examples; without that it shows the first one, still. */
+.demo { margin: 0 0 var(--space-4); max-width: 26rem; }
+.demo-screen {
+  position: relative; overflow: hidden;
+  height: 10.5rem;
+  background: var(--stage-bg);
+  border: 1px solid var(--stage-border);
+  border-radius: var(--radius-stage);
+}
+.demo-menubar {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3);
+  height: 1.5rem; padding: 0 var(--space-3);
+  background: var(--desk-bar);
+  font-size: var(--size-caption); font-weight: var(--weight-medium); color: var(--desk-text);
+}
+.demo-mb-pill { width: 14px; height: 7px; border-radius: 4px; border: 1.5px solid currentColor; opacity: 0.7; }
+.demo-slot { position: absolute; top: 2.125rem; left: var(--space-3); right: var(--space-3); }
+.demo .pv { max-width: none; }
+.demo-cursor, .demo-ripple { display: none; }
+.demo-caption {
+  margin: var(--space-3) 0 0;
+  min-height: 3.1em;
+  font-size: var(--size-small); line-height: 1.55; color: var(--text-secondary);
+}
+.demo-toggle {
+  min-height: var(--tap); margin: 0 0 0 calc(-1 * var(--space-3)); padding: 0 var(--space-3);
+  background: none; border: 0; border-radius: var(--radius);
+  font: var(--weight-medium) var(--size-h6)/1 var(--font-sans);
+  color: var(--text-muted); cursor: pointer;
+  text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px;
+}
+.demo-toggle:hover { color: var(--text-primary); }
+
+/* Live: the pill is pinned to the slot's top-right corner and its size comes from its state.
+   --slot-w and --pv-h are measured by site.js. */
+.demo.is-live .pv {
+  position: absolute; top: 0; right: 0;
+  width: var(--slot-w, 100%); height: var(--pv-h, 5.5rem);
+  overflow: hidden;
+  transition:
+    width 0.6s cubic-bezier(0.3, 1.4, 0.5, 1),
+    height 0.6s cubic-bezier(0.3, 1.4, 0.5, 1),
+    border-radius 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
+}
+.demo.is-live .pv-body {
+  position: absolute; top: 0; right: 0; width: var(--slot-w, 100%);
+  opacity: 0; transition: opacity 0.2s ease;
+}
+.demo.is-live .pv[data-state="open"] .pv-body,
+.demo.is-live .pv[data-state="done"] .pv-body { opacity: 1; transition-delay: 0.15s; }
+.demo.is-live .pv-idle {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: var(--size-caption); color: var(--hud-muted); white-space: nowrap;
+  opacity: 0; transition: opacity 0.08s ease;
+}
+.demo.is-live .pv[data-state="idle"] {
+  width: 9.25rem; height: 1.625rem; border-radius: 13px;
+  background: var(--hud-idle); border-color: var(--hud-border);
+  transition-duration: 0.45s; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+.demo.is-live .pv[data-state="idle"] .pv-idle { opacity: 1; transition-delay: 0.25s; }
+.demo.is-live .pv[data-state="done"] { border-color: var(--hud-border); background: var(--hud-fill); }
+.demo.is-live .pv[data-state="done"] .pv-kind { color: var(--hud-muted); transition: color 0.3s ease; }
+.demo.is-live .pv[data-state="done"] .pv-dot { background: var(--hud-faint); transition: background-color 0.3s ease; }
+.demo.is-live .pv-link { transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.2s ease, scale 0.12s ease; }
+.demo.is-live .pv-link.is-hover { background: var(--hud-link-fill-hover); border-color: var(--hud-link-stroke-hover); }
+.demo.is-live .pv-link.is-pressed { scale: 0.94; }
+.demo.is-live .pv[data-state="done"] .pv-link { opacity: 0; }
+.demo.is-live .pv[data-state="done"] .pv-done { visibility: visible; }
+.demo.is-live .pv.is-arriving { animation: pv-glow 1.2s ease-out; }
+@keyframes pv-glow {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pv-color) 60%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--pv-color) 0%, transparent); }
 }
 
-/* Screenshots of the app (site/img/, 2x PNGs made by mac/scripts/screenshots.sh). Framed
-   dark in both themes, like the mock: the app's panel is a dark HUD either way. */
-.shots {
-  display: grid; gap: var(--space-3);
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  align-items: start;
+.demo.is-live .demo-cursor {
+  display: block;
+  position: absolute; left: 0; top: 0; z-index: 1;
+  width: 16px; height: 22px;
+  opacity: 0;
+  translate: var(--cx, 0) var(--cy, 0);
+  transform-origin: 2px 2px;
+  transition: translate 0.9s cubic-bezier(0.5, 0, 0.25, 1), opacity 0.3s ease, scale 0.12s ease;
 }
-.shots + .shots { margin-top: var(--space-3); }
-.shots-wide { grid-template-columns: minmax(0, 1fr); }
-.shot-stack { display: grid; gap: var(--space-3); }
-.shot {
-  margin: 0;
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--hud-surface);
-  border: 1px solid var(--hud-border);
-  border-radius: var(--radius);
+.demo-cursor path { fill: var(--neutral-0); stroke: var(--neutral-1000); stroke-width: 1.2; stroke-linejoin: round; }
+.demo.is-live .demo-cursor.is-shown { opacity: 1; }
+.demo.is-live .demo-cursor.no-move { transition: none; }
+.demo.is-live .demo-cursor.is-down { scale: 0.86; }
+.demo.is-live .demo-ripple {
+  display: block;
+  position: absolute; left: 0; top: 0;
+  width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border-radius: 50%; border: 2px solid var(--hud-link-stroke-hover);
+  translate: var(--rx, 0) var(--ry, 0);
+  opacity: 0; pointer-events: none;
 }
-.shot img { display: block; max-width: 100%; height: auto; }
-.shot-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-3); }
-.shot-window img { border: 1px solid var(--hud-border); border-radius: var(--radius); }
-#agents .code, .shot-agent { margin: 0 0 var(--space-3); }
-.shot figcaption {
-  align-self: stretch;
-  color: var(--hud-secondary);
-  font-size: var(--size-h6); line-height: 1.5;
+.demo.is-live .demo-ripple.is-on { animation: demo-ripple 0.5s ease-out; }
+@keyframes demo-ripple {
+  from { opacity: 1; scale: 0.3; }
+  to { opacity: 0; scale: 1.2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo *, .demo *::before { transition: none !important; animation: none !important; }
 }
 
 /* Footer */
@@ -340,25 +551,21 @@ code, pre { font-family: var(--font-mono); }
 @media (max-width: 30rem) {
   .top nav a { padding: 0 var(--space-2); }
   h1 { margin-top: var(--space-6); }
-  .lede { font-size: var(--size-h5); }
-  .mock { padding: var(--space-4); align-items: stretch; }
-  .pill { align-self: flex-end; }
-  .card { max-width: none; }
-  .shot { padding: var(--space-3); }
-}
-
-@media (max-width: 40rem) {
-  .shots { grid-template-columns: minmax(0, 1fr); }
+  .lede { font-size: var(--size-body); }
+  .home > section { padding: var(--space-8) 0; }
+  .home > section.intro { padding: var(--space-8) 0 var(--space-6); }
+  .home section > h3 { margin-top: var(--space-8); }
+  .home .intro .lede { margin-top: var(--space-4); }
 }
 
 /* Under the hood: the architecture diagram and the "how heavy is it" table.
    Columns left to right on wide screens; stacked, with the arrows turned down, on phones. */
 .arch {
-  margin: 0 0 var(--space-6);
-  padding: var(--space-4);
+  margin: 0;
+  padding: var(--space-6);
   background: var(--surface-sunken);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
+  border-radius: var(--radius-stage);
 }
 .arch-flow {
   display: grid;
@@ -369,8 +576,7 @@ code, pre { font-family: var(--font-mono); }
 .arch-col { min-width: 0; }
 .arch-label {
   margin: 0 0 var(--space-2);
-  font-family: var(--font-mono); font-size: var(--size-caption);
-  text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--size-h6); font-weight: var(--weight-medium);
   color: var(--text-muted);
 }
 .arch-nodes { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
@@ -390,7 +596,7 @@ code, pre { font-family: var(--font-mono); }
 .arch-main { border-color: var(--brand-focus); }
 .arch-optional { border-style: dashed; }
 .arch-pill { display: flex; align-items: center; gap: var(--space-2); }
-.arch-pill .pill-dot { flex: none; }
+.pill-dot { flex: none; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--prio-normal); }
 .arch-sub {
   margin: var(--space-2) 0 0;
   font-size: var(--size-caption); color: var(--text-muted); line-height: 1.4;
@@ -410,19 +616,14 @@ code, pre { font-family: var(--font-mono); }
   stroke-linecap: round; stroke-linejoin: round;
 }
 .arch figcaption {
-  margin-top: var(--space-4); padding-top: var(--space-3);
+  margin-top: var(--space-6); padding-top: var(--space-4);
   border-top: 1px solid var(--border-subtle);
-  font-size: var(--size-h6); color: var(--text-secondary);
 }
 
-.arch-h3 {
-  font-size: var(--size-h5); font-weight: var(--weight-semibold);
-  margin: var(--space-6) 0 var(--space-3);
-}
-.table-wrap { overflow-x: auto; margin: 0 0 var(--space-3); }
+.table-wrap { overflow-x: auto; }
 .weight {
   width: 100%; border-collapse: collapse;
-  font-size: var(--size-h6);
+  font-size: var(--size-small);
 }
 .weight th, .weight td {
   text-align: left; vertical-align: top;
@@ -433,27 +634,24 @@ code, pre { font-family: var(--font-mono); }
 .weight tbody th { font-weight: var(--weight-medium); width: 40%; }
 .weight td { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
-/* Four nav links don't fit a phone header; the section is right below "How it works". */
+/* Six nav links don't fit a phone header: keep How it works, Install and Guides. */
 @media (max-width: 30rem) {
   .top nav a.nav-wide { display: none; }
 }
 
 @media (max-width: 40rem) {
+  .arch { padding: var(--space-4); }
   .arch-flow { grid-template-columns: minmax(0, 1fr); }
   .arch-arrow { flex-direction: row; justify-content: center; gap: var(--space-2); }
   .arch-arrow svg { transform: rotate(90deg); width: 1.75rem; height: 0.75rem; margin: var(--space-2) 0; }
   .weight tbody th { width: auto; }
 }
 
-/* Hero: one line under the lede saying where the alerts live. */
-.hero-sub { color: var(--text-muted); max-width: 36rem; }
-
 /* Works with: supported agents as outlined rows, coming-soon ones as faint chips. */
-.works { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); margin: 0 0 var(--space-3); }
+.works { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-6); }
 .works-h3 {
   margin: 0 0 var(--space-2);
-  font-family: var(--font-mono); font-size: var(--size-caption); font-weight: var(--weight-regular);
-  text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--size-h6); font-weight: var(--weight-medium);
   color: var(--text-muted);
 }
 .works-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
@@ -465,7 +663,7 @@ code, pre { font-family: var(--font-mono); }
   font-size: var(--size-h6); font-weight: var(--weight-medium);
 }
 .works-list li span { color: var(--text-muted); font-weight: var(--weight-regular); }
-.works-soon { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.works-soon { display: flex; flex-wrap: wrap; gap: var(--space-1); align-content: start; }
 .works-soon li {
   padding: var(--space-1) var(--space-3);
   background: none; border-style: dashed;
@@ -478,15 +676,17 @@ code, pre { font-family: var(--font-mono); }
 /* Guides (site/guides/, generated from docs/ by scripts/build_site_guides.py).
    Long-form text: real heading sizes, lists, tables and code that scroll inside
    themselves on a phone instead of widening the page. */
-.crumb { margin: var(--space-6) 0 0; font-size: var(--size-h6); color: var(--text-muted); }
+.crumb { margin: var(--space-8) 0 0; font-size: var(--size-h6); color: var(--text-muted); }
 .crumb + h1 { margin-top: var(--space-2); }
+.doc h1 { margin-bottom: var(--space-6); }
+.doc > p, .doc li > p { margin: 0 0 var(--space-4); }
 .doc h2, .doc h3, .doc h4, .doc h5, .doc h6 {
   color: var(--text-primary); font-weight: var(--weight-semibold);
   line-height: 1.3; scroll-margin-top: var(--space-4);
 }
-.doc h2 { font-size: 1.375rem; margin: var(--space-8) 0 var(--space-3); padding-top: var(--space-6); border-top: 1px solid var(--border-subtle); }
-.doc h3 { font-size: var(--size-h4); margin: var(--space-6) 0 var(--space-2); }
-.doc h4, .doc h5, .doc h6 { font-size: var(--size-h5); margin: var(--space-4) 0 var(--space-2); }
+.doc h2 { font-size: 1.375rem; margin: var(--space-12) 0 var(--space-4); padding-top: var(--space-8); border-top: 1px solid var(--border-subtle); }
+.doc h3 { font-size: var(--size-h4); margin: var(--space-8) 0 var(--space-3); }
+.doc h4, .doc h5, .doc h6 { font-size: var(--size-body); margin: var(--space-6) 0 var(--space-2); }
 .anchor {
   color: var(--text-muted); font-weight: var(--weight-regular);
   text-decoration: none; opacity: 0; padding: 0 var(--space-1);
@@ -495,24 +695,24 @@ code, pre { font-family: var(--font-mono); }
 @media (hover: none) { .anchor { opacity: 0.5; } }
 .doc a { text-decoration-line: underline; }
 .doc .lede a { color: var(--text-primary); }
-.doc ul, .doc ol { margin: 0 0 var(--space-3); padding-left: var(--space-6); }
-.doc li { margin: var(--space-1) 0; }
+.doc ul, .doc ol { margin: 0 0 var(--space-4); padding-left: var(--space-6); }
+.doc li { margin: var(--space-2) 0; }
 .doc li > ul, .doc li > ol { margin: var(--space-1) 0 0; }
 .doc li > p { margin: 0 0 var(--space-2); }
-.doc li > .code { margin: var(--space-2) 0; }
+.doc li > .code, .doc li > .doc-fig { margin: var(--space-3) 0; }
 .doc .tasks { list-style: none; padding-left: var(--space-2); }
 .doc .task input { margin: 0 var(--space-1) 0 0; accent-color: var(--brand-main); vertical-align: -0.1em; }
-.doc hr { border: 0; border-top: 1px solid var(--border-subtle); margin: var(--space-6) 0; }
+.doc hr { border: 0; border-top: 1px solid var(--border-subtle); margin: var(--space-8) 0; }
 .doc blockquote {
-  margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
   border-left: 2px solid var(--brand-focus); background: var(--surface-raised);
   border-radius: 0 var(--radius) var(--radius) 0; color: var(--text-secondary);
 }
 .doc blockquote p:last-child { margin: 0; }
-.doc .code { margin: 0 0 var(--space-3); }
+.doc .code { margin: 0 0 var(--space-4); }
 .doc .code pre {
   white-space: pre; overflow-wrap: normal; overflow-x: auto;
-  line-height: 1.55; min-height: calc(var(--tap) + var(--space-2));
+  min-height: calc(var(--tap) + var(--space-2));
 }
 .doc .copy { top: var(--space-1); transform: none; }
 /* On a phone a guide's code block scrolls sideways, and its text would slide under the Copy
@@ -520,8 +720,8 @@ code, pre { font-family: var(--font-mono); }
 @media (max-width: 40rem) {
   .doc .code.has-copy pre { padding-top: calc(var(--tap) + var(--space-2)); padding-right: var(--space-4); }
 }
-.doc .table-wrap { margin: 0 0 var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius); }
-.doc-table { width: 100%; border-collapse: collapse; font-size: var(--size-h6); }
+.doc .table-wrap { margin: 0 0 var(--space-6); border: 1px solid var(--border-subtle); border-radius: var(--radius); }
+.doc-table { width: 100%; border-collapse: collapse; font-size: var(--size-small); }
 .doc-table th, .doc-table td {
   min-width: 9rem; text-align: left; vertical-align: top;
   padding: var(--space-2) var(--space-3);
@@ -532,34 +732,29 @@ code, pre { font-family: var(--font-mono); }
 .doc-table td { color: var(--text-secondary); }
 .doc-table .ta-center { text-align: center; }
 .doc-table .ta-right { text-align: right; }
-.doc-img {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-3);
-  padding: var(--space-4); margin: 0 0 var(--space-4);
-  background: var(--hud-surface); border: 1px solid var(--hud-border); border-radius: var(--radius);
-}
-.doc-img img { display: block; max-width: 100%; height: auto; }
+/* A guide's screenshots: the same stage as the landing page, a caption under it. The
+   markdown's width attribute is the most it's shown at; a phone shrinks it to fit. */
+.doc-fig { margin: var(--space-6) 0; }
+.doc-fig .stage { flex-wrap: wrap; gap: var(--space-4); }
+.doc-fig figcaption { max-width: var(--measure); }
 .toc {
-  margin: 0 0 var(--space-6); padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-8); padding: var(--space-4);
   background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius);
-  font-size: var(--size-h6);
+  font-size: var(--size-small);
 }
-.toc p {
-  margin: 0 0 var(--space-1);
-  font-family: var(--font-mono); font-size: var(--size-caption);
-  text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
-}
+.toc p { margin: 0 0 var(--space-2); font-size: var(--size-h6); font-weight: var(--weight-medium); color: var(--text-muted); }
 .toc ul { list-style: none; margin: 0; padding: 0; columns: 2 16rem; column-gap: var(--space-6); }
-.toc li { margin: 0; padding: 2px 0; break-inside: avoid; }
+.toc li { margin: 0; padding: 3px 0; break-inside: avoid; }
 .toc a { color: var(--text-secondary); text-decoration: none; }
 .toc a:hover { color: var(--text-primary); text-decoration: underline; }
-.doc-source { margin-top: var(--space-8); }
-.doc .guide-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.doc-source { margin-top: var(--space-12); }
+.doc .guide-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .guide-list li {
-  margin: 0; padding: var(--space-2) var(--space-3);
+  margin: 0; padding: var(--space-3) var(--space-4);
   background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius);
-  font-size: var(--size-h6);
+  font-size: var(--size-small);
 }
 .guide-list a { font-weight: var(--weight-semibold); }
-.guide-list span { display: block; color: var(--text-muted); }
-.doc section h2 { margin-top: 0; padding-top: 0; border-top: 0; font-size: var(--size-h5); color: var(--text-secondary); }
-.install-guides { margin: var(--space-4) 0 0; }
+.guide-list span { display: block; margin-top: 2px; color: var(--text-muted); }
+.doc section { padding: var(--space-8) 0 var(--space-2); }
+.doc section h2 { margin: 0 0 var(--space-4); padding-top: 0; border-top: 0; font-size: var(--size-h4); }

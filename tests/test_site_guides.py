@@ -95,6 +95,21 @@ class RenderTests(unittest.TestCase):
         self.assertIn('<code class="language-bash">echo \'&lt;x&gt;\' &amp;&amp; **not bold**</code>', out)
         self.assertIn("<code>a &lt;b&gt; *c*</code>", out)
 
+    def test_copy_only_on_commands_that_run_as_written(self):
+        # site.js adds a Copy button to .code[data-copy] only. Real setup commands come from
+        # the app's invite flow; examples with placeholders or example values get none.
+        runnable = ["```bash\nneeds-you doctor\n```", "```sh\nneeds-you update --check\n```"]
+        examples = ["```bash\ncurl -fsSL <join_url>/install.sh | bash\n```",
+                    "```bash\nneeds-you add --key \"claude-code:devbox:acme-api\" --title x\n```",
+                    "```bash\nexport NEEDS_YOU_TOKEN=ny_abc123\n```",
+                    "```bash\ncurl http://hub-a.example.ts.net:8765/v1/health\n```",
+                    "```bash\nneeds-you add ... --title x\n```",
+                    "```json\n{\"title\": \"x\"}\n```", "```\nneeds-you doctor\n```"]
+        for md in runnable:
+            self.assertIn('<div class="code" data-copy>', render(md)[0], md)
+        for md in examples:
+            self.assertNotIn("data-copy", render(md)[0], md)
+
     def test_entities_render_as_text(self):
         out, _ = render("needs &lt;name&gt;")
         self.assertIn("needs &lt;name&gt;", out)
@@ -104,6 +119,18 @@ class RenderTests(unittest.TestCase):
         self.assertIn('<img src="../img/panel.png" width="100" height="246" alt="The panel" loading="lazy"', out)
         with self.assertRaises(gen.BuildError):
             render('<img src="https://example.com/x.png" width="10" alt="x">')
+
+    def test_screenshot_figures_and_captions(self):
+        # A screenshot line becomes a figure on a stage; a one-line italic paragraph right
+        # after it becomes its caption. Any other paragraph stays a paragraph.
+        img = '<img src="../../site/img/panel.png" width="100" alt="The panel">'
+        out, _ = render(img + "\n\n*Settings → Panel, at the defaults.*\n\nNext.")
+        self.assertIn('<figure class="doc-fig">\n<div class="stage"><img src="../img/panel.png"', out)
+        self.assertIn("<figcaption>Settings → Panel, at the defaults.</figcaption>\n</figure>", out)
+        self.assertIn("<p>Next.</p>", out)
+        out, _ = render(img + "\n\nA plain paragraph.")
+        self.assertNotIn("<figcaption>", out)
+        self.assertIn("<p>A plain paragraph.</p>", out)
 
     def test_headings_get_github_anchors(self):
         out, doc = render("# Title\n\n## 1. Install the Mac app (it runs its own hub)\n\n"

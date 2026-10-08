@@ -4,14 +4,20 @@ The needs-you site: the landing page, and the guides from `docs/` as pages. Plai
 
 | File | What |
 |---|---|
-| `index.html` | The whole page: what it is, a CSS mock of the pill and a card, how it works, how agents use it (a posted card and its preview button), screenshots, under the hood (architecture diagram and measured resource use), Works with, Install, Open source |
-| `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the mock's amber matches the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`) |
-| `site.js` | `REPO_URL`, the one GitHub constant, and copy buttons on code blocks (the page works without JS) |
+| `index.html` | The whole page: what it is, the live pill demo (`#demo`), how it works, how agents use it (a command and the card it makes, drawn in HTML), what it looks like (the panel and the pill's states), under the hood (architecture diagram, measured resource use), Works with, Install, Open source |
+| `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the pill's priority colours and link button match the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`). Landing-page sections space every block by one rule (the `.home section > * + *` flow margins), and text stops at `--measure` |
+| `site.js` | `REPO_URL`, the one GitHub constant, Copy buttons on code blocks marked `data-copy`, and the live demo (the page works without JS) |
 | `guides/` | **Generated, don't edit.** One page per guide, plus `guides/index.html`, built from the markdown by `scripts/build_site_guides.py` (see [Guides](#guides)) |
 | `_headers` | Cloudflare Pages response headers (CSP and other security headers) |
 | `img/` | Screenshots of the app (2x PNGs, each under 200 KB), made from example items by `mac/scripts/screenshots.sh`, then optimised by hand (the flat backdrop around the panel made transparent, a 256-colour palette; any PNG optimiser will do). The guides in `docs/guides/` use these same files. Retake them when the panel or Settings changes visibly; check each one by eye for names, hosts or tokens before committing |
 
 The favicon is an inline SVG data URI in `index.html`, so there's no separate icon file.
+
+## The live demo
+
+`#demo` on the landing page is the app's arrival preview drawn in HTML and CSS (`.pv`), looping through four example alerts in `EXAMPLES` in `site.js`: each springs out of the pill, a pointer clicks its link button, the card is marked done and the pill settles. The layout follows the app: title and meta on full-width lines, the link button (label, the fainter real destination, an arrow) on its own row below. On wide screens it sits in a right-hand rail and stays in view as you scroll; under 68rem it's inline under the intro, so it never covers text. It pauses while the tab is hidden, while it's off screen and when the reader presses Pause. With reduced motion, or without JS, it shows the first alert, still: the HTML is that frame, so keep the markup and `EXAMPLES[0]` the same. Examples use placeholder names only (`devbox`, `build-box`, `acme-api`, `ci.example.com`).
+
+Screenshots sit on a `.stage` (a quiet backdrop with room around the image) with the caption under it, outside the frame. CSS sets how big each is shown, so a retaken PNG with new dimensions only needs its `width`/`height` attributes updated (half the pixels; `tests/test_site.py` checks).
 
 ## Guides
 
@@ -25,8 +31,9 @@ python3 scripts/build_site_guides.py --check   # exit 1 if site/guides/ is stale
 and commit the markdown and the pages together; `tests/test_site_guides.py` fails when they differ, so CI catches a forgotten rebuild.
 
 - **Which pages, in which order:** `GROUPS` (the index's sections, in order: Start here, Agents, Servers, CI and tools, More guides, Run it, Reference) and `CURATED` (group, source, page name, short title, summary for the index, in order within each group) at the top of the script. A new `docs/guides/*.md` that isn't listed is published anyway, under *More guides* (after the setup guides, before Run it), with its `# ` title and first paragraph; add it to `CURATED` to place and describe it.
-- **Markdown:** the subset `docs/` uses: headings (with GitHub's anchor ids, so `file.md#section` links keep working), paragraphs, nested and task lists, fenced code, tables, blockquotes, links, bold, italic. All HTML in the markdown is escaped, except `<img>` tags pointing into `site/img/` (rebuilt from `src`, `width` and `alt`, with the height read from the PNG).
+- **Markdown:** the subset `docs/` uses: headings (with GitHub's anchor ids, so `file.md#section` links keep working), paragraphs, nested and task lists, fenced code, tables, blockquotes, links, bold, italic. All HTML in the markdown is escaped, except `<img>` tags pointing into `site/img/` (rebuilt from `src`, `width` and `alt`, with the height read from the PNG). A line of images becomes a figure on a stage; a one-line italic paragraph right after it (`*Settings → Panel → Opacity, at the defaults.*`) becomes its caption.
 - **Links:** a relative link to a published doc becomes a link to its page (link text that is just a file name, like `tailscale.md`, shows the page's title); `site/img/...` becomes `../img/...`; anything else in the repo goes to GitHub through `REPO_URL`. A link to a missing file or anchor, or a plain `http://` link, fails the build. Each page ends with a link to its markdown on GitHub.
+- **Copy buttons:** only on shell blocks that run exactly as written (`copyable()` in the script: no `<placeholders>`, `...`, example hosts or names, tokens). The real setup commands come from the app's invite flow, so examples are there to read, not paste.
 - **Look:** the same header, footer and `styles.css` as the landing page (the `.doc` rules). Tables and code blocks scroll inside themselves on a phone.
 
 ## Works with
@@ -49,7 +56,7 @@ python3 -m http.server -d site 8000
 ## Checks before publishing
 
 - Width 375 px (DevTools device mode): no horizontal scroll.
-- macOS **System Settings → Accessibility → Display → Reduce motion** on: the card doesn't animate in.
+- macOS **System Settings → Accessibility → Display → Reduce motion** on: the demo shows one alert, still, with no Pause button.
 - Light and dark appearance both read well.
 - Tab through the page: every link and button shows a focus ring; the "Skip to content" link appears first.
 

@@ -47,11 +47,11 @@
 <p>Restart open Gemini CLI sessions afterwards. Reference: <a data-repo="/blob/main/integrations/gemini/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/gemini/README.md">integrations/gemini/README.md</a>.</p>
 <h2 id="manual-install">Manual install <a class="anchor" href="#manual-install" aria-label="Link to this section">#</a></h2>
 <p>On a sender machine, from a checkout of this repo:</p>
-<div class="code"><pre><code class="language-bash">integrations/gemini/install-gemini-hooks.sh     # adds the hooks to ~/.gemini/settings.json</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">integrations/gemini/install-gemini-hooks.sh     # adds the hooks to ~/.gemini/settings.json</code></pre></div>
 <p>It backs up <code>settings.json</code> and keeps your other settings and hooks. If your <code>settings.json</code> has comments, it stops without changing anything; merge <code>integrations/gemini/gemini-hooks.json</code> by hand. <code>--uninstall</code> removes it, and so does <code>needs-you uninstall-hooks --gemini</code>, which needs no checkout and no hub.</p>
 <h2 id="opt-in">Opt in <a class="anchor" href="#opt-in" aria-label="Link to this section">#</a></h2>
 <p>The same switch as for Claude Code and Codex:</p>
-<div class="code"><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 gemini                              # one session
+<div class="code" data-copy><pre><code class="language-bash">NEEDS_YOU_AGENT_ALERTS=1 gemini                              # one session
 echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every session on this machine</code></pre></div>
 <h2 id="what-youll-see">What you'll see <a class="anchor" href="#what-youll-see" aria-label="Link to this section">#</a></h2>
 <div class="table-wrap"><table class="doc-table">
@@ -66,7 +66,7 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 </table></div>
 <p>One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval cards.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">needs-you doctor    # the "gemini hooks" line should be OK
+<div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "gemini hooks" line should be OK
 echo '{"hook_event_name":"AfterAgent","session_id":"test-1","cwd":"'"$PWD"'"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.gemini/hooks/needs-you-hook.sh notify gemini
 echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.gemini/hooks/needs-you-hook.sh resolve gemini</code></pre></div>

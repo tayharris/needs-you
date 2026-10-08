@@ -52,7 +52,7 @@
 <p>Reporting a problem: what to include, and how to save the app's log with tokens and invite codes masked, is in <a href="testers.html#8-report-a-problem">Testers → Report a problem</a>.</p>
 <h2 id="start-here-needs-you-doctor">Start here: <code>needs-you doctor</code> <a class="anchor" href="#start-here-needs-you-doctor" aria-label="Link to this section">#</a></h2>
 <p>On the sender, run:</p>
-<div class="code"><pre><code class="language-bash">needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
+<div class="code" data-copy><pre><code class="language-bash">needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
 needs-you doctor --json   # the same, for agents: {ok, version, checks: [{check, status, detail, hint}]}</code></pre></div>
 <p>It checks the env file (and that its mode is 600), whether <code>needs-you</code> and <code>~/.local/bin</code> are on <code>PATH</code>, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), the Claude Code hooks and skill, Orca settings, and the 5-minute flush schedule. Each line is <code>OK</code>, <code>WARN</code>, <code>FAIL</code> or <code>INFO</code>. Every <code>WARN</code> and <code>FAIL</code> has one next step under it (after <code>-&gt;</code>): a command to run as is, or exactly what to ask for, such as a new invite link (<code>&lt;invite link&gt;</code> is the only placeholder). It exits 1 if any check is <code>FAIL</code>. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).</p>
 <h2 id="quick-checks-by-hand">Quick checks by hand <a class="anchor" href="#quick-checks-by-hand" aria-label="Link to this section">#</a></h2>
@@ -120,7 +120,7 @@ tailscale status | head                          # is this machine on the tailne
 </ul>
 <h2 id="claude-code-hooks">Claude Code hooks <a class="anchor" href="#claude-code-hooks" aria-label="Link to this section">#</a></h2>
 <p>Setup per environment (SSH, tmux, VS Code Remote-SSH, Orca): <a href="claude-code-everywhere.html">Claude Code everywhere</a>. Turn on the debug log and simulate an event:</p>
-<div class="code"><pre><code class="language-bash">echo '{"session_id":"t1","cwd":"'"$PWD"'","notification_type":"idle_prompt","message":"test"}' |
+<div class="code" data-copy><pre><code class="language-bash">echo '{"session_id":"t1","cwd":"'"$PWD"'","notification_type":"idle_prompt","message":"test"}' |
   NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/needs-you-hook.sh notify</code></pre></div>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Log says</th><th>Meaning</th></tr></thead>
@@ -140,7 +140,7 @@ tailscale status | head                          # is this machine on the tailne
 </ul>
 <h2 id="codex-hooks">Codex hooks <a class="anchor" href="#codex-hooks" aria-label="Link to this section">#</a></h2>
 <p><code>needs-you doctor</code> has a <code>codex hooks</code> line. Simulate an approval prompt and its resolve with a log to stderr:</p>
-<div class="code"><pre><code class="language-bash">echo '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"'"$PWD"'","tool_name":"Bash","tool_input":{"command":"make test"}}' |
+<div class="code" data-copy><pre><code class="language-bash">echo '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"'"$PWD"'","tool_name":"Bash","tool_input":{"command":"make test"}}' |
   NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.codex/hooks/needs-you-hook.sh notify codex
 echo '{"session_id":"t1"}' | NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.codex/hooks/needs-you-hook.sh resolve codex</code></pre></div>
 <p>The log lines mean the same as for the Claude Code hooks above. Codex-specific causes:</p>

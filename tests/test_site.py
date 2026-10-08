@@ -231,9 +231,29 @@ class SiteTests(unittest.TestCase):
         p = self.pages["index.html"]
         for sid in ("how", "see", "install", "source"):
             self.assertIn(sid, p.ids)
-        self.assertIn("mock", read_site("index.html"))  # the hero stays the CSS pill mock
         how = re.search(r'<ol class="how">(.*?)</ol>', read_site("index.html"), re.S).group(1)
         self.assertEqual(how.count("<li>"), 3)
+
+    def test_live_demo(self):
+        # The pill demo is HTML and CSS (no images), driven by site.js: it pauses when the
+        # tab is hidden or it's off screen, has a Pause button, and with reduced motion it
+        # never starts (the HTML is the still frame). The link button sits on its own row
+        # under the title and meta, as in the app.
+        html, js, css = read_site("index.html"), read_site("site.js"), read_site("styles.css")
+        self.assertIn("demo", self.pages["index.html"].ids)
+        demo = re.search(r'<aside class="demo".*?</aside>', html, re.S).group(0)
+        self.assertNotIn("<img", demo)
+        self.assertIn('class="demo-toggle"', demo)
+        self.assertLess(demo.index('class="pv-text"'), demo.index('class="pv-actions"'))
+        self.assertIn("prefers-reduced-motion: reduce", js)
+        self.assertIn("visibilitychange", js)
+        self.assertIn("IntersectionObserver", js)
+        self.assertIn("prefers-reduced-motion: reduce", css)
+        # The CSP has no 'unsafe-inline': no style attributes or inline scripts and styles.
+        for name in ["index.html"] + ["guides/" + n for n in os.listdir(os.path.join(SITE, "guides"))]:
+            text = read_site(name)
+            with self.subTest(page=name):
+                self.assertNotRegex(text, r"\sstyle=\"|<style|<script(?![^>]*\bsrc=)")
 
     def test_screenshots(self):
         # Real screenshots (mac/scripts/screenshots.sh), served from site/img/: each one
@@ -274,6 +294,17 @@ class SiteTests(unittest.TestCase):
         self.assertIn("ad-hoc signed", text)
         self.assertIn("Right-click", text)
         self.assertIn("curl -fsSL <join_url>/install.sh | bash -s -- --yes", text)
+
+    def test_no_copy_on_examples(self):
+        # Copy buttons (site.js) only on .code[data-copy]: a command that runs as written.
+        # The landing page's commands are examples with placeholders; the real ones come
+        # from the app's invite flow.
+        html = read_site("index.html")
+        for block in re.findall(r'<div class="code"[^>]*>.*?</div>', html, re.S):
+            if "data-copy" in block:
+                with self.subTest(block=block[:80]):
+                    self.assertNotRegex(block, r"&lt;|example\.|devbox|acme", "an example: no Copy button")
+        self.assertIn('".code[data-copy]"', read_site("site.js"))
 
     def test_repo_links_follow_the_constant(self):
         base = repo_url()

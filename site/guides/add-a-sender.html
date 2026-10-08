@@ -104,7 +104,7 @@
 </ul>
 <h2 id="manually-no-invite-link">Manually (no invite link) <a class="anchor" href="#manually-no-invite-link" aria-label="Link to this section">#</a></h2>
 <p>Mint a token on a server hub (<code>needs-you-admin token add &lt;name&gt; --role sender</code>), then on the machine, from a checkout of this repo:</p>
-<div class="code"><pre><code class="language-bash">./scripts/setup-sender.sh</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">./scripts/setup-sender.sh</code></pre></div>
 <p>It installs the CLI, asks for the hub URLs and the token (hidden input), writes <code>~/.config/needs-you/env</code>, checks health, schedules the 5-minute <code>needs-you flush</code> (crontab on Linux, a LaunchAgent on macOS, like the installer), puts <code>~/.local/bin</code> on <code>PATH</code> in your shell profile, and offers a test item. Re-running it is safe. Unattended:</p>
 <div class="code"><pre><code class="language-bash">printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
   --url "http://hub-a.example.ts.net:8765,http://hub-b.example.ts.net:8765" \
@@ -142,13 +142,13 @@ DB="$HOME/Library/Application Support/NeedsYou/hub.db"
 /usr/bin/python3 "$ADMIN" --db "$DB" token revoke &lt;name&gt;      # e.g. orca-build-2</code></pre></div>
 <p><code>invite list --all</code> and <code>invite revoke &lt;name&gt;</code> work the same way for links.</p></li>
 <li><p><strong>Clean up the machine.</strong> Either run a live invite's installer with <code>--uninstall</code>, or by hand. First the Claude Code hooks, if they were installed (offline; user level, the current directory's project and every recorded project install):</p>
-<div class="code"><pre><code class="language-bash">needs-you uninstall-hooks</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">needs-you uninstall-hooks</code></pre></div>
 <p>With a CLI older than <code>uninstall-hooks</code>: <code>integrations/claude-code/install-hooks.sh --uninstall</code> from a checkout, or fetch it from the hub:</p>
-<div class="code"><pre><code class="language-bash">. ~/.config/needs-you/env; d=$(mktemp -d)
+<div class="code" data-copy><pre><code class="language-bash">. ~/.config/needs-you/env; d=$(mktemp -d)
 curl -fsS "$NEEDS_YOU_URL/dl/install-hooks.sh" -o "$d/install-hooks.sh"
 bash "$d/install-hooks.sh" --uninstall; rm -rf "$d"</code></pre></div>
 <p>Then the rest:</p>
-<div class="code"><pre><code class="language-bash">crontab -l | grep -v needs-you-flush | crontab -                          # Linux
+<div class="code" data-copy><pre><code class="language-bash">crontab -l | grep -v needs-you-flush | crontab -                          # Linux
 launchctl bootout gui/$(id -u)/io.needs-you.flush; rm -f ~/Library/LaunchAgents/io.needs-you.flush.plist   # macOS
 rm -rf ~/.config/needs-you ~/.local/bin/needs-you ~/.local/state/needs-you ~/.claude/skills/needs-you</code></pre></div></li>
 </ol>

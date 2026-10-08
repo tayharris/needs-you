@@ -134,7 +134,7 @@ echo '{"session_id":"test-1"}' | NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/
 </table></div>
 <p>Without the setting, iTerm2 and Terminal cards still get the button; it brings the app forward. A CLI switch that fails (the pane closed) puts the command on the clipboard. The jump never activates Needs You itself, and the panel never asks for a permission: the Automation prompt comes only from the Settings toggle (<strong>Check again</strong> asks again once the terminal is open).</p>
 <p><strong>Sessions over SSH.</strong> The hook runs on the server and can't see which Mac tab holds the connection, so the Mac tells it. macOS's ssh sends every <code>LC_*</code> variable (<code>SendEnv LANG LC_*</code> in <code>/etc/ssh/ssh_config</code>), and Debian and Ubuntu's sshd accepts them (<code>AcceptEnv LANG LC_*</code>), so one line in the Mac's shell is enough. Add this to <code>~/.zshrc</code> on the Mac:</p>
-<div class="code"><pre><code class="language-sh"># needs-you: name this tab for Claude Code cards from SSH sessions
+<div class="code" data-copy><pre><code class="language-sh"># needs-you: name this tab for Claude Code cards from SSH sessions
 if [ -n "$TMUX_PANE" ]; then
   export LC_NEEDS_YOU_TERM="app=tmux&amp;pane=${TMUX_PANE#%}"
 elif [ -n "$WEZTERM_PANE" ]; then
