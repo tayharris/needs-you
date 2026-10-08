@@ -26,7 +26,7 @@
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="bar">
-    <div class="wrap top">
+    <div class="wrap wrap-home top">
       <a class="brand" href="#main"><span class="dot" aria-hidden="true"></span>needs-you</a>
       <nav aria-label="Primary">
         <a href="#how">How it works</a>
@@ -34,37 +34,50 @@
         <a class="nav-wide" href="#works">Works with</a>
         <a href="#install">Install</a>
         <a href="guides/index.html">Guides</a>
-        <a href="#source">Source</a>
+        <a class="nav-wide" href="#source">Source</a>
       </nav>
     </div>
   </header>
 
-  <main id="main" class="wrap">
+  <main id="main" class="wrap wrap-home home">
     <section class="intro" aria-labelledby="title">
-      <h1 id="title">One inbox for &ldquo;you have to do something.&rdquo;</h1>
+      <h1 id="title">One inbox for <span class="h1-quote">&ldquo;you have to do something.&rdquo;</span></h1>
       <p class="lede">Your agents, servers and CI jobs post when they need you. A small pill on your Mac shows it. When it's handled, it goes away.</p>
       <p class="hero-sub">Your Mac is the hub: the app holds the alerts itself. No server, no account, no cloud.</p>
-
-      <div class="mock" role="img" aria-label="Mock of the needs-you pill showing one item: Approve the DB migration, from devbox, with Open, Done and Snooze buttons.">
-        <div class="pill" aria-hidden="true">
-          <span class="pill-dot"></span>
-          <span class="pill-count">1</span>
-        </div>
-        <div class="card" aria-hidden="true">
-          <div class="card-head">
-            <span class="prio"></span>
-            <span class="card-title">Approve the DB migration</span>
-          </div>
-          <p class="card-body">Deploy is paused on step 3 of 5. Needs a yes before it runs.</p>
-          <p class="card-meta">devbox &middot; claude-code &middot; 2m</p>
-          <div class="card-actions">
-            <span class="chip chip-link">Open PR</span>
-            <span class="chip">Done</span>
-            <span class="chip">Snooze</span>
-          </div>
-        </div>
-      </div>
     </section>
+
+    <!-- The live demo: the pill, drawn in HTML and CSS, looping through example alerts
+         (site.js). On wide screens it stays in the top-right corner as you scroll; on a
+         phone it sits here, under the intro. Without JS, or with reduced motion, it shows
+         the first alert, still. -->
+    <aside class="demo" id="demo" aria-label="Demo of the pill">
+      <p class="sr-only">An animation of the needs-you pill at the top right of a Mac screen. Alerts arrive one at a time: Claude needs permission in acme-api on devbox, a review request, a deploy waiting for approval and a failed nightly job. Each springs out of the pill with a button for its link, a pointer clicks the button, the card is marked done and the pill settles back.</p>
+      <div class="demo-screen" aria-hidden="true">
+        <div class="demo-menubar"><span class="demo-mb-pill"></span><span class="demo-clock">Thu 9:41</span></div>
+        <div class="demo-slot">
+          <div class="pv pv-urgent" data-state="open">
+            <span class="pv-idle"><span class="pv-dot pv-dot-ok"></span>Nothing needs you</span>
+            <div class="pv-body">
+              <div class="pv-head">
+                <span class="pv-dot"></span>
+                <div class="pv-text">
+                  <p class="pv-title" data-demo="title">Claude needs permission: acme-api</p>
+                  <p class="pv-meta"><span class="pv-kind">needs you</span> &middot; <span data-demo="meta">devbox &middot; claude-code</span></p>
+                </div>
+              </div>
+              <div class="pv-actions">
+                <span class="pv-link"><span data-demo="label">VS Code</span> <span class="pv-dest" data-demo="dest">vscode</span><svg class="pv-arrow" viewBox="0 0 8 8" focusable="false"><path d="M1.5 6.5 6.5 1.5M2.5 1.5h4v4"/></svg></span>
+                <span class="pv-done"><svg viewBox="0 0 10 10" focusable="false"><path d="M1.5 5.5 4 8l4.5-6"/></svg>Opened, marked done</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <svg class="demo-cursor" viewBox="0 0 16 22" focusable="false"><path d="M1.5 1.5v16.2l4.1-3.9 2.7 6.2 2.7-1.2-2.6-6h5.7z"/></svg>
+        <span class="demo-ripple"></span>
+      </div>
+      <p class="demo-caption" data-demo="caption">Claude Code on devbox stops to ask before it runs a migration in acme-api.</p>
+      <button class="demo-toggle" type="button" hidden>Pause</button>
+    </aside>
 
     <section id="how" aria-labelledby="how-title">
       <h2 id="how-title">How it works</h2>
@@ -82,55 +95,60 @@
       <div class="code"><pre><code>needs-you add --key "claude-code:devbox:acme-api" --priority urgent \
   --title "Claude needs permission: acme-api" \
   --link "VS Code=vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"</code></pre></div>
-      <figure class="shot shot-agent">
-        <img src="img/preview-agent.png" width="336" height="68" loading="lazy" decoding="async"
-             alt="The arrival preview: Claude needs permission: acme-api, needs you, from devbox, with a button reading VS Code, then vscode in fainter text, then an arrow.">
-        <figcaption>The pill springs out with the card. Its button names the link and, fainter, where it really goes (vscode here, the site for a web link), so a label can't pass for somewhere else. One click opens it and marks the card done; clicking anywhere else opens the panel at the card.</figcaption>
+      <figure class="shot">
+        <div class="stage stage-pv">
+          <div class="pv pv-urgent" data-state="open" role="img" aria-label="The card that command makes: Claude needs permission: acme-api, needs you, from devbox, claude-code, with a button reading VS Code, then vscode in fainter text, then an arrow.">
+            <div class="pv-body" aria-hidden="true">
+              <div class="pv-head">
+                <span class="pv-dot"></span>
+                <div class="pv-text">
+                  <p class="pv-title">Claude needs permission: acme-api</p>
+                  <p class="pv-meta"><span class="pv-kind">needs you</span> &middot; devbox &middot; claude-code</p>
+                </div>
+              </div>
+              <div class="pv-actions">
+                <span class="pv-link">VS Code <span class="pv-dest">vscode</span><svg class="pv-arrow" viewBox="0 0 8 8" focusable="false"><path d="M1.5 6.5 6.5 1.5M2.5 1.5h4v4"/></svg></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <figcaption>The pill springs out with the card. Its button names the link and, fainter, where it really goes (vscode here, the site for a web link), so a label can't pass for somewhere else. One click opens it and marks the card done; a click anywhere else opens the panel at the card.</figcaption>
       </figure>
       <p class="note">Hooks for <a href="guides/claude-code.html">Claude Code</a> and the other agents post these cards for you, and clear them once you answer. Agents posting on their own follow the <a href="guides/agent-guide.html">agent guide</a>: post when blocked, one key per thing, resolve it when it's handled.</p>
     </section>
 
     <section id="see" aria-labelledby="see-title">
       <h2 id="see-title">What it looks like</h2>
-      <div class="shots">
-        <figure class="shot shot-tall">
-          <img src="img/panel.png" width="376" height="926" loading="lazy" decoding="async"
-               alt="The open panel on the Work tab with four cards. Urgent: Approve the prod deploy of api v2.14, from build-box, with Approve, Canary dashboard and Slack thread links. Normal: Claude is waiting for you on acme-web, with a three-step checklist whose first step is ticked; and CI failed on main for acme-web, with a link to the run. Low: a branch with 2 unpushed commits. Each card has Done, Dismiss and Snooze.">
-          <figcaption>Click the pill for the cards, most urgent first, each with its links and steps.</figcaption>
+      <div class="see">
+        <figure class="shot see-panel">
+          <div class="stage">
+            <img src="img/panel.png" width="376" height="926" loading="lazy" decoding="async"
+                 alt="The open panel on the Work tab with four cards. Urgent: Approve the prod deploy of api v2.14, from build-box, with Approve, Canary dashboard and Slack thread links. Normal: Claude is waiting for you on acme-web, with a three-step checklist whose first step is ticked; and CI failed on main for acme-web, with a link to the run. Low: a branch with 2 unpushed commits. Each card has Done, Dismiss and Snooze.">
+          </div>
+          <figcaption>Click the pill for the cards, most urgent first, each with its links, steps, and Done, Dismiss and Snooze.</figcaption>
         </figure>
-        <div class="shot-stack">
-          <figure class="shot">
-            <img src="img/pill-idle.png" width="147" height="34" loading="lazy" decoding="async"
-                 alt="The idle pill: a faint capsule with a green dot reading Nothing needs you.">
-            <figcaption>Nothing waiting: a faint pill you can drag anywhere.</figcaption>
-          </figure>
-          <figure class="shot">
-            <span class="shot-row">
+        <ul class="states">
+          <li>
+            <span class="state-shot">
+              <img src="img/pill-idle.png" width="147" height="34" loading="lazy" decoding="async"
+                   alt="The idle pill: a faint capsule with a green dot reading Nothing needs you.">
+            </span>
+            <p><strong>Nothing waiting.</strong> A faint pill at the top of the screen. Drag it to any corner.</p>
+          </li>
+          <li>
+            <span class="state-shot">
               <img src="img/pill-count.png" width="66" height="38" loading="lazy" decoding="async"
                    alt="The count pill with a red ring: 4 work items, and 1 personal shown faintly.">
               <img src="img/pill-split.png" width="90" height="38" loading="lazy" decoding="async"
                    alt="The same pill split by context: W 4, P 1.">
             </span>
-            <figcaption>Something waiting: a count, ringed in the top priority's colour, here split work | personal.</figcaption>
-          </figure>
-          <figure class="shot">
-            <img src="img/preview.png" width="336" height="68" loading="lazy" decoding="async"
-                 alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
-            <figcaption>Something new: the pill springs out to show it, with a button for its first link, then settles back.</figcaption>
-          </figure>
-        </div>
-      </div>
-      <div class="shots shots-wide">
-        <figure class="shot shot-window">
-          <img src="img/settings-inbox.png" width="760" height="548" loading="lazy" decoding="async"
-               alt="Settings, Your inbox page. How it works: your machines and agents send alerts; this Mac holds them, the hub runs inside the app; the pill shows them until they're handled. Below, Run hub on this Mac is on and Running.">
-          <figcaption>Settings &rarr; Your inbox: your Mac is the hub, nothing else to install.</figcaption>
-        </figure>
-        <figure class="shot shot-window">
-          <img src="img/settings-connect.png" width="760" height="548" loading="lazy" decoding="async"
-               alt="Settings, Connect a machine page: a New invite form asking what the machine is (a server or agent that sends alerts, another Mac that shows the same alerts, or another Mac that can also connect machines), its name, uses and expiry, and a Create invite button.">
-          <figcaption>Connect a machine: one invite link sets up a server, an agent or another Mac.</figcaption>
-        </figure>
+            <p><strong>Something waiting.</strong> A count, ringed in the top priority's colour: red is urgent, amber normal, slate low. It can split work and personal.</p>
+          </li>
+          <li>
+            <span class="state-shot" aria-hidden="true"><span class="pv-mini"><span class="pv-dot"></span><span class="pv-mini-lines"><span></span><span></span><span class="pv-mini-chip"></span></span></span></span>
+            <p><strong>Something new.</strong> The pill springs out to show it, with a button for its first link, then settles back. <a class="demo-ref" href="#demo">The demo</a> plays it.</p>
+          </li>
+        </ul>
       </div>
     </section>
 
@@ -183,12 +201,19 @@
       </figure>
 
       <p><strong>A hub is a small SQLite database behind a tiny web server.</strong> It's one Python file that needs only the standard library. The Mac app runs one, so your Mac is the hub: nothing to install or keep running.</p>
+      <figure class="shot">
+        <div class="stage stage-window">
+          <img src="img/settings-inbox.png" width="760" height="548" loading="lazy" decoding="async"
+               alt="Settings, Your inbox page. How it works: your machines and agents send alerts; this Mac holds them, the hub runs inside the app; the pill shows them until they're handled. Below, Run hub on this Mac is on and Running.">
+        </div>
+        <figcaption>Settings &rarr; Your inbox: the hub runs inside the app, on by default.</figcaption>
+      </figure>
       <p><strong>Senders are the one-file <code>needs-you</code> command.</strong> It tries each hub in turn. If none answers (your Mac is asleep, say), it keeps the alert in a local outbox, exits cleanly so the job carries on, and sends it later.</p>
       <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server and it copies every write to your Mac's hub and back, so alerts land while the Mac sleeps. Most people don't need one.</p>
       <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
       <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day, closed items are deleted after 7 days, and a sender's outbox keeps at most 500 alerts for 7 days.</p>
 
-      <h3 class="arch-h3" id="weight">How heavy is it?</h3>
+      <h3 id="weight">How heavy is it?</h3>
       <div class="table-wrap">
         <table class="weight">
           <thead>
@@ -235,8 +260,7 @@
           </ul>
         </div>
       </div>
-      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>.</p>
-      <p class="note">Anything else: <a href="guides/custom-connector.html">build a custom connector</a>. Any agent or tool with hooks, webhooks or a notification command can post; the guide has the exact item format, which fields are required, and tested examples.</p>
+      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>. For any other agent or tool with hooks, webhooks or a notification command, <a href="guides/custom-connector.html">build a custom connector</a>: the guide has the exact item format, which fields are required, and tested examples.</p>
     </section>
 
     <section id="install" aria-labelledby="install-title">
@@ -244,9 +268,19 @@
       <p><a class="button" data-repo="/releases/latest" href="https://github.com/tayharris/needs-you/releases/latest">Download for Mac</a></p>
       <p>The latest release has <code>NeedsYou-&lt;version&gt;.dmg</code> (open it, drag the app to Applications) and the same app as a <code>.zip</code>. macOS 14 or later.</p>
       <p class="note">The app is ad-hoc signed, not notarized, so macOS blocks the first launch. On macOS 15 and later: double-click it, then System Settings &rarr; Privacy &amp; Security &rarr; <strong>Open Anyway</strong>. On macOS 14: Right-click the app &rarr; <strong>Open</strong> &rarr; <strong>Open</strong>.</p>
-      <p>A faint pill appears at the top right, and your Mac is now the hub. To connect a sender (a server, a CI runner, or Claude Code on this Mac): right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>. Paste the <strong>Agent prompt</strong> into the machine's agent, or copy the <strong>Shell one-liner</strong> and run it there. Either way the machine gets the <code>needs-you</code> command and posts a test card. The one-liner looks like this (the Claude Code options are optional):</p>
-      <div class="code"><pre><code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts</code></pre></div>
-      <p class="install-guides">Step by step: the <a href="guides/quickstart.html">Quickstart</a>, the <a href="guides/testers.html">install guide for testers</a> (first run, what to try, reporting problems), and <a href="guides/tailscale.html">Tailscale</a> for servers and other machines. <a href="guides/index.html">All guides</a>.</p>
+      <h3 id="connect">Connect a machine</h3>
+      <p>A faint pill appears at the top right, and your Mac is now the hub. To connect a sender (a server, a CI runner, or Claude Code on this Mac): right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>.</p>
+      <figure class="shot">
+        <div class="stage stage-window">
+          <img src="img/settings-connect.png" width="760" height="548" loading="lazy" decoding="async"
+               alt="Settings, Connect a machine page: a New invite form asking what the machine is (a server or agent that sends alerts, another Mac that shows the same alerts, or another Mac that can also connect machines), its name, uses and expiry, and a Create invite button.">
+        </div>
+        <figcaption>One invite link sets up a server, an agent or another Mac.</figcaption>
+      </figure>
+      <p>The invite gives you the real commands to copy, with your hub's address and code in them. Paste the <strong>Agent prompt</strong> into the machine's agent, or run the <strong>Shell one-liner</strong> there. Either way the machine gets the <code>needs-you</code> command and posts a test card. The one-liner looks like this (the Claude Code options are optional):</p>
+      <div class="code"><pre><code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes \
+  --claude-hooks user --skill --alerts</code></pre></div>
+      <p class="note">Step by step: the <a href="guides/quickstart.html">Quickstart</a>, the <a href="guides/testers.html">install guide for testers</a> (first run, what to try, reporting problems), and <a href="guides/tailscale.html">Tailscale</a> for servers and other machines. <a href="guides/index.html">All guides</a>.</p>
     </section>
 
     <section id="source" aria-labelledby="source-title">
@@ -255,7 +289,7 @@
     </section>
   </main>
 
-  <footer class="wrap foot">
+  <footer class="wrap wrap-home foot">
     <p>needs-you &middot; Apache-2.0</p>
   </footer>
 </body>
