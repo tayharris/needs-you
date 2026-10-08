@@ -20,11 +20,12 @@
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
   needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--copilot]
-                            [--dry-run]              remove the agent hooks: by default Claude
+                            [--kimi] [--grok] [--dry-run]
+                                                     remove the agent hooks: by default Claude
                                                      Code's user level, this directory's project,
                                                      every recorded project install, and the Codex,
-                                                     Gemini CLI, opencode and Copilot CLI installs;
-                                                     offline
+                                                     Gemini CLI, opencode, Copilot CLI, Kimi Code
+                                                     and Grok Build installs; offline
 
 Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
   NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
@@ -236,6 +237,8 @@ def installed_paths() -> Dict[str, str]:
         # Copilot CLI's hooks file is ours alone, copied verbatim (its commands find the hook
         # through $COPILOT_HOME), so it is updated like any other file.
         "copilot-hooks.json": os.path.join(copilot_home(), "hooks", "needs-you.json"),
+        # The same for Grok Build ($GROK_HOME).
+        "grok-hooks.json": os.path.join(grok_home(), "hooks", "needs-you.json"),
     }
 
 
@@ -371,6 +374,59 @@ def _strip_hook_file(path: str, follow: bool, dry_run: bool, say: Any) -> Option
     return True
 
 
+# Kimi Code's config.toml holds needs-you's [[hooks]] as one block between these comment lines
+# (integrations/kimi/install-kimi-hooks.sh, which edits it as text: no TOML parser in 3.9).
+KIMI_BLOCK_START = "# needs-you (managed by install-kimi-hooks.sh"
+KIMI_BLOCK_END = "# end needs-you"
+
+
+def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
+    """Take the needs-you block out of Kimi Code's config.toml, the rest byte for byte (as
+    install-kimi-hooks.sh --uninstall does). True when it removed (or would remove) it, False
+    when there was none, None when it couldn't."""
+    try:
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            text = fh.read()
+    except (OSError, UnicodeDecodeError) as e:
+        warn("%s: can't read it (%s); nothing was changed" % (_tilde(path), e))
+        return None
+    lines = text.splitlines(True)
+    kept: List[str] = []
+    i, found = 0, False
+    while i < len(lines):
+        if lines[i].startswith(KIMI_BLOCK_START):
+            j = i
+            while j < len(lines) and lines[j].rstrip("\r\n") != KIMI_BLOCK_END:
+                j += 1
+            if j == len(lines):
+                warn("%s: a needs-you block with no '%s' line; fix it by hand, nothing was changed"
+                     % (_tilde(path), KIMI_BLOCK_END))
+                return None
+            if kept and kept[-1].strip() == "":
+                kept.pop()
+            found, i = True, j + 1
+            continue
+        kept.append(lines[i])
+        i += 1
+    if not found:
+        return False
+    if dry_run:
+        say("would remove the needs-you hooks from %s" % _tilde(path))
+        return True
+    try:
+        mode = os.stat(path).st_mode & 0o777
+        bak = "%s.bak-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), os.getpid())
+        fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        _write_atomic(path, "".join(kept).encode("utf-8"), mode)
+    except OSError as e:
+        warn("%s: couldn't write it (%s)" % (_tilde(path), e))
+        return None
+    say("removed the needs-you hooks from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
+    return True
+
+
 def _delete_files(paths: List[str], dry_run: bool, say: Any) -> None:
     """Delete our copied files (never through a symlink: callers check) and their dirs once empty."""
     for p in paths:
@@ -387,7 +443,7 @@ def _delete_files(paths: List[str], dry_run: bool, say: Any) -> None:
             pass
 
 
-UNINSTALL_AGENTS = ("codex", "gemini", "opencode", "copilot")
+UNINSTALL_AGENTS = ("codex", "gemini", "opencode", "copilot", "kimi", "grok")
 
 
 def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], dry_run: bool,
@@ -395,9 +451,10 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
     """`needs-you uninstall-hooks`: take the needs-you entries out of the agents' config
     files and delete the copied hook script (and the opencode plugin), with no hub and no
     download. With no scope: Claude Code's user level, the project covering the current
-    directory, every recorded project install, and the Codex, Gemini CLI, opencode and
-    Copilot CLI installs. --user, --project, --codex, --gemini, --opencode, --copilot pick some. Exit 1 if a file
-    couldn't be changed (unreadable JSON, a symlink where needs-you would write)."""
+    directory, every recorded project install, and the Codex, Gemini CLI, opencode, Copilot
+    CLI, Kimi Code and Grok Build installs. --user, --project, --codex, --gemini, --opencode,
+    --copilot, --kimi, --grok pick some. Exit 1 if a file couldn't be changed (unreadable
+    JSON, a symlink where needs-you would write)."""
     say = (lambda msg: None) if quiet else print  # noqa: E731
     everything = not (user or project is not None or agents)
     dirs: List[str] = []
@@ -458,14 +515,18 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
             warn("%s is a symlink; not touching the %s hooks (remove them by hand)" % (_tilde(links[0]), label))
             failed = True
             continue
+        done = False
         if _references_hook(conf):
-            done = _strip_hook_file(conf, False, dry_run, say)
+            if conf_name.endswith(".toml"):  # Kimi Code: its marked block
+                done = _strip_kimi_block(conf, dry_run, say)
+            else:
+                done = _strip_hook_file(conf, False, dry_run, say)
             if done is None:
                 failed = True
                 continue
             if done and not dry_run:
                 removed += 1
-        if not _references_hook(conf):
+        if not _references_hook(conf) or (dry_run and done):
             _delete_files([hook], dry_run, say)
     # opencode: the plugin and its hook copy are ours; no config file to edit.
     if everything or "opencode" in agents:
@@ -479,13 +540,15 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
             if not dry_run and os.path.isfile(files[0]):
                 removed += 1
             _delete_files(files, dry_run, say)
-    # Copilot CLI: hooks/needs-you.json and the hook copy next to it are both ours.
-    if everything or "copilot" in agents:
-        d = os.path.join(copilot_home(), "hooks")
+    # Copilot CLI and Grok Build: hooks/needs-you.json and the hook copy next to it are both ours.
+    for agent, label, home_fn in (("copilot", "Copilot CLI", copilot_home), ("grok", "Grok Build", grok_home)):
+        if not (everything or agent in agents):
+            continue
+        d = os.path.join(home_fn(), "hooks")
         files = [os.path.join(d, "needs-you.json"), os.path.join(d, HOOK_FILE)]
         links = [p for p in [d] + files if os.path.islink(p)]
         if links:
-            warn("%s is a symlink; not touching the Copilot CLI hooks (remove them by hand)" % _tilde(links[0]))
+            warn("%s is a symlink; not touching the %s hooks (remove them by hand)" % (_tilde(links[0]), label))
             failed = True
         elif any(os.path.isfile(f) for f in files):
             if not dry_run and os.path.isfile(files[0]):
@@ -515,6 +578,14 @@ def opencode_dir() -> str:
 
 def copilot_home() -> str:
     return os.environ.get("COPILOT_HOME") or _home(".copilot")
+
+
+def grok_home() -> str:
+    return os.environ.get("GROK_HOME") or _home(".grok")
+
+
+def kimi_home() -> str:
+    return os.environ.get("KIMI_CODE_HOME") or _home(".kimi-code")
 
 
 def cli_path() -> str:
@@ -1318,7 +1389,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
         up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
     uh = sub.add_parser("uninstall-hooks", help="remove the agent hooks: Claude Code, Codex, Gemini CLI, "
-                        "opencode, Copilot CLI (offline; no hub needed)")
+                        "opencode, Copilot CLI, Kimi Code, Grok Build (offline; no hub needed)")
     uh.add_argument("--user", action="store_true", help="Claude Code's user level (~/.claude)")
     uh.add_argument("--project", nargs="?", const=".", metavar="DIR",
                     help="the Claude Code project covering DIR (default: the current directory)")
@@ -1605,6 +1676,10 @@ RELEASE_PATHS = {
     "needs-you-opencode.js": "integrations/opencode/needs-you.js",
     "install-copilot-hooks.sh": "integrations/copilot/install-copilot-hooks.sh",
     "copilot-hooks.json": "integrations/copilot/copilot-hooks.json",
+    "install-kimi-hooks.sh": "integrations/kimi/install-kimi-hooks.sh",
+    "kimi-hooks.toml": "integrations/kimi/kimi-hooks.toml",
+    "install-grok-hooks.sh": "integrations/grok/install-grok-hooks.sh",
+    "grok-hooks.json": "integrations/grok/grok-hooks.json",
 }
 
 
@@ -1622,12 +1697,15 @@ OTHER_AGENTS = (
     ("codex", "Codex", codex_home, "hooks.json", "codex-hooks.json", "install-codex-hooks.sh", "--codex-home"),
     ("gemini", "Gemini", gemini_home, "settings.json", "gemini-hooks.json", "install-gemini-hooks.sh",
      "--gemini-dir"),
+    # Kimi Code: a marked block of [[hooks]] in config.toml, replaced by its installer.
+    ("kimi", "Kimi", kimi_home, "config.toml", "kimi-hooks.toml", "install-kimi-hooks.sh", "--kimi-home"),
 )
 
 
 # Every agent directory that keeps its own copy of needs-you-hook.sh in <dir>/hooks/.
 HOOK_COPIES = (("codex", "Codex", codex_home), ("gemini", "Gemini", gemini_home),
-               ("opencode", "opencode", opencode_dir), ("copilot", "Copilot", copilot_home))
+               ("opencode", "opencode", opencode_dir), ("copilot", "Copilot", copilot_home),
+               ("kimi", "Kimi", kimi_home), ("grok", "Grok", grok_home))
 
 
 def _other_agent(snippet: str) -> Optional[Tuple[Any, ...]]:
@@ -1856,7 +1934,7 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         entry = files.get(name)
         if not isinstance(entry, dict):
             continue
-        if name in ("needs-you-opencode.js", "copilot-hooks.json") and (
+        if name in ("needs-you-opencode.js", "copilot-hooks.json", "grok-hooks.json") and (
                 os.path.islink(path) or os.path.islink(os.path.dirname(path))):
             notes.append("%s is a symlink; not updating it (another tool manages it)" % _tilde(path))
             continue
@@ -2602,7 +2680,8 @@ class Doctor:
 
     def run(self) -> List[Dict[str, str]]:
         for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
-                     self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.copilot_hooks, self.skill,
+                     self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.copilot_hooks,
+                     self.kimi_hooks, self.grok_hooks, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -3139,6 +3218,133 @@ class Doctor:
         if "alerts off until opted in" in parts:
             hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
         self.add("copilot hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    def _alerts_part(self) -> str:
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            return "alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where)
+        if alerts.lower() in _ON:
+            return "alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where)
+        return "alerts off until opted in"
+
+    # -- Kimi Code CLI hooks -----------------------------------------------
+    def kimi_hooks(self) -> None:
+        import shutil
+        home = os.environ.get("KIMI_CODE_HOME") or os.path.join(self.home, ".kimi-code")
+        conf = os.path.join(home, "config.toml")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        installer = _rerun("--kimi-hooks user")
+        if not os.path.isdir(home) and not shutil.which("kimi"):
+            return
+        try:
+            with open(conf, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            lines = []
+        starts = [i for i, l in enumerate(lines) if l.startswith(KIMI_BLOCK_START)]
+        ends = [i for i, l in enumerate(lines) if l.rstrip() == KIMI_BLOCK_END]
+        if not starts and not os.path.isfile(hook):
+            self.add("kimi hooks", "INFO", "not installed (optional: cards when a Kimi Code session waits on you)",
+                     "to install: " + _installer("--kimi-hooks user --alerts"))
+            return
+        problems, parts = [], [_tilde(conf)]
+        if not starts:
+            problems.append("%s has no needs-you block" % _tilde(conf))
+        elif len(starts) > 1 or not ends or ends[-1] < starts[-1]:
+            problems.append("the needs-you block in %s is cut short or repeated, so Kimi may refuse the file"
+                            % _tilde(conf))
+        if not os.path.isfile(hook):
+            problems.append("%s is missing" % _tilde(hook))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "kimi_card" not in fh.read():
+                        problems.append("old hook (no Kimi support)")
+            except OSError:
+                pass
+        parts.append(self._alerts_part())
+        if problems:
+            self.add("kimi hooks", "WARN", "; ".join(problems + parts), installer)
+            return
+        hint = "restart Kimi Code after installing or updating them"
+        if parts[-1] == "alerts off until opted in":
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
+        self.add("kimi hooks", "OK", "installed in " + "; ".join(parts), hint)
+
+    # -- Grok Build hooks --------------------------------------------------
+    def grok_hooks(self) -> None:
+        import shutil
+        home = os.environ.get("GROK_HOME") or os.path.join(self.home, ".grok")
+        conf = os.path.join(home, "hooks", "needs-you.json")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        installer = _rerun("--grok-hooks user")
+        if not os.path.isdir(home) and not shutil.which("grok"):
+            return
+        if not os.path.isfile(conf) and not os.path.isfile(hook):
+            # Grok runs the Claude Code hooks too (on by default): those post as Grok.
+            if _references_hook(os.path.join(self.home, ".claude", "settings.json")):
+                self.add("grok hooks", "INFO", "not installed; Grok runs the Claude Code hooks instead, and "
+                         "their cards say Grok", "optional, for Grok's own hooks: " + _installer("--grok-hooks user"))
+            else:
+                self.add("grok hooks", "INFO", "not installed (optional: cards when a Grok session waits on you)",
+                         "to install: " + _installer("--grok-hooks user --alerts"))
+            return
+        problems, parts = [], [_tilde(conf)]
+        if not os.path.isfile(conf):
+            problems.append("%s is missing" % _tilde(conf))
+        else:
+            try:
+                with open(conf, "r", encoding="utf-8") as fh:
+                    doc = json.load(fh)
+                if not (isinstance(doc, dict) and isinstance(doc.get("hooks"), dict)):
+                    raise ValueError("no hooks object")
+            except (OSError, ValueError):
+                problems.append("%s isn't a valid hooks file, so Grok ignores it" % _tilde(conf))
+        if not os.path.isfile(hook):
+            problems.append("%s is missing" % _tilde(hook))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "subagentType" not in fh.read():
+                        problems.append("old hook (no Grok Build support)")
+            except OSError:
+                pass
+        # Settings the installer can't change: an organization's managed-hooks-only policy, and
+        # needs-you's hooks switched off in /hooks (~/.grok/disabled-hooks).
+        policy = []
+        for f in (os.path.join(home, "requirements.toml"), os.path.join(home, "managed_config.toml"),
+                  "/etc/grok/requirements.toml", "/etc/grok/managed_config.toml"):
+            try:
+                with open(f, "r", encoding="utf-8", errors="replace") as fh:
+                    text = fh.read(1024 * 1024)
+            except OSError:
+                continue
+            if re.search(r"(?m)^\s*(allow_managed_hooks_only|allowManagedHooksOnly)\s*=\s*true", text):
+                policy.append("allow_managed_hooks_only in %s turns them off" % _tilde(f))
+        try:
+            with open(os.path.join(home, "disabled-hooks"), "r", encoding="utf-8", errors="replace") as fh:
+                if "needs-you" in fh.read(1024 * 1024):
+                    policy.append("switched off in %s" % _tilde(os.path.join(home, "disabled-hooks")))
+        except OSError:
+            pass
+        parts.append(self._alerts_part())
+        if problems or policy:
+            if problems:
+                hint = installer
+            elif any("disabled-hooks" in p for p in policy):
+                hint = "turn them back on in Grok: /hooks, select the needs-you entries, Space"
+            else:
+                hint = "tell the person: their organization's Grok policy allows only managed hooks"
+            self.add("grok hooks", "WARN", "; ".join(problems + policy + parts), hint)
+            return
+        hint = "restart Grok after installing or updating them"
+        if parts[-1] == "alerts off until opted in":
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
+        self.add("grok hooks", "OK", "installed in " + "; ".join(parts), hint)
 
     def project_hooks(self) -> None:
         """Project-level hooks (install-hooks.sh --project) covering the current directory.

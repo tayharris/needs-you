@@ -16,12 +16,13 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
-from support import ROOT, wait_until
-from test_cli_update import read
+from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
+from test_cli_update import UpdateCase, current_files, read
 
 try:
     import tomllib  # Python 3.11+: checks the TOML the installer writes; 3.9 skips that part
@@ -402,6 +403,169 @@ class Installer(unittest.TestCase):
             self.assertIn("symlink", r.stderr)
         self.assertEqual(self.text(victim), "keep\n")
         self.assertFalse(os.path.exists(self.hook))
+
+
+class EndToEnd(HubTestCase):
+    def setUp(self):
+        super().setUp()
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        self.hub = self.make_hub("hub-a", peers=[])
+        self.sender, self.reader = self.tokens(self.hub)
+        r = subprocess.run([BASH, INSTALLER], env={"HOME": self.home, "PATH": os.environ.get("PATH", "")},
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.hook = os.path.join(self.home, ".kimi-code", "hooks", "needs-you-hook.sh")
+
+    def run_hook(self, mode, data, url):
+        env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_BIN": CLI,
+               "NEEDS_YOU_URLS": url, "NEEDS_YOU_TOKEN": self.sender, "NEEDS_YOU_TIMEOUT": "2",
+               "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux", "NY_KIMI_TURN_WAIT": "0"}
+        payload = {"session_id": "session_e2e", "cwd": "/srv/my-repo", "client_type": "kimi_code_cli"}
+        payload.update(data)
+        r = subprocess.run([BASH, self.hook, mode, "kimi"], input=json.dumps(payload), env=env,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+
+    def items(self):
+        _, body = request("GET", self.hub.url + "/v1/items?status=all", self.reader)
+        return [i for i in body["items"] if i["key"].endswith(":session_e2e")]
+
+    def test_post_then_resolve(self):
+        self.run_hook("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                 "display": {"kind": "command", "command": "make --version"}}, self.hub.url)
+        self.assertTrue(wait_until(lambda: len(self.items()) == 1, timeout=10))
+        item = self.items()[0]
+        self.assertEqual(item["title"], "Kimi wants to run make: my-repo")
+        self.assertEqual(item["source"]["agent"], "kimi-code")
+        self.assertNotIn("--version", json.dumps(item))
+        marker = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks", "session_e2e")
+        self.assertTrue(wait_until(lambda: os.path.exists(marker), timeout=10))
+        self.run_hook("resolve", {"hook_event_name": "PermissionResult", "decision": "approved"}, self.hub.url)
+        self.assertTrue(wait_until(lambda: self.items()[0]["status"] == "resolved", timeout=10), self.items())
+
+    def test_hub_down_queues(self):
+        self.run_hook("notify", {"hook_event_name": "Stop", "stop_hook_active": False},
+                      "http://127.0.0.1:%d" % free_port())
+        outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
+        self.assertTrue(wait_until(lambda: os.path.isdir(outbox) and
+                                   any(n.endswith(".json") for n in os.listdir(outbox)), timeout=15))
+
+
+class Doctor(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-kimi-doc-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.kimi = os.path.join(self.home, ".kimi-code")
+
+    def check(self, **env):
+        e = {"HOME": self.home, "PATH": "/usr/bin:/bin", "NEEDS_YOU_URLS": "http://127.0.0.1:%d" % free_port(),
+             "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1", "NEEDS_YOU_GH": "none"}
+        e.update(env)
+        r = subprocess.run([sys.executable, CLI, "doctor", "--json"], env=e, capture_output=True, text=True, timeout=60)
+        rows = [c for c in json.loads(r.stdout)["checks"] if c["check"] == "kimi hooks"]
+        return rows[0] if rows else None
+
+    def install(self, **env):
+        e = {"HOME": self.home, "PATH": os.environ.get("PATH", "")}
+        e.update(env)
+        r = subprocess.run([BASH, INSTALLER], env=e, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_states(self):
+        self.assertIsNone(self.check())
+        os.makedirs(self.kimi)
+        row = self.check()
+        self.assertEqual(row["status"], "INFO")
+        self.assertEqual(row["hint"], "to install: curl -fsSL <invite link>/install.sh | bash -s -- --yes "
+                                      "--kimi-hooks user --alerts")
+        self.install()
+        row = self.check(NEEDS_YOU_AGENT_ALERTS="1")
+        self.assertEqual(row["status"], "OK", row)
+        self.assertIn("~/.kimi-code/config.toml", row["detail"])
+        self.assertIn("alerts on", row["detail"])
+        self.assertIn("restart Kimi Code", row["hint"])
+        conf = os.path.join(self.kimi, "config.toml")
+        with open(conf) as fh:
+            text = fh.read()
+        # the block gone (the hook copy still there), or cut short: one next step, the installer
+        for broken in ("default_model = \"x\"\n", text.replace(END + "\n", "")):
+            with open(conf, "w") as fh:
+                fh.write(broken)
+            row = self.check()
+            self.assertEqual(row["status"], "WARN", row)
+            self.assertTrue(row["hint"].startswith("re-run the installer: curl -fsSL <invite link>/install.sh | "
+                                                   "bash -s -- --yes --kimi-hooks user"), row)
+        with open(conf, "w") as fh:
+            fh.write(text)
+        os.chmod(os.path.join(self.kimi, "hooks", "needs-you-hook.sh"), 0o644)
+        self.assertIn("not executable", self.check()["detail"])
+        os.remove(os.path.join(self.kimi, "hooks", "needs-you-hook.sh"))
+        self.assertIn("is missing", self.check()["detail"])
+        # KIMI_CODE_HOME moves it, as it moves Kimi's own config.
+        other = os.path.join(self.home, "k2")
+        self.install(KIMI_CODE_HOME=other)
+        self.assertEqual(self.check(KIMI_CODE_HOME=other)["status"], "OK")
+
+
+class UninstallHooks(unittest.TestCase):
+    def test_offline_removal_keeps_the_rest_of_the_config(self):
+        home = tempfile.mkdtemp(prefix="ny-kimi-un-")
+        self.addCleanup(shutil.rmtree, home, True)
+        env = {"HOME": home, "PATH": os.environ.get("PATH", "")}
+        conf = os.path.join(home, ".kimi-code", "config.toml")
+        os.makedirs(os.path.dirname(conf))
+        with open(conf, "w") as fh:
+            fh.write(USER_CONFIG)
+        subprocess.run([BASH, INSTALLER], env=env, capture_output=True, timeout=60)
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks", "--kimi", "--dry-run"], env=env,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("would remove the needs-you hooks from ~/.kimi-code/config.toml", r.stdout)
+        with open(conf) as fh:
+            self.assertIn(START, fh.read())
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks"], env=env, capture_output=True, text=True,
+                           timeout=60, cwd=home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(conf) as fh:
+            self.assertEqual(fh.read(), USER_CONFIG)
+        self.assertFalse(os.path.exists(os.path.join(home, ".kimi-code", "hooks")))
+        self.assertTrue(any(n.startswith("config.toml.bak-") for n in os.listdir(os.path.dirname(conf))))
+        # an unterminated block is left for a person to fix
+        with open(conf, "w") as fh:
+            fh.write(START + "\n[[hooks]]\ncommand = 'needs-you-hook.sh'\n")
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks", "--kimi"], env=env, capture_output=True,
+                           text=True, timeout=60)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("config.toml", r.stderr)
+
+
+class Update(UpdateCase):
+    def test_block_and_hook_copy(self):
+        files = current_files()
+        files["install-kimi-hooks.sh"] = read(INSTALLER)
+        files["kimi-hooks.toml"] = read(KIMI_HOOKS_TOML)
+        h = self.hub(files=files)
+        conf = self.install(".kimi-code/config.toml",
+                            ('default_model = "x"\n\n' + read(KIMI_HOOKS_TOML).decode().replace("timeout = 10", "timeout = 9")
+                             ).encode())
+        hook = self.install(".kimi-code/hooks/needs-you-hook.sh", mode=0o755)
+        r = self.run_cli("update", "--check", urls=[h.url])
+        self.assertIn("needs-you-hook.sh (Kimi)", r.stdout)
+        self.assertIn("kimi-hooks.toml", r.stdout)
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(read(conf).decode(), 'default_model = "x"\n\n' + read(KIMI_HOOKS_TOML).decode())
+        self.assertEqual(read(hook), read(HOOK))
+        with open(self.cli, "wb") as fh:
+            fh.write(read(CLI))
+        r = self.run_cli("--json", "update", "--check", urls=[h.url])
+        self.assertEqual(json.loads(r.stdout)["changes"], [])
+
+    def test_nothing_installed_nothing_written(self):
+        h = self.hub()
+        self.run_cli("update", urls=[h.url])
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".kimi-code")))
 
 
 if __name__ == "__main__":

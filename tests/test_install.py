@@ -418,6 +418,56 @@ class InstallScript(HubTestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("--copilot-hooks must be user or none", r.stderr)
 
+    def test_kimi_and_grok_hooks(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--kimi-hooks", "user", "--grok-hooks", "user", "--alerts",
+                         "--host", "box7", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Kimi Code", r.stdout)
+        self.assertIn("Grok Build", r.stdout)
+        kimi = os.path.join(self.home, ".kimi-code")
+        with open(os.path.join(kimi, "config.toml")) as fh:
+            self.assertIn("# needs-you (managed by install-kimi-hooks.sh", fh.read())
+        self.assertTrue(os.access(os.path.join(kimi, "hooks", "needs-you-hook.sh"), os.X_OK))
+        grok = os.path.join(self.home, ".grok", "hooks")
+        with open(os.path.join(grok, "needs-you.json")) as fh:
+            self.assertIn("Notification", json.load(fh)["hooks"])
+        self.assertTrue(os.access(os.path.join(grok, "needs-you-hook.sh"), os.X_OK))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")))  # Claude untouched
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        for name in ("kimi hooks", "grok hooks"):
+            self.assertEqual(checks[name]["status"], "OK", checks[name])
+            self.assertIn("alerts on", checks[name]["detail"])
+        self.assertNotIn("Kimi", checks["update"]["detail"])
+        self.assertNotIn("Grok", checks["update"]["detail"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(kimi, "config.toml")) as fh:
+            self.assertNotIn("needs-you", fh.read())
+        self.assertFalse(os.path.exists(os.path.join(kimi, "hooks", "needs-you-hook.sh")))
+        self.assertFalse(os.path.exists(os.path.join(grok, "needs-you.json")))
+        for flag in ("--kimi-hooks", "--grok-hooks"):
+            r = self.install(inv, "--yes", flag, "project")
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("%s must be user or none" % flag, r.stderr)
+
+    def test_kimi_config_it_cant_append_to_is_skipped(self):
+        kimi = os.path.join(self.home, ".kimi-code")
+        os.makedirs(kimi)
+        with open(os.path.join(kimi, "config.toml"), "w") as fh:
+            fh.write("hooks = []\n")
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--kimi-hooks", "user", "--grok-hooks", "user", "--host", "box8",
+                         STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Not set up: Kimi Code hooks", r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".grok", "hooks", "needs-you.json")))
+        with open(os.path.join(kimi, "config.toml")) as fh:
+            self.assertEqual(fh.read(), "hooks = []\n")
+
     def test_gemini_hooks(self):
         inv = self.invite(uses=1)
         r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box4", STUB_UNAME="Linux")

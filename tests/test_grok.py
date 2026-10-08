@@ -19,12 +19,13 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
-from support import ROOT, wait_until
-from test_cli_update import read
+from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
+from test_cli_update import UpdateCase, current_files, read
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -297,6 +298,159 @@ class Installer(unittest.TestCase):
         with open(victim) as fh:
             self.assertEqual(fh.read(), "keep\n")
         self.assertFalse(os.path.exists(self.hook))
+
+
+class EndToEnd(HubTestCase):
+    def setUp(self):
+        super().setUp()
+        self.home = os.path.join(self.tmp, "home")
+        os.makedirs(self.home)
+        self.hub = self.make_hub("hub-a", peers=[])
+        self.sender, self.reader = self.tokens(self.hub)
+        r = subprocess.run([BASH, INSTALLER], env={"HOME": self.home, "PATH": os.environ.get("PATH", "")},
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.hook = os.path.join(self.home, ".grok", "hooks", "needs-you-hook.sh")
+
+    def run_hook(self, mode, data, url, event):
+        env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_BIN": CLI,
+               "NEEDS_YOU_URLS": url, "NEEDS_YOU_TOKEN": self.sender, "NEEDS_YOU_TIMEOUT": "2",
+               "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux", "GROK_HOOK_EVENT": event}
+        payload = {"sessionId": "grok-e2e", "session_id": "grok-e2e", "cwd": "/srv/my-repo"}
+        payload.update(data)
+        r = subprocess.run([BASH, self.hook, mode, "grok"], input=json.dumps(payload), env=env,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+
+    def items(self):
+        _, body = request("GET", self.hub.url + "/v1/items?status=all", self.reader)
+        return [i for i in body["items"] if i["key"].endswith(":grok-e2e")]
+
+    def test_post_then_resolve(self):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notificationType": "idle_prompt"},
+                      self.hub.url, "notification")
+        self.assertTrue(wait_until(lambda: len(self.items()) == 1, timeout=10))
+        item = self.items()[0]
+        self.assertEqual(item["title"], "Grok is waiting for you: my-repo")
+        self.assertEqual(item["source"]["agent"], "grok")
+        marker = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks", "grok-e2e")
+        self.assertTrue(wait_until(lambda: os.path.exists(marker), timeout=10))
+        self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit", "prompt": "next"}, self.hub.url,
+                      "user_prompt_submit")
+        self.assertTrue(wait_until(lambda: self.items()[0]["status"] == "resolved", timeout=10), self.items())
+
+
+class Doctor(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-grok-doc-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.grok = os.path.join(self.home, ".grok")
+
+    def check(self, **env):
+        e = {"HOME": self.home, "PATH": "/usr/bin:/bin", "NEEDS_YOU_URLS": "http://127.0.0.1:%d" % free_port(),
+             "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1", "NEEDS_YOU_GH": "none"}
+        e.update(env)
+        r = subprocess.run([sys.executable, CLI, "doctor", "--json"], env=e, capture_output=True, text=True, timeout=60)
+        rows = [c for c in json.loads(r.stdout)["checks"] if c["check"] == "grok hooks"]
+        return rows[0] if rows else None
+
+    def install(self, **env):
+        e = {"HOME": self.home, "PATH": os.environ.get("PATH", "")}
+        e.update(env)
+        r = subprocess.run([BASH, INSTALLER], env=e, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_states(self):
+        self.assertIsNone(self.check())
+        os.makedirs(self.grok)
+        row = self.check()
+        self.assertEqual(row["status"], "INFO")
+        self.assertEqual(row["hint"], "to install: curl -fsSL <invite link>/install.sh | bash -s -- --yes "
+                                      "--grok-hooks user --alerts")
+        # Grok runs the Claude Code hooks: without its own install, say that's where cards come from.
+        os.makedirs(os.path.join(self.home, ".claude"))
+        with open(os.path.join(self.home, ".claude", "settings.json"), "w") as fh:
+            json.dump({"hooks": {"Notification": [{"hooks": [{"command": "~/.claude/hooks/needs-you-hook.sh notify"}]}]}}, fh)
+        row = self.check()
+        self.assertEqual(row["status"], "INFO")
+        self.assertIn("Claude Code hooks", row["detail"])
+        self.install()
+        row = self.check(NEEDS_YOU_AGENT_ALERTS="1")
+        self.assertEqual(row["status"], "OK", row)
+        self.assertIn("alerts on", row["detail"])
+        self.assertIn("restart Grok", row["hint"])
+        with open(os.path.join(self.grok, "requirements.toml"), "w") as fh:
+            fh.write("allow_managed_hooks_only = true\n")
+        row = self.check()
+        self.assertEqual(row["status"], "WARN")
+        self.assertIn("allow_managed_hooks_only", row["detail"])
+        self.assertNotIn("re-run the installer", row["hint"])
+        os.remove(os.path.join(self.grok, "requirements.toml"))
+        with open(os.path.join(self.grok, "disabled-hooks"), "w") as fh:
+            fh.write("global/needs-you.json:Notification:0\n")
+        row = self.check()
+        self.assertEqual(row["status"], "WARN")
+        self.assertIn("disabled-hooks", row["detail"])
+        os.remove(os.path.join(self.grok, "disabled-hooks"))
+        for raw in (b"\xff\xfe", b"[1]", b'{"hooks": 1}'):
+            with open(os.path.join(self.grok, "hooks", "needs-you.json"), "wb") as fh:
+                fh.write(raw)
+            row = self.check()
+            self.assertEqual(row["status"], "WARN", raw)
+            self.assertTrue(row["hint"].startswith("re-run the installer: "), row)
+        os.remove(os.path.join(self.grok, "hooks", "needs-you.json"))
+        os.remove(os.path.join(self.grok, "hooks", "needs-you-hook.sh"))
+        self.assertEqual(self.check()["status"], "INFO")
+        # GROK_HOME moves it, as it moves Grok's own hooks.
+        other = os.path.join(self.home, "g2")
+        self.install(GROK_HOME=other)
+        self.assertEqual(self.check(GROK_HOME=other)["status"], "OK")
+
+
+class UninstallHooks(unittest.TestCase):
+    def test_offline_removal(self):
+        home = tempfile.mkdtemp(prefix="ny-grok-un-")
+        self.addCleanup(shutil.rmtree, home, True)
+        env = {"HOME": home, "PATH": os.environ.get("PATH", "")}
+        subprocess.run([BASH, INSTALLER], env=env, capture_output=True, timeout=60)
+        hooks = os.path.join(home, ".grok", "hooks")
+        with open(os.path.join(hooks, "mine.json"), "w") as fh:
+            fh.write("{}")
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks", "--grok", "--dry-run"], env=env,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("would delete", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(hooks, "needs-you.json")))
+        r = subprocess.run([sys.executable, CLI, "uninstall-hooks"], env=env, capture_output=True, text=True,
+                           timeout=60, cwd=home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(os.listdir(hooks)), ["mine.json"])
+
+
+class Update(UpdateCase):
+    def test_hooks_file_and_hook_copy(self):
+        files = current_files()
+        files["install-grok-hooks.sh"] = read(INSTALLER)
+        files["grok-hooks.json"] = read(GROK_HOOKS_JSON)
+        h = self.hub(files=files)
+        conf = self.install(".grok/hooks/needs-you.json", b'{"_needs_you_version": "0.0.1", "hooks": {}}\n')
+        hook = self.install(".grok/hooks/needs-you-hook.sh", mode=0o755)
+        r = self.run_cli("update", "--check", urls=[h.url])
+        self.assertIn("needs-you-hook.sh (Grok)", r.stdout)
+        self.assertIn("grok-hooks.json", r.stdout)
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(read(conf), read(GROK_HOOKS_JSON))
+        self.assertEqual(read(hook), read(HOOK))
+        with open(self.cli, "wb") as fh:
+            fh.write(read(CLI))
+        r = self.run_cli("--json", "update", "--check", urls=[h.url])
+        self.assertEqual(json.loads(r.stdout)["changes"], [])
+
+    def test_nothing_installed_nothing_written(self):
+        h = self.hub()
+        self.run_cli("update", urls=[h.url])
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".grok")))
 
 
 if __name__ == "__main__":

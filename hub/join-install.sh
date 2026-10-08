@@ -22,6 +22,8 @@ HOOKS=none
 CODEX_HOOKS=none
 GEMINI_HOOKS=none
 COPILOT_HOOKS=none
+KIMI_HOOKS=none
+GROK_HOOKS=none
 OPENCODE=0
 SKILL=0
 ORCA=0
@@ -81,8 +83,14 @@ Options:
   --copilot-hooks user|none     GitHub Copilot CLI hooks in ~/.copilot/hooks/: post when a
                                 session asks for permission or a question, or finishes
                                 its turn (default none)
+  --kimi-hooks user|none        Kimi Code CLI hooks in ~/.kimi-code/config.toml: post when a
+                                session asks for approval or a question, or finishes its
+                                turn (default none)
+  --grok-hooks user|none        Grok Build hooks in ~/.grok/hooks/: post when a session
+                                asks for permission or has waited a minute for you
+                                (default none)
   --alerts                      turn the hooks on for every Claude Code, Codex, Gemini,
-                                opencode and Copilot session here
+                                opencode, Copilot, Kimi and Grok session here
                                 (NEEDS_YOU_AGENT_ALERTS=1 in the env file);
                                 without it they stay quiet except in Orca
   --skill                       install the needs-you skill to ~/.claude/skills
@@ -132,6 +140,10 @@ while [ $# -gt 0 ]; do
     --opencode-plugin) OPENCODE=1; shift ;;
     --copilot-hooks) COPILOT_HOOKS=${2:-}; shift 2 || die "--copilot-hooks needs user or none" ;;
     --copilot-hooks=*) COPILOT_HOOKS=${1#*=}; shift ;;
+    --kimi-hooks) KIMI_HOOKS=${2:-}; shift 2 || die "--kimi-hooks needs user or none" ;;
+    --kimi-hooks=*) KIMI_HOOKS=${1#*=}; shift ;;
+    --grok-hooks) GROK_HOOKS=${2:-}; shift 2 || die "--grok-hooks needs user or none" ;;
+    --grok-hooks=*) GROK_HOOKS=${1#*=}; shift ;;
     --skill) SKILL=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
@@ -162,6 +174,8 @@ case "$HOOKS" in user|project|none) ;; *) die "--claude-hooks must be user, proj
 case "$CODEX_HOOKS" in user|none) ;; *) die "--codex-hooks must be user or none" ;; esac
 case "$GEMINI_HOOKS" in user|none) ;; *) die "--gemini-hooks must be user or none" ;; esac
 case "$COPILOT_HOOKS" in user|none) ;; *) die "--copilot-hooks must be user or none" ;; esac
+case "$KIMI_HOOKS" in user|none) ;; *) die "--kimi-hooks must be user or none" ;; esac
+case "$GROK_HOOKS" in user|none) ;; *) die "--grok-hooks must be user or none" ;; esac
 case "$CONTEXT" in ""|work|personal) ;; *) die "--context must be work or personal" ;; esac
 if [ -n "$HUB_GIVEN" ]; then
   case "$HUB_GIVEN" in http://*|https://*) ;; *) die "--hub must be an http:// or https:// URL" ;; esac
@@ -330,7 +344,8 @@ if [ "$UNINSTALL" -eq 1 ]; then
   schedule_remove
   path_remove
   # The CLI removes every agent's hooks locally (Claude Code user level, this directory's
-  # project and recorded project installs; Codex, Gemini CLI, the opencode plugin, Copilot CLI). A CLI
+  # project and recorded project installs; Codex, Gemini CLI, the opencode plugin, Copilot CLI,
+  # Kimi Code, Grok Build). A CLI
   # from before `uninstall-hooks` falls back to the installers from the hub.
   if [ -x "$CLI" ] && "$CLI" uninstall-hooks --help >/dev/null 2>&1; then
     "$CLI" uninstall-hooks || warn "some agent hooks were left in place (see above)"
@@ -346,8 +361,9 @@ if [ "$UNINSTALL" -eq 1 ]; then
       fi
       rm -rf "$tmp"
     fi
-    # Codex and Gemini CLI: <name> <its directory> <installer's flag for it>
-    for spec in "codex ${CODEX_HOME:-$HOME/.codex} --codex-home" "gemini $HOME/.gemini --gemini-dir"; do
+    # Codex, Gemini CLI and Kimi Code: <name> <its directory> <installer's flag for it>
+    for spec in "codex ${CODEX_HOME:-$HOME/.codex} --codex-home" "gemini $HOME/.gemini --gemini-dir" \
+                "kimi ${KIMI_CODE_HOME:-$HOME/.kimi-code} --kimi-home"; do
       set -- $spec
       if [ -f "$2/hooks/needs-you-hook.sh" ] && command -v curl >/dev/null 2>&1; then
         tmp=$(mktemp -d)
@@ -366,6 +382,9 @@ if [ "$UNINSTALL" -eq 1 ]; then
     CP_DIR="${COPILOT_HOME:-$HOME/.copilot}"
     rm -f "$CP_DIR/hooks/needs-you.json" "$CP_DIR/hooks/needs-you-hook.sh"
     rmdir "$CP_DIR/hooks" 2>/dev/null || true
+    GK_DIR="${GROK_HOME:-$HOME/.grok}"
+    rm -f "$GK_DIR/hooks/needs-you.json" "$GK_DIR/hooks/needs-you-hook.sh"
+    rmdir "$GK_DIR/hooks" 2>/dev/null || true
   fi
   rm -rf "$SKILL_DIR"
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
@@ -407,6 +426,8 @@ say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && pr
 [ "$OPENCODE" -eq 1 ] && say "  plugin  -> opencode (${XDG_CONFIG_HOME:-~/.config}/opencode/plugins/needs-you.js)"
 [ "$GEMINI_HOOKS" != none ] && say "  hooks   -> Gemini CLI (~/.gemini/settings.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$COPILOT_HOOKS" != none ] && say "  hooks   -> Copilot CLI (${COPILOT_HOME:-~/.copilot}/hooks/needs-you.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$KIMI_HOOKS" != none ] && say "  hooks   -> Kimi Code (${KIMI_CODE_HOME:-~/.kimi-code}/config.toml)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
+[ "$GROK_HOOKS" != none ] && say "  hooks   -> Grok Build (${GROK_HOME:-~/.grok}/hooks/needs-you.json)$([ "$ALERTS" = 1 ] && printf ', on for every session')"
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
@@ -593,16 +614,17 @@ if [ "$HOOKS" != none ]; then
   claude_hooks || skipped "Claude Code hooks" "--claude-hooks $HOOKS"
 fi
 
-# install_agent_hooks NAME DIR FLAG: Codex, Gemini CLI or Copilot CLI, the same hook as Claude Code's.
+# install_agent_hooks NAME DIR FLAG [SNIPPET]: Codex, Gemini CLI, Copilot CLI, Kimi Code or
+# Grok Build, the same hook as Claude Code's. SNIPPET: the agent's /dl file (NAME-hooks.json).
 install_agent_hooks() {
-  local f sha="" kv
-  for f in "install-$1-hooks.sh" needs-you-hook.sh "$1-hooks.json"; do
+  local f sha="" kv snippet=${4:-$1-hooks.json}
+  for f in "install-$1-hooks.sh" needs-you-hook.sh "$snippet"; do
     fetch "$f" "$TMP/$f" || { warn "could not download the $1 hooks ($f)"; return 1; }
   done
   NEEDS_YOU_INSTALLER=1 bash "$TMP/install-$1-hooks.sh" "$3" "$2" || return 1
   # As for Claude: record the snippet merged, so `needs-you doctor` and `update` don't call
   # these fresh entries out of date.
-  for kv in $SHA256S; do [ "${kv%%=*}" = "$1-hooks.json" ] && sha=${kv#*=}; done
+  for kv in $SHA256S; do [ "${kv%%=*}" = "$snippet" ] && sha=${kv#*=}; done
   [ -n "$sha" ] || return 0
   python3 - "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you" "$1_hooks_json_sha256" "$sha" <<'PY' || true
 import json, os, sys
@@ -633,6 +655,15 @@ fi
 if [ "$COPILOT_HOOKS" = user ]; then
   ASKED=$((ASKED + 1))
   install_agent_hooks copilot "${COPILOT_HOME:-$HOME/.copilot}" --copilot-home || skipped "Copilot CLI hooks" "--copilot-hooks user"
+fi
+if [ "$KIMI_HOOKS" = user ]; then
+  ASKED=$((ASKED + 1))
+  install_agent_hooks kimi "${KIMI_CODE_HOME:-$HOME/.kimi-code}" --kimi-home kimi-hooks.toml ||
+    skipped "Kimi Code hooks" "--kimi-hooks user"
+fi
+if [ "$GROK_HOOKS" = user ]; then
+  ASKED=$((ASKED + 1))
+  install_agent_hooks grok "${GROK_HOME:-$HOME/.grok}" --grok-home || skipped "Grok Build hooks" "--grok-hooks user"
 fi
 opencode_plugin() {
   local f
