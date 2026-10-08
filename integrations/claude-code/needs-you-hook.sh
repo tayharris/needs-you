@@ -187,8 +187,11 @@ if [ "$agent" = aider ]; then
   else
     exit 0
   fi
-else
+elif { : 3<&0; } 2>/dev/null; then  # (not `<&0`: bash takes 0<&0 as a no-op)
   input=$(cat 2>/dev/null)
+else
+  # stdin closed: $(cat) would get its own pipe's read end as fd 0 and wait on itself forever.
+  input=
 fi
 
 # Cursor runs the Claude Code hooks from ~/.claude/settings.json as well (Stop,

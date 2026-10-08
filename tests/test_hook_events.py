@@ -174,6 +174,25 @@ class PayloadEdgeTests(HookHarness):
         self.assertTrue(body.startswith("bad �� bytes"), body)
         body.encode("utf-8")  # no lone surrogates
 
+    def test_closed_stdin_returns_at_once(self):
+        # With fd 0 closed, $(cat) gets its own pipe's read end as stdin and waits on itself
+        # forever: the agent's hook never returns.
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
+               "NEEDS_YOU_HOOK_PLATFORM": "linux", "HOOK": HOOK}
+        for agent in ("claude", "gemini"):
+            with self.subTest(agent):
+                p = subprocess.Popen([BASH, "-c", 'exec 0<&-; exec "$0" "$HOOK" notify "$1"', BASH, agent],
+                                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                     start_new_session=True)
+                try:
+                    _, err = p.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(p.pid, 9)
+                    p.communicate()
+                    self.fail("the hook hung with stdin closed")
+                self.assertEqual(p.returncode, 0, err)
+
     def test_tool_input_keys_are_not_the_payloads(self):
         # An MCP tool whose arguments are named like Cursor's or Claude's own fields: still
         # Claude's card, keyed by Claude's session.
