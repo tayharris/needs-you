@@ -11,8 +11,15 @@
     ],
     "PermissionRequest": [
       {
+        "matcher": "^(?!AskUserQuestion$)",
         "hooks": [
           { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" notify", "async": true, "timeout": 30 }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" ask", "timeout": 3660 }
         ]
       }
     ],
