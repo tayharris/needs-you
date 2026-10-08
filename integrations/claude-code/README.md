@@ -184,11 +184,13 @@ If nothing shows up, see [troubleshooting](../../docs/guides/troubleshooting.md#
 
 Its only source is Claude Code's status line input: for claude.ai Pro and Max subscribers, after the session's first response, Claude Code passes `rate_limits.five_hour` and `rate_limits.seven_day` (`used_percentage`, `resets_at`) to the status line command ([status line docs](https://code.claude.com/docs/en/statusline)). The helper reads those numbers and nothing else: no credentials, no transcript, no network of its own. With an API key there is no `rate_limits`, and it does nothing.
 
-Install it as your status line, wrapping the one you already have (its output passes through unchanged and its exit status is kept):
+Install it with the invite link's one-liner by adding `--usage` (it goes next to the CLI as `~/.local/bin/needs-you-usage`, and `needs-you update` keeps it current), or from a checkout:
 
 ```bash
 cp integrations/claude-code/needs-you-usage ~/.local/bin/ && chmod +x ~/.local/bin/needs-you-usage
 ```
+
+Then make it your status line, wrapping the one you already have (its output passes through unchanged and its exit status is kept). The installer never edits the status line for you:
 
 ```json
 "statusLine": {"type": "command", "command": "~/.local/bin/needs-you-usage -- ~/.claude/statusline.sh"}

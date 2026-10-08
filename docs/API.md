@@ -651,6 +651,7 @@ Serves files from the hub's install directory (`install_dir`, default: the direc
 | `SKILL.md` | `integrations/claude-code/skill/needs-you/SKILL.md` |
 | `orca-snippet.md` | `integrations/orca/snippet.md` (the Orca automation rules; prompts point at the installed copy) |
 | `needs_you_mcp.py` | `integrations/mcp/needs_you_mcp.py` (the MCP server; the installer's `--mcp`) |
+| `needs-you-usage` | `integrations/claude-code/needs-you-usage` (Claude's usage-limit status line helper; the installer's `--usage`) |
 | `agent-instructions.md` | `integrations/agent-instructions/needs-you.md` (the skill's rules for Codex, Gemini CLI and opencode; `--agent-instructions`) |
 | `manifest.json` | generated: see below |
 

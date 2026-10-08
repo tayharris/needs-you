@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **The invite installer's `--usage`** installs the Claude usage-limit helper as `~/.local/bin/needs-you-usage`, and `needs-you update` keeps it current; before, it had to be copied by hand. It changes no settings and prints the `statusLine` line to add. `--uninstall` removes it.
+
 ## [0.2.0] - 2026-10-08
 
 Questions on cards and answering them from the Mac, themes and arrival animations, and a round of security fixes.
