@@ -824,6 +824,17 @@ class InstallHubUserPaths(unittest.TestCase):
         self.assertEqual(cfg["hub_id"], "hub-a")
         self.assertEqual(cfg["public_url"], "http://%s:8765" % host)
 
+    def test_every_download_is_installed(self):
+        # The hub serves /dl/<name> from its install directory: a file install-hub.sh doesn't
+        # copy is missing from the manifest, so invites from that hub fail --orca, --mcp,
+        # --agent-instructions and --usage, and `needs-you update` never refreshes it.
+        self.install("--hub-id", "hub-a")
+        prefix = os.path.join(self.home, ".local", "share", "needs-you")
+        missing = [name for name, (rel, _) in sorted(hubmod.DOWNLOADS.items())
+                   if not os.path.isfile(os.path.join(prefix, rel))]
+        self.assertEqual(missing, [])
+        self.assertEqual(sorted(hubmod.download_manifest(prefix)["files"]), sorted(hubmod.DOWNLOADS))
+
     def test_unit_uses_the_config_it_wrote_with_xdg_config_home(self):
         # The unit hard-coded %h/.config/needs-you/hub.json, so with XDG_CONFIG_HOME set the
         # service started without the config the installer had just written.

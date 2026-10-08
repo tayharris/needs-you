@@ -399,6 +399,14 @@ install -m 0644 "$SRC/integrations/opencode/needs-you.js" "$SRC/integrations/ope
 install -d -m 0755 "$PREFIX/integrations/cline" "$PREFIX/integrations/aider"
 install -m 0644 "$SRC/integrations/cline/install-cline-hooks.sh" "$PREFIX/integrations/cline/"
 install -m 0644 "$SRC/integrations/aider/install-aider-notifications.sh" "$PREFIX/integrations/aider/"
+# The rest of what the hub serves at /dl/ (its DOWNLOADS): the Orca snippet, the MCP server,
+# the agent instructions and the usage helper (the invite installer's --orca, --mcp,
+# --agent-instructions and --usage, and `needs-you update`).
+install -d -m 0755 "$PREFIX/integrations/orca" "$PREFIX/integrations/mcp" "$PREFIX/integrations/agent-instructions"
+install -m 0644 "$SRC/integrations/orca/snippet.md" "$PREFIX/integrations/orca/"
+install -m 0644 "$SRC/integrations/mcp/needs_you_mcp.py" "$PREFIX/integrations/mcp/"
+install -m 0644 "$SRC/integrations/agent-instructions/needs-you.md" "$PREFIX/integrations/agent-instructions/"
+install -m 0644 "$SRC/integrations/claude-code/needs-you-usage" "$PREFIX/integrations/claude-code/"
 echo "installed code in $PREFIX"
 
 # 2. config: create, or apply only the flags that were passed
