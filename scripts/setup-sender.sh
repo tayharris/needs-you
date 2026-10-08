@@ -141,6 +141,12 @@ done
 case "$TEST_CONTEXT" in work|personal) ;; *) die "--test-context must be work or personal" 2 ;; esac
 # Absolute: it goes into the crontab line and the shell profile, which don't run from here.
 case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac
+# It goes into crontab and the shell profile inside double quotes: nothing in it may end the
+# quotes or expand later.
+NL=$'\n'
+case "$BIN_DIR" in
+  *[\"\$\`\\]*|*"$NL"*) die "--bin-dir must not contain a quote, \$, a backtick, a backslash or a newline" ;;
+esac
 if [ -n "$CONTEXT_ALERT" ]; then
   case "$CONTEXT_ALERT" in *[!0-9]*) die "--context-alert must be a whole number from 0 to 100" 2 ;; esac
   [ "$CONTEXT_ALERT" -le 100 ] || die "--context-alert must be a whole number from 0 to 100" 2

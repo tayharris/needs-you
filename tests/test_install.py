@@ -67,6 +67,15 @@ class InstallScript(HubTestCase):
         return subprocess.run([BASH, "-c", cmd], env=self.env(**env), capture_output=True,
                               text=True, timeout=120, cwd=cwd or self.home)
 
+    def test_bin_dir_with_shell_characters_is_refused(self):
+        inv = self.invite()
+        for bad in ('/tmp/a"b', "/tmp/$(touch x)", "/tmp/a`b`"):
+            r = self.install(inv, "--yes", NEEDS_YOU_BIN_DIR=bad)
+            self.assertNotEqual(r.returncode, 0, bad)
+            self.assertIn("NEEDS_YOU_BIN_DIR", r.stderr, bad)
+            self.assertFalse(os.path.exists(os.path.join(self.home, ".bashrc")), bad)
+            self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you")), bad)
+
     def envfile(self):
         out = {}
         with open(os.path.join(self.home, ".config", "needs-you", "env")) as fh:

@@ -93,6 +93,19 @@ class SetupSender(HubTestCase):
         with open(os.path.join(self.home, ".bashrc")) as fh:
             self.assertIn('export PATH="%s:$PATH"' % os.path.dirname(cli), fh.read())
 
+    def test_bin_dir_with_shell_characters_is_refused(self):
+        # It goes into the shell profile and crontab: a quote or $( ) there would run later.
+        env = {"HOME": self.home, "PATH": self.stubs + ":/usr/bin:/bin:/usr/sbin:/sbin", "STUB_LOG": self.log,
+               "STUB_CRON": self.cron, "STUB_UNAME": "Linux", "NO_PROXY": "*", "LANG": "C", "SHELL": "/bin/bash"}
+        for bad in ('/tmp/a"b', "/tmp/$(touch x)", "/tmp/a`b`", "/tmp/a\\b", "/tmp/a\nb"):
+            r = subprocess.run([BASH, SCRIPT, "--non-interactive", "--url", self.hub.url, "--token-stdin",
+                                "--install-cli", "--no-test", "--bin-dir", bad], input=self.token + "\n",
+                               env=env, capture_output=True, text=True, timeout=120, cwd=self.tmp)
+            self.assertNotEqual(r.returncode, 0, bad)
+            self.assertIn("bin", r.stderr.lower(), bad)
+            self.assertFalse(os.path.exists(os.path.join(self.home, ".bashrc")), bad)
+            self.assertFalse(os.path.exists(self.cron) and "needs-you" in open(self.cron).read(), bad)
+
     def test_settings_schedule_path_and_rerun(self):
         bashrc = os.path.join(self.home, ".bashrc")
         with open(bashrc, "w") as fh:

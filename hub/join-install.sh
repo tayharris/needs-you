@@ -257,6 +257,11 @@ CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/needs-you"
 ENV_FILE="$CONF_DIR/env"
 BIN_DIR="${NEEDS_YOU_BIN_DIR:-$HOME/.local/bin}"
 case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac  # it goes into crontab and the profile
+# ...inside double quotes, so nothing in it may end the quotes or expand later.
+NL=$'\n'
+case "$BIN_DIR" in
+  *[\"\$\`\\]*|*"$NL"*) die "NEEDS_YOU_BIN_DIR must not contain a quote, \$, a backtick, a backslash or a newline" ;;
+esac
 CLI="$BIN_DIR/needs-you"
 SKILL_DIR="$HOME/.claude/skills/needs-you"
 LABEL="io.needs-you.flush"

@@ -8,6 +8,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **The invite installer's `--usage`** installs the Claude usage-limit helper as `~/.local/bin/needs-you-usage`, and `needs-you update` keeps it current; before, it had to be copied by hand. It changes no settings and prints the `statusLine` line to add. `--uninstall` removes it.
 
+### Security
+
+- **Installers refuse a bin directory with shell characters.** `NEEDS_YOU_BIN_DIR` (the invite installer) and `--bin-dir` (`setup-sender.sh`) go into the shell profile and crontab inside double quotes, so a quote, `$`, backtick, backslash or newline in them could run a command in every new shell. Both now stop before writing anything.
+
 ## [0.2.0] - 2026-10-08
 
 Questions on cards and answering them from the Mac, themes and arrival animations, and a round of security fixes.
