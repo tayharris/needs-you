@@ -36,7 +36,6 @@
       <p>On this page</p>
       <ul>
         <li><a href="#install">Install</a></li>
-        <li><a href="#its-own-hub">Its own hub</a></li>
         <li><a href="#its-built-in-hub">Its built-in hub</a></li>
         <li><a href="#using-it">Using it</a></li>
         <li><a href="#focus-heads-down-except-what-you-choose">Focus: heads-down, except what you choose</a></li>
@@ -64,7 +63,6 @@
 <li><strong>"A temporary copy macOS made":</strong> macOS runs a quarantined app that wasn't moved with Finder from a hidden, read-only folder (App Translocation). Moving it fixes that; the moved copy drops the quarantine flag so it isn't translocated again (it's the copy that's already running, and its signature is checked after the copy).</li>
 <li><strong>Moved it by hand, or from an older build?</strong> If Open at login was on for a copy somewhere else, the copy in Applications takes the login item over at launch. A copy outside Applications never touches it.</li>
 </ul>
-<h2 id="its-own-hub">Its own hub <a class="anchor" href="#its-own-hub" aria-label="Link to this section">#</a></h2>
 <h2 id="its-built-in-hub">Its built-in hub <a class="anchor" href="#its-built-in-hub" aria-label="Link to this section">#</a></h2>
 <p>The app has a hub built in and runs it itself (<code>hub/needs_you_hub.py</code> with the Mac's <code>/usr/bin/python3</code>, as a child process that exits with the app). It listens on <code>127.0.0.1:8765</code>, and on the Mac's tailnet address whenever Tailscale is up (there's no separate switch; <strong>Settings… → Built-in hub</strong> shows the URL servers use, next to the <code>127.0.0.1</code> one). It provisions its own <code>owner</code> token, so there's nothing to configure. The built-in hub is optional: turn off <strong>Run hub on this Mac</strong> and the app shows alerts from a server hub instead (<a href="concepts.html#where-the-hub-runs-three-setups">the three setups</a>). The first time a server connects, macOS may ask whether <code>python3</code> may accept incoming connections: allow it.</p>
 <ul>
