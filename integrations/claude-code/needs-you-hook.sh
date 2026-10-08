@@ -757,6 +757,21 @@ def base_args(key, title, body, priority):
 
 QUESTION_POSTED = [None]  # the `question` field the last post carried (None: the steps form)
 
+# The variables by which the CLI tells it runs inside an agent's session (its agent_session),
+# and notes a `needs` item it posts as that agent's own blocker. The hook's card isn't one:
+# noted, it would hold back the next waiting card (own_item_open) whenever it is closed other
+# than by this hook's resolve (from the Mac, by expiry). Claude Code gives its hooks
+# CLAUDECODE and CLAUDE_CODE_SESSION_ID.
+SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_THREAD_ID",
+                "NEEDS_YOU_AGENT_SESSION", "GEMINI_CLI", "ORCA_TERMINAL_HANDLE")
+
+
+def cli_env():
+    env = {k: v for k, v in os.environ.items() if k not in SESSION_VARS}
+    if env.get("TERM") == "dumb":  # Kimi's commands (the CLI takes it for one)
+        del env["TERM"]
+    return env
+
 
 def post(args, links, steps=None, asked=None, steps_body=None):
     """Post the card. With `asked` (a question card): with its `question` field, and if the
@@ -777,7 +792,7 @@ def post(args, links, steps=None, asked=None, steps_body=None):
         try:
             return subprocess.run(args + [a for l in ls for a in ("--link", l)],
                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, timeout=15).returncode
+                                  stderr=subprocess.DEVNULL, timeout=15, env=cli_env()).returncode
         except Exception:
             return 1
     rc = run(links)

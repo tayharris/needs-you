@@ -9,8 +9,10 @@ with Claude Code 2.1.294 and a hub that answered after 3 s: idle_prompt at .242,
 UserPromptSubmit at .352 and its Stop at .410, the card posted 3 s later and left open.
 
 Also here: a post the CLI didn't finish (killed at the hook's 15 s limit, its request left in
-the outbox) still leaves a marker, so the reply resolves it. Temp HOME, fake CLI: nothing
-real is touched.
+the outbox) still leaves a marker, so the reply resolves it; and the hook's own card is never
+taken for "the agent's own item" (Claude Code gives hooks CLAUDECODE and
+CLAUDE_CODE_SESSION_ID, which the CLI reads to note an agent's items), which would hold back
+the next waiting card. Temp HOME, fake or offline CLI: nothing real is touched.
 """
 from __future__ import annotations
 
@@ -235,6 +237,53 @@ class WaitingResolve(unittest.TestCase):
         self.finish(p)
         self.assertEqual(self.calls(), [])
         self.assertFalse(os.path.exists(self.marker()))
+
+    # ---------------------------------------------------------------- the hook's own card
+
+    def test_hooks_card_is_not_noted_as_the_agents_own_item(self):
+        env_log = os.path.join(self.home, "env.log")
+        in_claude = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SESSION, "ORCA_TERMINAL_HANDLE": "term_0123abcd",
+                     "CODEX_SESSION_ID": "c", "NEEDS_YOU_AGENT_SESSION": "s", "GEMINI_CLI": "1", "TERM": "dumb",
+                     "FAKE_ENV_LOG": env_log}
+        self.finish(self.start(["notify"], {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                               **in_claude))
+        with open(env_log) as fh:
+            self.assertEqual(json.loads(fh.readline()), [])
+
+    def test_with_the_real_cli_the_next_waiting_card_still_posts(self):
+        # Claude Code gives its hooks CLAUDECODE and CLAUDE_CODE_SESSION_ID. The real CLI (hub
+        # down: queued) must not note the hook's card as the agent's own blocker for the session.
+        real = {"NEEDS_YOU_BIN": CLI, "NEEDS_YOU_URLS": "http://127.0.0.1:9", "NEEDS_YOU_TOKEN": "t",
+                "NEEDS_YOU_TIMEOUT": "1", "CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SESSION}
+        if not os.access(CLI, os.X_OK):
+            self.skipTest("cli/needs-you is not executable here")
+        self.finish(self.start(["notify"], {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                               **real))
+        items = os.path.join(self.home, ".local", "state", "needs-you", "session-items", SESSION)
+        self.assertEqual(os.listdir(items) if os.path.isdir(items) else [], [])
+        # so the card for the next wait isn't skipped as "the agent's own item is open"
+        before = len(self.calls())
+        self.finish(self.start(["notify"], {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                               CLAUDECODE="1", CLAUDE_CODE_SESSION_ID=SESSION))
+        self.assertEqual(len(self.calls()), before + 1)
+
+    def test_context_card_does_not_hold_back_waiting_cards(self):
+        # The low-priority "context is 80% full" card stays open for the rest of a long
+        # session. Noted as the agent's own item, it held back every waiting card after it.
+        real = {"NEEDS_YOU_BIN": CLI, "NEEDS_YOU_URLS": "http://127.0.0.1:9", "NEEDS_YOU_TOKEN": "t",
+                "NEEDS_YOU_TIMEOUT": "1", "CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SESSION}
+        if not os.access(CLI, os.X_OK):
+            self.skipTest("cli/needs-you is not executable here")
+        transcript = os.path.join(self.home, "t.jsonl")
+        with open(transcript, "w") as fh:
+            fh.write(json.dumps({"type": "assistant", "message": {
+                "model": "claude-x", "usage": {"input_tokens": 180000}}}) + "\n")
+        self.run_hook(["stop"], {"hook_event_name": "Stop", "transcript_path": transcript}, **real)
+        self.assertTrue(os.path.exists(self.marker(SESSION + ".context")))
+        before = len(self.calls())
+        self.finish(self.start(["notify"], {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                               CLAUDECODE="1", CLAUDE_CODE_SESSION_ID=SESSION))
+        self.assertEqual(len(self.calls()), before + 1)
 
 
 if __name__ == "__main__":
