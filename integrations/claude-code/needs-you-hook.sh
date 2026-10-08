@@ -13,12 +13,12 @@
 #
 # A second argument names the agent. Default: claude.
 #   codex    OpenAI Codex CLI (integrations/codex/, ~/.codex/hooks.json):
-#            PermissionRequest and Stop (the turn ended) call `notify`.
+#            PermissionRequest, PreToolUse for request_user_input (a question) and
+#            Stop (the turn ended) call `notify`.
 #   gemini   Gemini CLI (integrations/gemini/, ~/.gemini/settings.json):
-#            Notification (ToolPermission), BeforeTool for ask_user (the question) and
-#            AfterAgent call `notify`. Gemini
-#            waits for every hook, so the hook reads its input and finishes the
-#            work in the background.
+#            Notification (ToolPermission), BeforeTool for ask_user (a question) and
+#            AfterAgent call `notify`. Gemini waits for every hook, so the hook reads
+#            its input and finishes the work in the background.
 #   opencode opencode, through integrations/opencode/needs-you.js (a plugin that
 #            starts this hook with a small JSON object): PermissionRequest,
 #            Question and Stop (the session went idle) call `notify`.
