@@ -58,7 +58,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Claude Code event | Hook runs | What it does |
 |---|---|---|
 | `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. An `idle_prompt` or `agent_needs_input` posts nothing while the agent's own blocker from this session is open ([below](#one-card-for-one-wait)). |
-| `PermissionRequest` (any tool) | `notify` | Posts the session's card, titled by the tool: plan approval, a question, the program a command runs, the file an edit changes. Skipped when the request doesn't need your approval. |
+| `PermissionRequest` (any tool) | `notify` | Posts the session's card, titled by the tool: plan approval (with the plan's first lines), a question (with its text and choices), the program a command runs, the file an edit changes. Skipped when the request doesn't need your approval. |
 | `StopFailure` | `notify` | Posts the session's card, titled by the API error. |
 | `UserPromptSubmit`, `PostToolUse` | `resolve` | Resolves the session's card, if it posted one. |
 | `Stop` | `stop` | Resolves the session's card (except an API-error card), then checks how full the context is and posts, updates or resolves the context card. |
@@ -71,8 +71,8 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 |---|---|
 | Permission prompt for a command | **Claude wants to run git: my-repo** |
 | Permission prompt for an edit | **Claude wants to edit config.yml: my-repo** |
-| Plan ready (plan mode, `ExitPlanMode`) | **Approve Claude's plan: my-repo** |
-| Claude asks you a question (`AskUserQuestion`) | **Claude asked you a question: my-repo** |
+| Plan ready (plan mode, `ExitPlanMode`) | **Claude wants approval for a plan: my-repo**, the plan's first lines in the body |
+| Claude asks you a question (`AskUserQuestion`) | **Claude asks “Which database should we use?”: my-repo**, each choice a step (`and 1 more` for two questions) |
 | Any other permission prompt | **Claude needs permission for <tool>: my-repo** (MCP tools as `<server> <tool>`) |
 | Idle, waiting for your input | **Claude is waiting for you: my-repo** |
 | MCP server asks for input / a sign-in | **Claude needs an answer: my-repo** / **Claude needs you to sign in: my-repo** |
@@ -81,9 +81,11 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | Turn ended on an API error | **Claude hit a rate limit**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
 | Context at 80% or more (low priority, a card of its own) | **Claude's context is 85% full: my-repo**, suggesting `/compact` or `/clear` |
 
+A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Claude Code (the terminal, or the Terminal button); ticking a step on the Mac answers nothing. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). A question with several parts is one card: each part under its header, its choices prefixed with the header, at most 10 steps (`+N more choices` past that).
+
 `my-repo` is the basename of the project directory. Cards are kind `needs`, priority `normal` (the context card `low`), context `work` unless you set otherwise, and carry `--agent claude-code`.
 
-The body holds Claude's notification text, the directory and host, and where the session runs (tmux pane, VS Code, SSH, or the Orca worktree and its `orca terminal switch` command). No prompts, transcript or tool input are sent: a permission card names at most the program or the file's basename. Cards get buttons where the hook can name the place: the Mac terminal tab, the folder in VS Code on the Mac, a Remote-SSH window with `NEEDS_YOU_SSH_ALIAS`, the Claude tab for VS Code extension sessions, or the Orca terminal ([details](claude-code-everywhere.md#buttons)).
+The body holds Claude's notification text, the directory and host, and where the session runs (tmux pane, VS Code, SSH, or the Orca worktree and its `orca terminal switch` command). No prompts or transcript are sent, and no tool input beyond a question's text and choices or a plan's first lines (above): a permission card names at most the program or the file's basename. Cards get buttons where the hook can name the place: the Mac terminal tab, the folder in VS Code on the Mac, a Remote-SSH window with `NEEDS_YOU_SSH_ALIAS`, the Claude tab for VS Code extension sessions, or the Orca terminal ([details](claude-code-everywhere.md#buttons)).
 
 ### One card per session, cleared on its own
 

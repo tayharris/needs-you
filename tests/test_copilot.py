@@ -20,6 +20,7 @@ import tempfile
 import time
 import unittest
 
+from hook_case import fixture, posted_item
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -120,12 +121,28 @@ class CopilotHook(unittest.TestCase):
 
     def test_question_and_turn_end(self):
         argv = self.notification("elicitation_dialog", "Which color? %s" % SECRET, 1)
-        self.assertEqual(opt(argv, "--title"), "Copilot asked you a question: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Copilot asks \u201cWhich color? [redacted]\u201d: my-repo")
         self.run_hook("notify", {"transcriptPath": "/x/events.jsonl", "stopReason": "end_turn",
                                  "stop_hook_active": False})
         argv = self.wait_calls(2)[-1]
         self.assertEqual(opt(argv, "--title"), "Copilot is waiting for you: my-repo")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
+
+    def test_elicitation_from_the_payload(self):
+        # an MCP server's elicitation: the message is the question; there are no choices
+        data = fixture("copilot-elicitation-dialog.json")
+        data.update(sessionId=SESSION, cwd=self.cwd)
+        self.run_hook("notify", data)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"), "Copilot asks \u201cWhich Jira project should the issue go to?\u201d: my-repo")
+        self.assertTrue(opt(argv, "--body").startswith("Which Jira project should the issue go to?\n\nAnswer in Copilot."))
+        self.assertEqual(posted_item(argv)["steps"], [])
+        # Copilot's fallback text names no question: the plain card
+        self.notification("elicitation_dialog", "Information requested", 2)
+        self.assertEqual(opt(self.calls()[-1], "--title"), "Copilot asked you a question: my-repo")
+        self.notification("elicitation_dialog", "Which one?", 3)
+        self.run_hook("notify", dict(data, message="Which one?"), NEEDS_YOU_AGENT_QUESTIONS="0")
+        self.assertEqual(opt(self.wait_calls(4)[-1], "--title"), "Copilot asked you a question: my-repo")
 
     def test_turn_cards_can_be_turned_off_and_other_notifications_post_nothing(self):
         self.run_hook("notify", {"stopReason": "end_turn"}, NEEDS_YOU_AGENT_TURN_CARDS="0")

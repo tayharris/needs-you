@@ -21,6 +21,7 @@ import tempfile
 import time
 import unittest
 
+from hook_case import fixture, posted_item, step_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -133,29 +134,86 @@ class KimiHook(unittest.TestCase):
         self.assertEqual(opt(argv, "--title"), "Kimi wants to edit a.py: my-repo")
         argv = self.permission("FetchURL", {}, {"url": "https://example.com/?t=" + SECRET}, 4)
         self.assertEqual(opt(argv, "--title"), "Kimi wants to fetch a page: my-repo")
-        argv = self.permission("ExitPlanMode", {}, {"plan": SECRET}, 5)
-        self.assertEqual(opt(argv, "--title"), "Approve Kimi's plan: my-repo")
+        argv = self.permission("ExitPlanMode", {"kind": "plan_review", "plan": "Use %s" % SECRET}, {}, 5)
+        self.assertEqual(opt(argv, "--title"), "Kimi wants approval for a plan: my-repo")
+        self.assertIn("Use [redacted]", opt(argv, "--body"))
         argv = self.permission("mcp__github__create_issue", {}, {"body": SECRET}, 6)
         self.assertEqual(opt(argv, "--title"), "Kimi needs permission for github create_issue: my-repo")
         self.assertNotIn(SECRET, json.dumps(self.calls()))
+
+    def test_question_card_from_the_captured_payload(self):
+        data = fixture("kimi-ask-user-question.json")
+        data.update(session_id=SESSION, cwd=self.cwd)
+        subprocess.run([BASH, HOOK, "notify", "kimi"], input=json.dumps(data), env=self.env(),
+                       capture_output=True, text=True, timeout=30)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"),
+                         "Kimi asks \u201cWhich database should the service use?\u201d and 1 more: my-repo")
+        body = opt(argv, "--body")
+        self.assertTrue(body.startswith("**Database** \u00b7 choose one\nWhich database should the service use?"
+                                        "\n\n**Question 2** \u00b7 choose any\nWhich extras do you want?"), body)
+        self.assertIn("Answer in Kimi", body)
+        self.assertEqual(step_texts(argv), [
+            "Database: Postgres (Recommended) \u2014 Mature, already used by the team.",
+            "Database: SQLite \u2014 Zero ops, single file.", "Metrics", "Tracing \u2014 OpenTelemetry"])
+        self.assertEqual(self.marker()["kind"], "question")
+        # NEEDS_YOU_AGENT_QUESTIONS=0: the old card, no text, no steps
+        subprocess.run([BASH, HOOK, "notify", "kimi"], input=json.dumps(data),
+                       env=self.env(NEEDS_YOU_AGENT_QUESTIONS="0"), capture_output=True, text=True, timeout=30)
+        argv = self.wait_calls(2)[-1]
+        self.assertEqual(opt(argv, "--title"), "Kimi asked you a question: my-repo")
+        self.assertNotIn("database", json.dumps(argv).lower())
+        self.assertFalse(posted_item(argv)["steps"])
+
+    def test_plan_card_from_the_captured_payload(self):
+        data = fixture("kimi-exit-plan-mode.json")
+        data.update(session_id=SESSION, cwd=self.cwd)
+        subprocess.run([BASH, HOOK, "notify", "kimi"], input=json.dumps(data), env=self.env(),
+                       capture_output=True, text=True, timeout=30)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"), "Kimi wants approval for a plan: my-repo")
+        self.assertTrue(opt(argv, "--body").startswith("**Plan**\n1. Do the thing.\n\nApprove or reject it in Kimi."))
+        self.assertEqual(step_texts(argv), ["Small refactor (Recommended) \u2014 Touch two files.",
+                                            "Rewrite \u2014 Start over."])
+        self.assertEqual(self.marker()["kind"], "permission")
+
+    def test_huge_plan_through_the_background_copy(self):
+        # Kimi's hooks hand their work to a detached copy (setsid, or perl on macOS): a payload
+        # over 200 KB still reaches it and its Python, and leaves no file behind.
+        plan = "# Big plan\n\n" + "".join("%d. Step %s\n" % (i, "y" * 70) for i in range(3500))
+        self.assertGreater(len(plan), 200 * 1024)
+        tmp = os.path.join(self.home, "tmp")
+        os.makedirs(tmp)
+        self.run_hook("notify", "PermissionRequest", {
+            "tool_name": "ExitPlanMode", "tool_call_id": "c9", "tool_input": {},
+            "display": {"kind": "plan_review", "plan": plan}}, TMPDIR=tmp)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"), "Kimi wants approval for a plan: my-repo")
+        self.assertTrue(opt(argv, "--body").startswith("**Big plan**\n0. Step yyy"))
+        posted_item(argv)
+        self.marker()
+        self.assertEqual(os.listdir(tmp), [])
 
     def test_question_turn_end_and_failure(self):
         self.run_hook("notify", "PreToolUse", {"tool_name": "AskUserQuestion", "tool_call_id": "c2",
                                                "tool_input": {"questions": [{"question": SECRET}]}})
         argv = self.wait_calls(1)[-1]
-        self.assertEqual(opt(argv, "--title"), "Kimi asked you a question: my-repo")
+        self.assertEqual(opt(argv, "--title"), "Kimi asks \u201c[redacted]\u201d: my-repo")
         # PreToolUse for any other tool (a wider matcher by hand) posts nothing
         self.run_hook("notify", "PreToolUse", {"tool_name": "Bash", "tool_input": {"command": "ls"}})
         self.run_hook("notify", "Stop", {"stop_hook_active": False})
-        argv = self.wait_calls(2)[-1]
+        # the question card the turn ended under is resolved, then the turn-end card posts
+        calls = self.wait_calls(3)
+        self.assertEqual(calls[1][0], "resolve")
+        argv = calls[2]
         self.assertEqual(opt(argv, "--title"), "Kimi is waiting for you: my-repo")
         self.run_hook("notify", "StopFailure", {"error_type": "rate_limit", "error_message": "429 Too Many Requests"})
-        argv = self.wait_calls(3)[-1]
+        argv = self.wait_calls(4)[-1]
         self.assertEqual(opt(argv, "--title"), "Kimi stopped on an error: my-repo")
         self.assertIn("429 Too Many Requests", opt(argv, "--body"))
         self.assertEqual(self.marker()["kind"], "failure")
         time.sleep(0.3)
-        self.assertEqual(len(self.calls()), 3)
+        self.assertEqual(len(self.calls()), 4)
         self.assertNotIn(SECRET, json.dumps(self.calls()))
 
     def test_turn_cards_can_be_turned_off_and_opt_in_is_required(self):

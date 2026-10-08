@@ -8,6 +8,14 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "request_user_input",
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.codex/hooks/needs-you-hook.sh\" notify codex", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

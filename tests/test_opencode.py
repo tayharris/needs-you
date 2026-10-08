@@ -16,6 +16,7 @@ import tempfile
 import time
 import unittest
 
+from hook_case import fixture, step_texts
 from support import CLI, ROOT, free_port, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
@@ -170,6 +171,25 @@ console.log(JSON.stringify({ ms: Date.now() - t0 }))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertLess(json.loads(r.stdout)["ms"], 1000)  # never waits for the hook
         return r
+
+    def test_question_passes_through_the_plugin(self):
+        # question.asked as plugins get it: the plugin hands the hook the questions (only the
+        # fields the card uses), and the card names the question and its choices.
+        self.install()
+        event = fixture("opencode-question-asked.json")
+        event["properties"]["questions"][0]["question"] += " (key %s)" % SECRET
+        event["properties"]["questions"][0]["options"][0]["metadata"] = SECRET  # not a field it reads
+        self.drive([{"type": event["type"], "properties": event["properties"]}])
+        self.assertTrue(wait_until(lambda: len(self.calls()) >= 1, timeout=10))
+        argv = self.calls()[-1]
+        self.assertEqual(opt(argv, "--title"),
+                         "opencode asks \u201cWhich branch should the release come from? (key [redacted])\u201d "
+                         "and 1 more: my-repo")
+        self.assertIn("**Platforms** \u00b7 choose any\nWhich platforms?", opt(argv, "--body"))
+        self.assertEqual(step_texts(argv), [
+            "Branch: main \u2014 Everything merged today", "Branch: release/1.4 \u2014 Only the fixes",
+            "Platforms: macOS \u2014 arm64 and x64", "Platforms: Linux \u2014 x64", "Platforms: Windows \u2014 x64"])
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
 
     def test_events_post_and_resolve(self):
         self.install()

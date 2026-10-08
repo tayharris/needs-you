@@ -13,11 +13,12 @@
 #
 # A second argument names the agent. Default: claude.
 #   codex    OpenAI Codex CLI (integrations/codex/, ~/.codex/hooks.json):
-#            PermissionRequest and Stop (the turn ended) call `notify`.
+#            PermissionRequest, PreToolUse for request_user_input (a question) and
+#            Stop (the turn ended) call `notify`.
 #   gemini   Gemini CLI (integrations/gemini/, ~/.gemini/settings.json):
-#            Notification (ToolPermission) and AfterAgent call `notify`. Gemini
-#            waits for every hook, so the hook reads its input and finishes the
-#            work in the background.
+#            Notification (ToolPermission), BeforeTool for ask_user (a question) and
+#            AfterAgent call `notify`. Gemini waits for every hook, so the hook reads
+#            its input and finishes the work in the background.
 #   opencode opencode, through integrations/opencode/needs-you.js (a plugin that
 #            starts this hook with a small JSON object): PermissionRequest,
 #            Question and Stop (the session went idle) call `notify`.
@@ -108,6 +109,10 @@
 #                             the switch command gets --environment
 #   NEEDS_YOU_AGENT_TURN_CARDS  Codex, Gemini, opencode, Copilot, Grok, Kimi: 0 = no card when a turn ends,
 #                             just approval prompts (default: on)
+#   NEEDS_YOU_AGENT_QUESTIONS  0 = a question card says only "<Agent> asked you a
+#                             question" and a plan card shows no plan text (default:
+#                             the question, its choices as steps and the plan's first
+#                             lines, cleaned, token-shaped text redacted, clamped)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -264,7 +269,7 @@ fi
 for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK NEEDS_YOU_BIN \
            NEEDS_YOU_ORCA_ENVIRONMENT NEEDS_YOU_AGENT_EXPIRY_HOURS NEEDS_YOU_SSH_ALIAS \
            NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
-           NEEDS_YOU_AIDER_EXPIRY_HOURS; do
+           NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -419,14 +424,17 @@ resolve_marker() {
   log "resolve $k -> $?"
 }
 
-# The card builder and the context check share one python program (below).
+# The card builder and the context check share one python program (below). The program comes
+# on stdin; the hook input goes on fd 3 as a here-string, not in the environment, where one
+# variable is capped at about 128 KB (a big plan would post no card). Bash backs a here-string
+# with a pipe or a temp file it unlinks at once, so nothing is left behind if the hook is killed.
 run_py() {
   command -v python3 >/dev/null 2>&1 || { log "python3 not found"; return 1; }
   lease
-  NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
+  NY_MODE=$1 NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
   NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
-  python3 - 2>/dev/null <<'PY'
+  python3 - 2>/dev/null 3<<<"$input" <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
@@ -437,7 +445,8 @@ AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
             "copilot": "copilot-cli", "grok": "grok", "kimi": "kimi-code", "cursor": "cursor", "cline": "cline",
             "aider": "aider"}.get(AGENT, "claude-code")
 try:
-    data = json.loads(os.environ.get("NY_INPUT") or "{}")
+    with os.fdopen(3, encoding="utf-8", errors="replace") as _fh:
+        data = json.loads(_fh.read(16 * 1024 * 1024) or "{}")
 except Exception:
     data = {}
 if not isinstance(data, dict):
@@ -455,25 +464,6 @@ if not isinstance(data.get("cwd"), str):
 def field(name):
     v = data.get(name)
     return v if isinstance(v, str) else ""
-
-
-# Token-shaped text in the free text that reaches a card (an API error message, a
-# notification's message): the patterns of the CLI's `run` (cli/needs-you, _SECRET_*_RE).
-_SECRET_KV_RE = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key))"
-                           r"(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
-_SECRET_AUTH_RE = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{12,}")
-_SECRET_RAW_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}"
-                            r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|ny_[\w-]{20,}|nyi_[\w-]{10,})")
-
-
-def redact(text):
-    text = _SECRET_RAW_RE.sub("<redacted>", text)
-    text = _SECRET_KV_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", text)
-    return _SECRET_AUTH_RE.sub(lambda m: m.group(1) + m.group(2) + "<redacted>", text)
-
-
-def oneline(text, limit):
-    return redact(" ".join(str(text or "").split()))[:limit]
 
 
 event = field("hook_event_name")
@@ -703,7 +693,10 @@ def base_args(key, title, body, priority):
     return args
 
 
-def post(args, links):
+def post(args, links, steps=None):
+    if steps:
+        args = args + ["--steps-json=" + json.dumps(steps[:MAX_STEPS], ensure_ascii=False)]
+
     def run(ls):
         try:
             return subprocess.run(args + [a for l in ls for a in ("--link", l)],
@@ -722,6 +715,9 @@ def post(args, links):
     # The card matters more than its buttons, so post it once more without links.
     if rc == 2 and plain:
         rc = run([])
+    # A CLI or hub that refuses the steps: the question is in the body, post without them.
+    if rc == 2 and steps:
+        return post([a for a in args if not a.startswith("--steps-json=")], links)
     return rc
 
 
@@ -766,6 +762,184 @@ def tool_label(tool):
     return tool if re.match(r"^[A-Za-z][A-Za-z0-9_.-]{0,39}$", tool) else "a tool"
 
 
+# ---------------------------------------------------------------- questions
+# A question the agent asks goes on the card (ADR 0009, phase A): the question in the title and
+# body, each choice as a read-only step. Text from the agent can quote code or env, so it is
+# cleaned (no control or bidi characters), anything token-shaped is redacted, then clamped.
+# NEEDS_YOU_AGENT_QUESTIONS=0 keeps the old cards ("<Agent> asked you a question", no text).
+MAX_TITLE, MAX_BODY, MAX_STEPS, MAX_STEP = 100, 2000, 10, 200  # the hub's limits
+QUESTION_BUDGET = 1200  # of the body, for the question text: the "where" lines follow it
+_BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f­؜᠎​-‏ -‮"
+                        "⁠-⁩﻿]")
+_SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
+                         r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|nyi?_[A-Za-z0-9_-]{8,}"
+                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*)")
+_SECRET_KV = re.compile(r"(?i)\b((?:\w*[_-])?(?:token|password|passwd|secret|api[_-]?key|access[_-]?key"
+                        r"|auth|credentials?))(\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+_SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
+_PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
+_LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
+_LONG_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
+REDACTED = "[redacted]"
+
+
+def _long_run(m):
+    s = m.group(0)
+    # base64-ish: digits and both cases, few separators (not a path or a branch name)
+    if (len(re.findall(r"[-_/]", s)) <= 3 and re.search(r"[0-9]", s) and re.search(r"[a-z]", s)
+            and re.search(r"[A-Z]", s)):
+        return REDACTED
+    return s
+
+
+def redact(text):
+    text = _PEM.sub(REDACTED, text)
+    text = _SECRET_RAW.sub(REDACTED, text)
+    text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _LONG_HEX.sub(REDACTED, text)
+    return _LONG_RUN.sub(_long_run, text)
+
+
+def clamp(text, limit):
+    return text if len(text) <= limit else text[:max(0, limit - 1)].rstrip() + "…"
+
+
+def one_line(value, limit):
+    """Agent text for a title or a step: one line, cleaned, redacted, clamped."""
+    if not isinstance(value, str):
+        return ""
+    return clamp(" ".join(redact(_BAD_CHARS.sub(" ", value)).split()), limit)
+
+
+def text_block(value, limit, max_lines=8):
+    """Agent text for the body: up to max_lines non-blank lines, cleaned, redacted, clamped.
+    Markdown headings become bold lines and code fences go (the card renders inline markdown
+    only)."""
+    if not isinstance(value, str):
+        return ""
+    lines, more = [], False
+    for raw in redact(value.replace("\r\n", "\n").replace("\t", "    ")).split("\n"):
+        line = " ".join(_BAD_CHARS.sub(" ", raw).split())
+        if not line or re.match(r"^(```|~~~)", line):
+            continue
+        if len(lines) == max_lines:
+            more = True
+            break
+        h = re.match(r"^#{1,6}\s+(.+)$", line)
+        lines.append("**%s**" % h.group(1).strip("*# ") if h else line.replace("```", "'''"))
+    out = "\n".join(lines)
+    if more and len(out) < limit:
+        out += "\n…"
+    return clamp(out, limit)
+
+
+def questions_from(raw):
+    """[(header, question, [(label, description)], multi)] from a list of question objects
+    (Claude/Kimi AskUserQuestion, opencode's question.asked): unknown shapes are skipped."""
+    out = []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return out
+    for q in raw[:20]:
+        if isinstance(q, str):
+            q = {"question": q}
+        if not isinstance(q, dict):
+            continue
+        text = next((q[k] for k in ("question", "text", "prompt", "message") if isinstance(q.get(k), str)), "")
+        header = q.get("header") if isinstance(q.get("header"), str) else ""
+        opts = []
+        raw_opts = q.get("options") if isinstance(q.get("options"), list) else []
+        for o in raw_opts[:50]:
+            if isinstance(o, str):
+                o = {"label": o}
+            if not isinstance(o, dict):
+                continue
+            label = next((o[k] for k in ("label", "value", "title") if isinstance(o.get(k), str)), "")
+            desc = o.get("description") if isinstance(o.get("description"), str) else ""
+            if label.strip():
+                opts.append((label, desc))
+        if not opts and q.get("type") == "yesno":  # Gemini's yes/no question
+            opts = [("Yes", ""), ("No", "")]
+        multi = any(q.get(k) is True for k in ("multiSelect", "multi_select", "multiple"))
+        if text.strip() or opts:
+            out.append((header, text, opts, multi))
+    return out
+
+
+def questions_on():
+    return (os.environ.get("NEEDS_YOU_AGENT_QUESTIONS") or "").lower() not in ("0", "false", "no", "off")
+
+
+def share(counts, budget):
+    """How many options of each question fit in `budget` steps, dealt one at a time in turn."""
+    taken = [0] * len(counts)
+    while budget > 0 and any(t < c for t, c in zip(taken, counts)):
+        for i, c in enumerate(counts):
+            if budget > 0 and taken[i] < c:
+                taken[i] += 1
+                budget -= 1
+    return taken
+
+
+def question_card(name, questions):
+    """(what, msg, steps) for a card about `questions`, or None. `name` is the agent ("Claude")."""
+    if not questions:
+        return None
+    multi_q = len(questions) > 1
+    first = next((one_line(t, 300) for _, t, _, _ in questions if one_line(t, 300)), "")
+    if not first:
+        first = one_line(questions[0][0], 80)
+    if not first:
+        return None
+    more = " and %d more" % (len(questions) - 1) if multi_q else ""
+    room = MAX_TITLE - len('%s asks ""%s: ' % (name, more)) - min(len(project), 30)
+    what = "%s asks “%s”%s" % (name, clamp(first, max(20, room)), more)
+    per_q = max(150, QUESTION_BUDGET // len(questions))
+    parts = []
+    for i, (header, text, opts, multi) in enumerate(questions[:8]):
+        h = one_line(header, 60)
+        pick = ("choose any" if multi else "choose one") if opts else ""
+        label = h or ("Question %d" % (i + 1) if multi_q else "")
+        head = " · ".join(x for x in ("**%s**" % label if label else "", pick) if x)
+        parts.append("\n".join(x for x in (head, text_block(text, per_q)) if x))
+    if len(questions) > 8:
+        parts.append("+%d more questions" % (len(questions) - 8))
+    parts.append("Answer in %s; the choices below are what it offered." % name
+                 if any(q[2] for q in questions) else "Answer in %s." % name)
+    msg = clamp("\n\n".join(p for p in parts if p), QUESTION_BUDGET + 200)
+    return what, msg, choice_steps(name, questions)
+
+
+def choice_steps(name, questions):
+    """Each question's options as read-only steps ("Label — description"), prefixed with the
+    question's header when there are several, dealt in turn when they don't all fit."""
+    counts = [len(q[2]) for q in questions]
+    total = sum(counts)
+    taken = share(counts, total if total <= MAX_STEPS else MAX_STEPS - 1)
+    steps = []
+    for (header, _, opts, _), n in zip(questions, taken):
+        prefix = (one_line(header, 40) + ": ") if len(questions) > 1 and one_line(header, 40) else ""
+        for label, desc in opts[:n]:
+            text = prefix + one_line(label, 120)
+            d = one_line(desc, MAX_STEP)
+            if d:
+                text += " — " + d
+            steps.append({"text": clamp(text, MAX_STEP)})
+    if total > len(steps):
+        steps.append({"text": "+%d more choices in %s" % (total - len(steps), name)})
+    return steps
+
+
+def plan_card(name, plan):
+    """(what, msg) for a plan waiting for approval: its first lines, cleaned and redacted."""
+    what = "%s wants approval for a plan" % name
+    lines = text_block(plan, 900, max_lines=12) if questions_on() else ""
+    tail = "Approve or reject it in %s." % name
+    return what, ("%s\n\n%s" % (lines, tail)) if lines else "%s has a plan ready. %s" % (name, tail)
+
+
 # ---------------------------------------------------------------- notify
 PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
 
@@ -791,6 +965,15 @@ def codex_card():
         else:
             what = "Codex needs permission for %s" % tool_label(tool)
         return "permission", what, "Codex is asking to use %s." % tool_label(tool)
+    if event == "PreToolUse":
+        # request_user_input (Plan mode): no PermissionRequest for it, but PreToolUse has it all.
+        if field("tool_name") != "request_user_input":
+            return None
+        ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+        asked = question_card("Codex", questions_from(ti.get("questions"))) if questions_on() else None
+        if asked:
+            return ("question",) + asked
+        return "question", "Codex asked you a question", "Codex is waiting for your answer."
     if event == "Stop":
         if not turn_cards():
             return None
@@ -803,9 +986,10 @@ def turn_cards():
 
 
 def gemini_card():
-    """(kind, what, msg) for a Gemini CLI hook event, or None for no card. A ToolPermission
-    notification's details are Gemini's confirmation: type exec (rootCommand), edit
-    (fileName), mcp (serverName, toolName) or info."""
+    """(kind, what, msg[, steps]) for a Gemini CLI hook event, or None for no card. A
+    ToolPermission notification's details are Gemini's confirmation: type exec (rootCommand),
+    edit (fileName), mcp (serverName, toolName), info, ask_user or exit_plan_mode. An ask_user
+    confirmation carries no question; BeforeTool (matcher ^ask_user$) has it in tool_input."""
     if event == "Notification":
         if ntype != "ToolPermission":
             return None
@@ -823,9 +1007,21 @@ def gemini_card():
             what = "Gemini needs permission for %s" % tool_label("mcp__%s__%s" % (server, tool))
         elif t == "info":
             what = "Gemini wants to fetch a page"
+        elif t == "ask_user":
+            return None  # its BeforeTool hook posted the question with its choices
+        elif t == "exit_plan_mode":
+            what = "Gemini wants approval for a plan"
         else:
             what = "Gemini needs your approval"
         return "permission", what, "Gemini is waiting for you to approve a tool call."
+    if event == "BeforeTool":
+        if field("tool_name") != "ask_user":
+            return None
+        ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+        asked = question_card("Gemini", questions_from(ti.get("questions"))) if questions_on() else None
+        if asked:
+            return ("question",) + asked
+        return "question", "Gemini asked you a question", "Gemini is waiting for your answer."
     if event == "AfterAgent":
         if not turn_cards():
             return None
@@ -855,7 +1051,10 @@ def opencode_card():
             what = "opencode needs permission for %s" % tool_label(perm)
         return "permission", what, "opencode is waiting for you to allow or deny it."
     if event == "Question":
-        return "notify", "opencode asked you a question", "opencode is waiting for your answer."
+        asked = question_card("opencode", questions_from(data.get("questions"))) if questions_on() else None
+        if asked:
+            return ("question",) + asked
+        return "question", "opencode asked you a question", "opencode is waiting for your answer."
     if event == "Stop":
         if not turn_cards():
             return None
@@ -881,7 +1080,7 @@ def grok_card():
         what = {"rate_limit": "Grok hit a rate limit",
                 "authentication_failed": "Grok needs you to sign in again",
                 "billing_error": "Grok stopped on a billing problem"}.get(field("error"), "Grok stopped on an error")
-        err = oneline(field("error_message"), 300)
+        err = one_line(field("error_message"), 300)
         return "failure", what, ((err + "\n\n") if err else "") + \
             "The turn ended and won't continue on its own; send a message to retry."
     return None
@@ -906,21 +1105,29 @@ def kimi_card():
         elif tool in ("FetchURL", "WebFetch"):
             what = "Kimi wants to fetch a page"
         elif tool == "ExitPlanMode":
-            return "permission", "Approve Kimi's plan", "Kimi has a plan ready and is waiting for your approval."
+            # The plan is in display (read from the plan file), with the options the agent offers
+            # (2-3, besides Kimi's own Reject and Revise) when there is more than one.
+            what, msg = plan_card("Kimi", d.get("plan") or ti.get("plan"))
+            opts = questions_from([{"options": d.get("options") or ti.get("options")}]) if questions_on() else []
+            steps = choice_steps("Kimi", opts)
+            return "permission", what, msg, steps
         else:
             what = "Kimi needs permission for %s" % tool_label(tool)
         return "permission", what, "Kimi is waiting for you to approve or reject it."
     if event == "PreToolUse":
         # Kimi approves AskUserQuestion by itself, so there is no PermissionRequest for it.
         if tool == "AskUserQuestion":
-            return "notify", "Kimi asked you a question", "Kimi is waiting for your answer."
+            asked = question_card("Kimi", questions_from(ti.get("questions"))) if questions_on() else None
+            if asked:
+                return ("question",) + asked
+            return "question", "Kimi asked you a question", "Kimi is waiting for your answer."
         return None
     if event == "Stop":
         if not turn_cards():
             return None
         return "notify", "Kimi is waiting for you", "Kimi finished its turn and is waiting for your next message."
     if event == "StopFailure":
-        err = oneline(field("error_message"), 300)
+        err = one_line(field("error_message"), 300)
         return "failure", "Kimi stopped on an error", ((err + "\n\n") if err else "") + \
             "The turn ended and won't continue on its own; send a message to retry."
     return None
@@ -941,7 +1148,13 @@ def copilot_card():
             what = "Copilot needs your approval"
         return "permission", what, "Copilot is waiting for you to allow or deny it."
     if ntype == "elicitation_dialog":
-        return "notify", "Copilot asked you a question", "Copilot is waiting for your answer."
+        # An MCP server's request for input: the message is its question (no choices here).
+        msg = field("message")
+        asked = (question_card("Copilot", questions_from([msg]))
+                 if questions_on() and msg != "Information requested" else None)
+        if asked:
+            return ("question",) + asked
+        return "question", "Copilot asked you a question", "Copilot is waiting for your answer."
     if not ntype and "stopReason" in data:
         if not turn_cards():
             return None
@@ -990,13 +1203,15 @@ def aider_card():
 def notify():
     priority = agent_priority()
     kind = "notify"
+    steps = []
     if AGENT in ("codex", "gemini", "opencode", "copilot", "grok", "kimi", "cursor", "cline", "aider"):
         card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
                 "copilot": copilot_card, "grok": grok_card, "kimi": kimi_card, "cursor": cursor_card,
                 "cline": cline_card, "aider": aider_card}[AGENT]()
         if card is None:
             return 3
-        kind, what, msg = card
+        kind, what, msg = card[:3]
+        steps = card[3] if len(card) > 3 else []
     elif event == "PermissionRequest":
         if data.get("requires_user_approval") is False:
             return 3
@@ -1004,9 +1219,10 @@ def notify():
         tool = field("tool_name")
         ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
         if tool == "ExitPlanMode":
-            what, msg = "Approve Claude's plan", "Claude has a plan ready and is waiting for your approval."
+            what, msg = plan_card("Claude", ti.get("plan"))
         elif tool == "AskUserQuestion":
-            what, msg = "Claude asked you a question", "Claude is waiting for your answer."
+            asked = question_card("Claude", questions_from(ti.get("questions"))) if questions_on() else None
+            what, msg, steps = asked or ("Claude asked you a question", "Claude is waiting for your answer.", [])
         elif tool in ("Bash", "PowerShell"):
             word = command_word(ti.get("command"))
             what = "Claude wants to run %s" % word if word else "Claude wants to run a command"
@@ -1031,7 +1247,7 @@ def notify():
             "max_output_tokens": "Claude stopped at its output limit",
             "model_not_found": "Claude stopped: model not found",
         }.get(et, "Claude stopped on an API error")
-        err = oneline(field("error_message"), 300)
+        err = one_line(field("error_message"), 300)
         msg = ((err + "\n\n") if err else "") + "The turn ended and won't continue on its own; send a message to retry."
     else:
         prior = read_marker(os.environ["NY_MARKER"]).get("kind")
@@ -1047,12 +1263,12 @@ def notify():
             "agent_needs_input": "Claude needs your input",
             "quota_auto_resume_disabled": "Claude hit its usage limit",
         }.get(ntype, "Claude needs you")
-        msg = oneline(data.get("message"), 400)
+        msg = one_line(data.get("message"), 400)
         if ntype == "quota_auto_resume_disabled":
             kind = "failure"
     title = "%s: %s" % (what, project)
     body = "\n\n".join(([msg] if msg else []) + where_lines())
-    rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links())
+    rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links(), steps)
     if rc == 0:
         sys.stdout.write(kind)
     return rc
@@ -1286,6 +1502,14 @@ case "$mode" in
     # as notificationType) and Kimi (Stop).
     ntype=$(json_str notification_type)
     [ -n "$ntype" ] || ntype=$(json_str notificationType)
+    # A question card the turn ended under no longer applies: the question was answered (its
+    # PostToolUse resolves first) or never shown (Codex refuses request_user_input outside Plan
+    # mode after its PreToolUse ran; Kimi's auto mode denies AskUserQuestion). Clear it here, so
+    # it doesn't outlive the turn when no "waiting" card replaces it.
+    case "$agent:$(json_str hook_event_name)" in
+      codex:Stop|kimi:Stop|gemini:AfterAgent)
+        grep -qs '^kind=question$' "$marker" && resolve_marker "$marker" "$key" ;;
+    esac
     case "$agent:$ntype:$(json_str hook_event_name)" in
       claude:idle_prompt:*|claude:agent_needs_input:*|grok:idle_prompt:*|kimi::Stop|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
         if own_item_open; then

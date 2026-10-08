@@ -7,7 +7,7 @@
 // object on stdin, then returns at once:
 //
 //   permission.asked                       notify  (PermissionRequest)
-//   question.asked                         notify  (Question)
+//   question.asked                         notify  (Question, with its questions)
 //   session.status idle / session.idle     notify  (Stop: the turn ended)
 //   permission.replied, question.replied,
 //   question.rejected, session.status busy resolve
@@ -27,6 +27,20 @@ const HOOK =
 
 function str(v) {
   return typeof v === "string" ? v : ""
+}
+
+// The question and its choices, for the card (the hook cleans, redacts and clamps them):
+// only these fields, and only so much of each, so the hook's input stays small.
+function questions(list) {
+  if (!Array.isArray(list)) return []
+  return list.slice(0, 10).filter((q) => q && typeof q === "object").map((q) => ({
+    question: str(q.question).slice(0, 2000),
+    header: str(q.header).slice(0, 200),
+    options: (Array.isArray(q.options) ? q.options : []).slice(0, 20)
+      .filter((o) => o && typeof o === "object")
+      .map((o) => ({ label: str(o.label).slice(0, 200), description: str(o.description).slice(0, 400) })),
+    multiple: q.multiple === true,
+  }))
 }
 
 // One hook at a time per session, in event order, so a reply's resolve never overtakes
@@ -105,7 +119,7 @@ export const NeedsYou = async ({ directory, worktree }) => {
             break
           }
           case "question.asked":
-            notify(sid, { hook_event_name: "Question" })
+            notify(sid, { hook_event_name: "Question", questions: questions(p.questions) })
             break
           case "session.idle":
             notify(sid, { hook_event_name: "Stop" })

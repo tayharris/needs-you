@@ -27,13 +27,13 @@ It writes `plugins/needs-you.js` and `hooks/needs-you-hook.sh` there (opencode l
 | opencode event | Hook mode | Action |
 |---|---|---|
 | `permission.asked` | `notify opencode` | **opencode wants to run git** (`bash`: the program from the first pattern), **opencode wants to edit main.ts** (`edit`), **opencode wants to fetch a page**, **opencode wants to use a folder outside the project**, else **opencode needs permission for <permission>** |
-| `question.asked` | `notify opencode` | **opencode asked you a question** |
+| `question.asked` | `notify opencode` | **opencode asks “<question>”**, the questions in the body and each choice as a read-only step |
 | `session.status` idle, `session.idle` | `notify opencode` | **opencode is waiting for you** (once per idle; `NEEDS_YOU_AGENT_TURN_CARDS=0` turns these off) |
 | `permission.replied`, `question.replied`, `question.rejected`, `session.status` busy | `resolve opencode` | resolves the session's card |
 | `session.deleted` | `end opencode` | resolves it |
 
 - The plugin starts the hook only for sessions it posted a card for, so busy events cost nothing otherwise. It never awaits the hook, never throws, and has no permission hook, so it can't change a decision.
-- The hook gets the session id, the project directory, the permission name and up to five patterns on stdin. The card keeps at most a program name or a file's basename; patterns, metadata, questions and answers are never sent.
+- The hook gets the session id, the project directory, the permission name and up to five patterns on stdin. The card keeps at most a program name or a file's basename; patterns, metadata and answers are never sent. For a question the plugin passes each question's text, header, options (label, description) and `multiple`, each cut to a fixed length; the hook cleans them, redacts anything token-shaped and clamps them (`NEEDS_YOU_AGENT_QUESTIONS=0` keeps them off the card).
 - **Key:** `agent:<host>:<session id>` (or the Orca terminal handle). **Source:** `--agent opencode`.
 - Its `shell.env` hook sets `NEEDS_YOU_AGENT_SESSION=<session id>` for the agent's shell commands (nothing else), so a `needs-you add` the agent runs itself is noted for its session and the **opencode is waiting for you** card is skipped while that item is open (one card for one wait, see [the Claude Code hooks](../claude-code/README.md)).
 - The hook is a child of the opencode process, so its lease points at opencode and the 5-minute `needs-you flush` clears the card of an opencode that died. A one-shot `opencode run` exits as soon as it goes idle; the hook sees opencode gone and posts no "waiting" card for it.

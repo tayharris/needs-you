@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 
+from hook_case import fixture, posted_item, step_texts
 from support import CLI, ROOT, hubmod
 
 BASH = shutil.which("bash") or "/bin/bash"
@@ -98,16 +99,121 @@ class PermissionTests(HookHarness):
 
     def test_plan_approval(self):
         argv = self.permission("ExitPlanMode", {"plan": "1. leak %s" % SECRET})
-        self.assertEqual(self.opt(argv, "--title"), "Approve Claude's plan: my-repo")
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants approval for a plan: my-repo")
         self.assertTrue(self.opt(argv, "--key").endswith(":sess-1234-abcd"))
-        self.assertNotIn("leak", json.dumps(argv))
+        self.assertTrue(self.opt(argv, "--body").startswith("1. leak [redacted]\n\nApprove or reject it in Claude."))
         self.assert_clean(argv)
         self.assertEqual(self.marker()["kind"], "permission")
+        # no plan text (an older Claude, or no plan file): the card still says what it is
+        argv = self.permission("ExitPlanMode", {})
+        self.assertTrue(self.opt(argv, "--body").startswith("Claude has a plan ready. Approve or reject it in Claude."))
+        argv = self.permission("ExitPlanMode", {"plan": "1. leak %s" % SECRET}, NEEDS_YOU_AGENT_QUESTIONS="0")
+        self.assertNotIn("leak", json.dumps(argv))
+
+    def test_plan_from_the_captured_payload(self):
+        data = fixture("claude-exit-plan-mode.json")
+        data.update(session_id="sess-1234-abcd", cwd=self.cwd)
+        self.run_hook("notify", data)
+        argv = self.last()
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants approval for a plan: my-repo")
+        body = self.opt(argv, "--body")
+        lines = body.split("\n\n")[0].split("\n")
+        self.assertEqual(lines[:3], ["**Add a cache layer**", "**Steps**", "1. Add `CacheClient` in `src/cache.ts`."])
+        self.assertIn("const client = new CacheClient", body)  # the fence lines are gone, the code stays
+        self.assertNotIn("```", body)
+        self.assertEqual(len(lines), 13)  # 12 lines, then an ellipsis
+        self.assertEqual(lines[-1], "\u2026")
+        self.assertNotIn("ACME-123", body)
+        self.assertNotIn("plans/", body)  # never the plan file's path
+        posted_item(argv)
+
+    def test_huge_plan_still_posts_a_clamped_card(self):
+        # Over 200 KB: too big for one environment variable (about 128 KB on Linux), so the
+        # hook hands the payload to its Python on a file descriptor instead.
+        plan = "# Big plan\n\n" + "".join("%d. Step with some detail %s\n" % (i, "x" * 60) for i in range(4000))
+        self.assertGreater(len(plan), 200 * 1024)
+        argv = self.permission("ExitPlanMode", {"plan": plan})
+        self.assertEqual(self.opt(argv, "--title"), "Claude wants approval for a plan: my-repo")
+        body = self.opt(argv, "--body")
+        self.assertTrue(body.startswith("**Big plan**\n0. Step with some detail"), body[:80])
+        self.assertLessEqual(len(body), 2000)
+        posted_item(argv)
 
     def test_question(self):
         argv = self.permission("AskUserQuestion", {"questions": [{"question": "Use %s?" % SECRET}]})
-        self.assertEqual(self.opt(argv, "--title"), "Claude asked you a question: my-repo")
+        self.assertEqual(self.opt(argv, "--title"), "Claude asks \u201cUse [redacted]?\u201d: my-repo")
         self.assert_clean(argv)
+        self.assertEqual(self.marker()["kind"], "permission")
+        argv = self.permission("AskUserQuestion", {"questions": [{"question": "Use %s?" % SECRET}]},
+                               NEEDS_YOU_AGENT_QUESTIONS="0")
+        self.assertEqual(self.opt(argv, "--title"), "Claude asked you a question: my-repo")
+        self.assertNotIn("Use", self.opt(argv, "--body"))
+        # nothing usable in it: the plain card
+        argv = self.permission("AskUserQuestion", {"questions": "nope"})
+        self.assertEqual(self.opt(argv, "--title"), "Claude asked you a question: my-repo")
+
+    def test_question_from_the_captured_payload(self):
+        data = fixture("claude-ask-user-question.json")
+        data.update(session_id="sess-1234-abcd", cwd=self.cwd)
+        self.run_hook("notify", data)
+        argv = self.last()
+        self.assertEqual(self.opt(argv, "--title"),
+                         "Claude asks \u201cWhich database should we use?\u201d and 1 more: my-repo")
+        self.assertTrue(self.opt(argv, "--body").startswith(
+            "**Database** \u00b7 choose one\nWhich database should we use?\n\n"
+            "**Features** \u00b7 choose any\nWhich features?\n\n"
+            "Answer in Claude; the choices below are what it offered.\n\n`"), self.opt(argv, "--body"))
+        self.assertEqual(step_texts(argv), [
+            "Database: Postgres \u2014 Relational, robust", "Database: SQLite \u2014 Embedded, simple",
+            "Features: Auth \u2014 Login", "Features: Search \u2014 Full text", "Features: Export \u2014 CSV"])
+        # the permission_prompt notification that follows ~6 s later keeps this card
+        n = len(self.calls())
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                 "message": "Claude needs your permission"})
+        self.assertEqual(len(self.calls()), n)
+
+    def test_single_question_has_no_header_prefix(self):
+        argv = self.permission("AskUserQuestion", {"questions": [{
+            "question": "Ship it?", "header": "Ship", "multiSelect": False,
+            "options": [{"label": "Yes", "description": "Now"}, {"label": "No", "description": ""}]}]})
+        self.assertEqual(self.opt(argv, "--title"), "Claude asks \u201cShip it?\u201d: my-repo")
+        self.assertEqual(step_texts(argv), ["Yes \u2014 Now", "No"])
+
+    def test_question_limits(self):
+        # 4 questions of 4 options (Claude's maximum), long text everywhere: within the hub's
+        # limits, every question keeps some choices, and the last step counts the rest.
+        long = "word " * 300
+        qs = [{"question": "Q%d %s" % (i, long), "header": "H%d %s" % (i, long), "multiSelect": i % 2 == 1,
+               "options": [{"label": "L%d%d %s" % (i, j, long), "description": "D %s" % long} for j in range(4)]}
+              for i in range(4)]
+        argv = self.permission("AskUserQuestion", {"questions": qs})
+        item = posted_item(argv)  # raises if the hub would refuse it
+        self.assertLessEqual(len(item["title"]), 100)
+        self.assertTrue(item["title"].startswith("Claude asks \u201cQ0 word"))
+        self.assertTrue(item["title"].endswith("\u201d and 3 more: my-repo"), item["title"])
+        texts = [s["text"] for s in item["steps"]]
+        self.assertEqual(len(texts), 10)
+        self.assertEqual(texts[-1], "+7 more choices in Claude")
+        for i in range(4):
+            self.assertTrue(any(t.startswith("H%d " % i) for t in texts[:-1]), texts)
+        self.assertTrue(all(len(t) <= 200 for t in texts))
+        self.assertIn("Session `sess-123`", item["body"])  # the where lines survive the clamp
+
+    def test_question_text_is_cleaned_and_redacted(self):
+        nasty = ("Deploy with\x07 \u202eevil\u202c token=%s and Authorization: Bearer abcdefghijklmnop "
+                 "key ghp_%s and ny_%s, invite nyi_%s, sha %s, blob %s, and a branch "
+                 "feature/ACME-123-add-a-new-flag-for-the-UserService2 stays"
+                 % (SECRET, "A" * 36, "b" * 30, "c" * 20, "0123456789abcdef" * 4,
+                    "QWxhZGRpbjpvcGVuIHNlc2FtZQ0123456789abcdefXYZ"))
+        argv = self.permission("AskUserQuestion", {"questions": [{
+            "question": nasty + "\n-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----",
+            "header": "password: hunter2", "options": [{"label": "sk-%s" % ("x" * 30), "description": nasty}]}]})
+        text = "\n".join(argv)  # raw, so escapes don't hide a character
+        for leak in (SECRET, "abcdefghijklmnop", "A" * 36, "b" * 30, "c" * 20, "0123456789abcdef" * 4,
+                     "QWxhZGRpbjpvcGVuIHNlc2FtZQ", "MIIEow", "hunter2", "x" * 30, "\u202e", "\u0007"):
+            self.assertNotIn(leak, text)
+        self.assertIn("UserService2 stays", text)
+        posted_item(argv)
 
     def test_bash_names_only_the_program(self):
         argv = self.permission("Bash", {"command": "TOKEN=%s sudo -E /usr/bin/curl -H 'Authorization: Bearer %s' x"

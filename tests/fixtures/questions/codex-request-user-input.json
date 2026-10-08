@@ -1,0 +1,25 @@
+{
+  "_source": "Codex CLI 0.161.0, live capture (fake Responses server, temp CODEX_HOME), Plan mode; transcript_path and cwd replaced",
+  "session_id": "01a1199c-0000-7000-8000-000000000001",
+  "turn_id": "01a1199c-0000-7000-8000-000000000002",
+  "transcript_path": "/home/me/.codex/sessions/rollout.jsonl",
+  "cwd": "/home/me/src/my-repo",
+  "hook_event_name": "PreToolUse",
+  "model": "gpt-5.5",
+  "permission_mode": "default",
+  "tool_name": "request_user_input",
+  "tool_input": {
+    "questions": [
+      {
+        "id": "db_choice",
+        "header": "Database",
+        "question": "Which database should the service use?",
+        "options": [
+          {"label": "Postgres (Recommended)", "description": "Mature, already used by the team."},
+          {"label": "SQLite", "description": "Zero ops, single file."}
+        ]
+      }
+    ]
+  },
+  "tool_use_id": "call_q1"
+}

@@ -62,10 +62,12 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <tr><td>Approve an edit</td><td><strong>Gemini wants to edit app.py: my-repo</strong></td></tr>
 <tr><td>Approve an MCP tool</td><td><strong>Gemini needs permission for github create_pr: my-repo</strong></td></tr>
 <tr><td>Approve a web fetch</td><td><strong>Gemini wants to fetch a page: my-repo</strong></td></tr>
+<tr><td>A question (<code>ask_user</code>)</td><td><strong>Gemini asks “Which test runner should the new package use?”: my-repo</strong>, each choice a step</td></tr>
+<tr><td>A plan to approve</td><td><strong>Gemini wants approval for a plan: my-repo</strong></td></tr>
 <tr><td>Turn finished, waiting for you</td><td><strong>Gemini is waiting for you: my-repo</strong></td></tr>
 </tbody>
 </table></div>
-<p>One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval cards.</p>
+<p>One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Gemini CLI; ticking a step on the Mac answers nothing. <code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps question text off the card (<a data-repo="/blob/main/docs/adr/0009-questions-on-cards.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0009-questions-on-cards.md">ADR 0009</a>). <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the approval cards.</p>
 <p><strong>Trusted folders only.</strong> Gemini CLI runs no hooks at all, the needs-you ones included, in a folder you haven't trusted (folder trust is on by default). Trust a project when Gemini asks, or turn folder trust off with <code>"security": {"folderTrust": {"enabled": false}}</code> in <code>~/.gemini/settings.json</code>.</p>
 <p>If you <strong>deny</strong> an approval (Esc, or "No, suggest changes"), Gemini runs no hook, so that card stays until your next prompt or the end of the session.</p>
 <h2 id="tell-gemini-cli-when-to-post-optional">Tell Gemini CLI when to post (optional) <a class="anchor" href="#tell-gemini-cli-when-to-post-optional" aria-label="Link to this section">#</a></h2>

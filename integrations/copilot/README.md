@@ -32,7 +32,7 @@ The file uses Copilot's camelCase events, whose payloads name the session `sessi
 | Copilot event | Hook mode | Action |
 |---|---|---|
 | `notification`, matcher `permission_prompt` | `notify copilot` | `needs-you add`: **Copilot wants to run make** (the program from the message `Run command: …`), **Copilot wants to fetch a page** (`Fetch URL: …`), else **Copilot needs your approval** |
-| `notification`, matcher `elicitation_dialog` | `notify copilot` | `needs-you add`: **Copilot asked you a question** |
+| `notification`, matcher `elicitation_dialog` | `notify copilot` | `needs-you add`: **Copilot asks “<the MCP server's message>”** (redacted, clamped), else **Copilot asked you a question** |
 | `agentStop` | `notify copilot` | `needs-you add`: **Copilot is waiting for you** (the turn ended). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only permission and question cards |
 | `userPromptSubmitted`, `postToolUse`, `postToolUseFailure` | `resolve copilot` | `needs-you resolve`, only if this session posted something |
 | `sessionEnd` | `end copilot` | resolves the session's card |

@@ -41,8 +41,8 @@ One card per session, keyed `agent:<host>:<session>` (in Orca, the terminal hand
 |---|---|
 | Wants to run a command | **Claude wants to run git: my-repo** (the program's name only) |
 | Wants to edit a file | **Claude wants to edit config.yml: my-repo** (the file's name only) |
-| Has a plan ready (plan mode) | **Approve Claude's plan: my-repo** |
-| Asked you a question | **Claude asked you a question: my-repo** |
+| Has a plan ready (plan mode) | **Claude wants approval for a plan: my-repo**, with the plan's first lines |
+| Asked you a question | **Claude asks “Which database should we use?”: my-repo**, with its choices |
 | Another permission prompt | **Claude needs permission for github create_issue: my-repo** |
 | Idle, waiting for input | **Claude is waiting for you: my-repo** |
 | Stopped on an API error | **Claude hit a rate limit: my-repo**, **Claude stopped on an API error: my-repo**, ... |

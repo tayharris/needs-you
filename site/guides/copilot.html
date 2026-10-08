@@ -60,11 +60,11 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env   # every sessi
 <tr><td>Permission for a shell command</td><td><strong>Copilot wants to run make: my-repo</strong></td></tr>
 <tr><td>Permission to fetch a page</td><td><strong>Copilot wants to fetch a page: my-repo</strong></td></tr>
 <tr><td>Any other permission prompt</td><td><strong>Copilot needs your approval: my-repo</strong></td></tr>
-<tr><td>A question for you</td><td><strong>Copilot asked you a question: my-repo</strong></td></tr>
+<tr><td>An MCP server asks you something</td><td><strong>Copilot asks “Which Jira project should the issue go to?”: my-repo</strong></td></tr>
 <tr><td>Turn finished, waiting for you</td><td><strong>Copilot is waiting for you: my-repo</strong></td></tr>
 </tbody>
 </table></div>
-<p>One card per session, updated in place. Command lines, URLs, questions, prompts and tool output aren't sent: a card names at most the program. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the permission and question cards.</p>
+<p>One card per session, updated in place. Command lines, URLs, prompts and tool output aren't sent: a permission card names at most the program. An MCP server's question (<code>elicitation_dialog</code>) is on its card, cleaned, token-shaped text redacted and clamped (<code>NEEDS_YOU_AGENT_QUESTIONS=0</code> keeps it off). <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> keeps only the permission and question cards.</p>
 <p>If you <strong>cancel</strong> a permission prompt with Esc, Copilot runs no hook, so that card stays until your next prompt or the end of the session.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "copilot hooks" line should be OK

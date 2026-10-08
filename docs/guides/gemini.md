@@ -37,9 +37,11 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Approve an edit | **Gemini wants to edit app.py: my-repo** |
 | Approve an MCP tool | **Gemini needs permission for github create_pr: my-repo** |
 | Approve a web fetch | **Gemini wants to fetch a page: my-repo** |
+| A question (`ask_user`) | **Gemini asks “Which test runner should the new package use?”: my-repo**, each choice a step |
+| A plan to approve | **Gemini wants approval for a plan: my-repo** |
 | Turn finished, waiting for you | **Gemini is waiting for you: my-repo** |
 
-One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval cards.
+One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. A question's text and choices are on the card: the question (cleaned, anything token-shaped redacted, clamped) in the title and body, each choice as a read-only step. Answer in Gemini CLI; ticking a step on the Mac answers nothing. `NEEDS_YOU_AGENT_QUESTIONS=0` keeps question text off the card ([ADR 0009](../adr/0009-questions-on-cards.md)). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval cards.
 
 **Trusted folders only.** Gemini CLI runs no hooks at all, the needs-you ones included, in a folder you haven't trusted (folder trust is on by default). Trust a project when Gemini asks, or turn folder trust off with `"security": {"folderTrust": {"enabled": false}}` in `~/.gemini/settings.json`.
 

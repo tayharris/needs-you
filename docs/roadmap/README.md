@@ -23,6 +23,7 @@ Plans, and the record of plans that are built. Each file's status line says what
 | [sharing-checklist.md](sharing-checklist.md) | Public | Developer ID, self-hosted runners on a public repo, a fresh-user run |
 | [launch-prep.md](launch-prep.md) | Mostly built | A donate link, repo topics and a social preview image |
 | [fresh-user-test-plan.md](fresh-user-test-plan.md) | Not run yet | Install from a release on a second Mac or user account |
+| [questions.md](questions.md) | Research done; phase A built | What each agent's hooks carry when it asks a question, and which can answer. Left: [ADR 0009](../adr/0009-questions-on-cards.md) phase B (a `question` field, answering from the card) |
 
 ## Done, kept for the record
 
