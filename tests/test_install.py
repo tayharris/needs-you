@@ -168,7 +168,7 @@ class InstallScript(HubTestCase):
 
     def test_uninstall_and_linux_cron(self):
         inv = self.invite(uses=1)
-        r = self.install(inv, "--yes", "--host", "lin", STUB_UNAME="Linux")
+        r = self.install(inv, "--yes", "--host", "lin", STUB_UNAME="Linux", SHELL="/bin/sh")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(self.cron) as fh:
             cron = fh.read()
@@ -189,6 +189,8 @@ class InstallScript(HubTestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(self.cron) as fh:
             self.assertEqual(fh.read().strip(), "0 1 * * * other-job")
+        with open(os.path.join(self.home, ".profile")) as fh:  # it made it: no blank line left in it
+            self.assertEqual(fh.read(), "")
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
         self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you")))
@@ -278,7 +280,7 @@ class InstallScript(HubTestCase):
         r = self.install(inv, "--uninstall", SHELL="/bin/zsh", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(zshrc) as fh:
-            self.assertEqual(fh.read().strip(), "alias ll='ls -l'")
+            self.assertEqual(fh.read(), "alias ll='ls -l'\n")  # no blank line left behind
         with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
             self.assertEqual(fh.read().strip(), "")
 

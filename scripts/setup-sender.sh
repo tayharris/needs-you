@@ -561,7 +561,8 @@ if [ -x "$BIN_DIR/needs-you" ]; then
             'index($0, t) || (!/^[[:space:]]*#/ && /PATH/ && (index($0, a) || index($0, b))) { f = 1 } END { exit !f }' "$RC"; then
           info "PATH: $RC already adds $SHOWN"
         else
-          printf '\n%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"
+          if [ -s "$RC" ]; then printf '\n%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"
+          else printf '%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"; fi
           info "PATH: added $SHOWN to PATH in $RC (new shells pick it up; in this one run: $PATH_LINE)"
         fi
       fi ;;

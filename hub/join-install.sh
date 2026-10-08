@@ -381,7 +381,8 @@ path_setup() {
       'index($0, t) || (!/^[[:space:]]*#/ && /PATH/ && (index($0, a) || index($0, b))) { f = 1 } END { exit !f }' "$rc"; then
     say "PATH: $rc already adds $shown"
   else
-    printf '\n%s  %s\n' "$line" "$PATH_TAG" >>"$rc"
+    if [ -s "$rc" ]; then printf '\n%s  %s\n' "$line" "$PATH_TAG" >>"$rc"
+    else printf '%s  %s\n' "$line" "$PATH_TAG" >>"$rc"; fi
     say "PATH: added $shown to PATH in $rc"
   fi
   say "  (new shells pick it up; in this one run: $line)"
@@ -392,7 +393,13 @@ path_remove() {
   for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
     [ -f "$rc" ] && grep -qF "$PATH_TAG" "$rc" || continue
     # cat > keeps the file's inode, mode and any symlink (dotfile managers)
-    { grep -vF "$PATH_TAG" "$rc" || true; } >"$rc.needs-you.tmp" && cat "$rc.needs-you.tmp" >"$rc"
+    # The tagged line and the blank line path_setup put before it.
+    awk -v t="$PATH_TAG" '
+      index($0, t) { held = 0; next }
+      { if (held) print ""; held = 0 }
+      $0 == "" { held = 1; next }
+      { print }
+      END { if (held) print "" }' "$rc" >"$rc.needs-you.tmp" && cat "$rc.needs-you.tmp" >"$rc"
     rm -f "$rc.needs-you.tmp"
   done
 }
