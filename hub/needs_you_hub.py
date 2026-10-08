@@ -181,6 +181,8 @@ DOWNLOADS = {
     # --agent-instructions.
     "needs_you_mcp.py": ("integrations/mcp/needs_you_mcp.py", "text/x-python; charset=utf-8"),
     "agent-instructions.md": ("integrations/agent-instructions/needs-you.md", "text/markdown; charset=utf-8"),
+    # Claude Code's usage-limit card, a status line helper next to the CLI (the installer's --usage).
+    "needs-you-usage": ("integrations/claude-code/needs-you-usage", "text/x-python; charset=utf-8"),
 }
 # Each sender file carries "needs-you-version: X.Y.Z" (hooks.json: "_needs_you_version"), and
 # the CLI its VERSION line; /dl/manifest.json reports it next to the checksum.
@@ -3743,6 +3745,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--alerts` | Turn the hooks on for every Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok, Cursor, Cline and Aider session here (`NEEDS_YOU_AGENT_ALERTS=1` in the env file). Without it they stay quiet, except in sessions Orca starts. |
 | `--skill` | This machine runs Claude Code: install the `needs-you` skill in `~/.claude/skills` so agents know when and how to post. |
 | `--agent-instructions AGENTS` | The skill's rules for other agents, comma-separated from `codex`, `gemini`, `opencode`: a marked block appended to `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (created if missing; the file keeps a backup). Only when the user asks for it. |
+| `--usage` | This machine runs Claude Code on a Pro or Max plan: install `~/.local/bin/needs-you-usage`, a status line helper that posts a low card when the 5-hour or weekly limit passes `NEEDS_YOU_USAGE_ALERT_PCT`. It changes no settings: it prints the `statusLine` line to add. Only when the user asks for it. |
 | `--mcp AGENTS` | Install the needs-you MCP server (`~/.local/bin/needs-you-mcp`) and register it with these agents, comma-separated from `claude`, `codex`, `gemini`, `opencode`, `copilot`, `cursor` (Claude Code via `claude mcp add-json --scope user`; the others' user config, backed up). For agents that should post through a tool call instead of a shell. Only when the user asks for it. |
 | `--auto-update` | Let the 5-minute flush run `needs-you update` once a day: the CLI, hook, skill and Orca snippet follow this hub (sha256-checked; https, loopback or tailnet only). Off by default; `needs-you update` by hand always works. |
 | `--context-alert PCT` | A low-priority card suggesting `/compact` or `/clear` once a session's context is PCT%% full. Default 80; `0` turns it off. |

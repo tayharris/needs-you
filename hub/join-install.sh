@@ -45,6 +45,7 @@ SET_PATH=1
 AUTO_UPDATE=""
 MCP="-"            # --mcp AGENTS: register the MCP server with these ("-": not asked for)
 INSTRUCTIONS="-"   # --agent-instructions AGENTS: the rules in their instruction files
+USAGE=0            # --usage: Claude's usage-limit status line helper next to the CLI
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'needs-you install: %s\n' "$*" >&2; }
@@ -112,6 +113,9 @@ Options:
   --mcp AGENTS                  install the MCP server as ~/.local/bin/needs-you-mcp and
                                 register it with these agents (comma-separated: claude,
                                 codex, gemini, opencode, copilot, cursor)
+  --usage                       install ~/.local/bin/needs-you-usage, a Claude Code status
+                                line helper that posts a card when the 5-hour or weekly
+                                limit runs high (you add it to your statusLine yourself)
   --auto-update                 let `needs-you flush` run `needs-you update` once a day
                                 (NEEDS_YOU_AUTO_UPDATE=1); updates come only from this hub
   --context-alert PCT           card suggesting /compact or /clear once a session's
@@ -173,6 +177,7 @@ while [ $# -gt 0 ]; do
     --mcp=*) MCP=${1#*=}; shift ;;
     --agent-instructions) INSTRUCTIONS=${2-}; shift 2 || die "--agent-instructions needs agents: codex,gemini,opencode" ;;
     --agent-instructions=*) INSTRUCTIONS=${1#*=}; shift ;;
+    --usage) USAGE=1; shift ;;
     --orca) ORCA=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
     --context=*) CONTEXT=${1#*=}; shift ;;
@@ -433,6 +438,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
   fi
   rm -rf "$SKILL_DIR"
   rm -f "$BIN_DIR/needs-you-mcp"  # uninstall-hooks took it out of the agents' configs
+  rm -f "$BIN_DIR/needs-you-usage"  # a statusLine still naming it prints nothing
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
   rmdir "$CONF_DIR" 2>/dev/null || true
@@ -480,6 +486,7 @@ say "  config  -> $ENV_FILE$([ "$HAVE_TOKEN" -eq 1 ] && [ "$FORCE" -eq 0 ] && pr
 [ "$SKILL" -eq 1 ] && say "  skill   -> $SKILL_DIR"
 [ "$INSTRUCTIONS" != "-" ] && say "  rules   -> a needs-you block in the instructions of: ${INSTRUCTIONS//,/, }"
 [ "$MCP" != "-" ] && say "  mcp     -> $BIN_DIR/needs-you-mcp, registered with: ${MCP//,/, }"
+[ "$USAGE" -eq 1 ] && say "  usage   -> $BIN_DIR/needs-you-usage (no settings changed)"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
 if [ "$YES" -ne 1 ]; then
   if [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then
@@ -802,6 +809,29 @@ if [ "$MCP" != "-" ]; then
       skipped "MCP server for $a" "--mcp $a"
     done
   fi
+fi
+
+# Claude's usage-limit helper next to the CLI. Wiring it into the status line is the user's:
+# it wraps whatever status line they have, so no setting is written here.
+usage_helper() {
+  fetch needs-you-usage "$TMP/needs-you-usage" || { warn "could not download needs-you-usage"; return 1; }
+  python3 - "$TMP/needs-you-usage" <<'PY' || { warn "the downloaded needs-you-usage looks wrong; not installing it"; return 1; }
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+assert src.startswith("#!") and "def main(" in src
+compile(src, "needs-you-usage", "exec")
+PY
+  cp "$TMP/needs-you-usage" "$BIN_DIR/.needs-you-usage.new" &&
+    chmod 755 "$BIN_DIR/.needs-you-usage.new" &&
+    mv -f "$BIN_DIR/.needs-you-usage.new" "$BIN_DIR/needs-you-usage" || return 1
+  say "installed $BIN_DIR/needs-you-usage. To use it, set NEEDS_YOU_USAGE_ALERT_PCT=85 in"
+  say "  $CONF_DIR/env and make it your Claude Code statusLine (in ~/.claude/settings.json):"
+  say "  \"statusLine\": {\"type\": \"command\", \"command\": \"$BIN_DIR/needs-you-usage --print\"}"
+  say "  or, to keep a status line you have: \"command\": \"$BIN_DIR/needs-you-usage -- <your command>\""
+}
+if [ "$USAGE" -eq 1 ]; then
+  ASKED=$((ASKED + 1))
+  usage_helper || skipped "the Claude usage helper" "--usage"
 fi
 
 if [ "$ORCA" -eq 1 ]; then

@@ -56,7 +56,7 @@ for f in integrations/claude-code/needs-you-hook.sh integrations/claude-code/ski
          integrations/grok/grok-hooks.json integrations/grok/install-grok-hooks.sh \
          integrations/cursor/cursor-hooks.json integrations/cursor/install-cursor-hooks.sh \
          integrations/cline/install-cline-hooks.sh integrations/aider/install-aider-notifications.sh \
-         integrations/agent-instructions/needs-you.md; do
+         integrations/agent-instructions/needs-you.md integrations/claude-code/needs-you-usage; do
   got=$(sed -n 's/.*needs[-_]you[-_]version"\{0,1\}: *"\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$ROOT/$f" | head -n 1)
   [ "$got" = "$V" ] || die "$f has version stamp ${got:-none}, VERSION file has $V"
 done

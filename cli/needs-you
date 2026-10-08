@@ -277,6 +277,8 @@ def installed_paths() -> Dict[str, str]:
         "grok-hooks.json": os.path.join(grok_home(), "hooks", "needs-you.json"),
         # the MCP server, next to this CLI (--mcp)
         MCP_DL: mcp_server_path(),
+        # Claude Code's usage-limit status line helper, next to this CLI (--usage)
+        USAGE_FILE: os.path.join(os.path.dirname(cli_path()), USAGE_FILE),
     }
 
 
@@ -2023,6 +2025,7 @@ RELEASE_PATHS = {
     "grok-hooks.json": "integrations/grok/grok-hooks.json",
     "needs_you_mcp.py": "integrations/mcp/needs_you_mcp.py",
     "agent-instructions.md": "integrations/agent-instructions/needs-you.md",
+    "needs-you-usage": "integrations/claude-code/needs-you-usage",
 }
 
 
@@ -2687,6 +2690,8 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
     path = change["path"]
     if name == MCP_DL and not _valid_cli(data):
         raise ValueError("the hub's %s isn't a working MCP server" % MCP_DL)
+    if name == USAGE_FILE and not _valid_cli(data):
+        raise ValueError("the hub's %s isn't a working script" % USAGE_FILE)
     if name == "needs-you":
         if not _valid_cli(data):
             raise ValueError("the hub's needs-you isn't a working CLI")
@@ -3995,6 +4000,7 @@ Doctor.update = _doctor_update  # type: ignore[attr-defined]
 MCP_NAME = "needs-you"      # the server's name in every client's config (Gemini: no "_" in it)
 MCP_FILE = "needs-you-mcp"  # /dl/needs_you_mcp.py, installed next to the CLI
 MCP_DL = "needs_you_mcp.py"
+USAGE_FILE = "needs-you-usage"  # /dl/needs-you-usage, installed next to the CLI (--usage)
 MCP_AGENTS = ("claude", "codex", "gemini", "opencode", "copilot", "cursor")
 AGENT_LABELS = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "opencode",
                 "copilot": "Copilot CLI", "cursor": "Cursor"}
