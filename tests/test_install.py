@@ -202,6 +202,26 @@ class InstallScript(HubTestCase):
         self.assertIn("no uses left", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
 
+    def test_uninstall_leaves_no_empty_directories(self):
+        # Everything the installer can set up, on a machine with none of the agents' directories:
+        # the uninstall takes the directories it made and emptied back out (they used to stay:
+        # ~/.claude/skills, ~/.local/bin, ~/.local/state, ~/.copilot, ~/.config/opencode, ...).
+        inv = self.invite(uses=1)
+        flags = ("--claude-hooks user --codex-hooks user --gemini-hooks user --opencode-plugin "
+                 "--copilot-hooks user --cursor-hooks user --cline-hooks user --aider --kimi-hooks user "
+                 "--grok-hooks user --skill --usage --orca --mcp codex,gemini,opencode,copilot,cursor "
+                 "--agent-instructions codex,gemini,opencode --alerts").split()
+        r = self.install(inv, "--yes", "--host", "all", *flags, STUB_UNAME="Linux", SHELL="/bin/sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux", SHELL="/bin/sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("left in place", r.stderr)
+        # (~/Documents, which the Cline installer makes on a machine without one, is the
+        # person's folder: never removed.)
+        empty = [os.path.relpath(dp, self.home) for dp, dns, fns in os.walk(self.home)
+                 if dp != self.home and not dns and not fns]
+        self.assertEqual(empty, ["Documents"])
+
     def test_uninstall_removes_project_hooks_locally(self):
         inv = self.invite(uses=1)
         proj = os.path.join(self.home, "src", "app")

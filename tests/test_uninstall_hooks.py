@@ -255,6 +255,26 @@ class UninstallHooks(unittest.TestCase):
         self.assertFalse(self.has_hooks(self.user_settings()))
         self.assertIn("no needs-you hooks found", self.cli().stdout)
 
+    def test_no_empty_directories_left_behind(self):
+        # Every agent's installer on a machine that had none of them, then one uninstall: the
+        # directories the installers made and emptied again go too (they used to stay).
+        # Only empty ones: anything with a file of the person's (or a backup) in it stays.
+        os.makedirs(os.path.join(self.home, "Documents", "mine"))
+        for script in ("codex/install-codex-hooks.sh", "gemini/install-gemini-hooks.sh",
+                       "opencode/install-opencode-plugin.sh", "copilot/install-copilot-hooks.sh",
+                       "grok/install-grok-hooks.sh", "cline/install-cline-hooks.sh",
+                       "cursor/install-cursor-hooks.sh", "kimi/install-kimi-hooks.sh",
+                       "aider/install-aider-notifications.sh", "claude-code/install-hooks.sh"):
+            r = subprocess.run([BASH, os.path.join(ROOT, "integrations", script)], env=self.env,
+                               capture_output=True, text=True, timeout=60, cwd=self.tmp)
+            self.assertEqual(r.returncode, 0, script + r.stdout + r.stderr)
+        r = self.cli()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        empty = [os.path.relpath(dp, self.home) for dp, dns, fns in os.walk(self.home)
+                 if dp != self.home and not dns and not fns and not dp.endswith("mine")]
+        self.assertEqual(empty, [])
+        self.assertTrue(os.path.isdir(os.path.join(self.home, "Documents", "mine")))  # never the person's
+
     def test_other_agents_symlinks_are_never_followed(self):
         self.install_agents()
         outside = os.path.join(self.tmp, "outside")

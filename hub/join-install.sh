@@ -456,7 +456,11 @@ if [ "$UNINSTALL" -eq 1 ]; then
   rm -f "$BIN_DIR/needs-you-usage"  # a statusLine still naming it prints nothing
   rm -f "$CLI" "$ENV_FILE" "$CONF_DIR/orca-snippet.md"
   rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/needs-you"
-  rmdir "$CONF_DIR" 2>/dev/null || true
+  # The directories made for those files, once empty (rmdir never removes anything else).
+  rmdir "$CONF_DIR" "${SKILL_DIR%/*}" "$HOME/.claude" "$BIN_DIR" 2>/dev/null || true
+  [ -n "${XDG_STATE_HOME:-}" ] || rmdir "$HOME/.local/state" 2>/dev/null || true
+  [ -n "${XDG_CONFIG_HOME:-}" ] || rmdir "$HOME/.config" 2>/dev/null || true
+  rmdir "$HOME/.local" 2>/dev/null || true
   say "needs-you removed from this machine. Revoke its token in the Mac app (Settings → Machines) or on the hub."
   exit 0
 fi

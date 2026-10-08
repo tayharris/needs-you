@@ -653,6 +653,21 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
         removed += n if not dry_run else 0
         failed = failed or bad
     if not dry_run:
+        # The agents' directories an installer made and this emptied again (rmdir: only
+        # empty ones, never through a symlink, never ~/Documents).
+        tidy = [_ny_conf_dir()]
+        if user or everything:
+            tidy.append(_home(".claude"))
+        for agent, home_fn in (("codex", codex_home), ("gemini", gemini_home), ("cursor", cursor_dir),
+                               ("kimi", kimi_home), ("opencode", opencode_dir), ("copilot", copilot_home),
+                               ("grok", grok_home), ("cline", lambda: os.path.dirname(cline_hooks_dir()))):
+            if everything or agent in agents:
+                tidy.append(home_fn())
+        if not os.environ.get("XDG_CONFIG_HOME"):
+            tidy.append(_home(".config"))
+        for d in tidy:
+            if not os.path.islink(d):
+                _rmdir_quiet(d, False)
         projects = claude_projects()
         left = {k: v for k, v in projects.items() if k not in forget}
         if left != projects:
