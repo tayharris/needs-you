@@ -104,6 +104,38 @@ class RunCommand(CliTestCase):
         self.assertEqual(r.returncode, 127)
         self.assertIn("could not start", self.by_key()["work:devbox:nope"]["body"])
 
+    def test_background_child_holding_stderr_does_not_hold_up_the_wrapper(self):
+        # A command that starts something in the background (a server, `cmd &`) leaves its
+        # stderr open in that child: the wrapper used to wait for it, not for the command.
+        import time
+        t0 = time.monotonic()
+        r = self.run_wrapped("--key", "work:devbox:bg", "--", "sh", "-c", "sleep 8 >/dev/null & echo started >&2; exit 4")
+        self.assertLess(time.monotonic() - t0, 5)
+        self.assertEqual(r.returncode, 4)
+        self.assertIn("started", r.stderr)
+        self.assertIn("started", self.by_key()["work:devbox:bg"]["body"])
+
+    def test_sigint_to_the_wrapper_alone_does_not_deadlock(self):
+        # kill -INT (or a supervisor) to the wrapper only: it used to stop reading stderr and
+        # wait, while the command blocked writing to the full pipe.
+        import signal
+        import subprocess
+        script = "import sys, time; time.sleep(1); sys.stderr.write('x' * 700000); print('child-done')"
+        env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_URL": self.dead,
+               "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1"}
+        p = subprocess.Popen([PY, CLI, "run", "--", PY, "-c", script], env=env, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        import time
+        time.sleep(0.5)
+        p.send_signal(signal.SIGINT)
+        try:
+            out, _ = p.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.communicate()
+            self.fail("the wrapper hung after SIGINT")
+        self.assertIn(b"child-done", out)
+
     def test_signal_exit_code(self):
         r = self.run_wrapped("--key", "work:devbox:killed", "--", PY, "-c",
                              "import os, signal; os.kill(os.getpid(), signal.SIGTERM)")

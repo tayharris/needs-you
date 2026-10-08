@@ -439,6 +439,94 @@ class SelfUpdate(CliTestCase):
         self.assertEqual(r.returncode, 1)
 
 
+class UsageErrors(CliTestCase):
+    """Bad arguments are a usage error (exit 2, one line), never a traceback."""
+
+    def test_unreadable_body_file_and_bad_expiry(self):
+        for extra in (["--body-file", os.path.join(self.tmp, "missing")], ["--expires-in", "nan"],
+                      ["--expires-in", "inf"], ["--expires-in", "1e300"]):
+            r = self.run_cli("add", "--key", "k", "--title", "t", *extra, urls=[self.dead])
+            self.assertEqual(r.returncode, 2, (extra, r.stderr))
+            self.assertNotIn("Traceback", r.stderr)
+            self.assertEqual(self.queued(), [])
+        r = self.run_cli("run", "--expires-in", "nan", "--", "true", urls=[self.dead])
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        bad = os.path.join(self.tmp, "latin1.txt")
+        with open(bad, "wb") as fh:
+            fh.write(b"caf\xe9")
+        r = self.run_cli("add", "--key", "k", "--title", "t", "--body-file", bad, urls=[self.dead])
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+
+class NoConfigNoOutbox(CliTestCase):
+    def test_says_so_and_exits_0(self):
+        # No config and an outbox that can't be written: the post is lost, but the caller's
+        # job must not fail (it used to be a PermissionError traceback, exit 1).
+        ro = os.path.join(self.tmp, "ro")
+        os.makedirs(ro)
+        os.chmod(ro, 0o500)
+        self.addCleanup(lambda: os.path.isdir(ro) and os.chmod(ro, 0o700))
+        if os.access(ro, os.W_OK):
+            self.skipTest("running as root")
+        r = self.run_cli("add", "--key", "k", "--title", "t", token=None,
+                         extra_env={"NEEDS_YOU_OUTBOX": os.path.join(ro, "outbox")})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("dropped", r.stderr)
+
+
+class SessionItemById(CliTestCase):
+    """One card for one wait: the note that keeps a session's "waiting" card off goes away
+    when the agent resolves its item by id, as it does when it resolves by key."""
+    SESSION = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "sess-1"}
+
+    def notes(self):
+        d = os.path.join(self.home, ".local", "state", "needs-you", "session-items", "sess-1")
+        try:
+            return os.listdir(d)
+        except OSError:
+            return []
+
+    def add(self, urls, token, key="work:ACME-1:decide"):
+        r = self.run_cli("--json", "add", "--key", key, "--title", "Choose", urls=urls, token=token,
+                         extra_env=self.SESSION)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)["id"] if r.stdout.strip() else None
+
+    def test_resolve_by_id_online(self):
+        hub = self.make_hub("hub-a")
+        sender, _ = self.tokens(hub)
+        item_id = self.add([hub.url], sender)
+        self.add([hub.url], sender, key="work:ACME-2:other")
+        self.assertEqual(len(self.notes()), 2)
+        r = self.run_cli("resolve", "--id", item_id, urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.notes()), 1)  # only that item's note
+
+    def test_resolve_by_id_while_the_hub_is_down(self):
+        hub = self.make_hub("hub-a")
+        sender, _ = self.tokens(hub)
+        item_id = self.add([hub.url], sender)
+        r = self.run_cli("resolve", "--id", item_id, urls=[self.dead], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("queued", r.stderr)
+        self.assertEqual(self.notes(), [])
+
+    def test_queued_add_learns_its_id_when_sent(self):
+        self.assertIsNone(self.add([self.dead], "t"))
+        self.assertEqual(len(self.notes()), 1)
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        r = self.run_cli("flush", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        item_id = self.items(hub, reader, "open")[0]["id"]
+        r = self.run_cli("resolve", "--id", item_id, urls=[self.dead], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.notes(), [])
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()

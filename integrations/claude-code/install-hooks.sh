@@ -73,6 +73,17 @@ fi
 # same settings work on every machine; project level uses $CLAUDE_PROJECT_DIR
 # so a committed .claude/settings.json works for everyone who clones the repo.
 # The $VARS are literal on purpose: Claude Code's shell expands them later.
+# A "project" in $HOME is the user level: $HOME/.claude is ~/.claude, and project-style
+# commands ($CLAUDE_PROJECT_DIR/...) there would break the hooks in every other project.
+if [ "$SCOPE" = project ]; then
+  [ -n "$PROJECT_DIR" ] || PROJECT_DIR=.
+  [ -d "$PROJECT_DIR" ] || die "no such directory: $PROJECT_DIR"
+  if [ "$(cd "$PROJECT_DIR" && pwd -P)" = "$(cd "$HOME" 2>/dev/null && pwd -P)" ]; then
+    echo "note: $PROJECT_DIR is your home directory, whose .claude is the user level: using the user level (--user)" >&2
+    SCOPE=user
+  fi
+fi
+
 # shellcheck disable=SC2016
 case "$SCOPE" in
   user)

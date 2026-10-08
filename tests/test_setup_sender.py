@@ -57,6 +57,42 @@ class SetupSender(HubTestCase):
             self.assertIn("NEEDS_YOU_AGENT_ALERTS=1\n", fh.read())
         self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
 
+    def test_schedule_passes_xdg_dirs_on(self):
+        # cron runs without the shell's XDG_CONFIG_HOME: the flush found no config
+        xdg = os.path.join(self.tmp, "xdg")
+        self.run_setup("--no-path", XDG_CONFIG_HOME=xdg)
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        with open(self.cron) as fh:
+            self.assertIn("*/5 * * * * XDG_CONFIG_HOME='%s' \"%s\" -q flush" % (xdg, cli), fh.read())
+
+    def test_schedule_keeps_the_rest_of_the_crontab_as_it_was(self):
+        mine = "MAILTO=me\n\n# backups\n0 3 * * * /usr/local/bin/backup\n\n# end\n"
+        with open(self.cron, "w") as fh:
+            fh.write(mine)
+        self.run_setup("--no-path")
+        with open(self.cron) as fh:
+            cron = fh.read()
+        self.assertTrue(cron.startswith(mine), cron)  # blank lines and all
+        self.assertEqual(cron.count("needs-you-flush"), 1)
+
+    def test_relative_bin_dir_is_made_absolute(self):
+        # cron and the shell profile don't run from the directory setup-sender ran in
+        cwd = os.path.join(self.tmp, "work")
+        os.makedirs(cwd)
+        cwd = os.path.realpath(cwd)  # what the shell's $PWD says (macOS: /private/var/...)
+        env = {"HOME": self.home, "PATH": self.stubs + ":/usr/bin:/bin:/usr/sbin:/sbin", "STUB_LOG": self.log,
+               "STUB_CRON": self.cron, "STUB_UNAME": "Linux", "NO_PROXY": "*", "LANG": "C", "SHELL": "/bin/bash"}
+        r = subprocess.run([BASH, SCRIPT, "--non-interactive", "--url", self.hub.url, "--token-stdin",
+                            "--install-cli", "--no-test", "--bin-dir", "relbin"], input=self.token + "\n",
+                           env=env, capture_output=True, text=True, timeout=120, cwd=cwd)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        cli = os.path.join(cwd, "relbin", "needs-you")
+        self.assertTrue(os.access(cli, os.X_OK))
+        with open(self.cron) as fh:
+            self.assertIn('"%s" -q flush' % cli, fh.read())
+        with open(os.path.join(self.home, ".bashrc")) as fh:
+            self.assertIn('export PATH="%s:$PATH"' % os.path.dirname(cli), fh.read())
+
     def test_settings_schedule_path_and_rerun(self):
         bashrc = os.path.join(self.home, ".bashrc")
         with open(bashrc, "w") as fh:

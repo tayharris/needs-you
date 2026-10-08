@@ -217,10 +217,13 @@ def _parse_ts(value: Any) -> int:
     if isinstance(value, bool):
         raise ValueError("not a timestamp")
     if isinstance(value, (int, float)):
-        f = float(value)
-        if f != f or f in (float("inf"), float("-inf")):
-            raise ValueError("not a timestamp")
-        return int(round(f * 1000))
+        try:
+            f = float(value) * 1000
+            if f != f or f in (float("inf"), float("-inf")):
+                raise ValueError("not a timestamp")
+            return int(round(f))
+        except OverflowError:  # 10**400, or 1e306 * 1000
+            raise ValueError("timestamp out of range")
     if not isinstance(value, str):
         raise ValueError("not a timestamp")
     s = value.strip()
@@ -793,7 +796,9 @@ class ListCursor(NamedTuple):
         parts = raw.split(".")
         if len(parts) not in (3, 4) or not all(parts) or len(raw) > 200:
             raise ValueError("bad cursor")
-        if not (parts[1].isdigit() and parts[2].isdigit()) or not re.match(r"^[0-9A-Za-z]{1,40}$", parts[0]):
+        # seq and exp_at: ASCII digits that fit SQLite's 64-bit integers
+        if not (re.match(r"^[0-9]{1,18}$", parts[1]) and re.match(r"^[0-9]{1,18}$", parts[2])) \
+                or not re.match(r"^[0-9A-Za-z]{1,40}$", parts[0]):
             raise ValueError("bad cursor")
         exp_id = None
         if len(parts) == 4:
@@ -820,6 +825,16 @@ class Store:
         self.lock = threading.RLock()
         d = os.path.dirname(os.path.abspath(path))
         os.makedirs(d, exist_ok=True)
+        # 0600 before SQLite opens it: SQLite gives the -wal and -shm files (the same data)
+        # the database file's mode, so chmod after connecting left them at the umask's 0644.
+        for p in (path, path + "-wal", path + "-shm") if path != ":memory:" else ():
+            try:
+                if p == path and not os.path.exists(p):
+                    os.close(os.open(p, os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600))
+                if os.path.isfile(p) and not os.path.islink(p):
+                    os.chmod(p, 0o600)
+            except OSError:
+                pass
         self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=10)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA busy_timeout=10000")
@@ -1845,7 +1860,8 @@ class Store:
             return self.apply_item(rec), None
         except ApiError as e:
             reason = e.message
-        except (ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError) as e:
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError, sqlite3.IntegrityError,
+                sqlite3.InterfaceError, sqlite3.ProgrammingError) as e:
             reason = "%s: %s" % (type(e).__name__, e)
         rid = rec.get("id") if isinstance(rec, dict) else None
         skip = {"kind": kind, "id": safe_text(rid, 100) if isinstance(rid, str) else None,
@@ -1870,7 +1886,8 @@ class Store:
         for r in rows:
             try:
                 self.apply_item(json.loads(r["record"]))
-            except (ApiError, ValueError, TypeError, KeyError, AttributeError, sqlite3.IntegrityError):
+            except (ApiError, ValueError, TypeError, KeyError, AttributeError, OverflowError,
+                    sqlite3.IntegrityError, sqlite3.InterfaceError, sqlite3.ProgrammingError):
                 continue
             with self.tx():
                 self.conn.execute("DELETE FROM quarantine WHERE id = ?", (r["id"],))
@@ -1892,7 +1909,7 @@ def check_security_record(kind: str, rec: Any) -> None:
     """Raise Unreadable unless this token/invite record parses."""
     try:
         (normalise_token_record if kind == "token" else normalise_invite_record)(rec)
-    except (ApiError, ValueError, TypeError, KeyError, AttributeError) as e:
+    except (ApiError, ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
         rid = rec.get("id") if isinstance(rec, dict) else None
         reason = e.message if isinstance(e, ApiError) else type(e).__name__
         raise Unreadable(kind, safe_text(rid, 100) if isinstance(rid, str) else None, safe_text(reason, 200))
@@ -1906,17 +1923,40 @@ def safe_text(value: Any, limit: int) -> str:
 
 def _peer_step(step: Dict[str, Any]) -> Dict[str, Any]:
     """A replicated step, kept as sent except a link this hub would refuse (dropped, the
-    step stays), like replicated item links."""
+    step stays), like replicated item links. Its text and done must have their types."""
+    if not isinstance(step.get("text"), str) or not isinstance(step.get("done", False), bool):
+        raise ValueError("steps")
     link = step.get("link")
     if link is not None and not (isinstance(link, dict) and link_allowed(link.get("url"))):
         step = {k: v for k, v in step.items() if k != "link"}
     return step
 
 
+def utf8_ok(obj: Any) -> bool:
+    """False if any text in obj has an unpaired UTF-16 surrogate ("\\ud800" in JSON), which
+    can't be stored (SQLite takes UTF-8) and which clients' JSON decoders refuse."""
+    try:
+        json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
+def _opt_str(rec: Dict[str, Any], name: str) -> Optional[str]:
+    v = rec.get(name)
+    if v is not None and not isinstance(v, str):
+        raise ValueError(name)
+    return v
+
+
 def normalise_item_record(rec: Any) -> Dict[str, Any]:
     """Accept a replicated item record (wire form: ISO timestamps, JSON links/source)."""
     if not isinstance(rec, dict):
         raise ApiError(400, "invalid", "item record must be an object")
+    if not utf8_ok(rec):
+        raise ApiError(400, "invalid", "bad item record: text with an unpaired surrogate")
     out: Dict[str, Any] = {}
     try:
         for c in ("id", "key", "context", "kind", "priority", "title", "status"):
@@ -1924,7 +1964,7 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
             if not isinstance(v, str) or not v:
                 raise ValueError(c)
             out[c] = v
-        out["body"] = rec.get("body") or ""
+        out["body"] = _opt_str(rec, "body") or ""
         # Defence in depth: a peer (or an older hub) can't hand us a link this hub would refuse.
         links = rec.get("links") or []
         out["links"] = json.dumps([lk for lk in (links if isinstance(links, list) else [])
@@ -1933,16 +1973,21 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         if not isinstance(steps, list):
             raise ValueError("steps")
         out["steps"] = json.dumps([_peer_step(st) for st in steps if isinstance(st, dict)])
-        out["source"] = json.dumps(rec.get("source") or {})
+        source = rec.get("source") or {}
+        if not isinstance(source, dict):
+            raise ValueError("source")
+        out["source"] = json.dumps(source)
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
         out["content_updated_at"] = parse_ts(rec.get("content_updated_at") or rec["updated_at"])
         for c in ("seen_at", "expires_at"):
             out[c] = parse_ts(rec[c]) if rec.get(c) is not None else None
-        out["token_id"] = rec.get("token_id")
-        out["origin_hub"] = rec.get("origin_hub") or ""
-        out["updated_by"] = rec.get("updated_by") or ""
-        out["superseded_by"] = rec.get("superseded_by")
+        # Stored as given: anything but a string (or nothing) would fail in SQLite, or reach
+        # readers as the wrong type.
+        out["token_id"] = _opt_str(rec, "token_id")
+        out["origin_hub"] = _opt_str(rec, "origin_hub") or ""
+        out["updated_by"] = _opt_str(rec, "updated_by") or ""
+        out["superseded_by"] = _opt_str(rec, "superseded_by")
     except (KeyError, ValueError, TypeError) as e:
         raise ApiError(400, "invalid", "bad item record: %s" % e)
     if out["status"] not in STATUSES:
@@ -1951,8 +1996,8 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
 
 
 def normalise_token_record(rec: Any) -> Dict[str, Any]:
-    if not isinstance(rec, dict):
-        raise ApiError(400, "invalid", "token record must be an object")
+    if not isinstance(rec, dict) or not utf8_ok(rec):
+        raise ApiError(400, "invalid", "token record must be an object of valid text")
     try:
         out = {c: rec[c] for c in ("id", "name", "role", "hash")}
         out["created_at"] = parse_ts(rec["created_at"])
@@ -1967,8 +2012,8 @@ def normalise_token_record(rec: Any) -> Dict[str, Any]:
 
 
 def normalise_invite_record(rec: Any) -> Dict[str, Any]:
-    if not isinstance(rec, dict):
-        raise ApiError(400, "invalid", "invite record must be an object")
+    if not isinstance(rec, dict) or not utf8_ok(rec):
+        raise ApiError(400, "invalid", "invite record must be an object of valid text")
     try:
         out = {c: rec[c] for c in ("id", "name", "role", "hash")}
         out["uses"] = int(rec["uses"])
@@ -2330,7 +2375,7 @@ class Handler(BaseHTTPRequestHandler):
             body["field"] = err.field
         self._send(err.status, body)
 
-    def _body(self, limit: int = MAX_REQUEST_BYTES) -> Any:
+    def _body(self, limit: int = MAX_REQUEST_BYTES, per_record: bool = False) -> Any:
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -2343,9 +2388,14 @@ class Handler(BaseHTTPRequestHandler):
         if not raw:
             raise ApiError(400, "invalid", "a JSON body is required")
         try:
-            return json.loads(raw.decode("utf-8"))
+            data = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError, RecursionError):
             raise ApiError(400, "invalid", "body is not valid JSON")
+        # "\ud800" alone is valid JSON but not text. (/v1/replicate checks each record, so
+        # one such item is skipped, not the batch.)
+        if not per_record and not utf8_ok(data):
+            raise ApiError(400, "invalid", "body has text with an unpaired surrogate (\\ud800-\\udfff)")
+        return data
 
     def _bearer(self) -> Optional[str]:
         auth = self.headers.get("Authorization") or ""
@@ -2676,8 +2726,9 @@ class Handler(BaseHTTPRequestHandler):
         data = self._body()
         if not isinstance(data, dict):
             raise ApiError(400, "invalid", "body must be a JSON object")
-        item_id = data.get("id")
-        key = data.get("key")
+        # Trimmed as POST /v1/items trims a key, so the same --key finds what it stored.
+        item_id = data.get("id").strip() if isinstance(data.get("id"), str) else data.get("id")
+        key = data.get("key").strip() if isinstance(data.get("key"), str) else data.get("key")
         if bool(item_id) == bool(key):
             raise ApiError(400, "invalid", "send exactly one of id or key")
         if not isinstance(item_id or key, str):
@@ -2759,6 +2810,8 @@ class Handler(BaseHTTPRequestHandler):
         last = self.headers.get("Last-Event-ID") or (query.get("after") or [""])[0]
         try:
             after = int(last) if last else self.hub.store.max_seq()
+            if not 0 <= after < 2 ** 63:  # beyond SQLite's integers
+                raise ValueError(last)
         except ValueError:
             after = self.hub.store.max_seq()
         self.send_response(200)
@@ -2787,7 +2840,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _replicate(self) -> None:
         self._peer_auth()
-        data = self._body(MAX_REPLICATE_BYTES)
+        data = self._body(MAX_REPLICATE_BYTES, per_record=True)
         if not isinstance(data, dict):
             raise ApiError(400, "invalid", "body must be a JSON object")
         if data.get("from_hub") == self.hub.hub_id:
@@ -2820,6 +2873,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             after = int((query.get("after") or ["0"])[0] or 0)
             limit = max(1, min(int((query.get("limit") or ["500"])[0] or 500), 2000))
+            if not 0 <= after < 2 ** 63:  # beyond SQLite's integers
+                raise ValueError(after)
         except ValueError:
             raise ApiError(400, "invalid", "after/limit must be integers")
         st = self.hub.store

@@ -10,6 +10,7 @@ import os
 import shutil
 import stat
 import subprocess
+import time
 import unittest
 
 from support import ROOT, HubTestCase, free_port, request
@@ -269,6 +270,52 @@ class InstallScript(HubTestCase):
         with open(self.cron) as fh:  # a crontab holding only our line (pipefail used to stop here)
             self.assertEqual(fh.read().strip(), "")
 
+    def test_schedule_keeps_the_rest_of_the_crontab_as_it_was(self):
+        mine = "MAILTO=me\n\n# backups\n0 3 * * * /usr/local/bin/backup\n\n# end\n"
+        with open(self.cron, "w") as fh:
+            fh.write(mine)
+        inv = self.invite(uses=2)
+        r = self.install(inv, "--yes", "--host", "box8", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.cron) as fh:
+            cron = fh.read()
+        self.assertTrue(cron.startswith(mine), cron)
+        self.assertEqual(cron.count("needs-you-flush"), 1)
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.cron) as fh:
+            self.assertEqual(fh.read(), mine)
+
+    def test_flush_schedule_finds_xdg_config_and_state(self):
+        # cron and launchd run the flush without the shell's XDG_CONFIG_HOME / XDG_STATE_HOME:
+        # it found no config and silently sent nothing, every 5 minutes.
+        inv = self.invite(uses=2)
+        xdg = {"XDG_CONFIG_HOME": os.path.join(self.home, "xdg config"),
+               "XDG_STATE_HOME": os.path.join(self.home, "xdg-state")}
+        r = self.install(inv, "--yes", "--host", "box9", STUB_UNAME="Linux", **xdg)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.cron) as fh:
+            line = [l for l in fh.read().splitlines() if "needs-you-flush" in l][0]
+        command = line.split(None, 5)[5]
+        outbox = os.path.join(xdg["XDG_STATE_HOME"], "needs-you", "outbox")
+        os.makedirs(outbox, exist_ok=True)
+        with open(os.path.join(outbox, "%020d-00001.json" % time.time_ns()), "w") as fh:
+            json.dump({"method": "POST", "path": "/v1/items", "queued_at": "2026-10-07T00:00:00Z",
+                       "body": {"key": "work:cron:x", "title": "queued", "source": {"host": "box9"}}}, fh)
+        # as cron runs it: sh, HOME and a bare PATH, nothing else
+        subprocess.run(["/bin/sh", "-c", command], env={"HOME": self.home, "PATH": "/usr/bin:/bin"},
+                       timeout=60)
+        self.assertEqual(os.listdir(outbox), [".lock"] if os.path.exists(os.path.join(outbox, ".lock")) else [])
+        s, items = request("GET", self.hub.url + "/v1/items?status=open",
+                           self.hub.store.add_token("reader-x", "reader")[0])
+        self.assertIn("work:cron:x", [i["key"] for i in items["items"]])
+        # the LaunchAgent gets them as EnvironmentVariables
+        r = self.install(inv, "--yes", "--host", "box9", **xdg)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        import plistlib
+        with open(os.path.join(self.home, "Library", "LaunchAgents", "io.needs-you.flush.plist"), "rb") as fh:
+            self.assertEqual(plistlib.load(fh)["EnvironmentVariables"], xdg)
+
     def test_codex_hooks(self):
         inv = self.invite(uses=1)
         codex = os.path.join(self.home, ".codex")
@@ -323,6 +370,29 @@ class InstallScript(HubTestCase):
         self.assertFalse(os.path.exists(os.path.join(oc, "plugins", "needs-you.js")))
         self.assertFalse(os.path.exists(os.path.join(oc, "hooks", "needs-you-hook.sh")))
 
+    def test_a_broken_agent_config_skips_that_agent_only(self):
+        # Gemini allows // comments in settings.json, which the merge can't read: the install
+        # used to stop there (exit 2), before the opencode plugin, the skill and the summary.
+        gemini = os.path.join(self.home, ".gemini")
+        os.makedirs(gemini)
+        broken = '{\n  // my settings\n  "theme": "dark"\n}\n'
+        with open(os.path.join(gemini, "settings.json"), "w") as fh:
+            fh.write(broken)
+        inv = self.invite(uses=3)
+        r = self.install(inv, "--yes", "--gemini-hooks", "user", "--opencode-plugin", "--skill",
+                         "--host", "box6", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".config", "opencode", "plugins", "needs-you.js")))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, ".claude", "skills", "needs-you", "SKILL.md")))
+        self.assertIn("Done.", r.stdout)
+        self.assertIn("Not set up: Gemini CLI hooks", r.stdout + r.stderr)
+        with open(os.path.join(gemini, "settings.json")) as fh:
+            self.assertEqual(fh.read(), broken)  # untouched
+        # Nothing of what was asked for could be set up: exit 3 (documented in --help)
+        r = self.install(inv, "--yes", "--gemini-hooks", "user", "--host", "box6", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("Not set up: Gemini CLI hooks", r.stdout + r.stderr)
+        self.assertTrue(os.access(os.path.join(self.home, ".local", "bin", "needs-you"), os.X_OK))
     def test_copilot_hooks(self):
         inv = self.invite(uses=1)
         r = self.install(inv, "--yes", "--copilot-hooks", "user", "--alerts", "--host", "box6", STUB_UNAME="Linux")
@@ -526,6 +596,56 @@ class InstallHubUser(unittest.TestCase):
             self.assertNotEqual(r.returncode, 0)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class InstallHubUserPaths(unittest.TestCase):
+    """install-hub.sh --user on a machine without Tailscale, and with XDG_CONFIG_HOME set."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix="needs-you-ih2-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.home = os.path.join(self.tmp, "home")
+        stub = os.path.join(self.tmp, "stub")
+        os.makedirs(self.home)
+        os.makedirs(stub)
+        with open(os.path.join(stub, "tailscale"), "w") as fh:  # this machine isn't on a tailnet
+            fh.write("#!/bin/sh\nexit 1\n")
+        os.chmod(os.path.join(stub, "tailscale"), 0o755)
+        self.env = {"HOME": self.home, "PATH": stub + ":/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C"}
+        self.script = os.path.join(ROOT, "scripts", "install-hub.sh")
+
+    def install(self, *args, **env):
+        r = subprocess.run([BASH, self.script, "--user", "--no-start", "--no-invite", "--bind", "127.0.0.1"]
+                           + list(args), env=dict(self.env, **env), capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r
+
+    def test_hub_id_without_tailscale_keeps_the_host_name_in_public_url(self):
+        # --hub-id used to drop the host name from the default public_url: every invite link
+        # pointed at http://localhost:8765.
+        self.install("--hub-id", "hub-a")
+        with open(os.path.join(self.home, ".config", "needs-you", "hub.json")) as fh:
+            cfg = json.load(fh)
+        host = subprocess.run(["hostname", "-s"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(cfg["hub_id"], "hub-a")
+        self.assertEqual(cfg["public_url"], "http://%s:8765" % host)
+
+    def test_unit_uses_the_config_it_wrote_with_xdg_config_home(self):
+        # The unit hard-coded %h/.config/needs-you/hub.json, so with XDG_CONFIG_HOME set the
+        # service started without the config the installer had just written.
+        xdg = os.path.join(self.home, "xdg conf")
+        self.install("--hub-id", "hub-a", XDG_CONFIG_HOME=xdg)
+        conf = os.path.join(xdg, "needs-you", "hub.json")
+        self.assertTrue(os.path.isfile(conf))
+        with open(os.path.join(xdg, "systemd", "user", "needs-you-hub.service")) as fh:
+            unit = fh.read()
+        exec_start = [l for l in unit.splitlines() if l.startswith("ExecStart=")][0]
+        import shlex
+        argv = shlex.split(exec_start[len("ExecStart="):])
+        self.assertEqual(argv[1:], [os.path.join(self.home, ".local", "share", "needs-you", "hub", "needs_you_hub.py"),
+                                    "--config", conf])
+        self.assertTrue(os.path.isfile(argv[1]))
 
 
 if __name__ == "__main__":

@@ -227,6 +227,11 @@ a space as `%20`). Item records that arrive by replication keep only links that 
 rules. The same goes for steps: their text and link fields follow these rules on POST, and a
 replicated step whose link fails keeps its text and loses the link.
 
+A request body whose JSON has an unpaired UTF-16 surrogate escape anywhere (`"\ud800"`, as a
+file name with a byte that isn't UTF-8 can produce) is a `400 invalid`: it isn't text, can't be
+stored, and clients' JSON decoders refuse it. On `/v1/replicate` that applies per record: such
+an item is skipped, and such a token or invite record fails the batch closed.
+
 **Steps** are the things the person has to do, in order. Each step is an object:
 
 | Field | Type | Rule | Default |
@@ -258,7 +263,8 @@ title/body/priority/steps changed).
 
 ### `POST /v1/items/resolve` (sender)
 
-Body: exactly one of `{"key": "..."}` or `{"id": "..."}`.
+Body: exactly one of `{"key": "..."}` or `{"id": "..."}`. Leading and trailing whitespace is
+trimmed, as `POST /v1/items` trims the key it stores.
 
 Closes the open item with that key (or that id) as `resolved`. Always `200` and idempotent:
 

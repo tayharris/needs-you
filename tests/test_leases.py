@@ -98,6 +98,17 @@ class LeaseTests(HubTestCase):
         self.assertFalse(os.path.exists(os.path.join(self.leases, "s1")))
         self.assertEqual(os.listdir(self.leases), [])
 
+    def test_a_live_session_in_another_time_zone_is_left_alone(self):
+        # `ps -o lstart` prints local time: the hook runs with the agent's TZ (a shell profile
+        # setting), the 5-minute flush with cron's (the system's). The lease must still match.
+        self.start_session(TZ="Pacific/Kiritimati")
+        r = subprocess.run([sys.executable, CLI, "flush"], env=self.env(TZ="UTC"), capture_output=True,
+                           text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("resolved", r.stdout)
+        self.assertEqual(self.item(self.prefix + "s1")["status"], "open")
+        self.assertTrue(os.path.exists(os.path.join(self.leases, "s1")))
+
     def test_reused_pid_counts_as_ended(self):
         os.makedirs(self.leases)
         request("POST", self.hub.url + "/v1/items", self.sender,

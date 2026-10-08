@@ -139,6 +139,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$TEST_CONTEXT" in work|personal) ;; *) die "--test-context must be work or personal" 2 ;; esac
+# Absolute: it goes into the crontab line and the shell profile, which don't run from here.
+case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac
 if [ -n "$CONTEXT_ALERT" ]; then
   case "$CONTEXT_ALERT" in *[!0-9]*) die "--context-alert must be a whole number from 0 to 100" 2 ;; esac
   [ "$CONTEXT_ALERT" -le 100 ] || die "--context-alert must be a whole number from 0 to 100" 2
@@ -423,6 +425,34 @@ elif command -v needs-you >/dev/null 2>&1; then
   CLI_PATH=$(command -v needs-you)
 fi
 
+# cron and launchd start the flush without the login shell's environment: where this
+# machine keeps needs-you's files, when that isn't the default, is passed on explicitly
+# (else the flush finds no config or outbox and sends nothing, every 5 minutes, quietly).
+SCHED_VARS="XDG_CONFIG_HOME XDG_STATE_HOME NEEDS_YOU_CONFIG NEEDS_YOU_OUTBOX CODEX_HOME"
+sched_cron_env() {  # "NAME='value' " for each one set
+  local v val out=""
+  for v in $SCHED_VARS; do
+    val=${!v:-}
+    [ -n "$val" ] || continue
+    case "$val" in
+      *"'"*|*%*|*"
+"*) warn "$v has a ' or % in it; the flush schedule can't pass it on (set it in ~/.profile)" ; continue ;;
+    esac
+    out="$out$v='$val' "
+  done
+  printf '%s' "$out"
+}
+sched_plist_env() {  # an EnvironmentVariables entry, or nothing
+  local v val out=""
+  for v in $SCHED_VARS; do
+    val=${!v:-}
+    [ -n "$val" ] || continue
+    val=$(printf '%s' "$val" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+    out="$out<key>$v</key><string>$val</string>"
+  done
+  [ -z "$out" ] || printf '  <key>EnvironmentVariables</key><dict>%s</dict>\n' "$out"
+}
+
 schedule_install() {
   local cli=$1
   if [ "$OS" = "Darwin" ]; then
@@ -435,6 +465,7 @@ schedule_install() {
   <key>Label</key><string>$FLUSH_LABEL</string>
   <key>ProgramArguments</key>
   <array><string>$cli</string><string>-q</string><string>flush</string></array>
+$(sched_plist_env)
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
@@ -457,12 +488,13 @@ EOF
     fi
   elif command -v crontab >/dev/null 2>&1; then
     local line current
-    line="*/5 * * * * \"$cli\" -q flush >/dev/null 2>&1 $CRON_TAG"
+    line="*/5 * * * * $(sched_cron_env)\"$cli\" -q flush >/dev/null 2>&1 $CRON_TAG"
     current=$(crontab -l 2>/dev/null || true)
     if printf '%s\n' "$current" | grep -qxF "$line"; then
       info "flush: crontab entry already present"
     else
-      { printf '%s\n' "$current" | { grep -vF "$CRON_TAG" || true; } | sed '/^$/d'; printf '%s\n' "$line"; } | crontab -
+      # The rest of the crontab as it was, blank lines too (none for an empty one).
+      { [ -z "$current" ] || printf '%s\n' "$current" | { grep -vF "$CRON_TAG" || true; }; printf '%s\n' "$line"; } | crontab -
       info "flush: crontab runs 'needs-you flush' every 5 minutes"
     fi
   else

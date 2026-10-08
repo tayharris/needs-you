@@ -291,6 +291,24 @@ class HubAbuse(HubTestCase):
                     hubmod.check_bind({"bind": bind, "hub_id": "h"})
 
 
+class DatabaseFileModes(HubTestCase):
+    def test_db_wal_and_shm_are_private(self):
+        # Items and token hashes: the -wal and -shm files hold the same data as the database,
+        # and used to be created with the umask's 0644 before the database was chmod 0600.
+        old = os.umask(0o022)
+        try:
+            hub = self.make_hub("hub-a")
+            sender, _ = self.tokens(hub)
+            self.assertEqual(request("POST", hub.url + "/v1/items", sender, {"key": "k", "title": "t"})[0], 201)
+            path = hub.store.path
+            for p in (path, path + "-wal", path + "-shm"):
+                if os.path.exists(p):
+                    self.assertEqual(oct(os.stat(p).st_mode & 0o777), "0o600", p)
+            self.assertTrue(os.path.exists(path + "-wal"))
+        finally:
+            os.umask(old)
+
+
 class CliOutput(unittest.TestCase):
     def test_clean_neutralises_terminal_escapes(self):
         cli = load_cli()

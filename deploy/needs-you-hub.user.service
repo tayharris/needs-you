@@ -5,7 +5,8 @@ Description=needs-you hub (user service)
 
 [Service]
 Type=simple
-ExecStart=@PYTHON@ %h/.local/share/needs-you/hub/needs_you_hub.py --config %h/.config/needs-you/hub.json
+# install-hub.sh --user fills these in with the paths it installed to (XDG_CONFIG_HOME aware).
+ExecStart=@PYTHON@ @HUB@ --config @CONF@
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

@@ -770,6 +770,7 @@ def _flush_locked(cfg: Config, verbose: bool = False, mine: Optional[str] = None
                 _remove(path)
                 out.sent += 1
                 out.results[path] = result
+                _after_sent(entry["path"], entry["body"], result[2])
                 drop_held(key)  # resolved, or re-posted in full: the held add is moot
                 if verbose and path != mine:
                     warn("sent queued %s %s via %s" % (entry["method"], entry["path"], result[0]))
@@ -850,9 +851,10 @@ def _read_lease(path: str) -> Dict[str, str]:
     return out
 
 
-def _process_start(pid: int) -> Optional[str]:
+def _process_start(pid: int, utc: bool = False) -> Optional[str]:
     """The process's start time as `ps -o lstart=` prints it (the hook records the
-    same), "" if there is no such process, None if we can't tell."""
+    same), in local time or (utc) in UTC, "" if there is no such process, None if we
+    can't tell."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -865,7 +867,7 @@ def _process_start(pid: int) -> Optional[str]:
     try:
         r = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], stdin=subprocess.DEVNULL,
                            capture_output=True, text=True, timeout=5,
-                           env=dict(os.environ, LC_ALL="C"))
+                           env=dict(os.environ, LC_ALL="C", **({"TZ": "UTC0"} if utc else {})))
     except (OSError, subprocess.SubprocessError):
         return None
     return " ".join(r.stdout.split())
@@ -887,7 +889,11 @@ def reap_leases(cfg: Config, verbose: bool = False) -> int:
         key, pid, start = lease.get("key", ""), lease.get("pid", ""), lease.get("start", "")
         if not key.startswith("agent:") or not pid.isdigit() or not start:
             continue
-        now_start = _process_start(int(pid))
+        # ps prints local time and this may run in another TZ than the hook did (cron's):
+        # compare in UTC when the hook recorded it (start_utc, hooks after 0.1.3).
+        utc = bool(lease.get("start_utc"))
+        start = lease["start_utc"] if utc else start
+        now_start = _process_start(int(pid), utc=utc)
         if now_start is None or now_start == " ".join(start.split()):
             continue  # alive, or unknown: leave it
         if _read_lease(path) != lease:
@@ -906,25 +912,70 @@ def reap_leases(cfg: Config, verbose: bool = False) -> int:
 # The agent's own open items, per agent session. When an agent in a session posts a `needs`
 # item (the skill), the hook skips its generic "waiting for you" / "turn ended" card for
 # that session while the item is open: one card for one wait. The session is named as the
-# hook names it: $ORCA_TERMINAL_HANDLE in Orca (any agent), else Claude Code's session id
-# ($CLAUDE_CODE_SESSION_ID in the agent's commands, session_id in the hook input). Codex,
-# Gemini CLI and opencode don't give their commands a session id, so outside Orca they get
-# both cards.
+# hook names it (agent_session below): $ORCA_TERMINAL_HANDLE in Orca (any agent), else the
+# agent's session id as its commands see it and its hooks get it as session_id. Gemini CLI
+# gives its commands no session id, so there it's the Gemini process: "pid-<pid>", which the
+# hook matches against its lease (the same process, by pid and start time).
 SESSION_ITEM_MAX_HOURS = 48.0
+# What the hook's lease search skips on the way up to the agent process (keep in step).
+_LEASE_SKIP = ("sh", "-sh", "bash", "-bash", "dash", "zsh", "-zsh", "env", "timeout", "nohup")
 
 
 def session_items_dir() -> str:
     return os.path.join(state_dir(), "session-items")
 
 
-def claude_session() -> str:
-    """This command's agent session as the hook names it, sanitized like the hook's id: the
-    Orca terminal handle, else (inside Claude Code) its session id; "" when there is none."""
-    raw = os.environ.get("ORCA_TERMINAL_HANDLE") or ""
-    if not raw and os.environ.get("CLAUDECODE"):
-        raw = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+def _session_name(raw: str) -> str:
+    """An id sanitized like the hook's (A-Za-z0-9._- kept, 80 chars); never "." or ".."."""
     sess = re.sub(rb"[^A-Za-z0-9._-]", b"_", raw.encode("utf-8"))[:80].decode("ascii")
-    return sess if sess.strip(".") else ""  # never "." or ".."
+    return sess if sess.strip(".") else ""
+
+
+def _agent_process() -> Tuple[int, str]:
+    """(pid, start) of the agent that ran this command, found as the hook finds its lease: the
+    first ancestor that isn't a shell. (0, "") when it can't be told."""
+    import subprocess
+
+    def ps(field: str, pid: int) -> str:
+        r = subprocess.run(["ps", "-o", field + "=", "-p", str(pid)], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=5, env=dict(os.environ, LC_ALL="C"))
+        return r.stdout.strip()
+
+    pid, hops = os.getppid(), 0
+    while hops < 8 and pid > 1:
+        try:
+            comm, ppid = os.path.basename(ps("comm", pid)), ps("ppid", pid)
+        except (OSError, subprocess.SubprocessError):
+            return 0, ""
+        if not comm or not ppid.isdigit():
+            return 0, ""
+        if comm not in _LEASE_SKIP:
+            start = _process_start(pid)
+            return (pid, start) if start else (0, "")
+        pid, hops = int(ppid), hops + 1
+    return 0, ""
+
+
+def agent_session() -> Tuple[str, str]:
+    """(session, start) for this command's agent session as the hook names it: the Orca
+    terminal handle; else Claude Code's $CLAUDE_CODE_SESSION_ID; Codex's $CODEX_SESSION_ID
+    (the root session, which its hooks get; before Codex had it, $CODEX_THREAD_ID);
+    $NEEDS_YOU_AGENT_SESSION, which any connector can set for its agent's commands (the
+    needs-you opencode plugin does, through shell.env); or, in Gemini CLI
+    ($GEMINI_CLI=1), "pid-<pid>" of the Gemini process with its start time. ("", "") outside
+    any of these."""
+    env = os.environ
+    raw = env.get("ORCA_TERMINAL_HANDLE") or ""
+    if not raw and env.get("CLAUDECODE"):
+        raw = env.get("CLAUDE_CODE_SESSION_ID") or ""
+    raw = raw or env.get("CODEX_SESSION_ID") or env.get("CODEX_THREAD_ID") or env.get("NEEDS_YOU_AGENT_SESSION") or ""
+    if raw:
+        return _session_name(raw), ""
+    if env.get("GEMINI_CLI") == "1":
+        pid, start = _agent_process()
+        if pid:
+            return "pid-%d" % pid, start
+    return "", ""
 
 
 def _prune_session_items(base: str) -> None:
@@ -951,19 +1002,82 @@ def _prune_session_items(base: str) -> None:
             pass
 
 
+# key -> the id the hub gave it, for the items this run sent (an add sent from the outbox
+# learns its id only then): the note keeps it, so `resolve --id` can find the note.
+_SENT_IDS: Dict[str, str] = {}
+
+
+def _note_name(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+def _session_notes(name: Optional[str] = None) -> List[str]:
+    """Every note file (or every one named `name`) across the sessions."""
+    base = session_items_dir()
+    out: List[str] = []
+    try:
+        sessions = os.listdir(base)
+    except OSError:
+        return out
+    for sess in sessions:
+        d = os.path.join(base, sess)
+        if os.path.islink(d) or not os.path.isdir(d):
+            continue
+        try:
+            names = [name] if name else os.listdir(d)
+        except OSError:
+            continue
+        out.extend(os.path.join(d, n) for n in names if os.path.isfile(os.path.join(d, n)))
+    return out
+
+
+def forget_session_item_id(item_id: str) -> None:
+    """`resolve --id`: forget the notes of the item with that id. Never raises."""
+    if not item_id:
+        return
+    for path in _session_notes():
+        if _read_lease(path).get("id") == item_id:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def _after_sent(path: str, body: Dict[str, Any], resp: Dict[str, Any]) -> None:
+    """Keep the session notes in step with what the hub said. A resolve (by key or id) names
+    the items it closed; an add of a `needs` item names its id, which its note keeps."""
+    try:
+        if path == "/v1/items/resolve":
+            for item in resp.get("items") or []:
+                if isinstance(item, dict) and isinstance(item.get("key"), str):
+                    note_session_item(item["key"], open_=False)
+            return
+        key, item_id = body.get("key"), resp.get("id")
+        if not (isinstance(key, str) and isinstance(item_id, str) and body.get("kind", "needs") == "needs"):
+            return
+        _SENT_IDS[key] = item_id
+        for note in _session_notes(_note_name(key)):
+            lease = _read_lease(note)
+            if lease.get("key") == clean(key) and lease.get("id") != item_id:
+                lease["id"] = item_id
+                _write_atomic(note, "".join("%s=%s\n" % kv for kv in lease.items()).encode("utf-8"), 0o600)
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
 def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None) -> None:
     """Record (open_) or forget an item key for the hook. Never raises."""
     try:
-        name = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+        name = _note_name(key)
         base = session_items_dir()
         if not open_:  # resolved, or now done/info: no session waits on it any more
-            for sess in os.listdir(base) if os.path.isdir(base) else []:
+            for note in _session_notes(name):
                 try:
-                    os.remove(os.path.join(base, sess, name))
+                    os.remove(note)
                 except OSError:
                     pass
             return
-        sess = claude_session()
+        sess, start = agent_session()
         if not sess:
             return
         hours = expires_in if expires_in is not None and 0 < expires_in < SESSION_ITEM_MAX_HOURS \
@@ -972,8 +1086,12 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
             _prune_session_items(base)
         d = os.path.join(base, sess)
         os.makedirs(d, mode=0o700, exist_ok=True)
-        _write_atomic(os.path.join(d, name), ("key=%s\nexpires=%d\n" % (clean(key), time.time() + hours * 3600))
-                      .encode("utf-8"), 0o600)
+        text = "key=%s\nexpires=%d\n" % (clean(key), time.time() + hours * 3600)
+        if start:  # a process, not a session id: the hook also checks it's the same process
+            text += "start=%s\n" % start
+        if key in _SENT_IDS:
+            text += "id=%s\n" % clean(_SENT_IDS[key])
+        _write_atomic(os.path.join(d, name), text.encode("utf-8"), 0o600)
     except (OSError, ValueError):
         pass
 
@@ -1005,7 +1123,12 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     sending the outbox right now (we wait for it up to LOCK_WAIT_SECONDS, then leave ours
     queued behind its entries and exit 0)."""
     if not cfg.ok:
-        f = queue(method, path, body)
+        try:
+            f = queue(method, path, body)
+        except OSError as e:
+            warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s), and the outbox can't be written (%s): dropped"
+                 % (config_path(), e))
+            return 0
         warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); queued %s" % (config_path(), f))
         return 0
     try:
@@ -1016,6 +1139,7 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     if mine is None:
         try:
             result: Any = send(cfg, method, path, body)
+            _after_sent(path, body, result[2])
         except Unreachable as e:
             warn("no hub reachable (%s), and the outbox can't be written: dropped" % e)
             return 0
@@ -1054,6 +1178,17 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
             state = "created" if resp.get("created") else ("updated" if resp.get("changed") else "unchanged")
             print("%s %s via %s" % (state, clean(resp.get("id")), url))
     return 0
+
+
+def hours_arg(raw: str) -> float:
+    """--expires-in: hours, a finite number within a century (the hub takes dates to 9999)."""
+    try:
+        h = float(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError("not a number of hours: %r" % raw)
+    if h != h or abs(h) > 876000:
+        raise argparse.ArgumentTypeError("hours must be a finite number up to 876000 (100 years)")
+    return h
 
 
 def parse_link(raw: str) -> Dict[str, str]:
@@ -1158,7 +1293,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")
         sp.add_argument("--project", help="source project")
         sp.add_argument("--host", help="source host (default: this machine's hostname)")
-        sp.add_argument("--expires-in", type=float, metavar="HOURS",
+        sp.add_argument("--expires-in", type=hours_arg, metavar="HOURS",
                         help="expiry (done/info default to 24 h on the hub)")
         if name == "add":
             sp.add_argument("--kind", choices=("needs", "done", "info"), default="needs")
@@ -1236,6 +1371,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
         rc = deliver(cfg, "POST", "/v1/items/resolve", body, args.quiet, args.json)
         if rc == 0 and args.key:
             note_session_item(args.key, open_=False)
+        elif rc == 0:  # (also forgotten by key once the hub names what it resolved)
+            forget_session_item_id(args.id)
         return rc
     kind = args.kind if args.cmd == "add" else args.cmd
     if args.link and len(args.link) > 6:
@@ -1250,7 +1387,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
     if len(args.steps_json or []) + len(args.step or []) > MAX_STEPS:
         warn("at most %d steps" % MAX_STEPS)
         return 2
-    rc = deliver(cfg, "POST", "/v1/items", build_item(args, cfg, kind), args.quiet, args.json)
+    try:
+        item = build_item(args, cfg, kind)
+    except (OSError, UnicodeDecodeError) as e:  # --body-file
+        warn("--body-file: %s" % e)
+        return 2
+    rc = deliver(cfg, "POST", "/v1/items", item, args.quiet, args.json)
     if rc == 0:
         note_session_item(args.key, open_=kind == "needs", expires_in=args.expires_in)
     return rc
@@ -1289,7 +1431,7 @@ def add_run_parser(sub: Any) -> None:
                     help="e.g. Logs=https://...; repeatable, at most 6")
     rp.add_argument("--agent", help="source agent (default run:<command name>)")
     rp.add_argument("--project", help="source project")
-    rp.add_argument("--expires-in", type=float, metavar="HOURS", help="expiry for the failure card")
+    rp.add_argument("--expires-in", type=hours_arg, metavar="HOURS", help="expiry for the failure card")
     rp.add_argument("command", nargs=argparse.REMAINDER, help="-- CMD [ARGS...]")
 
 
@@ -1349,22 +1491,35 @@ def run_command(cfg: Config, args: argparse.Namespace) -> int:
     else:
         old_term = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, lambda s, f: proc.send_signal(s))  # stopping us stops the command
-        try:
-            if proc.stderr is not None:
-                fd = proc.stderr.fileno()
+        # stderr is passed through (and its tail kept) by a thread, while this one waits for
+        # the command itself: something the command left running in the background can hold
+        # the pipe open for hours, and the command must never block on a full pipe, also
+        # while we're being interrupted.
+        tail_buf: List[bytes] = [b""]
+        reader = None
+        if proc.stderr is not None:
+            import threading
+
+            def pump(fd: int) -> None:
                 while True:
                     try:
                         chunk = os.read(fd, 65536)
                     except InterruptedError:
                         continue
+                    except OSError:
+                        return
                     if not chunk:
-                        break
+                        return
                     try:
                         sys.stderr.buffer.write(chunk)
                         sys.stderr.buffer.flush()
                     except (OSError, ValueError):
                         pass
-                    tail = (tail + chunk)[-16384:]
+                    tail_buf[0] = (tail_buf[0] + chunk)[-16384:]
+
+            reader = threading.Thread(target=pump, args=(proc.stderr.fileno(),), daemon=True)
+            reader.start()
+        try:
             rc = proc.wait()
         except KeyboardInterrupt:  # Ctrl-C reached the command too; a person is watching
             interrupted = True
@@ -1375,6 +1530,9 @@ def run_command(cfg: Config, args: argparse.Namespace) -> int:
                 rc = proc.wait()
         finally:
             signal.signal(signal.SIGTERM, old_term)
+        if reader is not None:
+            reader.join(1.0)  # what the command wrote last; not what a background child holds
+            tail = tail_buf[0]
     if rc < 0:
         rc = 128 - rc
     elapsed = time.monotonic() - start
@@ -2000,8 +2158,19 @@ def backup_dir() -> str:
     return os.path.join(state_dir(), "backup")
 
 
+# Set when an update starts applying: its first backup replaces the last update's list, so
+# --rollback undoes that update only, not files an earlier one replaced.
+_NEW_BACKUP_GENERATION = False
+
+
+def _backed_up(name: str) -> bool:
+    """This update already kept `name` (so a second step replacing it keeps the original)."""
+    return not _NEW_BACKUP_GENERATION and name in (_read_state().get("backups") or {})
+
+
 def _backup(name: str, path: str) -> None:
     """Keep the file being replaced, for `update --rollback` (one generation)."""
+    global _NEW_BACKUP_GENERATION
     try:
         with open(path, "rb") as fh:
             data = fh.read()
@@ -2010,7 +2179,8 @@ def _backup(name: str, path: str) -> None:
         return
     os.makedirs(backup_dir(), mode=0o700, exist_ok=True)
     _write_atomic(os.path.join(backup_dir(), name), data, 0o600)
-    backups = _read_state().get("backups") or {}
+    backups = {} if _NEW_BACKUP_GENERATION else (_read_state().get("backups") or {})
+    _NEW_BACKUP_GENERATION = False
     backups[name] = {"path": path, "mode": mode, "version": _stamp(path) if name != "needs-you" else VERSION}
     _write_state(backups=backups)
 
@@ -2055,7 +2225,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                 with open(os.path.join(tmp, f), "wb") as fh:
                     fh.write(_download_verified(hub, f, manifest, timeout))
             hook = _home(".claude", "hooks", "needs-you-hook.sh")
-            if os.path.isfile(hook) and "needs-you-hook.sh" not in (_read_state().get("backups") or {}):
+            if os.path.isfile(hook) and not _backed_up("needs-you-hook.sh"):
                 _backup("needs-you-hook.sh", hook)
             r = subprocess.run(["bash", os.path.join(tmp, "install-hooks.sh"), "--user"], stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=60,
@@ -2075,7 +2245,7 @@ def _apply(hub: UpdateTarget, manifest: Dict[str, Any], change: Dict[str, Any], 
                     fh.write(_download_verified(hub, f, manifest, timeout))
             hook = os.path.join(home_fn(), "hooks", "needs-you-hook.sh")
             backup = "%s-needs-you-hook.sh" % agent
-            if os.path.isfile(hook) and backup not in (_read_state().get("backups") or {}):
+            if os.path.isfile(hook) and not _backed_up(backup):
                 _backup(backup, hook)
             r = subprocess.run(["bash", os.path.join(tmp, installer), flag, home_fn()],
                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
@@ -2183,6 +2353,8 @@ def update(cfg: Config, check: bool = False, auto: bool = False, quiet: bool = F
         return finish(0)
     failed = False
     timeout = max(cfg.timeout, 10)
+    global _NEW_BACKUP_GENERATION
+    _NEW_BACKUP_GENERATION = True
     # The CLI last: if replacing it fails, the rest is already current.
     for c in sorted(changes, key=lambda c: c["file"] == "needs-you"):
         try:

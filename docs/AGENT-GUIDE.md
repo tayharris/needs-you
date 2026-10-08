@@ -228,12 +228,16 @@ A sender that runs on a schedule passes `--expires-in` of about twice its interv
 (hourly: `3`, daily: `48`) and re-posts on every run that still sees the blocker; each re-post
 renews the expiry, so a run that crashed before its resolve doesn't leave a card forever.
 
-**One card per wait.** When an agent posts a `needs` item with the CLI from inside a Claude
-Code session (or an Orca terminal), the CLI notes the key for that session, and while it is
-open the hooks skip their generic "Claude is waiting for you" card for that session (in Orca,
-also the "turn ended" card of Codex, Gemini CLI, opencode and Copilot CLI). Permission prompts, questions
-and errors still post. Resolving the key, a `done`/`info` with the same key, the item's
-`--expires-in` (at most 48 hours) or the session ending clears the note. So resolve promptly:
+**One card per wait.** When an agent posts a `needs` item with the CLI from inside its session
+(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI only in Orca), the CLI notes the key for that
+session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
+ended" card for that session. Permission prompts, questions and errors still post. The CLI
+finds the session from `$ORCA_TERMINAL_HANDLE`, the agent's own id (`$CLAUDE_CODE_SESSION_ID`,
+`$CODEX_SESSION_ID`), or `$NEEDS_YOU_AGENT_SESSION`, which any connector can set for its
+agent's commands to the same id its hook sees ([custom connector
+guide](guides/custom-connector.md#one-card-for-one-wait)). Resolving the item (`--key` or
+`--id`), a `done`/`info` with the same key, the item's `--expires-in` (at most 48 hours) or the
+session ending clears the note. So resolve promptly:
 until you do, the person gets no "waiting" card from that session. Details:
 [integrations/claude-code](../integrations/claude-code/README.md).
 

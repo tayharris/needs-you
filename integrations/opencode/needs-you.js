@@ -83,6 +83,16 @@ export const NeedsYou = async ({ directory, worktree }) => {
   }
 
   return {
+    // The agent's commands learn their session, so `needs-you add` from this session notes
+    // its item for the hook (one card for one wait). Only the id; nothing else changes.
+    "shell.env": async (input, output) => {
+      try {
+        const sid = str(input && input.sessionID)
+        if (sid && output && output.env && typeof output.env === "object") output.env.NEEDS_YOU_AGENT_SESSION = sid
+      } catch {
+        // never fail opencode
+      }
+    },
     event: async ({ event }) => {
       try {
         const type = str(event && event.type)

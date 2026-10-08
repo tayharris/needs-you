@@ -252,6 +252,10 @@ fine. Link URLs may not contain whitespace or invisible format characters at all
 a space as <code>%20</code>). Item records that arrive by replication keep only links that pass these
 rules. The same goes for steps: their text and link fields follow these rules on POST, and a
 replicated step whose link fails keeps its text and loses the link.</p>
+<p>A request body whose JSON has an unpaired UTF-16 surrogate escape anywhere (<code>"\ud800"</code>, as a
+file name with a byte that isn't UTF-8 can produce) is a <code>400 invalid</code>: it isn't text, can't be
+stored, and clients' JSON decoders refuse it. On <code>/v1/replicate</code> that applies per record: such
+an item is skipped, and such a token or invite record fails the batch closed.</p>
 <p><strong>Steps</strong> are the things the person has to do, in order. Each step is an object:</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Field</th><th>Type</th><th>Rule</th><th>Default</th></tr></thead>
@@ -281,7 +285,8 @@ unexpired items, the hub returns <code>429 too_many_open</code> instead.</li>
 plus <code>"created": true|false</code> and <code>"changed": true|false</code> (<code>changed</code> is true on create and when
 title/body/priority/steps changed).</p>
 <h3 id="post-v1itemsresolve-sender"><code>POST /v1/items/resolve</code> (sender) <a class="anchor" href="#post-v1itemsresolve-sender" aria-label="Link to this section">#</a></h3>
-<p>Body: exactly one of <code>{"key": "..."}</code> or <code>{"id": "..."}</code>.</p>
+<p>Body: exactly one of <code>{"key": "..."}</code> or <code>{"id": "..."}</code>. Leading and trailing whitespace is
+trimmed, as <code>POST /v1/items</code> trims the key it stores.</p>
 <p>Closes the open item with that key (or that id) as <code>resolved</code>. Always <code>200</code> and idempotent:</p>
 <div class="code"><pre><code class="language-json">{"resolved": 1, "items": [ { ...the resolved item... } ]}</code></pre></div>
 <p>If nothing is open with that key/id (already resolved, dismissed, expired, or never existed),

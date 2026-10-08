@@ -25,6 +25,12 @@
 #            notification (permission_prompt, elicitation_dialog) and agentStop
 #            call `notify`. Its payload names the session `sessionId`. Copilot
 #            waits for most hooks, so like gemini the work runs in the background.
+#   grok     Grok Build, which runs the Claude Code hooks from ~/.claude/settings.json
+#            (on by default). Detected by $GROK_HOOK_EVENT whatever the argument
+#            says: Notification permission_prompt / idle_prompt (sent as
+#            notificationType) and StopFailure call `notify`, Stop resolves (no
+#            context check: Grok's transcript isn't Claude's). Grok waits for its
+#            hooks, so like Gemini the work goes to a background copy.
 #
 # Reads the hook input JSON from stdin. The card says where the session runs:
 # the tmux pane (session:window.pane), VS Code, or SSH, and links to it where
@@ -89,9 +95,12 @@ case "${2:-}" in
   codex) agent=codex ;;
   gemini) agent=gemini ;;
   opencode) agent=opencode ;;
+  grok) agent=grok ;;
   copilot) agent=copilot ;;
   *) agent=claude ;;
 esac
+# Grok Build runs the Claude hooks as they are: it names itself only in the environment.
+[ -n "${GROK_HOOK_EVENT:-}" ] && agent=grok
 
 # Settings may also live in the sender env file (written by setup-sender.sh),
 # e.g. NEEDS_YOU_AGENT_ALERTS=1 there opts in every session on this machine.
@@ -115,10 +124,10 @@ esac
 
 input=$(cat 2>/dev/null)
 
-# Gemini CLI and Copilot CLI wait for each hook (and read its stdout as JSON):
-# hand the work to a background copy with no stdio and return at once. The
-# copy starts the lease search from this hook's parent.
-if { [ "$agent" = gemini ] || [ "$agent" = copilot ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
+# Gemini CLI, Copilot CLI and Grok wait for each hook (and Gemini and Copilot read its
+# stdout as JSON): hand the work to a background copy with no stdio and return at once.
+# The copy starts the lease search from this hook's parent.
+if { [ "$agent" = gemini ] || [ "$agent" = copilot ] || [ "$agent" = grok ]; } && [ -z "${NY_HOOK_BG:-}" ]; then
   printf '%s' "$input" | NY_HOOK_BG=1 NY_HOOK_PPID=${NY_HOOK_PPID:-$PPID} bash "$0" "$mode" "$agent" >/dev/null 2>&1 &
   exit 0
 fi
@@ -161,23 +170,52 @@ state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/claude-hooks"
 marker="$state_dir/$id"
 ctx_marker="$state_dir/$id.context"
 # Open `needs` items the agent itself posted from this session (`needs-you add` records them
-# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>).
-items_dir="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items/$id"
+# here, `needs-you resolve` removes them; one file per key: key=, expires=<epoch>). The
+# session is named as here: the Orca handle, else the agent's session id, which Claude Code,
+# Codex and (through the plugin) opencode also give the agent's commands. Gemini CLI doesn't,
+# so the CLI notes its items under pid-<the Gemini process> with start=, matched to the lease.
+items_base="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items"
+items_dir="$items_base/$id"
+
+# items_open DIR [START]: an unexpired record in DIR (with START: only one for that process).
+items_open() {
+  [ -d "$1" ] || return 1
+  local f exp now st
+  now=$(date +%s)
+  for f in "$1"/*; do
+    [ -f "$f" ] || continue
+    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
+    case "$exp" in ''|*[!0-9]*) continue ;; esac
+    [ "$exp" -gt "$now" ] || continue
+    if [ -n "${2:-}" ]; then
+      st=$(sed -n 's/^start=//p' "$f" 2>/dev/null | head -n 1)
+      [ "$st" = "$2" ] || continue
+    fi
+    return 0
+  done
+  return 1
+}
+
+# The lease's start time with runs of blanks squeezed, as the CLI records it.
+lease_start_norm() {
+  local IFS=' '
+  set -f
+  # shellcheck disable=SC2086
+  set -- $lease_start
+  set +f
+  printf '%s' "$*"
+}
 
 # own_item_open: true while the agent's own blocker for this session is open and unexpired.
 # Read-only; the CLI prunes expired records.
 own_item_open() {
-  case "$id" in .|..) return 1 ;; esac
-  [ -d "$items_dir" ] || return 1
-  local f exp now
-  now=$(date +%s)
-  for f in "$items_dir"/*; do
-    [ -f "$f" ] || continue
-    exp=$(sed -n 's/^expires=//p' "$f" 2>/dev/null | head -n 1)
-    case "$exp" in ''|*[!0-9]*) continue ;; esac
-    [ "$exp" -gt "$now" ] && return 0
-  done
-  return 1
+  case "$id" in .|..) ;; *) items_open "$items_dir" && return 0 ;; esac
+  # Gemini: the items of the agent process this hook belongs to (ps only when there are any).
+  set -- "$items_base"/pid-*
+  [ -e "$1" ] || return 1
+  lease
+  [ -n "$lease_pid" ] || return 1
+  items_open "$items_base/pid-$lease_pid" "$(lease_start_norm)"
 }
 
 # The Claude process this hook belongs to: the first ancestor that isn't a
@@ -197,10 +235,14 @@ agent_pid() {
 }
 lease_pid=
 lease_start=
-lease() {  # fills lease_pid and lease_start once
+lease_start_utc=
+lease() {  # fills lease_pid, lease_start and lease_start_utc once
   [ -z "$lease_pid" ] || return 0
   lease_pid=$(agent_pid)
   [ -n "$lease_pid" ] && lease_start=$(LC_ALL=C ps -o lstart= -p "$lease_pid" 2>/dev/null)
+  # ps prints local time, and `needs-you flush` may run in another TZ (cron's): start_utc
+  # is what it compares (start= stays for older CLIs and this hook's own matching).
+  [ -n "$lease_start" ] && lease_start_utc=$(TZ=UTC0 LC_ALL=C ps -o lstart= -p "$lease_pid" 2>/dev/null)
   [ -n "$lease_start" ] || lease_pid=
 }
 
@@ -213,6 +255,7 @@ write_marker() {
   {
     printf 'key=%s\n' "$2"
     [ -n "$lease_start" ] && printf 'pid=%s\nstart=%s\n' "$lease_pid" "$lease_start"
+    [ -n "$lease_start_utc" ] && printf 'start_utc=%s\n' "$lease_start_utc"
     [ -n "${3:-}" ] && printf '%s\n' "$3"
   } >"$tmp" 2>/dev/null
   mv -f "$tmp" "$1" 2>/dev/null || rm -f "$tmp"
@@ -254,16 +297,16 @@ run_py() {
   lease
   NY_MODE=$1 NY_INPUT=$input NY_KEY=$key NY_HOST=$host NY_CLI=$cli NY_ID=$id \
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
-  NY_PID=$lease_pid NY_START=$lease_start NY_AGENT=$agent \
+  NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
   python3 - 2>/dev/null <<'PY'
 import json, os, re, shlex, subprocess, sys
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
-AGENTS = ("codex", "gemini", "opencode", "copilot")
+AGENTS = ("codex", "gemini", "opencode", "copilot", "grok")
 AGENT = os.environ.get("NY_AGENT") if os.environ.get("NY_AGENT") in AGENTS else "claude"
 AGENT_ID = {"codex": "codex", "gemini": "gemini-cli", "opencode": "opencode",
-            "copilot": "copilot-cli"}.get(AGENT, "claude-code")
+            "copilot": "copilot-cli", "grok": "grok"}.get(AGENT, "claude-code")
 try:
     data = json.loads(os.environ.get("NY_INPUT") or "{}")
 except Exception:
@@ -284,7 +327,7 @@ def oneline(text, limit):
 
 
 event = field("hook_event_name")
-ntype = field("notification_type")
+ntype = field("notification_type") or field("notificationType")  # Grok: camelCase only
 cwd = field("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
 project = os.path.basename(project_dir.rstrip("/")) or "claude"
@@ -658,6 +701,24 @@ def opencode_card():
     return None
 
 
+def grok_card():
+    """(kind, what, msg) for a Grok Build hook event (through the Claude hooks), or None.
+    Its Notification carries no tool name, so a permission card can't say what for."""
+    if event == "Notification":
+        if ntype == "permission_prompt":
+            return "permission", "Grok needs permission", "Grok is waiting for you to approve a tool call."
+        if ntype == "idle_prompt":
+            if not turn_cards():
+                return None
+            return "notify", "Grok is waiting for you", "Grok finished its turn and is waiting for your next message."
+        return None
+    if event == "StopFailure":
+        err = oneline(field("error_message"), 300)
+        return "failure", "Grok stopped on an error", ((err + "\n\n") if err else "") + \
+            "The turn ended and won't continue on its own; send a message to retry."
+    return None
+
+
 def copilot_card():
     """(kind, what, msg) for a Copilot CLI hook event, or None. A notification's message
     can hold the whole command line or URL ("Run command: <cmd>", "Fetch URL: <url>"): the
@@ -684,9 +745,9 @@ def copilot_card():
 def notify():
     priority = agent_priority()
     kind = "notify"
-    if AGENT in ("codex", "gemini", "opencode", "copilot"):
+    if AGENT in ("codex", "gemini", "opencode", "copilot", "grok"):
         card = {"codex": codex_card, "gemini": gemini_card, "opencode": opencode_card,
-                "copilot": copilot_card}[AGENT]()
+                "copilot": copilot_card, "grok": grok_card}[AGENT]()
         if card is None:
             return 3
         kind, what, msg = card
@@ -880,6 +941,8 @@ def context():
             fh.write("key=%s\n" % key)
             if os.environ.get("NY_PID") and os.environ.get("NY_START"):
                 fh.write("pid=%s\nstart=%s\n" % (os.environ["NY_PID"], os.environ["NY_START"]))
+                if os.environ.get("NY_START_UTC"):
+                    fh.write("start_utc=%s\n" % os.environ["NY_START_UTC"])
             fh.write("pct=%d\n" % pct)
         os.replace(tmp, marker)
     return rc
@@ -903,6 +966,7 @@ case "$mode" in
   stop)
     # A StopFailure card stays until the next prompt: the turn ended on an error.
     grep -qs '^kind=failure$' "$marker" || resolve_marker "$marker" "$key"
+    [ "$agent" = grok ] && exit 0  # its transcript isn't Claude's: no context card
     case "${NEEDS_YOU_CONTEXT_ALERT_PCT:-}" in
       0|0.0|off|no|false) resolve_marker "$ctx_marker" ;;
       *) run_py context >/dev/null; log "context $key -> $?" ;;
@@ -957,6 +1021,10 @@ case "$mode" in
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
     case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
+    if [ "$agent" = gemini ] && [ -d "$items_base" ]; then
+      lease
+      [ -n "$lease_pid" ] && rm -rf "$items_base/pid-$lease_pid"
+    fi
     ;;
 
   notify)
@@ -964,10 +1032,13 @@ case "$mode" in
     # skill), the generic "waiting for input" card would only repeat it. Permission prompts,
     # questions and errors still post: they are a different thing to act on.
     # The same wait in each agent: Claude's idle / needs-input notifications, and the "turn
-    # ended" card of Codex (Stop), Gemini (AfterAgent), opencode (Stop: session idle) and
-    # Copilot (agentStop: no event name or notification type).
-    case "$agent:$(json_str notification_type):$(json_str hook_event_name)" in
-      claude:idle_prompt:*|claude:agent_needs_input:*|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
+    # ended" card of Codex (Stop), Gemini (AfterAgent), opencode (Stop: session idle),
+    # Copilot (agentStop: no event name or notification type) and Grok (idle_prompt, sent
+    # as notificationType).
+    ntype=$(json_str notification_type)
+    [ -n "$ntype" ] || ntype=$(json_str notificationType)
+    case "$agent:$ntype:$(json_str hook_event_name)" in
+      claude:idle_prompt:*|claude:agent_needs_input:*|grok:idle_prompt:*|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
         if own_item_open; then
           log "notify $key -> skipped: the agent's own item for this session is open"
           exit 0
