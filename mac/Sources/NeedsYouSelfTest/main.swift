@@ -9,6 +9,7 @@ let entries =
     testEntries(ItemStoreMergeTests.self, ItemStoreMergeTests.allTests)
     + testEntries(ItemStoreCountTests.self, ItemStoreCountTests.allTests)
     + testEntries(ItemStoreLaterTests.self, ItemStoreLaterTests.allTests)
+    + testEntries(ItemStoreCarryOverTests.self, ItemStoreCarryOverTests.allTests)
     + testEntries(LinkPolicyTests.self, LinkPolicyTests.allTests)
     + testEntries(LinkCasesTests.self, LinkCasesTests.allTests)
     + testEntries(HubClientTests.self, HubClientTests.allTests)

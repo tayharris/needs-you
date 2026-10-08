@@ -177,6 +177,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch action {
         case .openSettings(let page):
             settingsWindow.show(tab: SettingsTab(setupPage: page))
+        case .restartLocalHub:
+            // In place: no window, no activation. The card goes once the hub answers.
+            model.setupNotice = SetupNotice(tip: tip, text: "Restarting the hub…", failed: false)
+            localHub.restart()
         case .copyAgentPrompt:
             model.setupNotice = SetupNotice(tip: tip, text: "Creating an invite…", failed: false)
             connect.createInvite(name: SetupChecklist.inviteName, role: .sender, uses: SetupChecklist.inviteUses,

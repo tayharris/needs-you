@@ -7,12 +7,27 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Added
 
 - **GitHub Copilot CLI.** The same "agent is waiting" and permission cards as the other agents: `--copilot-hooks user` on the invite's shell one-liner (the agent prompt says so) writes `~/.copilot/hooks/needs-you.json` (or `$COPILOT_HOME/hooks/`) next to a copy of the hook. A card when Copilot asks for permission or a question, or finishes its turn; it clears when you answer, the next tool finishes, you send your next prompt or the session ends. `needs-you doctor` has a `copilot hooks` line, `needs-you update` keeps the file and hook current, and `needs-you uninstall-hooks --copilot` removes them. Guide: [GitHub Copilot CLI](docs/guides/copilot.md).
+- **MCP server** for agents that speak MCP but have no shell: `integrations/mcp/needs_you_mcp.py`, one stdlib Python file with the tools `needs_you_add`, `needs_you_resolve` and `needs_you_doctor`. It runs the `needs-you` CLI for each call, so posts get the same failover, offline queue and rules. Install it by hand for now: [MCP server guide](docs/guides/mcp.md). There's no tool to list your open items, since senders can't read the inbox. Design: [ADR 0008](docs/adr/0008-mcp-server.md).
+
+### Changed
+
+- **`needs-you doctor` says what to do next.** Every `WARN` and `FAIL` line now has one next step under it: a command to run as is (quoted, so odd paths and URLs can't turn into a second command), or exactly what to ask you for, such as a new invite link. A hub that can't be reached gets a step for its kind (`open -a NeedsYou`, `tailscale ping <host>`, `curl <url>/v1/health`), and a hub URL that isn't plain `http(s)://host:port` gets "fix `NEEDS_YOU_URLS`" instead of a command.
+- **Invite agent prompt:** it now ends by having the agent run `needs-you doctor`, act on or pass on the next step under each `WARN` or `FAIL`, and ask you for a new link if the old one is used up. The join page says the same. The Mac app uses its own wording with older hubs.
+- **The Claude Code skill and the agent guide are shorter and sharper:** a "Don't post" list (no progress updates, nothing you can find out yourself, no second card for the same wait, no test items), what makes a good key, title and link, resolving what you posted, and one card per wait. A test checks that every `needs-you` command and flag they mention exists.
+
+### Changed (API)
+
+- `GET /v1/items` without `cursor` or `since` (a full poll) that has more items than `limit` (`more: true`) now gives a `next` that continues it: a `cursor` poll with it returns the rest, then whatever changed since. Before, that `next` pointed past everything, so following the documented polling loop never delivered the rest. Full polls are ordered by the hub's write order now. Nothing else changes shape. See [API.md](docs/API.md#get-v1items-reader).
 
 ### Fixed
 
 - Codex CLI hooks: **`/clear` in one Codex session no longer clears the cards of your other Codex sessions.** Codex 0.159+ runs the hooks of all its sessions from one shared background app-server, so the hook now resolves only the clearing session's own card; the old conversation's card clears when Codex ends it, about a minute later. Found by driving a real Codex TUI.
 - opencode plugin: **`opencode run` no longer leaves a "waiting for you" card behind.** A one-shot run goes idle and exits at once, so its card had no live process for `needs-you flush` to watch and stayed for 48 hours. The hook now reads the lease before it posts and posts nothing once opencode has exited; a card that does go out is cleared by the next flush (within 5 minutes). Found by driving a real opencode 1.18.35.
 - Gemini CLI hooks: the docs said user-level hooks need no trust step, but Gemini CLI runs no hooks at all in a folder you haven't trusted (folder trust is on by default). The guide says so now, and `needs-you doctor`'s gemini line reminds you unless folder trust is off. Found by driving a real Gemini CLI 0.63.0.
+- Mac app: **a hub on this Mac that starts but never answers no longer leaves you at "Hub unreachable".** After 30 s the pill says **Hub not answering** and the panel shows a card saying what's wrong with a **Restart hub** button (it restarts in place; nothing takes focus). Settings → Your inbox shows the hub's last output and the same button. If the hub answers later after all, it all clears by itself.
+- Mac app: **with more than 500 open items, the rest never showed up.** The app's full poll got the first 500 and its cursor then skipped the others. It now asks for up to 2,000 at once and follows the hub's `next` for the rest (a hub from 0.1.3 or earlier still stops at 2,000; update it with the Mac).
+- Mac app: a card you mark **Done** (or dismiss) right after opening the panel no longer flashes back for a poll. Opening the panel marks cards seen, and a poll that brought the seen version before the Done reached the hub put the card back; now only a change from its sender (new title, body, priority or steps) brings a closed card back.
+- Mac app: **changing hubs, or turning Run hub on this Mac on or off, keeps your card snoozes, what's held under Later and the cards you just closed.** They were wiped, so held cards rejoined the list without a peek and snoozed or just-closed ones came back. They now apply to the same items on the new hub (by item id, or by the sender's key on a hub that doesn't replicate with the old one; a Done stays with the hub it was sent to).
 
 ## [0.1.3] - 2026-10-07
 

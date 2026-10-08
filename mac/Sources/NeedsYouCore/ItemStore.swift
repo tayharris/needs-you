@@ -39,13 +39,26 @@ public struct ItemStore: Sendable {
     /// `updated_at` of that version. A kind change doesn't move `content_updated_at`, so
     /// this is how they still count as new on the pill (`freshAt`).
     public private(set) var promotedToNeeds: [String: Date] = [:]
-    /// Items closed locally while the PATCH is in flight, with the `updated_at` they had
-    /// and when they were closed, so a poll that races the PATCH doesn't resurrect them.
+    /// Items closed locally while the PATCH is in flight, with the version they had and
+    /// when they were closed, so a poll that races the PATCH doesn't resurrect them.
     private var locallyClosed: [String: Tombstone] = [:]
+    /// Set by `carryingLocalState` until the new feed's first poll is merged: the key of
+    /// each carried snooze's or hold's item.
+    private var carriedKeys: [String: String]?
 
     private struct Tombstone: Sendable {
-        var updatedAt: Date
+        var item: Item
         var closedAt: Date
+
+        /// Does a polled version undo the close? Only the sender's own change does: newer
+        /// content (`content_updated_at`, or a visible change from a hub without it). A
+        /// newer `updated_at` alone is a seen_at PATCH, an unchanged re-post or a replica
+        /// catching up, all from before the Done landed, so the Done wins.
+        func isReopened(by incoming: Item) -> Bool {
+            guard incoming.updatedAt > item.updatedAt else { return false }
+            if let new = incoming.contentUpdatedAt, let old = item.contentUpdatedAt, new > old { return true }
+            return incoming.hasVisibleChange(from: item)
+        }
     }
 
     /// How long a local close is remembered (it's settled long before this).
@@ -74,9 +87,15 @@ public struct ItemStore: Sendable {
             latestUpdatedAt = max(latestUpdatedAt ?? incoming.updatedAt, incoming.updatedAt)
 
             if let tombstone = locallyClosed[incoming.id] {
-                if incoming.updatedAt <= tombstone.updatedAt { continue }
-                // The sender updated it after we closed it: it's live again.
-                locallyClosed[incoming.id] = nil
+                if incoming.status != .open {
+                    // The close (ours or anyone's) reached the hub: settled.
+                    locallyClosed[incoming.id] = nil
+                } else if tombstone.isReopened(by: incoming) {
+                    // The sender changed it after we closed it: it's live again.
+                    locallyClosed[incoming.id] = nil
+                } else {
+                    continue
+                }
             }
 
             let existing = items[incoming.id]
@@ -132,6 +151,7 @@ public struct ItemStore: Sendable {
             // Anything we closed locally that the hub no longer lists is settled.
             locallyClosed = locallyClosed.filter { seenIDs.contains($0.key) }
         }
+        settleCarriedState()
 
         result.removed.append(contentsOf: prune(now: now))
         return result
@@ -147,9 +167,11 @@ public struct ItemStore: Sendable {
             heldForLater[id] = nil
             dropped.append(item)
         }
-        // Snoozes end, and never outlive their item; nor does a Later hold.
-        cardSnoozes = cardSnoozes.filter { $0.value > now && items[$0.key] != nil }
-        heldForLater = heldForLater.filter { items[$0.key] != nil }
+        // Snoozes end, and never outlive their item; nor does a Later hold. Carried ones
+        // wait for the new feed's first poll (settleCarriedState).
+        let carried = carriedKeys != nil
+        cardSnoozes = cardSnoozes.filter { $0.value > now && (carried || items[$0.key] != nil) }
+        if !carried { heldForLater = heldForLater.filter { items[$0.key] != nil } }
         promotedToNeeds = promotedToNeeds.filter { items[$0.key] != nil }
         // Local-close tombstones: 24 h at most, and never more than the cap.
         locallyClosed = locallyClosed.filter { now.timeIntervalSince($0.value.closedAt) < Self.closedRetention }
@@ -166,10 +188,51 @@ public struct ItemStore: Sendable {
     @discardableResult
     public mutating func closeLocally(id: String, now: Date = Date()) -> Item? {
         guard let item = items.removeValue(forKey: id) else { return nil }
-        locallyClosed[id] = Tombstone(updatedAt: item.updatedAt, closedAt: now)
+        locallyClosed[id] = Tombstone(item: item, closedAt: now)
         cardSnoozes[id] = nil
         heldForLater[id] = nil
         return item
+    }
+
+    // MARK: - Feed restarts
+
+    /// A fresh store for a new feed (another hub, the hub on this Mac turned on or off)
+    /// that keeps this Mac's own state: card snoozes, Later holds and local closes. Items and
+    /// the `since` cursor start over. Ids are the same on hubs that replicate, so everything
+    /// stays keyed by id; until the new feed's first poll is merged nothing carried is pruned
+    /// for lack of its item, and then snoozes and holds whose id isn't there follow their
+    /// item's key (a hub that doesn't replicate with the old one has the same sender's item
+    /// under another id). Local closes stay by id only: another hub never got that Done.
+    public func carryingLocalState() -> ItemStore {
+        var next = ItemStore()
+        next.cardSnoozes = cardSnoozes
+        next.heldForLater = heldForLater
+        next.locallyClosed = locallyClosed
+        var keys: [String: String] = [:]
+        for id in Set(cardSnoozes.keys).union(heldForLater.keys) {
+            if let key = items[id]?.key ?? carriedKeys?[id] { keys[id] = key }
+        }
+        next.carriedKeys = keys
+        return next
+    }
+
+    /// The first poll of a new feed is in: carried snoozes and holds go to the item with
+    /// their id, else to the open item with their key, else away.
+    private mutating func settleCarriedState() {
+        guard let keys = carriedKeys else { return }
+        carriedKeys = nil
+        func match(_ id: String) -> Item? {
+            guard let key = keys[id] else { return nil }
+            return items.values.first { $0.key == key }
+        }
+        for (id, until) in cardSnoozes where items[id] == nil {
+            cardSnoozes[id] = nil
+            if let item = match(id), cardSnoozes[item.id] == nil { cardSnoozes[item.id] = until }
+        }
+        for (id, heldAt) in heldForLater where items[id] == nil {
+            heldForLater[id] = nil
+            if let item = match(id), item.kind == .needs, heldForLater[item.id] == nil { heldForLater[item.id] = heldAt }
+        }
     }
 
     /// Undo `closeLocally` after a failed PATCH.
@@ -177,6 +240,10 @@ public struct ItemStore: Sendable {
         locallyClosed[item.id] = nil
         if items[item.id] == nil { items[item.id] = item }
     }
+
+    /// A close whose PATCH failed after the feed changed: the item isn't put back (the new
+    /// feed lists it if it's open there), but the close no longer hides it.
+    public mutating func forgetClose(id: String) { locallyClosed[id] = nil }
 
     public mutating func snoozeCard(id: String, until: Date) {
         guard items[id] != nil else { return }

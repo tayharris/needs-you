@@ -118,6 +118,7 @@ final class LocalHubController: ObservableObject {
             stopMonitoring()
             settings.localHubToken = nil
             model.localHubIssue = nil
+            model.localHubNotAnswering = false
             state = .off
             reach = nil
         }
@@ -291,23 +292,56 @@ final class LocalHubController: ObservableObject {
         p.terminationHandler = nil
     }
 
+    /// Health checks until the hub answers. Past the deadline (LocalHubReadiness) it says
+    /// what's wrong, offers Restart (the panel's status card and Settings), and keeps
+    /// checking slowly in case the hub comes up after all.
     private func waitUntilReady(publicURL: String, generation gen: Int) {
         readyTask?.cancel()
+        let started = startedAt
         readyTask = Task { [weak self] in
-            let url = LocalHub.clientURL.appendingPathComponent("v1/health")
-            for _ in 0..<60 {
-                if Task.isCancelled { return }
-                if let (_, response) = try? await HubSession.shared.data(from: url),
-                   (response as? HTTPURLResponse)?.statusCode == 200 {
-                    guard let self, gen == self.generation else { return }
+            var request = URLRequest(url: LocalHub.clientURL.appendingPathComponent("v1/health"))
+            request.timeoutInterval = LocalHubReadiness.requestTimeout
+            var readiness = LocalHubReadiness(startedAt: started)
+            while !Task.isCancelled {
+                var answered = false
+                if let (_, response) = try? await HubSession.shared.data(for: request) {
+                    answered = (response as? HTTPURLResponse)?.statusCode == 200
+                }
+                guard !Task.isCancelled, let self, gen == self.generation, self.process != nil else { return }
+                let delay: TimeInterval
+                switch readiness.next(answered: answered, now: Date()) {
+                case .ready:
+                    if readiness.timedOut { self.log.info("hub answered after all") }
                     self.state = .running(publicURL: publicURL)
                     self.model.localHubIssue = nil
+                    self.model.localHubNotAnswering = false
                     self.model.pollNow(full: true)
                     return
+                case .timedOut:
+                    let tail = self.lastStderr.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+                    let message = LocalHub.notAnsweringMessage(seconds: Int(readiness.timeout), lastOutput: tail)
+                    self.state = .failed(message)
+                    self.model.localHubIssue = message
+                    self.model.localHubNotAnswering = true
+                    self.log.error("\(message, privacy: .public)")
+                    delay = LocalHubReadiness.slowCheckInterval
+                case .wait(let seconds):
+                    delay = seconds
                 }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
+    }
+
+    /// The Restart button (the panel's status card, Settings): stop the hub and start it
+    /// again now, with the backoff reset. Never activates anything.
+    func restart() {
+        guard settings.runLocalHub, !settings.isDemo else { return }
+        log.info("restarting hub on request")
+        stop()
+        backoff = 1
+        model.localHubNotAnswering = false
+        launch()
     }
 
     private func exited(status: Int32, generation gen: Int) {
@@ -330,6 +364,7 @@ final class LocalHubController: ObservableObject {
     private func fail(_ message: String, retry: Bool = false) {
         state = .failed(message)
         model.localHubIssue = message
+        model.localHubNotAnswering = false
         log.error("\(message, privacy: .public)")
         guard retry, settings.runLocalHub else { return }
         let delay = backoff

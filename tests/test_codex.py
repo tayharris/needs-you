@@ -460,7 +460,7 @@ class Doctor(unittest.TestCase):
         os.makedirs(self.codex)
         row = self.check()
         self.assertEqual(row["status"], "INFO")
-        self.assertIn("install-codex-hooks.sh", row["hint"])
+        self.assertIn("--codex-hooks user", row["hint"])
 
     def test_installed_is_ok_and_mentions_trust(self):
         self.install()

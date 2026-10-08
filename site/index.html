@@ -76,6 +76,20 @@
       <p class="note">Server hubs are optional, for redundancy: the same hub on an always-on Linux server, so alerts land while your Mac sleeps. Most people don't need one. <a href="#inside">Under the hood</a> has the details and the measured numbers.</p>
     </section>
 
+    <section id="agents" aria-labelledby="agents-title">
+      <h2 id="agents-title">How agents use it</h2>
+      <p>An agent posts only when it's blocked on you, with a link to where you act: the PR, the ticket, or the session's folder in your editor. Here, an agent on <code>devbox</code> asks before it runs a migration:</p>
+      <div class="code"><pre><code>needs-you add --key "claude-code:devbox:acme-api" --priority urgent \
+  --title "Claude needs permission: acme-api" \
+  --link "VS Code=vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"</code></pre></div>
+      <figure class="shot shot-agent">
+        <img src="img/preview-agent.png" width="336" height="68" loading="lazy" decoding="async"
+             alt="The arrival preview: Claude needs permission: acme-api, needs you, from devbox, with a button reading VS Code, then vscode in fainter text, then an arrow.">
+        <figcaption>The pill springs out with the card. Its button names the link and, fainter, where it really goes (vscode here, the site for a web link), so a label can't pass for somewhere else. One click opens it and marks the card done; clicking anywhere else opens the panel at the card.</figcaption>
+      </figure>
+      <p class="note">Hooks for <a href="guides/claude-code.html">Claude Code</a> and the other agents post these cards for you, and clear them once you answer. Agents posting on their own follow the <a href="guides/agent-guide.html">agent guide</a>: post when blocked, one key per thing, resolve it when it's handled.</p>
+    </section>
+
     <section id="see" aria-labelledby="see-title">
       <h2 id="see-title">What it looks like</h2>
       <div class="shots">
@@ -101,8 +115,8 @@
           </figure>
           <figure class="shot">
             <img src="img/preview.png" width="336" height="68" loading="lazy" decoding="async"
-                 alt="An arrival preview: the pill grown to show Approve the prod deploy of api v2.14, needs you, from build-box, deploy-bot, 4 minutes ago.">
-            <figcaption>Something new: the pill springs out to show it, then settles back.</figcaption>
+                 alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
+            <figcaption>Something new: the pill springs out to show it, with a button for its first link, then settles back.</figcaption>
           </figure>
         </div>
       </div>

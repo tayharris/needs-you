@@ -329,6 +329,7 @@ class Doctor(unittest.TestCase):
         row = self.check()
         self.assertEqual(row["status"], "WARN")
         self.assertIn("disableAllHooks", row["detail"])
+        self.assertTrue(row["hint"].startswith('remove "disableAllHooks": true from ~/.copilot/settings.json'), row)
         os.remove(os.path.join(self.copilot, "settings.json"))
         for raw in (b"\xff\xfe", b"[1]", b'{"hooks": 1}'):
             with open(os.path.join(self.copilot, "hooks", "needs-you.json"), "wb") as fh:

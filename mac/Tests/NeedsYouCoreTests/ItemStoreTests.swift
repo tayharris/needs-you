@@ -36,6 +36,8 @@ final class ItemStoreMergeTests: XCTestCase {
         ("testLatestUpdatedAtTracksNewest", testLatestUpdatedAtTracksNewest),
         ("testLocalCloseIsNotResurrectedByRacingPoll", testLocalCloseIsNotResurrectedByRacingPoll),
         ("testLocalCloseIsReopenedByNewerSenderUpdate", testLocalCloseIsReopenedByNewerSenderUpdate),
+        ("testDoneWinsOverRacingSeenPatch", testDoneWinsOverRacingSeenPatch),
+        ("testLocalCloseIsReopenedByContentUpdate", testLocalCloseIsReopenedByContentUpdate),
         ("testRestoreAfterFailedPatch", testRestoreAfterFailedPatch),
     ]
 
@@ -147,6 +149,41 @@ final class ItemStoreMergeTests: XCTestCase {
         store.merge([item("a", updated: 10)], isFullSnapshot: true, now: t0)
         store.closeLocally(id: "a")
         let r = store.merge([item("a", title: "changed", updated: 20)], isFullSnapshot: false, now: t0)
+        XCTAssertEqual(r.inserted.map(\.id), ["a"])
+    }
+
+    func testDoneWinsOverRacingSeenPatch() {
+        // The panel opened (seen_at PATCH) and Done was clicked before the next poll: the
+        // poll brings the seen version (newer updated_at, nothing else changed) while the
+        // Done PATCH is still in flight. The card stays gone.
+        var store = ItemStore()
+        store.merge([item("a", updated: 10)], isFullSnapshot: true, now: t0)
+        store.markSeen(id: "a", at: t0.addingTimeInterval(15))
+        store.closeLocally(id: "a")
+        var seen = item("a", updated: 20)
+        seen.seenAt = t0.addingTimeInterval(15)
+        let r = store.merge([seen], isFullSnapshot: false, now: t0)
+        XCTAssertTrue(r.inserted.isEmpty)
+        XCTAssertNil(store.items["a"])
+        // Also through a full snapshot, and an unchanged re-post with only a later updated_at.
+        store.merge([seen], isFullSnapshot: true, now: t0)
+        XCTAssertNil(store.items["a"])
+        // Then the Done lands: the close settles and the tombstone goes.
+        store.merge([item("a", status: .resolved, updated: 25)], isFullSnapshot: false, now: t0)
+        XCTAssertNil(store.items["a"])
+        XCTAssertEqual(store.closedTombstoneCount, 0)
+    }
+
+    func testLocalCloseIsReopenedByContentUpdate() {
+        // content_updated_at moved (the sender changed steps, say): it's live again.
+        var store = ItemStore()
+        var a = item("a", updated: 10)
+        a.contentUpdatedAt = t0.addingTimeInterval(10)
+        store.merge([a], isFullSnapshot: true, now: t0)
+        store.closeLocally(id: "a")
+        a.updatedAt = t0.addingTimeInterval(20)
+        a.contentUpdatedAt = t0.addingTimeInterval(20)
+        let r = store.merge([a], isFullSnapshot: false, now: t0)
         XCTAssertEqual(r.inserted.map(\.id), ["a"])
     }
 
@@ -312,5 +349,79 @@ final class ItemStoreLaterTests: XCTestCase {
         // A card snooze hides it from Later too.
         store.snoozeCard(id: "w1", until: t0.addingTimeInterval(900))
         XCTAssertEqual(store.laterCount(in: .work, now: t0), 1)
+    }
+}
+
+/// A feed restart (another hub, the hub on this Mac turned on or off) starts the item list
+/// over but keeps this Mac's own state: card snoozes, Later holds and local closes.
+final class ItemStoreCarryOverTests: XCTestCase {
+    static var allTests = [
+        ("testSnoozesHoldsAndClosesSurviveAHubSwitch", testSnoozesHoldsAndClosesSurviveAHubSwitch),
+        ("testCarriedStateWaitsForTheFirstPoll", testCarriedStateWaitsForTheFirstPoll),
+        ("testSnoozesAndHoldsFollowTheKeyToANewId", testSnoozesAndHoldsFollowTheKeyToANewId),
+        ("testCarriedStateForItemsTheNewHubLacksIsDropped", testCarriedStateForItemsTheNewHubLacksIsDropped),
+    ]
+
+    private func before() -> ItemStore {
+        var store = ItemStore()
+        store.merge([item("snoozed", updated: 10), item("held", updated: 10), item("done", updated: 10), item("plain")],
+                    isFullSnapshot: true, now: t0)
+        store.snoozeCard(id: "snoozed", until: t0.addingTimeInterval(3600))
+        store.holdForLater(id: "held", at: t0)
+        store.closeLocally(id: "done", now: t0)
+        return store
+    }
+
+    func testSnoozesHoldsAndClosesSurviveAHubSwitch() {
+        var store = before().carryingLocalState()
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertNil(store.latestUpdatedAt, "the new hub's cursor starts over")
+        // The other hub replicates the same items (same ids); the Done hasn't reached it yet.
+        let r = store.merge([item("snoozed", updated: 10), item("held", updated: 10), item("done", updated: 10), item("plain")],
+                            isFullSnapshot: true, now: t0)
+        XCTAssertNil(store.items["done"], "a local close still holds")
+        XCTAssertFalse(r.inserted.contains { $0.id == "done" })
+        XCTAssertTrue(store.isCardSnoozed("snoozed", now: t0))
+        XCTAssertTrue(store.isHeldForLater("held"))
+        XCTAssertEqual(store.needs(in: .work, now: t0).map(\.id), ["plain"])
+        XCTAssertEqual(store.laterItems(now: t0).map(\.id), ["held"])
+    }
+
+    func testCarriedStateWaitsForTheFirstPoll() {
+        // The 15 s tick prunes before the new hub has answered: nothing carried is lost.
+        var store = before().carryingLocalState()
+        store.prune(now: t0.addingTimeInterval(15))
+        XCTAssertEqual(store.snoozedCardCount, 1)
+        XCTAssertEqual(store.closedTombstoneCount, 1)
+        store.merge([item("snoozed", updated: 10), item("held", updated: 10)], isFullSnapshot: true, now: t0.addingTimeInterval(20))
+        XCTAssertTrue(store.isCardSnoozed("snoozed", now: t0.addingTimeInterval(20)))
+        XCTAssertTrue(store.isHeldForLater("held"))
+        // A snooze still ends on time.
+        store.prune(now: t0.addingTimeInterval(3601))
+        XCTAssertEqual(store.snoozedCardCount, 0)
+    }
+
+    func testSnoozesAndHoldsFollowTheKeyToANewId() {
+        // A hub that doesn't replicate with the old one has the same sender's item under
+        // another id: the snooze and the hold follow its key.
+        var store = before().carryingLocalState()
+        store.merge([item("snoozed-2", key: "k:snoozed", updated: 10), item("held-2", key: "k:held", updated: 10)],
+                    isFullSnapshot: true, now: t0)
+        XCTAssertTrue(store.isCardSnoozed("snoozed-2", now: t0))
+        XCTAssertTrue(store.isHeldForLater("held-2"))
+        XCTAssertEqual(store.needsCount(in: .work, now: t0), 0)
+    }
+
+    func testCarriedStateForItemsTheNewHubLacksIsDropped() {
+        var store = before().carryingLocalState()
+        store.merge([item("plain")], isFullSnapshot: true, now: t0)
+        XCTAssertEqual(store.snoozedCardCount, 0)
+        XCTAssertTrue(store.heldForLater.isEmpty)
+        // A close is by id only: settled once the hub doesn't list it.
+        XCTAssertEqual(store.closedTombstoneCount, 0)
+        // And an item with the closed one's key on another hub is that hub's own: it shows.
+        var other = before().carryingLocalState()
+        other.merge([item("done-2", key: "k:done", updated: 10)], isFullSnapshot: true, now: t0)
+        XCTAssertNotNil(other.items["done-2"])
     }
 }

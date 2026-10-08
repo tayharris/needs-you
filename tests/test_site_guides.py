@@ -50,6 +50,24 @@ class FreshnessTests(unittest.TestCase):
         for src in ("docs/HUB.md", "docs/AGENT-GUIDE.md", "docs/API.md"):
             self.assertIn(src, published)
 
+    def test_index_order_for_a_first_time_reader(self):
+        names = [name for _, _, name, _, _ in gen.GUIDES]
+        self.assertEqual(names[:3], ["quickstart", "testers", "concepts"])
+        groups = [g for g, _, _, _, _ in gen.GUIDES]
+        self.assertEqual(groups, sorted(groups, key=gen.GROUPS.index))  # sections in GROUPS order
+        self.assertLess(names.index("claude-code"), names.index("hub"))
+        self.assertLess(names.index("hub"), names.index("api"))
+        index = gen.Builder().build()["guides/index.html"]
+        self.assertLess(index.index('href="quickstart.html"'), index.index('href="claude-code.html"'))
+        self.assertLess(index.index('href="claude-code.html"'), index.index('href="hub.html"'))
+
+    def test_unlisted_guide_goes_under_more_guides(self):
+        self.assertIn(gen.MORE, gen.GROUPS)
+        listed = {src for _, src, _, _, _ in gen.CURATED}
+        for g, src, _, _, _ in gen.GUIDES:
+            if src not in listed:
+                self.assertEqual(g, gen.MORE, src)
+
     def test_index_links_every_page(self):
         index = gen.Builder().build()["guides/index.html"]
         for _, _, name, _, _ in gen.GUIDES:

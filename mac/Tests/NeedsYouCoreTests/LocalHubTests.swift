@@ -19,7 +19,42 @@ final class LocalHubTests: XCTestCase {
         ("testOwnerTokenFile", testOwnerTokenFile),
         ("testReachShowsTailnetURLOnlyWithATailnetAddress", testReachShowsTailnetURLOnlyWithATailnetAddress),
         ("testTailscaleInstalledCheck", testTailscaleInstalledCheck),
+        ("testReadinessTimesOutThenKeepsChecking", testReadinessTimesOutThenKeepsChecking),
+        ("testNotAnsweringMessage", testNotAnsweringMessage),
     ]
+
+    func testReadinessTimesOutThenKeepsChecking() {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        var r = LocalHubReadiness(startedAt: t0, timeout: 30)
+        XCTAssertEqual(r.next(answered: false, now: t0.addingTimeInterval(1)), .wait(LocalHubReadiness.checkInterval))
+        XCTAssertFalse(r.timedOut)
+        // Started but never answered: give up waiting once, and say so.
+        XCTAssertEqual(r.next(answered: false, now: t0.addingTimeInterval(30)), .timedOut)
+        XCTAssertTrue(r.timedOut)
+        // Then keep checking, slowly, in case it comes up after all.
+        XCTAssertEqual(r.next(answered: false, now: t0.addingTimeInterval(35)), .wait(LocalHubReadiness.slowCheckInterval))
+        XCTAssertEqual(r.next(answered: true, now: t0.addingTimeInterval(40)), .ready)
+        // Answering in time is ready at once.
+        var quick = LocalHubReadiness(startedAt: t0)
+        XCTAssertEqual(quick.next(answered: true, now: t0), .ready)
+        XCTAssertTrue(LocalHubReadiness.requestTimeout < LocalHubReadiness.defaultTimeout)
+        XCTAssertEqual(LocalHubReadiness.timeout(environment: [:]), 30)
+        XCTAssertEqual(LocalHubReadiness.timeout(environment: ["NEEDS_YOU_HUB_READY_TIMEOUT": "3"]), 3)
+        XCTAssertEqual(LocalHubReadiness.timeout(environment: ["NEEDS_YOU_HUB_READY_TIMEOUT": "0"]), 30)
+        XCTAssertEqual(LocalHubReadiness.timeout(environment: ["NEEDS_YOU_HUB_READY_TIMEOUT": "soon"]), 30)
+    }
+
+    func testNotAnsweringMessage() {
+        let plain = LocalHub.notAnsweringMessage(seconds: 30, lastOutput: nil, port: 8765)
+        XCTAssertTrue(plain.contains("127.0.0.1:8765"), plain)
+        XCTAssertTrue(plain.contains("30 s"), plain)
+        XCTAssertTrue(plain.contains("Restart"), plain)
+        XCTAssertFalse(plain.contains("()"), plain)
+        let detailed = LocalHub.notAnsweringMessage(seconds: 30, lastOutput: "  sqlite3.OperationalError: database is locked ", port: 8765)
+        XCTAssertTrue(detailed.contains("(last output: sqlite3.OperationalError: database is locked)"), detailed)
+        let long = LocalHub.notAnsweringMessage(seconds: 30, lastOutput: String(repeating: "x", count: 500), port: 8765)
+        XCTAssertTrue(long.count < 400, "\(long.count)")
+    }
 
     func testReachShowsTailnetURLOnlyWithATailnetAddress() {
         let named = LocalHubReach(magicDNSName: "my-mac.example.ts.net", tailnetIP: "100.64.0.7",

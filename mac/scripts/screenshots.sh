@@ -3,9 +3,9 @@
 #
 #   mac/scripts/screenshots.sh [out-dir]      # default: dist/screenshots
 #
-# Builds a throwaway copy and runs it twice with the snapshot tour (NEEDS_YOU_SNAPSHOT_DIR,
+# Builds a throwaway copy and runs it three times with the snapshot tour (NEEDS_YOU_SNAPSHOT_DIR,
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
-# example items below. Every PNG is drawn with cacheDisplay, so no Screen Recording
+# example items below, and once with one agent card (preview-agent.png). Every PNG is drawn with cacheDisplay, so no Screen Recording
 # permission is needed. Isolated the way scripts/upgrade-test.sh is:
 #
 #   - bundle id app.needsyou.mac.screenshots, no needsyou:// scheme, built into a temp dir
@@ -95,6 +95,22 @@ items = [
 json.dump({"items": items}, open(sys.argv[1], "w"), indent=1)
 EOF
 echo '{"items": []}' > "$T/empty.json"
+# The site's "How agents use it": one agent card with an editor link, as the Claude Code hook
+# posts it (--ssh-alias devbox), for the preview with its open-and-mark-done button.
+/usr/bin/python3 - "$T/agent.json" <<'EOF'
+import json, sys
+from datetime import datetime, timedelta, timezone
+
+at = (datetime.now(timezone.utc) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+json.dump({"items": [{
+    "id": "01SHOTAGENT0000000000001", "key": "claude-code:devbox:acme-api", "status": "open",
+    "kind": "needs", "context": "work", "priority": "urgent",
+    "title": "Claude needs permission: acme-api",
+    "body": "Claude wants to run: `make migrate`",
+    "links": [{"label": "VS Code", "url": "vscode://vscode-remote/ssh-remote+devbox/home/dev/acme-api"}],
+    "source": {"host": "devbox", "agent": "claude-code", "project": "acme-api"},
+    "created_at": at, "updated_at": at}]}, open(sys.argv[1], "w"), indent=1)
+EOF
 
 # Defaults for the test copy: the out-of-the-box look (demo mode shows no setup tips), with
 # a list tall enough for the example cards. The tour draws Settings with the defaults.
@@ -124,4 +140,7 @@ cp "$T/idle/1-collapsed.png" "$OUT/pill-idle.png"
 echo "==> example items run"
 run "$T/items.json" "$T/items"
 cp "$T/items/"*.png "$OUT/"
+echo "==> agent preview run"
+run "$T/agent.json" "$T/agent"
+cp "$T/agent/6-preview.png" "$OUT/preview-agent.png"
 echo "==> wrote $(ls "$OUT" | wc -l | tr -d ' ') PNGs to $OUT"

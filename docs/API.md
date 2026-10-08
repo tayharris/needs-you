@@ -308,7 +308,14 @@ Response:
 ```
 
 **Without `cursor` or `since`:** the full current set for `status`. `status=open` returns every
-item that is open and not expired. `resolved` includes expired items (shown as resolved).
+item that is open and not expired. `resolved` includes expired items (shown as resolved). When
+the set is larger than `limit` the response has `more: true`, and its `next` continues it: a
+`cursor` poll with it returns the rest of the set as changes (in any status, like any `cursor`
+poll, so the rest comes with whatever changed since), paged by `limit` like any `cursor` poll.
+Send that one without `since`: a `since` fallback can't continue a full poll, so a cursor the
+hub can no longer read is then a `400` and the client starts over with a full poll. Hubs up to 0.1.3 gave a cut-short full poll a `next` that skipped the rest; a client that has to
+work with them sends a larger `limit` (up to 2,000) and treats a full poll with `more` as
+incomplete.
 
 **With `cursor` or `since`:** every item that changed on this hub after the cursor, **in any
 status**, plus every item whose `expires_at` passed since then (reported as resolved). This is
@@ -320,7 +327,9 @@ its `updated_at` is older than the cursor.
 
 **The polling loop:**
 
-1. First poll (or after any doubt): `GET /v1/items?status=open`. Replace the local set.
+1. First poll (or after any doubt): `GET /v1/items?status=open`. Replace the local set. If it
+   has `more`, the set continues in the next polls (step 3): replace only once it's all in, or
+   merge without dropping anything.
 2. Keep `next` and `server_time` from the response. Next poll:
    `GET /v1/items?cursor=<next>&since=<server_time>` (adding `status=open` is harmless; it is
    ignored). Upsert every returned item by `id`; drop it from the open view if its status isn't
@@ -393,11 +402,13 @@ Response `201`:
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user."}
+ "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
 ```
 
 `install_command` and `agent_prompt` are only present for `sender` invites. Both set up Claude
-Code alerts (`--claude-hooks user --skill --alerts`); the join page lists the other options. The URLs use the
+Code alerts (`--claude-hooks user --skill --alerts`); the join page lists the other options.
+The prompt ends by having the agent run `needs-you doctor` and act on, or relay, the next step
+under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the
 hub's `public_url` (config `public_url` / `--public-url`; without it, the first bind address).
 
 ### `GET /v1/invites` (owner)

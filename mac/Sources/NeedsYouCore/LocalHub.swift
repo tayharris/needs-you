@@ -32,10 +32,67 @@ public enum LocalHub {
         return cleaned.isEmpty ? "mac" : String(cleaned.prefix(63))
     }
 
+    /// The hub process runs but hasn't answered its health check (LocalHubReadiness).
+    /// `lastOutput` is its last line of output, if any, shortened.
+    public static func notAnsweringMessage(seconds: Int, lastOutput: String?, port: Int = LocalHub.port) -> String {
+        var text = "The hub on this Mac started but hasn't answered on 127.0.0.1:\(port) for \(seconds) s"
+        if let line = lastOutput?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
+            text += " (last output: \(line.count > 160 ? String(line.prefix(160)) + "…" : line))"
+        }
+        return text + ". Restart it; if it happens again, quit and reopen Needs You."
+    }
+
     /// Keys for "this is the local hub" checks (the app's own URL, plus localhost).
     public static func isLocal(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return (host == "127.0.0.1" || host == "localhost" || host == "::1") && (url.port ?? 80) == port
+    }
+}
+
+// MARK: - Start-up health check
+
+/// Waiting for a freshly started hub to answer `/v1/health`: every half second until
+/// `timeout`, then once "timed out" (the app says what's wrong and offers a restart), then
+/// every 5 s in case it comes up after all.
+public struct LocalHubReadiness: Equatable, Sendable {
+    public enum Step: Equatable, Sendable {
+        case ready
+        /// Check again after this many seconds.
+        case wait(TimeInterval)
+        /// The deadline just passed (reported once). Check again after `slowCheckInterval`.
+        case timedOut
+    }
+
+    /// 30 s, or NEEDS_YOU_HUB_READY_TIMEOUT (1–600 s; test copies).
+    public static let defaultTimeout: TimeInterval = timeout(environment: ProcessInfo.processInfo.environment)
+
+    public static func timeout(environment: [String: String]) -> TimeInterval {
+        if let s = environment["NEEDS_YOU_HUB_READY_TIMEOUT"], let t = Int(s), (1...600).contains(t) { return TimeInterval(t) }
+        return 30
+    }
+    public static let checkInterval: TimeInterval = 0.5
+    public static let slowCheckInterval: TimeInterval = 5
+    /// Each health request's own timeout, so a hub that accepts but never answers can't
+    /// hold one check past the deadline.
+    public static let requestTimeout: TimeInterval = 2
+
+    public let startedAt: Date
+    public let timeout: TimeInterval
+    public private(set) var timedOut = false
+
+    public init(startedAt: Date, timeout: TimeInterval = LocalHubReadiness.defaultTimeout) {
+        self.startedAt = startedAt
+        self.timeout = timeout
+    }
+
+    public mutating func next(answered: Bool, now: Date) -> Step {
+        if answered { return .ready }
+        if timedOut { return .wait(Self.slowCheckInterval) }
+        if now.timeIntervalSince(startedAt) >= timeout {
+            timedOut = true
+            return .timedOut
+        }
+        return .wait(Self.checkInterval)
     }
 }
 

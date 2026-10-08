@@ -71,7 +71,7 @@ final class ConnectLinkTests: XCTestCase {
 
     func testInviteTexts() {
         let invite = InviteResponse(code: "c", joinURL: "http://mac.tail1.ts.net:8765/join/c", macURL: "needsyou://connect?x", expiresAt: nil)
-        XCTAssertEqual(invite.agentPrompt, "Set up needs-you alerts on this machine: read http://mac.tail1.ts.net:8765/join/c and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user.")
+        XCTAssertEqual(invite.agentPrompt, "Set up needs-you alerts on this machine: read http://mac.tail1.ts.net:8765/join/c and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one.")
         XCTAssertEqual(invite.shellOneLiner, "curl -fsSL http://mac.tail1.ts.net:8765/join/c/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts")
         // An older hub's short texts are replaced; a current hub's are used as sent.
         let old = InviteResponse(code: "c", joinURL: "http://mac.tail1.ts.net:8765/join/c/", macURL: nil, expiresAt: nil,
@@ -79,9 +79,14 @@ final class ConnectLinkTests: XCTestCase {
                                  hubInstallCommand: "curl -fsSL x/install.sh | bash -s -- --yes")
         XCTAssertTrue(old.shellOneLiner.hasSuffix("/join/c/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts"))
         XCTAssertTrue(old.agentPrompt.contains("--claude-hooks user --skill --alerts"))
+        // A 0.1.3 hub's prompt has the flags but no doctor step: the app's is used.
+        let noDoctor = InviteResponse(code: "c", joinURL: "j", macURL: nil, expiresAt: nil,
+                                      hubAgentPrompt: "hub prompt --claude-hooks user")
+        XCTAssertTrue(noDoctor.agentPrompt.hasSuffix(InviteResponse.agentPromptCheck))
         let current = InviteResponse(code: "c", joinURL: "j", macURL: nil, expiresAt: nil,
-                                     hubAgentPrompt: "hub prompt --claude-hooks user", hubInstallCommand: "hub cmd --claude-hooks user")
-        XCTAssertEqual(current.agentPrompt, "hub prompt --claude-hooks user")
+                                     hubAgentPrompt: "hub prompt --claude-hooks user; needs-you doctor",
+                                     hubInstallCommand: "hub cmd --claude-hooks user")
+        XCTAssertEqual(current.agentPrompt, "hub prompt --claude-hooks user; needs-you doctor")
         XCTAssertEqual(current.shellOneLiner, "hub cmd --claude-hooks user")
         // uses are clamped to 1...20.
         XCTAssertEqual(InviteRequest(name: " box ", role: .sender, uses: 99, ttlHours: 24).uses, 20)
