@@ -199,6 +199,8 @@ struct IdlePill: View {
 
 /// Phase 3: the springy new-item preview (title and source). With an allowed link, a
 /// button opens it and marks the item done; clicking elsewhere opens the panel at the card.
+/// The title (two lines at most) and the meta line take the full width; the button sits
+/// on its own row below them (PreviewLayout, which also sizes the panel).
 struct PreviewPill: View {
     let item: Item
     let now: Date
@@ -208,45 +210,54 @@ struct PreviewPill: View {
     var onOpen: (ItemLink) -> Void = { _ in }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle().fill(Theme.color(item.priority)).frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .firstTextBaseline, spacing: PreviewLayout.dotGap) {
+            Circle().fill(Theme.color(item.priority))
+                .frame(width: PreviewLayout.dotSize, height: PreviewLayout.dotSize)
+                // Level with the middle of the title's first line.
+                .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + metrics.titleFont * 0.33 }
+            VStack(alignment: .leading, spacing: PreviewLayout.metaGap) {
                 Text(item.title)
                     .font(Theme.title(metrics))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(PreviewLayout.maxTitleLines)
+                    .fixedSize(horizontal: false, vertical: true)
                 (Text(item.kind == .needs ? needsLabel : item.kind.rawValue).foregroundStyle(Theme.color(item.priority).opacity(0.9))
                  + Text(" · " + Format.meta(item, now: now)).foregroundStyle(Theme.muted))
                     .font(Theme.meta(metrics))
                     .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if let link {
-                Button { onOpen(link) } label: {
-                    HStack(spacing: 3) {
-                        Text(LinkRowPolicy.label(link, maxLength: 14)).lineLimit(1)
-                        if let destination = LinkRowPolicy.destination(link) {
-                            // Where it really goes, as on the cards, so a label can't pass
-                            // for another site.
-                            Text(destination)
-                                .fontWeight(.regular)
-                                .foregroundStyle(Theme.linkDestination)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(maxWidth: 90)
-                        }
-                        Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
-                    }
-                    .font(.system(size: metrics.linkFont, weight: .medium))
-                    .linkChip(horizontal: 8, vertical: 3)
+                if let link {
+                    linkButton(link)
+                        .padding(.top, PreviewLayout.linkRowGap - PreviewLayout.metaGap)
                 }
-                .buttonStyle(.plain)
-                .fixedSize()
-                .help("Open \(link.url) and mark this done")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PreviewLayout.horizontalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func linkButton(_ link: ItemLink) -> some View {
+        Button { onOpen(link) } label: {
+            HStack(spacing: 3) {
+                Text(LinkRowPolicy.label(link, maxLength: 14)).lineLimit(1)
+                if let destination = LinkRowPolicy.destination(link) {
+                    // Where it really goes, as on the cards, so a label can't pass
+                    // for another site.
+                    Text(destination)
+                        .fontWeight(.regular)
+                        .foregroundStyle(Theme.linkDestination)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 90)
+                }
+                Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .bold))
+            }
+            .font(.system(size: metrics.linkFont, weight: .medium))
+            .linkChip(horizontal: 8, vertical: PreviewLayout.linkChipVertical)
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help("Open \(link.url) and mark this done")
     }
 }
 

@@ -125,6 +125,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.previewItem = nil
                 model.expand(byUser: true, focusing: model.needsItems.last?.id)
             }),
+            ("6c-preview-long-title", { model in
+                // A title too long for one line wraps to two (then is cut); the link
+                // button keeps its own row below the text.
+                model.collapse()
+                model.previewItem = Item(
+                    id: "tour-long", key: "tour-long", priority: .normal,
+                    title: "Review the database migration plan for acme-web before the 5 pm freeze, and pick a column name",
+                    links: [ItemLink(label: "Pull request", url: "https://github.com/acme/acme-web/pull/412")],
+                    source: ItemSource(host: "devbox", agent: "claude-code", project: "acme-web"),
+                    createdAt: Date())
+            }),
+            ("6d-preview-no-link", { model in
+                // No allowed link: no button row, the original one-line size.
+                model.previewItem = Item(
+                    id: "tour-plain", key: "tour-plain", priority: .low,
+                    title: "feature/old-search has 2 unpushed commits",
+                    source: ItemSource(host: "devbox", agent: "cron:cleanup"), createdAt: Date())
+            }),
             ("7-summary", { [weak self] model in
                 model.collapse()
                 model.previewItem = nil

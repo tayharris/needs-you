@@ -298,7 +298,18 @@ final class PanelController {
         case .waiting:
             // Settings → Panel → Collapsed pill (PillContent; the defaults are the original size).
             return model.waitingPillSize
-        case .preview, .digest:
+        case .preview(let item):
+            // PreviewLayout: a long title wraps to a second line, and a link button gets
+            // its own row below the text instead of a column beside it.
+            let font = NSFont.systemFont(ofSize: m.titleFont, weight: .semibold)
+            let wrapped = (item.title as NSString).boundingRect(
+                with: CGSize(width: PreviewLayout.textWidth(m), height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font]).height
+            let lines = PreviewLayout.titleLines(wrappedHeight: wrapped,
+                                                 lineHeight: NSLayoutManager().defaultLineHeight(for: font))
+            return CGSize(width: m.previewWidth,
+                          height: PreviewLayout.height(m, titleLines: lines, hasLink: PreviewLink.primary(item) != nil))
+        case .digest:
             return CGSize(width: m.previewWidth, height: m.previewHeight)
         case .expanded:
             let automatic = ListHeightPolicy.height(content: model.expandedContentHeight, cardBottoms: model.cardBottoms,
