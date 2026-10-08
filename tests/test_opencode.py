@@ -105,6 +105,40 @@ class HookMode(Base):
         self.run_hook("notify", {"hook_event_name": "Stop"}, NEEDS_YOU_AGENT_TURN_CARDS="0")
         self.assertEqual(len(self.calls()), n)
 
+    def marker(self):
+        path = os.path.join(self.home, ".local", "state", "needs-you", "claude-hooks", "ses_abc123")
+        try:
+            with open(path) as fh:
+                return dict(l.rstrip("\n").split("=", 1) for l in fh)
+        except OSError:
+            return None
+
+    def test_no_card_once_opencode_has_exited(self):
+        # `opencode run` goes idle and exits at once: nobody is waiting, and a card posted now
+        # would have no lease for `needs-you flush` to clear. Post nothing.
+        gone = subprocess.Popen(["true"])
+        gone.wait()
+        self.run_hook("notify", {"hook_event_name": "Stop"}, NY_HOOK_PPID=str(gone.pid))
+        self.assertEqual(self.calls(), [])
+        self.assertIsNone(self.marker())
+
+    def test_lease_is_taken_before_posting(self):
+        # The lease names opencode even when it exits while the card is being posted (the
+        # CLI call takes a moment): it's read before the post, not after.
+        # Not our child, so it's reaped (gone from ps) as soon as it's killed.
+        pid = subprocess.run([BASH, "-c", "sleep 30 >/dev/null 2>&1 & echo $!"], capture_output=True,
+                             text=True, timeout=10).stdout.strip()
+        self.addCleanup(subprocess.run, ["kill", pid], stderr=subprocess.DEVNULL)
+        slow = os.path.join(self.home, "slow-cli")
+        with open(slow, "w") as fh:
+            fh.write("#!/bin/sh\nkill %s\nsleep 0.3\n" % pid)
+        os.chmod(slow, 0o755)
+        self.run_hook("notify", {"hook_event_name": "Stop"}, NY_HOOK_PPID=pid, NEEDS_YOU_BIN=slow)
+        m = self.marker()
+        self.assertIsNotNone(m)
+        self.assertEqual(m.get("pid"), pid)
+        self.assertTrue(m.get("start"))
+
 
 @unittest.skipIf(NODE is None, "node isn't installed")
 class Plugin(Base):

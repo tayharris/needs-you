@@ -46,10 +46,10 @@
 <h2 id="install">Install <a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
 <p>Prerequisite: the machine is a sender, so <code>needs-you</code> works in a shell there (an invite link's one-liner, see <a href="add-a-sender.html">Add a sender</a>). The agent's MCP client runs on that machine.</p>
 <p>Copy the server next to the CLI, from a checkout of this repo or the release's server tarball:</p>
-<div class="code"><pre><code class="language-bash">install -m 755 integrations/mcp/needs_you_mcp.py ~/.local/bin/needs-you-mcp</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">install -m 755 integrations/mcp/needs_you_mcp.py ~/.local/bin/needs-you-mcp</code></pre></div>
 <p>Then register it with the client.</p>
 <p><strong>Claude Code</strong>, for every project:</p>
-<div class="code"><pre><code class="language-bash">claude mcp add --scope user needs-you -- python3 "$HOME/.local/bin/needs-you-mcp"</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">claude mcp add --scope user needs-you -- python3 "$HOME/.local/bin/needs-you-mcp"</code></pre></div>
 <p><strong>Clients with a JSON config</strong> (an <code>mcpServers</code> block): use the absolute path, since these don't expand <code>~</code>.</p>
 <div class="code"><pre><code class="language-json">{
   "mcpServers": {
@@ -63,7 +63,7 @@
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <p>Ask the agent: <em>"Run the needs_you_doctor tool and tell me what it says."</em> It returns the same report as <code>needs-you doctor --json</code>; every <code>WARN</code> or <code>FAIL</code> check has one next step. Don't post a test card: doctor is the test.</p>
 <p>By hand, without a client:</p>
-<div class="code"><pre><code class="language-bash">printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+<div class="code" data-copy><pre><code class="language-bash">printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"needs_you_doctor","arguments":{}}}' \
   | python3 ~/.local/bin/needs-you-mcp</code></pre></div>
 <h2 id="what-the-agent-sees">What the agent sees <a class="anchor" href="#what-the-agent-sees" aria-label="Link to this section">#</a></h2>
@@ -75,7 +75,7 @@
 </ul>
 <p><strong>One card per wait:</strong> when the client starts the server with the Claude Code session's environment (<code>CLAUDECODE</code>, <code>CLAUDE_CODE_SESSION_ID</code>) or inside an Orca terminal, the hooks skip their generic "Claude is waiting" card while the agent's own card is open, as they do for the CLI. Other clients don't pass a session, so if their agent also has needs-you hooks you may see both cards.</p>
 <h2 id="remove-it">Remove it <a class="anchor" href="#remove-it" aria-label="Link to this section">#</a></h2>
-<div class="code"><pre><code class="language-bash">claude mcp remove --scope user needs-you     # or delete the block from the client's config
+<div class="code" data-copy><pre><code class="language-bash">claude mcp remove --scope user needs-you     # or delete the block from the client's config
 rm ~/.local/bin/needs-you-mcp</code></pre></div>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/mcp.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/mcp.md">docs/guides/mcp.md</a> in the repo. View or edit it on GitHub.</p>
   </main>

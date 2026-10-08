@@ -19,11 +19,12 @@
   needs-you health                                   check each configured hub and the token
   needs-you doctor [--json]                          check config, PATH, hubs, outbox, hooks,
                                                      schedule (read-only; never posts)
-  needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--dry-run]
-                                                     remove the agent hooks: by default Claude
+  needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--copilot]
+                            [--dry-run]              remove the agent hooks: by default Claude
                                                      Code's user level, this directory's project,
                                                      every recorded project install, and the Codex,
-                                                     Gemini CLI and opencode installs; offline
+                                                     Gemini CLI, opencode and Copilot CLI installs;
+                                                     offline
 
 Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment:
   NEEDS_YOU_URLS    comma-separated hub URLs, tried in order (failover); preferred
@@ -232,6 +233,9 @@ def installed_paths() -> Dict[str, str]:
         "SKILL.md": _home(".claude", "skills", "needs-you", "SKILL.md"),
         "orca-snippet.md": os.path.join(conf, "orca-snippet.md"),
         "needs-you-opencode.js": os.path.join(opencode_dir(), "plugins", "needs-you.js"),
+        # Copilot CLI's hooks file is ours alone, copied verbatim (its commands find the hook
+        # through $COPILOT_HOME), so it is updated like any other file.
+        "copilot-hooks.json": os.path.join(copilot_home(), "hooks", "needs-you.json"),
     }
 
 
@@ -383,7 +387,7 @@ def _delete_files(paths: List[str], dry_run: bool, say: Any) -> None:
             pass
 
 
-UNINSTALL_AGENTS = ("codex", "gemini", "opencode")
+UNINSTALL_AGENTS = ("codex", "gemini", "opencode", "copilot")
 
 
 def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], dry_run: bool,
@@ -391,8 +395,8 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
     """`needs-you uninstall-hooks`: take the needs-you entries out of the agents' config
     files and delete the copied hook script (and the opencode plugin), with no hub and no
     download. With no scope: Claude Code's user level, the project covering the current
-    directory, every recorded project install, and the Codex, Gemini CLI and opencode
-    installs. --user, --project, --codex, --gemini, --opencode pick some. Exit 1 if a file
+    directory, every recorded project install, and the Codex, Gemini CLI, opencode and
+    Copilot CLI installs. --user, --project, --codex, --gemini, --opencode, --copilot pick some. Exit 1 if a file
     couldn't be changed (unreadable JSON, a symlink where needs-you would write)."""
     say = (lambda msg: None) if quiet else print  # noqa: E731
     everything = not (user or project is not None or agents)
@@ -475,6 +479,18 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
             if not dry_run and os.path.isfile(files[0]):
                 removed += 1
             _delete_files(files, dry_run, say)
+    # Copilot CLI: hooks/needs-you.json and the hook copy next to it are both ours.
+    if everything or "copilot" in agents:
+        d = os.path.join(copilot_home(), "hooks")
+        files = [os.path.join(d, "needs-you.json"), os.path.join(d, HOOK_FILE)]
+        links = [p for p in [d] + files if os.path.islink(p)]
+        if links:
+            warn("%s is a symlink; not touching the Copilot CLI hooks (remove them by hand)" % _tilde(links[0]))
+            failed = True
+        elif any(os.path.isfile(f) for f in files):
+            if not dry_run and os.path.isfile(files[0]):
+                removed += 1
+            _delete_files(files, dry_run, say)
     if not dry_run:
         projects = claude_projects()
         left = {k: v for k, v in projects.items() if k not in forget}
@@ -495,6 +511,10 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
 def opencode_dir() -> str:
     base = os.environ.get("XDG_CONFIG_HOME") or _home(".config")
     return os.path.join(base, "opencode")
+
+
+def copilot_home() -> str:
+    return os.environ.get("COPILOT_HOME") or _home(".copilot")
 
 
 def cli_path() -> str:
@@ -1298,7 +1318,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         up.add_argument("--rollback", action="store_true", help="put back the files the last update replaced")
         up.add_argument("--allow-downgrade", action="store_true", help="install the hub's files even if they're older")
     uh = sub.add_parser("uninstall-hooks", help="remove the agent hooks: Claude Code, Codex, Gemini CLI, "
-                        "opencode (offline; no hub needed)")
+                        "opencode, Copilot CLI (offline; no hub needed)")
     uh.add_argument("--user", action="store_true", help="Claude Code's user level (~/.claude)")
     uh.add_argument("--project", nargs="?", const=".", metavar="DIR",
                     help="the Claude Code project covering DIR (default: the current directory)")
@@ -1583,6 +1603,8 @@ RELEASE_PATHS = {
     "gemini-hooks.json": "integrations/gemini/gemini-hooks.json",
     "install-opencode-plugin.sh": "integrations/opencode/install-opencode-plugin.sh",
     "needs-you-opencode.js": "integrations/opencode/needs-you.js",
+    "install-copilot-hooks.sh": "integrations/copilot/install-copilot-hooks.sh",
+    "copilot-hooks.json": "integrations/copilot/copilot-hooks.json",
 }
 
 
@@ -1605,7 +1627,7 @@ OTHER_AGENTS = (
 
 # Every agent directory that keeps its own copy of needs-you-hook.sh in <dir>/hooks/.
 HOOK_COPIES = (("codex", "Codex", codex_home), ("gemini", "Gemini", gemini_home),
-               ("opencode", "opencode", opencode_dir))
+               ("opencode", "opencode", opencode_dir), ("copilot", "Copilot", copilot_home))
 
 
 def _other_agent(snippet: str) -> Optional[Tuple[Any, ...]]:
@@ -1834,7 +1856,8 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         entry = files.get(name)
         if not isinstance(entry, dict):
             continue
-        if name == "needs-you-opencode.js" and os.path.islink(path):
+        if name in ("needs-you-opencode.js", "copilot-hooks.json") and (
+                os.path.islink(path) or os.path.islink(os.path.dirname(path))):
             notes.append("%s is a symlink; not updating it (another tool manages it)" % _tilde(path))
             continue
         if name != "needs-you" and not os.path.isfile(path):
@@ -2579,7 +2602,7 @@ class Doctor:
 
     def run(self) -> List[Dict[str, str]]:
         for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
-                     self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.skill,
+                     self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.copilot_hooks, self.skill,
                      self.orca, self.schedule, self.update):
             try:
                 step()
@@ -2995,10 +3018,17 @@ class Doctor:
         if problems:
             self.add("gemini hooks", "WARN", "; ".join(problems + parts), installer)
             return
-        hint = ""
+        hints = []
         if "alerts off until opted in" in parts:
-            hint = "for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
-        self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), hint)
+            hints.append("for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s"
+                         % _sh(self.env_path))
+        # Gemini CLI loads no hooks, user-level ones included, in a folder you haven't trusted
+        # (folder trust is on by default).
+        sec = doc.get("security") if isinstance(doc, dict) else None
+        ft = sec.get("folderTrust") if isinstance(sec, dict) else None
+        if not (isinstance(ft, dict) and ft.get("enabled") is False):
+            hints.append("Gemini CLI runs hooks only in trusted folders: trust a project when it asks")
+        self.add("gemini hooks", "OK", "installed in " + "; ".join(parts), "; ".join(hints))
 
     # -- opencode plugin ---------------------------------------------------
     def opencode_plugin(self) -> None:
@@ -3042,6 +3072,73 @@ class Doctor:
         if "alerts off until opted in" in parts:
             hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
         self.add("opencode plugin", "OK", "installed: " + "; ".join(parts), hint)
+
+    # -- GitHub Copilot CLI hooks ------------------------------------------
+    def copilot_hooks(self) -> None:
+        import shutil
+        home = os.environ.get("COPILOT_HOME") or os.path.join(self.home, ".copilot")
+        conf = os.path.join(home, "hooks", "needs-you.json")
+        hook = os.path.join(home, "hooks", "needs-you-hook.sh")
+        installer = _rerun("--copilot-hooks user")
+        if not os.path.isdir(home) and not shutil.which("copilot"):
+            return
+        if not os.path.isfile(conf) and not os.path.isfile(hook):
+            self.add("copilot hooks", "INFO", "not installed (optional: cards when a Copilot CLI session waits on you)",
+                     "to install: " + _installer("--copilot-hooks user --alerts"))
+            return
+        problems, parts = [], [_tilde(conf)]
+        if not os.path.isfile(conf):
+            problems.append("%s is missing" % _tilde(conf))
+        else:
+            try:
+                with open(conf, "r", encoding="utf-8") as fh:
+                    doc = json.load(fh)
+                if not (isinstance(doc, dict) and isinstance(doc.get("hooks"), dict)):
+                    raise ValueError("no hooks object")
+            except (OSError, ValueError):
+                problems.append("%s isn't a valid hooks file, so Copilot ignores it" % _tilde(conf))
+        if not os.path.isfile(hook):
+            problems.append("%s is missing" % _tilde(hook))
+        else:
+            if not os.access(hook, os.X_OK):
+                problems.append("%s is not executable" % _tilde(hook))
+            try:
+                with open(hook, "r", encoding="utf-8", errors="replace") as fh:
+                    if "copilot_card" not in fh.read():
+                        problems.append("old hook (no Copilot support)")
+            except OSError:
+                pass
+        # "disableAllHooks": true in Copilot's settings turns every hook off.
+        disabled = []
+        for name in ("settings.json", "config.json"):
+            try:
+                with open(os.path.join(home, name), "r", encoding="utf-8", errors="replace") as fh:
+                    settings = json.loads(fh.read(1024 * 1024))
+            except (OSError, ValueError):
+                continue
+            if isinstance(settings, dict) and settings.get("disableAllHooks") is True:
+                problems.append("\"disableAllHooks\": true in %s" % _tilde(os.path.join(home, name)))
+                disabled.append(os.path.join(home, name))
+        alerts, where = self.setting("NEEDS_YOU_AGENT_ALERTS")
+        if alerts.lower() in _OFF:
+            parts.append("alerts off (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        elif alerts.lower() in _ON:
+            parts.append("alerts on (NEEDS_YOU_AGENT_ALERTS=%s in %s)" % (alerts, where))
+        else:
+            parts.append("alerts off until opted in")
+        if problems:
+            if disabled and len(disabled) == len(problems):
+                # Only the switch is off: the installer can't fix that, the person's setting can.
+                hint = ("remove \"disableAllHooks\": true from %s (it turns off every Copilot CLI hook), "
+                        "then restart Copilot CLI" % _sh(disabled[0]))
+            else:
+                hint = installer
+            self.add("copilot hooks", "WARN", "; ".join(problems + parts), hint)
+            return
+        hint = "restart Copilot CLI after installing or updating them"
+        if "alerts off until opted in" in parts:
+            hint += "; for cards from every session here: echo 'NEEDS_YOU_AGENT_ALERTS=1' >> %s" % _sh(self.env_path)
+        self.add("copilot hooks", "OK", "installed in " + "; ".join(parts), hint)
 
     def project_hooks(self) -> None:
         """Project-level hooks (install-hooks.sh --project) covering the current directory.

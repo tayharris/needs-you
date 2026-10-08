@@ -47,7 +47,7 @@
 <p>Orca runs agents in worktrees and scheduled automations, often on several servers. needs-you gives every one of them a way to reach you when it stops on something only you can do, without you watching their terminals.</p>
 <h2 id="several-orca-servers-one-link">Several Orca servers: one link <a class="anchor" href="#several-orca-servers-one-link" aria-label="Link to this section">#</a></h2>
 <p>Make one invite with a use per server. In the Mac app: right-click the pill → <strong>Settings…</strong> → <strong>Connect a machine</strong>, <strong>Uses</strong> = the number of servers. On a server hub:</p>
-<div class="code"><pre><code class="language-bash">needs-you-admin invite create orca --role sender --uses 4 --ttl 72</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">needs-you-admin invite create orca --role sender --uses 4 --ttl 72</code></pre></div>
 <p>Then on each Orca server, paste the agent prompt into an Orca terminal, or run:</p>
 <div class="code"><pre><code class="language-bash">curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --claude-hooks user --skill --orca</code></pre></div>
 <p>Each server redeems the same link and gets <strong>its own token</strong>, named <code>orca-&lt;hostname&gt;</code> (e.g. <code>orca-build-1</code>, <code>orca-build-2</code>). Revoke one server without touching the others: <strong>Settings… → Machines</strong> in the Mac app, or <code>needs-you-admin token revoke orca-build-2</code> on a server hub (<a href="add-a-sender.html#removing-a-sender">Add a sender → Removing a sender</a>). Running the installer again on a server keeps its token without spending a use, until the link expires (also after its last use is spent); give provisioning scripts a link with a long enough expiry (up to 90 days).</p>
@@ -145,7 +145,7 @@ needs-you done --key "work:redo-fixer:last-run" --title "Redo fixer: 1 ticket ba
 <p><strong>The same hand-off in one live session.</strong> An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click <strong>Terminal</strong>, Orca switches to the agent's terminal, you type the answer, and the agent runs the <code>resolve</code> before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal (<a href="claude-code.html#one-card-for-one-wait">one card for one wait</a>). Once the agent resolves its item, an idle session gets the hooks' card again.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <p>From an Orca terminal:</p>
-<div class="code"><pre><code class="language-bash">needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
+<div class="code" data-copy><pre><code class="language-bash">needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
 needs-you resolve --key "work:orca-test:hello"</code></pre></div>
 <p>Then run one automation by hand (<code>orca automations run ...</code>) and watch for its card.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/orca.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">docs/guides/orca.md</a> in the repo. View or edit it on GitHub.</p>

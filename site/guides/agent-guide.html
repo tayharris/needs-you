@@ -80,7 +80,8 @@ invite**; on a server hub: <code>needs-you-admin invite create</code>). It looks
 <li>Pick the options that fit this machine: <code>--claude-hooks user --skill --alerts</code> for Claude
 Code (plus <code>--ssh-alias &lt;name&gt;</code> if the person reaches it from the Mac over SSH),
 <code>--codex-hooks user</code> for Codex CLI, <code>--gemini-hooks user</code> for Gemini CLI,
-<code>--opencode-plugin</code> for opencode, <code>--orca</code> for Orca automations, <code>--context personal</code> if
+<code>--opencode-plugin</code> for opencode, <code>--copilot-hooks user</code> for GitHub Copilot CLI,
+<code>--orca</code> for Orca automations, <code>--context personal</code> if
 its items are personal.</li>
 <li>Run <code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes [options]</code>.</li>
 <li>Report the health line (<code>&lt;hub url&gt;  OK  hub=... token=&lt;name&gt; role=sender</code>), never the
@@ -239,7 +240,7 @@ Resolving is idempotent; any sender token of the inbox can resolve any of its it
 (hourly: <code>3</code>, daily: <code>48</code>) and re-posts on every run that still sees the blocker; each re-post
 renews the expiry, so a run that crashed before its resolve doesn't leave a card forever.</p>
 <p><strong>One card per wait.</strong> When an agent posts a <code>needs</code> item with the CLI from inside its session
-(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal), the CLI notes the key for that
+(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI only in Orca), the CLI notes the key for that
 session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
 ended" card for that session. Permission prompts, questions and errors still post. The CLI
 finds the session from <code>$ORCA_TERMINAL_HANDLE</code>, the agent's own id (<code>$CLAUDE_CODE_SESSION_ID</code>,
@@ -261,8 +262,9 @@ doesn't duplicate them.</p>
 <tbody>
 <tr><td>Claude Code</td><td><code>--claude-hooks user</code> (or <code>project</code>); also a <code>low</code> card at 80% context (<code>NEEDS_YOU_CONTEXT_ALERT_PCT</code>)</td><td><a data-repo="/blob/main/integrations/claude-code/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/claude-code/README.md">integrations/claude-code</a></td></tr>
 <tr><td>Codex CLI</td><td><code>--codex-hooks user</code>; trust them once in <code>/hooks</code></td><td><a data-repo="/blob/main/integrations/codex/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/codex/README.md">integrations/codex</a></td></tr>
-<tr><td>Gemini CLI</td><td><code>--gemini-hooks user</code></td><td><a data-repo="/blob/main/integrations/gemini/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/gemini/README.md">integrations/gemini</a></td></tr>
+<tr><td>Gemini CLI</td><td><code>--gemini-hooks user</code>; only in folders you trust</td><td><a data-repo="/blob/main/integrations/gemini/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/gemini/README.md">integrations/gemini</a></td></tr>
 <tr><td>opencode</td><td><code>--opencode-plugin</code></td><td><a data-repo="/blob/main/integrations/opencode/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/opencode/README.md">integrations/opencode</a></td></tr>
+<tr><td>GitHub Copilot CLI</td><td><code>--copilot-hooks user</code></td><td><a data-repo="/blob/main/integrations/copilot/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/copilot/README.md">integrations/copilot</a></td></tr>
 </tbody>
 </table></div>
 <p>Open sessions load new hooks after a restart.</p>

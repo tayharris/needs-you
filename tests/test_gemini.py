@@ -323,9 +323,18 @@ class Doctor(unittest.TestCase):
         row = self.check(NEEDS_YOU_AGENT_ALERTS="1")
         self.assertEqual(row["status"], "OK", row)
         self.assertIn("alerts on", row["detail"])
+        # Gemini CLI runs no hooks at all (user-level included) in a folder it doesn't trust,
+        # and folder trust is on by default.
+        self.assertIn("trusted folders", row["hint"])
         settings = os.path.join(self.gemini, "settings.json")
         with open(settings) as fh:
             doc = json.load(fh)
+        doc["security"] = {"folderTrust": {"enabled": False}}
+        with open(settings, "w") as fh:
+            json.dump(doc, fh)
+        row = self.check(NEEDS_YOU_AGENT_ALERTS="1")
+        self.assertEqual(row["status"], "OK", row)
+        self.assertNotIn("trusted folders", row["hint"])
         doc["hooksConfig"] = {"enabled": False}
         with open(settings, "w") as fh:
             json.dump(doc, fh)

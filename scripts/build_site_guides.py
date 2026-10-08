@@ -14,7 +14,9 @@ bold and italic. All HTML in the markdown is escaped, except <img> tags that poi
 site/img/ (the screenshots), which are rebuilt from their src, width and alt. Relative links
 to a published doc become links to its page; links to anything else in the repo go to GitHub
 (through REPO_URL in site/site.js); a link to a file or anchor that doesn't exist fails the
-build. The output depends only on the inputs: no dates, sorted everything.
+build. A shell block that runs exactly as written gets a Copy button (see copyable()); one
+with placeholders or example values doesn't. The output depends only on the inputs: no
+dates, sorted everything.
 """
 from __future__ import annotations
 
@@ -305,8 +307,21 @@ class Doc:
                 i = self.list(lines, i, out)
                 continue
             if IMG_LINE.match(line):
-                out.append('<p class="doc-img">%s</p>' % self.images(line))
+                # A screenshot line, and its caption when the next paragraph is one line
+                # of italics ("*Settings → Panel → Opacity, at the defaults.*").
+                imgs = self.images(line)
                 i += 1
+                j = i
+                while j < n and not lines[j].strip():
+                    j += 1
+                cap = CAPTION.match(lines[j]) if j < n else None
+                if cap and (j + 1 >= n or not lines[j + 1].strip()):
+                    caption = "\n<figcaption>%s</figcaption>" % self.inline(cap.group(1))
+                    i = j + 1
+                else:
+                    caption = ""
+                out.append('<figure class="doc-fig">\n<div class="stage">%s</div>%s\n</figure>'
+                           % (imgs, caption))
                 continue
             para = [line.strip()]
             i += 1
@@ -328,8 +343,9 @@ class Doc:
             body.append(ln[strip:])
             i += 1
         cls = ' class="language-%s"' % esc(lang) if lang else ""
-        out.append('<div class="code"><pre><code%s>%s</code></pre></div>'
-                   % (cls, html.escape("\n".join(body), quote=False)))
+        text = "\n".join(body)
+        out.append('<div class="code"%s><pre><code%s>%s</code></pre></div>'
+                   % (" data-copy" if copyable(lang, text) else "", cls, html.escape(text, quote=False)))
         return i + 1
 
     def heading(self, level, text, out):
@@ -458,6 +474,24 @@ TABLE_SEP = re.compile(r"^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$")
 LIST_ITEM = re.compile(r"^( {0,3})([-*+]|\d{1,9}[.)])( +|$)(.*)$")
 IMG_TAG = re.compile(r"<img\s[^>]*>")
 IMG_LINE = re.compile(r"^\s*(?:<img\s[^>]*>\s*(?:&nbsp;\s*)?)+$")
+CAPTION = re.compile(r"^\s*\*(?!\*)(\S(?:.*\S)?)\*\s*$")
+
+
+# Copy buttons (site.js adds one to a code block marked data-copy) are only for commands a
+# reader can run exactly as written. The real setup commands come from the app's invite
+# flow, with the reader's own URL and code in them; a block with a placeholder or an
+# example value is there to read, not to paste. So: shell blocks only, and none that
+# contain <placeholders>, "...", example hosts or names, tokens or tailnet addresses.
+# Erring towards no button is fine.
+COPY_LANGS = {"bash", "sh", "shell", "console"}
+NOT_AS_IS = re.compile(
+    r"<[^<>\n]*>|\.\.\.|…|example\.|\bacme|devbox|build-box|my-server|\bhub-[ab]\b|"
+    r"\byour[-_ ]|\bYOUR_|ny_[A-Za-z0-9]|token|tailnet|\b100\.64\.|AAAA|XXXX|--comment\b",
+    re.I)
+
+
+def copyable(lang, body):
+    return lang in COPY_LANGS and bool(body.strip()) and not NOT_AS_IS.search(body)
 
 
 def starts_block(line):

@@ -70,11 +70,11 @@
 </ul>
 <h2 id="1-get-the-app">1. Get the app <a class="anchor" href="#1-get-the-app" aria-label="Link to this section">#</a></h2>
 <p>The project is public: download the latest build from the <a data-repo="/releases/latest" href="https://github.com/tayharris/needs-you/releases/latest">Releases page</a>, or from Terminal with the <a href="https://cli.github.com">GitHub CLI</a>:</p>
-<div class="code"><pre><code class="language-bash">gh release download --repo tayharris/needs-you --pattern 'NeedsYou-*.dmg' --pattern SHA256SUMS</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">gh release download --repo tayharris/needs-you --pattern 'NeedsYou-*.dmg' --pattern SHA256SUMS</code></pre></div>
 <p>To report problems you'll need a GitHub account (section 8); otherwise send them to whoever invited you.</p>
 <h2 id="2-download-and-check">2. Download and check <a class="anchor" href="#2-download-and-check" aria-label="Link to this section">#</a></h2>
 <p>Download <code>NeedsYou-X.Y.Z.dmg</code> from the release (the <code>NeedsYou-X.Y.Z-macos.zip</code> is the same app). Optionally download <code>SHA256SUMS</code> too and check the file wasn't damaged on the way:</p>
-<div class="code"><pre><code class="language-bash">cd ~/Downloads
+<div class="code" data-copy><pre><code class="language-bash">cd ~/Downloads
 shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK</code></pre></div>
 <p>Ignore the other assets (<code>needs-you-server-…</code>, <code>needs-you-cli-…</code>, <code>release-manifest.json</code>): they're for servers and for the app's updater.</p>
 <h2 id="3-install-and-first-launch">3. Install and first launch <a class="anchor" href="#3-install-and-first-launch" aria-label="Link to this section">#</a></h2>
@@ -89,7 +89,9 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <li><strong>Work Macs</strong> with endpoint security (SentinelOne, CrowdStrike, Jamf Protect and the like) may flag or kill an ad-hoc signed app that listens on a port. If that happens, note the product and its message for your report; don't fight your IT department over it.</li>
 </ol>
 <p>What you should see: <strong>no Dock icon and no window.</strong> A faint pill appears at the top right of the screen. That's the idle state ("nothing needs you"):</p>
-<p class="doc-img"><img src="../img/pill-idle.png" width="147" height="34" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/pill-idle.png" width="147" height="34" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you." loading="lazy" decoding="async"></div>
+</figure>
 <p>It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by <strong>right-clicking the pill</strong>: Settings…, About Needs You, Quit Needs You.</p>
 <h2 id="4-check-the-hub-on-this-mac-your-inbox">4. Check the hub on this Mac (Your inbox) <a class="anchor" href="#4-check-the-hub-on-this-mac-your-inbox" aria-label="Link to this section">#</a></h2>
 <p>The hub starts by itself (<strong>Run hub on this Mac</strong> is on by default). Check it:</p>
@@ -98,7 +100,9 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <li>Open <strong>Your inbox</strong>. It starts with how it works: your machines send alerts, this Mac holds them (it's the hub), the pill shows them. <strong>Run hub on this Mac</strong> is on and says <strong>Running</strong>. Below it are two addresses: <strong>On this Mac</strong> (<code>http://127.0.0.1:8765</code>, for agents on this Mac) and, if Tailscale is up, <strong>From your other machines (Tailscale)</strong> (<code>http://&lt;your-mac&gt;.&lt;tailnet&gt;.ts.net:8765</code>).</li>
 <li>Optional: <strong>General → Open at login</strong>.</li>
 </ol>
-<p class="doc-img"><img src="../img/settings-inbox.png" width="560" height="404" alt="Settings, Your inbox page: How it works in three lines (your machines and agents send alerts; this Mac holds them, it&#x27;s the hub; the pill shows them until they&#x27;re handled), then Run hub on this Mac, on and Running." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/settings-inbox.png" width="560" height="404" alt="Settings, Your inbox page: How it works in three lines (your machines and agents send alerts; this Mac holds them, it&#x27;s the hub; the pill shows them until they&#x27;re handled), then Run hub on this Mac, on and Running." loading="lazy" decoding="async"></div>
+</figure>
 <p>If the pill says <strong>Hub can't start</strong> (click it to open Settings):</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Your inbox says</th><th>Fix</th></tr></thead>
@@ -125,7 +129,9 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <ol>
 <li><p>Right-click the pill → <strong>Settings…</strong> → <strong>Connect a machine</strong> (under <strong>Inbox and machines</strong>).</p></li>
 <li><p><strong>What is it?</strong> <em>A server or agent that sends alerts</em>. <strong>Machine name:</strong> anything, e.g. <code>laptop</code> or <code>devbox</code>. <strong>Uses:</strong> how many machines this link should set up. <strong>Expires after:</strong> keep the default.</p>
-<p class="doc-img"><img src="../img/settings-connect.png" width="560" height="404" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite." loading="lazy" decoding="async"></p></li>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/settings-connect.png" width="560" height="404" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite." loading="lazy" decoding="async"></div>
+</figure></li>
 <li><p>Click <strong>Create invite</strong>. The join link appears with two copy buttons:</p>
 <ul>
 <li><p><strong>Shell one-liner</strong> copies a command to run on the machine:</p>
@@ -146,11 +152,15 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <p>Re-running the line on the same machine is safe: it keeps the token and doesn't spend a use. Uninstall: the same line with <code>--uninstall</code> instead of the other options (while the link hasn't expired).</p>
 <h2 id="7-what-to-try">7. What to try <a class="anchor" href="#7-what-to-try" aria-label="Link to this section">#</a></h2>
 <p>Tick off what you get to; anything that surprises you is worth a report. With a few items waiting, the pill shows a count, a new one springs out for a moment, and a click opens the cards (these are example items):</p>
-<p class="doc-img"><img src="../img/pill-count.png" width="66" height="38" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring." loading="lazy" decoding="async"> <img src="../img/preview.png" width="336" height="94" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow." loading="lazy" decoding="async"></p>
-<p class="doc-img"><img src="../img/panel.png" width="376" height="926" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze." loading="lazy" decoding="async"></p>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/pill-count.png" width="66" height="38" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring." loading="lazy" decoding="async"> <img src="../img/preview.png" width="336" height="94" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow." loading="lazy" decoding="async"></div>
+</figure>
+<figure class="doc-fig">
+<div class="stage"><img src="../img/panel.png" width="376" height="926" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze." loading="lazy" decoding="async"></div>
+</figure>
 <ul class="tasks">
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Post and resolve an item</strong> from a connected machine:</p>
-<div class="code"><pre><code class="language-bash">needs-you add --key "personal:test:hello" --context personal --title "Say hi back"
+<div class="code" data-copy><pre><code class="language-bash">needs-you add --key "personal:test:hello" --context personal --title "Say hi back"
 needs-you resolve --key "personal:test:hello"</code></pre></div>
 <p>The pill springs out with the title, then goes back to idle after the resolve.</p></li>
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Re-post the same key</strong> with a different title: the card updates instead of duplicating.</p></li>
@@ -186,7 +196,7 @@ needs-you resolve --key "personal:test:hello"</code></pre></div>
 <ol>
 <li><p>On each sender: run the invite's one-liner with <code>--uninstall</code> while the link is still valid, or remove things by hand (<a href="add-a-sender.html#removing-a-sender">Add a sender → Removing a sender</a>).</p></li>
 <li><p>On the Mac: right-click the pill → <strong>Quit Needs You</strong>, then:</p>
-<div class="code"><pre><code class="language-bash">rm -rf /Applications/NeedsYou.app ~/Library/Application\ Support/NeedsYou
+<div class="code" data-copy><pre><code class="language-bash">rm -rf /Applications/NeedsYou.app ~/Library/Application\ Support/NeedsYou
 defaults delete app.needsyou.mac</code></pre></div>
 <p>If you turned on <strong>Open at login</strong>, turn it off first (<strong>General</strong>), or remove it in <strong>System Settings → General → Login Items</strong>.</p></li>
 </ol>

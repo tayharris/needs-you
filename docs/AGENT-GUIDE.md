@@ -38,7 +38,8 @@ invite**; on a server hub: `needs-you-admin invite create`). It looks like
 2. Pick the options that fit this machine: `--claude-hooks user --skill --alerts` for Claude
    Code (plus `--ssh-alias <name>` if the person reaches it from the Mac over SSH),
    `--codex-hooks user` for Codex CLI, `--gemini-hooks user` for Gemini CLI,
-   `--opencode-plugin` for opencode, `--orca` for Orca automations, `--context personal` if
+   `--opencode-plugin` for opencode, `--copilot-hooks user` for GitHub Copilot CLI,
+   `--orca` for Orca automations, `--context personal` if
    its items are personal.
 3. Run `curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]`.
 4. Report the health line (`<hub url>  OK  hub=... token=<name> role=sender`), never the
@@ -228,7 +229,7 @@ A sender that runs on a schedule passes `--expires-in` of about twice its interv
 renews the expiry, so a run that crashed before its resolve doesn't leave a card forever.
 
 **One card per wait.** When an agent posts a `needs` item with the CLI from inside its session
-(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal), the CLI notes the key for that
+(Claude Code, Codex, Gemini CLI, opencode, or an Orca terminal; Copilot CLI only in Orca), the CLI notes the key for that
 session, and while it is open the hooks skip their generic "Claude is waiting for you" or "turn
 ended" card for that session. Permission prompts, questions and errors still post. The CLI
 finds the session from `$ORCA_TERMINAL_HANDLE`, the agent's own id (`$CLAUDE_CODE_SESSION_ID`,
@@ -252,8 +253,9 @@ doesn't duplicate them.
 |---|---|---|
 | Claude Code | `--claude-hooks user` (or `project`); also a `low` card at 80% context (`NEEDS_YOU_CONTEXT_ALERT_PCT`) | [integrations/claude-code](../integrations/claude-code/README.md) |
 | Codex CLI | `--codex-hooks user`; trust them once in `/hooks` | [integrations/codex](../integrations/codex/README.md) |
-| Gemini CLI | `--gemini-hooks user` | [integrations/gemini](../integrations/gemini/README.md) |
+| Gemini CLI | `--gemini-hooks user`; only in folders you trust | [integrations/gemini](../integrations/gemini/README.md) |
 | opencode | `--opencode-plugin` | [integrations/opencode](../integrations/opencode/README.md) |
+| GitHub Copilot CLI | `--copilot-hooks user` | [integrations/copilot](../integrations/copilot/README.md) |
 
 Open sessions load new hooks after a restart.
 

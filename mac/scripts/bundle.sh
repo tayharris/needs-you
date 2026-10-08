@@ -68,7 +68,7 @@ else
   echo "warning: $REPO/integrations/claude-code not found; joiners won't get the Claude Code files" >&2
 fi
 
-for agent in codex gemini; do
+for agent in codex gemini copilot; do
   if [[ -d "$REPO/integrations/$agent" ]]; then
     mkdir -p "$RES/integrations/$agent"
     cp "$REPO/integrations/$agent/install-$agent-hooks.sh" "$REPO/integrations/$agent/$agent-hooks.json" \

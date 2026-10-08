@@ -72,7 +72,7 @@ directory; no root except one <code>loginctl</code> command.</p>
 rm ~/ny-secret</code></pre></div>
 <p><strong>3. Linger.</strong> If the installer says lingering is off, run the command it prints on each hub,
 so the hub keeps running after you log out and starts at boot:</p>
-<div class="code"><pre><code class="language-bash">sudo loginctl enable-linger "$USER"</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">sudo loginctl enable-linger "$USER"</code></pre></div>
 <p><strong>4. The first invite.</strong> Hub A printed an owner invite (<code>needsyou://connect?...</code>). Open it on
 the Mac and NeedsYou.app adds the hub. Then make a link for your servers on either hub:</p>
 <div class="code"><pre><code class="language-bash">needs-you-admin invite create my-servers --role sender --uses 5 --ttl 72</code></pre></div>
@@ -228,7 +228,7 @@ token); a failover that waits on an unreachable (not refused) hub costs up to
 <code>NEEDS_YOU_TIMEOUT</code> (3 s) per hub.</p>
 <h2 id="upgrading">Upgrading <a class="anchor" href="#upgrading" aria-label="Link to this section">#</a></h2>
 <p>Upgrades never lose config or data.</p>
-<div class="code"><pre><code class="language-bash">cd ~/needs-you &amp;&amp; git pull &amp;&amp; ./scripts/install-hub.sh --user     # or: sudo ./scripts/install-hub.sh</code></pre></div>
+<div class="code" data-copy><pre><code class="language-bash">cd ~/needs-you &amp;&amp; git pull &amp;&amp; ./scripts/install-hub.sh --user     # or: sudo ./scripts/install-hub.sh</code></pre></div>
 <ul>
 <li><strong>Code</strong> in <code>~/.local/share/needs-you</code> (or <code>/opt/needs-you</code>) is replaced in place, and the
 service is restarted.</li>

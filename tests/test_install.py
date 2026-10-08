@@ -393,6 +393,30 @@ class InstallScript(HubTestCase):
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
         self.assertIn("Not set up: Gemini CLI hooks", r.stdout + r.stderr)
         self.assertTrue(os.access(os.path.join(self.home, ".local", "bin", "needs-you"), os.X_OK))
+    def test_copilot_hooks(self):
+        inv = self.invite(uses=1)
+        r = self.install(inv, "--yes", "--copilot-hooks", "user", "--alerts", "--host", "box6", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Copilot CLI", r.stdout)
+        cp = os.path.join(self.home, ".copilot", "hooks")
+        with open(os.path.join(cp, "needs-you.json")) as fh:
+            self.assertIn("agentStop", json.load(fh)["hooks"])
+        self.assertTrue(os.access(os.path.join(cp, "needs-you-hook.sh"), os.X_OK))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")))  # Claude untouched
+        cli = os.path.join(self.home, ".local", "bin", "needs-you")
+        d = subprocess.run([cli, "doctor", "--json"], env=self.env(NEEDS_YOU_GH="none"),
+                           capture_output=True, text=True, timeout=60)
+        checks = {c["check"]: c for c in json.loads(d.stdout)["checks"]}
+        self.assertEqual(checks["copilot hooks"]["status"], "OK", checks["copilot hooks"])
+        self.assertIn("alerts on", checks["copilot hooks"]["detail"])
+        self.assertNotIn("Copilot", checks["update"]["detail"])
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(cp, "needs-you.json")))
+        self.assertFalse(os.path.exists(os.path.join(cp, "needs-you-hook.sh")))
+        r = self.install(inv, "--yes", "--copilot-hooks", "project")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--copilot-hooks must be user or none", r.stderr)
 
     def test_gemini_hooks(self):
         inv = self.invite(uses=1)

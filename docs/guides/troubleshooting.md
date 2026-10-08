@@ -123,6 +123,23 @@ The log lines mean the same as for the Claude Code hooks above. Codex-specific c
 - **Another `CODEX_HOME`.** The installer and doctor follow `$CODEX_HOME`; run them with the same value Codex uses.
 - **Every turn makes a card.** That's the `Stop` hook: Codex finished and is waiting for you. Opt in only where Codex runs unattended, set `NEEDS_YOU_AGENT_TURN_CARDS=0` to keep only approval cards, or turn it off for a session with `NEEDS_YOU_AGENT_ALERTS=0`.
 
+## Copilot CLI hooks
+
+`needs-you doctor` has a `copilot hooks` line. In `copilot` mode the hook finishes in the background, so log to a file:
+
+```bash
+echo '{"sessionId":"t1","cwd":"'"$PWD"'","notification_type":"permission_prompt","message":"Run command: make test"}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.copilot/hooks/needs-you-hook.sh notify copilot
+sleep 2; cat /tmp/ny-hook.log
+```
+
+Copilot-specific causes:
+
+- **Not restarted.** Copilot CLI reads `~/.copilot/hooks/*.json` when it starts.
+- **Hooks turned off.** `"disableAllHooks": true` in `~/.copilot/settings.json` or `config.json`; doctor reports it.
+- **Another `COPILOT_HOME`.** Copilot then reads `$COPILOT_HOME/hooks/` instead; run the installer and doctor with the same value.
+- **A card stays after Esc.** Cancelling a permission prompt runs no hook in Copilot; the card goes with your next prompt or the end of the session.
+
 ## GitHub poller
 
 - `needs-you-github -v` prints what it saw (notifications, PRs) and any `gh` error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "GitHub alerts stopped on <host>".

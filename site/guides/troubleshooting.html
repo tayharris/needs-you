@@ -44,6 +44,7 @@
         <li><a href="#duplicate-or-stale-cards">Duplicate or stale cards</a></li>
         <li><a href="#claude-code-hooks">Claude Code hooks</a></li>
         <li><a href="#codex-hooks">Codex hooks</a></li>
+        <li><a href="#copilot-cli-hooks">Copilot CLI hooks</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
@@ -52,7 +53,7 @@
 <p>Reporting a problem: what to include, and how to save the app's log with tokens and invite codes masked, is in <a href="testers.html#8-report-a-problem">Testers → Report a problem</a>.</p>
 <h2 id="start-here-needs-you-doctor">Start here: <code>needs-you doctor</code> <a class="anchor" href="#start-here-needs-you-doctor" aria-label="Link to this section">#</a></h2>
 <p>On the sender, run:</p>
-<div class="code"><pre><code class="language-bash">needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
+<div class="code" data-copy><pre><code class="language-bash">needs-you doctor          # or ~/.local/bin/needs-you doctor if it isn't on PATH
 needs-you doctor --json   # the same, for agents: {ok, version, checks: [{check, status, detail, hint}]}</code></pre></div>
 <p>It checks the env file (and that its mode is 600), whether <code>needs-you</code> and <code>~/.local/bin</code> are on <code>PATH</code>, each hub URL (reachable, hub version, the token's name and role), the outbox (queued, failed, oldest), the Claude Code hooks and skill, Orca settings, and the 5-minute flush schedule. Each line is <code>OK</code>, <code>WARN</code>, <code>FAIL</code> or <code>INFO</code>. Every <code>WARN</code> and <code>FAIL</code> has one next step under it (after <code>-&gt;</code>): a command to run as is, or exactly what to ask for, such as a new invite link (<code>&lt;invite link&gt;</code> is the only placeholder). It exits 1 if any check is <code>FAIL</code>. It's read-only: it never posts an item, never flushes the outbox and never prints the token (only "set" and its length).</p>
 <h2 id="quick-checks-by-hand">Quick checks by hand <a class="anchor" href="#quick-checks-by-hand" aria-label="Link to this section">#</a></h2>
@@ -121,7 +122,7 @@ tailscale status | head                          # is this machine on the tailne
 </ul>
 <h2 id="claude-code-hooks">Claude Code hooks <a class="anchor" href="#claude-code-hooks" aria-label="Link to this section">#</a></h2>
 <p>Setup per environment (SSH, tmux, VS Code Remote-SSH, Orca): <a href="claude-code-everywhere.html">Claude Code everywhere</a>. Turn on the debug log and simulate an event:</p>
-<div class="code"><pre><code class="language-bash">echo '{"session_id":"t1","cwd":"'"$PWD"'","notification_type":"idle_prompt","message":"test"}' |
+<div class="code" data-copy><pre><code class="language-bash">echo '{"session_id":"t1","cwd":"'"$PWD"'","notification_type":"idle_prompt","message":"test"}' |
   NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/needs-you-hook.sh notify</code></pre></div>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Log says</th><th>Meaning</th></tr></thead>
@@ -141,7 +142,7 @@ tailscale status | head                          # is this machine on the tailne
 </ul>
 <h2 id="codex-hooks">Codex hooks <a class="anchor" href="#codex-hooks" aria-label="Link to this section">#</a></h2>
 <p><code>needs-you doctor</code> has a <code>codex hooks</code> line. Simulate an approval prompt and its resolve with a log to stderr:</p>
-<div class="code"><pre><code class="language-bash">echo '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"'"$PWD"'","tool_name":"Bash","tool_input":{"command":"make test"}}' |
+<div class="code" data-copy><pre><code class="language-bash">echo '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"'"$PWD"'","tool_name":"Bash","tool_input":{"command":"make test"}}' |
   NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.codex/hooks/needs-you-hook.sh notify codex
 echo '{"session_id":"t1"}' | NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.codex/hooks/needs-you-hook.sh resolve codex</code></pre></div>
 <p>The log lines mean the same as for the Claude Code hooks above. Codex-specific causes:</p>
@@ -150,6 +151,18 @@ echo '{"session_id":"t1"}' | NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/dev/st
 <li><strong>Hooks turned off.</strong> <code>hooks = false</code> under <code>[features]</code> in <code>~/.codex/config.toml</code> (or a managed <code>requirements.toml</code>) disables every hook; doctor reports the first.</li>
 <li><strong>Another <code>CODEX_HOME</code>.</strong> The installer and doctor follow <code>$CODEX_HOME</code>; run them with the same value Codex uses.</li>
 <li><strong>Every turn makes a card.</strong> That's the <code>Stop</code> hook: Codex finished and is waiting for you. Opt in only where Codex runs unattended, set <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> to keep only approval cards, or turn it off for a session with <code>NEEDS_YOU_AGENT_ALERTS=0</code>.</li>
+</ul>
+<h2 id="copilot-cli-hooks">Copilot CLI hooks <a class="anchor" href="#copilot-cli-hooks" aria-label="Link to this section">#</a></h2>
+<p><code>needs-you doctor</code> has a <code>copilot hooks</code> line. In <code>copilot</code> mode the hook finishes in the background, so log to a file:</p>
+<div class="code" data-copy><pre><code class="language-bash">echo '{"sessionId":"t1","cwd":"'"$PWD"'","notification_type":"permission_prompt","message":"Run command: make test"}' |
+  NEEDS_YOU_AGENT_ALERTS=1 NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log ~/.copilot/hooks/needs-you-hook.sh notify copilot
+sleep 2; cat /tmp/ny-hook.log</code></pre></div>
+<p>Copilot-specific causes:</p>
+<ul>
+<li><strong>Not restarted.</strong> Copilot CLI reads <code>~/.copilot/hooks/*.json</code> when it starts.</li>
+<li><strong>Hooks turned off.</strong> <code>"disableAllHooks": true</code> in <code>~/.copilot/settings.json</code> or <code>config.json</code>; doctor reports it.</li>
+<li><strong>Another <code>COPILOT_HOME</code>.</strong> Copilot then reads <code>$COPILOT_HOME/hooks/</code> instead; run the installer and doctor with the same value.</li>
+<li><strong>A card stays after Esc.</strong> Cancelling a permission prompt runs no hook in Copilot; the card goes with your next prompt or the end of the session.</li>
 </ul>
 <h2 id="github-poller">GitHub poller <a class="anchor" href="#github-poller" aria-label="Link to this section">#</a></h2>
 <ul>

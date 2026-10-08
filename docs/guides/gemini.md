@@ -41,6 +41,10 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 
 One card per session, updated in place. No command lines, diffs, URLs, prompts or replies are sent. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the approval cards.
 
+**Trusted folders only.** Gemini CLI runs no hooks at all, the needs-you ones included, in a folder you haven't trusted (folder trust is on by default). Trust a project when Gemini asks, or turn folder trust off with `"security": {"folderTrust": {"enabled": false}}` in `~/.gemini/settings.json`.
+
+If you **deny** an approval (Esc, or "No, suggest changes"), Gemini runs no hook, so that card stays until your next prompt or the end of the session.
+
 ## Check it works
 
 ```bash
@@ -50,4 +54,4 @@ echo '{"hook_event_name":"AfterAgent","session_id":"test-1","cwd":"'"$PWD"'"}' |
 echo '{"session_id":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.gemini/hooks/needs-you-hook.sh resolve gemini
 ```
 
-Nothing shows up? `/hooks` in Gemini CLI should list the needs-you entries; `hooksConfig.enabled` must not be `false`; and `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` logs each call ([troubleshooting](troubleshooting.md#claude-code-hooks) explains the log lines).
+Nothing shows up? Check you trusted the folder (above); `/hooks` in Gemini CLI should list the needs-you entries; `hooksConfig.enabled` must not be `false`; and `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` logs each call ([troubleshooting](troubleshooting.md#claude-code-hooks) explains the log lines).
