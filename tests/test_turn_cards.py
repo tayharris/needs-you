@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import unittest
 
 from hook_case import HookCase, opt, posted_item
@@ -175,6 +176,88 @@ class ClaudeTurns(HookCase):
         long_q = "Should we " + "really " * 40 + "ship it?"
         argv = self.idle(entry("custom-title", "N" * 60), entry("assistant", long_q))
         self.assertLessEqual(len(opt(argv, "--title")), 100)
+
+    def cache(self):
+        with open(os.path.join(self.state, ".title-" + CLAUDE_SID)) as fh:
+            return json.load(fh)
+
+    def write_lines(self, path, entries, mode="w"):
+        with open(path, mode) as fh:
+            for e in entries:
+                fh.write(json.dumps(e) + "\n")
+
+    def idle_at(self, path, **env):
+        self.run_hook(["notify"], {"session_id": CLAUDE_SID, "cwd": self.cwd, "hook_event_name": "Notification",
+                                   "notification_type": "idle_prompt", "transcript_path": path}, **env)
+        return opt(self.calls()[-1], "--title")
+
+    def test_name_cache_reads_only_what_was_appended(self):
+        path = os.path.join(self.home, "t.jsonl")
+        filler = [entry("user", "x" * 1000), entry("assistant", "ok")] * 10  # the title past the first 4 KB
+        self.write_lines(path, filler + [entry("custom-title", "Alpha")] + filler + [entry("assistant", "Done.")])
+        self.assertEqual(self.idle_at(path), "Claude finished: Alpha (my-repo)")
+        c = self.cache()
+        self.assertEqual((c["path"], c["offset"], c["custom"]), (path, os.path.getsize(path), "Alpha"))
+        self.assertEqual(os.stat(os.path.join(self.state, ".title-" + CLAUDE_SID)).st_mode & 0o777, 0o600)
+        # Change the old title in place: a card that re-read the head would see "Omega".
+        with open(path, "r+b") as fh:
+            data = fh.read()
+            fh.seek(data.index(b'"Alpha"'))
+            fh.write(b'"Omega"')
+        self.write_lines(path, [entry("assistant", "Done again.")], "a")
+        self.assertEqual(self.idle_at(path), "Claude finished: Alpha (my-repo)")
+        self.assertEqual(self.cache()["offset"], os.path.getsize(path))
+        # A rename appended later is found in the new tail.
+        self.write_lines(path, [entry("custom-title", "Gamma"), entry("ai-title", "Auto"), entry("assistant", "Ok.")], "a")
+        self.assertEqual(self.idle_at(path), "Claude finished: Gamma (my-repo)")
+        # A line still being written isn't counted yet, and is read whole next time.
+        with open(path, "a") as fh:
+            fh.write(json.dumps(entry("custom-title", "Delta"))[:-5])
+        self.assertEqual(self.idle_at(path), "Claude finished: Gamma (my-repo)")
+        with open(path, "a") as fh:
+            fh.write(json.dumps(entry("custom-title", "Delta"))[-5:] + "\n")
+        self.assertEqual(self.idle_at(path), "Claude finished: Delta (my-repo)")
+        # A different transcript (a new session file, or one rewritten in its place) is read anew.
+        self.write_lines(path, [entry("ai-title", "Fresh"), entry("assistant", "Done.")])
+        self.assertEqual(self.idle_at(path), "Claude finished: Fresh (my-repo)")
+        # SessionEnd removes the cache.
+        self.run_hook(["end"], {"session_id": CLAUDE_SID, "cwd": self.cwd, "hook_event_name": "SessionEnd"})
+        self.assertFalse(os.path.exists(os.path.join(self.state, ".title-" + CLAUDE_SID)))
+
+    def test_a_big_transcript_is_read_once(self):
+        # Timing guard: about 48 MB, the title at the top. The first card reads it all, the
+        # next ones only the tail (the cache's offset), so they stay fast.
+        path = os.path.join(self.home, "big.jsonl")
+        line = (json.dumps(entry("user", "y" * 4000)) + "\n").encode()
+        with open(path, "wb") as fh:
+            fh.write((json.dumps(entry("custom-title", "Big one")) + "\n").encode())
+            fh.write(line * (48 * 1024 * 1024 // len(line)))
+            fh.write((json.dumps(entry("assistant", "Done.")) + "\n").encode())
+        self.assertEqual(self.idle_at(path), "Claude finished: Big one (my-repo)")
+        self.assertEqual(self.cache()["offset"], os.path.getsize(path))
+        times = []
+        for _ in range(3):
+            self.write_lines(path, [entry("assistant", "More.")], "a")
+            started = time.time()
+            self.assertEqual(self.idle_at(path), "Claude finished: Big one (my-repo)")
+            times.append(time.time() - started)
+        self.assertLess(min(times), 1.0, times)  # the hook's own start-up, not 48 MB of reading
+
+    def test_session_title_from_the_prompt(self):
+        # UserPromptSubmit carries session_title after /rename (live, 2.1.294): kept for the cards.
+        self.run_hook(["resolve"], {"session_id": CLAUDE_SID, "cwd": self.cwd, "hook_event_name": "UserPromptSubmit",
+                                    "prompt": "go", "session_title": "From prompt"})
+        self.assertEqual(self.cache()["prompt"], "From prompt")
+        self.assertEqual(self.calls(), [])  # nothing posted or resolved: no card was open
+        path = os.path.join(self.home, "p.jsonl")
+        self.write_lines(path, [entry("ai-title", "Auto"), entry("assistant", "Done.")])
+        self.assertEqual(self.idle_at(path), "Claude finished: From prompt (my-repo)")
+        self.write_lines(path, [entry("custom-title", "Renamed")], "a")
+        self.assertEqual(self.idle_at(path), "Claude finished: Renamed (my-repo)")
+        # A prompt that only quotes the key isn't a title.
+        self.run_hook(["resolve"], {"session_id": CLAUDE_SID, "cwd": self.cwd, "hook_event_name": "UserPromptSubmit",
+                                    "prompt": 'say "session_title": "evil"'})
+        self.assertEqual(self.cache()["prompt"], "From prompt")
 
     def test_name_on_other_cards(self):
         self.transcript(entry("custom-title", "Login fix"))

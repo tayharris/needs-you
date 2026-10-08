@@ -503,7 +503,7 @@ run_py() {
   NY_MARKER=$marker NY_CTX_MARKER=$ctx_marker NY_STATE=$state_dir \
   NY_PID=$lease_pid NY_START=$lease_start NY_START_UTC=$lease_start_utc NY_AGENT=$agent \
   python3 - 2>/dev/null 3<<<"$input" <<'PY'
-import json, os, re, shlex, subprocess, sys, time
+import hashlib, json, os, re, shlex, subprocess, sys, time
 from urllib.parse import parse_qsl, quote
 
 mode = os.environ.get("NY_MODE", "")
@@ -1391,35 +1391,99 @@ def claude_last_text(path):
     return ""
 
 
-def claude_title(path):
-    """The session's name in a Claude Code transcript: the latest /rename name (a custom-title
-    entry, live on 2.1.294), else the latest auto title (ai-title). They can be anywhere in the
-    file, so it is read whole (up to 64 MB), looking only at lines that start like one."""
-    if not path or not os.path.isfile(path):
-        return ""
-    custom, auto = None, None
+TITLE_SCAN_MAX = 64 * 1024 * 1024  # bytes of transcript read for titles on one card, at most
+
+
+def title_cache_path():
+    sid = re.sub(r"^\.", "_", re.sub(r"[^A-Za-z0-9._-]", "_", session)[:80])  # as the shell's sanitize
+    return os.path.join(os.environ["NY_STATE"], ".title-" + sid) if sid else ""
+
+
+def read_title_cache():
+    path = title_cache_path()
     try:
-        with open(path, "rb") as fh:
-            read = 0
-            for raw in fh:
-                read += len(raw)
-                if read > 64 * 1024 * 1024:
-                    break
-                if b'-title"' not in raw[:40]:
-                    continue
-                try:
-                    d = json.loads(raw)
-                except Exception:
-                    continue
-                if not isinstance(d, dict):
-                    continue
-                if d.get("type") == "custom-title" and isinstance(d.get("customTitle"), str):
-                    custom = d["customTitle"]
-                elif d.get("type") == "ai-title" and isinstance(d.get("aiTitle"), str):
-                    auto = d["aiTitle"]
-    except OSError:
-        return ""
-    return (custom or "").strip() or (auto or "").strip()
+        with open(path, encoding="utf-8") as fh:
+            c = json.loads(fh.read(64 * 1024))
+        return c if isinstance(c, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_title_cache(c):
+    path = title_cache_path()
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = "%s.%d.tmp" % (path, os.getpid())
+        # private: the names are the session's own words, as in the transcript
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600),
+                       "w", encoding="utf-8") as fh:
+            json.dump(c, fh)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+def prompt_title():
+    """UserPromptSubmit (the `title` mode): remember the session_title Claude Code sends with a
+    prompt (live on 2.1.294 after /rename), for the session's later cards."""
+    if AGENT != "claude" or not field("session_title"):
+        return 0
+    c = read_title_cache()
+    if c.get("prompt") != field("session_title")[:500]:
+        c["prompt"] = field("session_title")[:500]
+        write_title_cache(c)
+    return 0
+
+
+def claude_title(path):
+    """The session's name: the latest /rename name (a custom-title transcript line, live on
+    2.1.294), else the session_title of the latest prompt, else the latest auto title (ai-title).
+    The titles can be anywhere in the transcript, so what was found is kept in the state dir
+    (.title-<session>) with the byte offset read up to: a card reads only what Claude appended
+    since, and the whole file at most once (up to 64 MB)."""
+    c = read_title_cache()
+    custom, auto = c.get("custom"), c.get("auto")
+    if path and os.path.isfile(path):
+        try:
+            size = os.path.getsize(path)
+            offset = c.get("offset") if c.get("path") == path else None
+            with open(path, "rb") as fh:
+                # The file's first 4 KB tell the same transcript from one rewritten in its place.
+                head = hashlib.sha1(fh.read(4096)).hexdigest()
+                if (not isinstance(offset, int) or offset < 0 or offset > size
+                        or (offset > 0 and c.get("head") != head)):
+                    offset, custom, auto = 0, None, None  # a new or rewritten transcript: from the top
+                buf = b""
+                if offset < size:
+                    fh.seek(offset)
+                    buf = fh.read(min(size - offset, TITLE_SCAN_MAX))
+            if buf:
+                done = buf.rfind(b"\n") + 1  # complete lines only; a line being written waits
+                for raw in buf[:done].split(b"\n"):
+                    if b'-title"' not in raw[:40]:
+                        continue
+                    try:
+                        d = json.loads(raw)
+                    except Exception:
+                        continue
+                    if not isinstance(d, dict):
+                        continue
+                    if d.get("type") == "custom-title" and isinstance(d.get("customTitle"), str):
+                        custom = d["customTitle"][:500]
+                    elif d.get("type") == "ai-title" and isinstance(d.get("aiTitle"), str):
+                        auto = d["aiTitle"][:500]
+                if len(buf) == TITLE_SCAN_MAX and done == 0:
+                    done = len(buf)  # one huge line: skip it rather than read it again
+                c.update(path=path, offset=offset + done, head=head, custom=custom, auto=auto)
+                write_title_cache(c)
+        except OSError:
+            pass
+    for name in (custom, c.get("prompt"), auto):
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return ""
 
 
 def codex_title():
@@ -2269,7 +2333,7 @@ def codex_usage():
 
 try:
     rc = {"notify": notify, "context": context, "ask": ask, "reply": reply,
-          "codex_usage": codex_usage}.get(mode, lambda: 0)()
+          "codex_usage": codex_usage, "title": prompt_title}.get(mode, lambda: 0)()
 except Exception:
     rc = 1
 raise SystemExit(rc)
@@ -2282,6 +2346,11 @@ case "$mode" in
     [ "$agent" = codex ] && resolve_bg=1
     cancel_posts
     resolve_marker "$marker" "$key"
+    # Claude's UserPromptSubmit names the session (session_title, after /rename): keep it for
+    # the session's cards, so they needn't search the transcript for it.
+    case "$agent:$input" in
+      claude:*'"session_title"'*) run_py title >/dev/null ;;
+    esac
     ;;
 
   stop)
@@ -2300,7 +2369,7 @@ case "$mode" in
     model=$(json_str model)
     if [ "$agent" = claude ] && [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
       printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
-      find "$state_dir" -name '.model-*' -mtime +7 -exec rm -f {} + 2>/dev/null
+      find "$state_dir" \( -name '.model-*' -o -name '.title-*' \) -mtime +7 -exec rm -f {} + 2>/dev/null
     fi
     # Cline: a task starts or resumes (a new task has a new taskId): the finished cards of
     # earlier tasks in the same Cline (the lease's process) no longer apply.
@@ -2342,7 +2411,7 @@ case "$mode" in
     else
       resolve_marker "$marker" "$key"
       resolve_marker "$ctx_marker"
-      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")"
+      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")" "$state_dir/.title-$(sanitize "$session_id")"
     fi
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
