@@ -220,6 +220,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
                                                    into: dir, name: "settings-\(tab.rawValue)")
             }
+            // The Appearance sample in a light and a colourful theme: the desktop stays put.
+            for theme in [PanelTheme.paper, .sunset] {
+                settings.ui.theme = theme
+                await settingsWindow.writeSnapshot(of: .appearance, showcase: showcase, shots: 2,
+                                                   into: dir, name: "settings-appearance-\(theme.rawValue)")
+            }
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }

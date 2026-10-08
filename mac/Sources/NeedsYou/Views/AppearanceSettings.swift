@@ -140,46 +140,73 @@ private struct ThemeSwatch: View {
     }
 }
 
-/// The theme on the panel's own views: a count pill per priority and a sample card.
+/// The theme on the panel's own views, over a sample desktop that stands for your screen
+/// and stays the same for every theme: the collapsed pill with a top item of each
+/// priority, and the open panel with a card, on the panel's glass as the app draws them.
 private struct ThemeSample: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
 
     var body: some View {
         let m = settings.ui.metrics
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .trailing, spacing: 12) {
             HStack(spacing: 14) {
                 ForEach([ItemPriority.urgent, .normal, .low], id: \.self) { priority in
-                    let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    let look = settings.ui.alertLook(for: priority)
-                    HStack(spacing: 5) {
-                        Circle().fill(Theme.color(priority)).frame(width: 6, height: 6)
-                        Text(priority.rawValue)
-                            .font(.system(size: m.countFont - 1, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Theme.text.opacity(0.95))
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: m.countHeight)
-                    .background(Theme.tint)
-                    .background(Theme.raised)
-                    .clipShape(shape)
-                    .overlay(shape.strokeBorder(Theme.color(priority).opacity(look.ringOpacity), lineWidth: look.ringWidth))
+                    SamplePill(settings: settings, items: [Self.item(priority)])
                 }
-                Spacer(minLength: 0)
             }
-            CardView(item: PanelPreview.sample(now: model.now), model: model)
-                .frame(width: m.expandedWidth - 2 * m.listPadding)
-                .padding(m.listPadding)
-                .background(Theme.tint)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            panel(m)
         }
         .id(Theme.palette)
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface))
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .background(DesktopBackdrop())
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .environment(\.colorScheme, Theme.colorScheme)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private static func item(_ priority: ItemPriority) -> Item {
+        Item(id: "theme-sample-\(priority.rawValue)", key: "theme-sample-\(priority.rawValue)",
+             priority: priority, title: "Sample", createdAt: Date())
+    }
+
+    /// The open panel: its header, a card and the footer (ExpandedView's layout).
+    private func panel(_ m: PanelMetrics) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return VStack(spacing: 0) {
+            HStack(spacing: 5) {
+                Text(settings.needsLabel)
+                    .font(.system(size: m.headerFont, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                HStack(spacing: 3) {
+                    Text("Work").foregroundStyle(Theme.text)
+                    Text("1").foregroundStyle(Theme.normal)
+                }
+                .font(.system(size: m.headerFont - 1, weight: .semibold))
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(Capsule().fill(Theme.cardFill))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: m.headerHeight - 0.5)
+            Rectangle().fill(Theme.hairline).frame(height: 0.5)
+            CardView(item: PanelPreview.sample(now: model.now), model: model)
+                .frame(width: m.expandedWidth - 2 * m.listPadding)
+                .padding(m.listPadding)
+            Rectangle().fill(Theme.hairline).frame(height: 0.5)
+            HStack {
+                Text(LocalHub.displayName).font(Theme.meta(m)).foregroundStyle(Theme.faint)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .frame(height: m.footerHeight - 0.5)
+        }
+        .frame(width: m.expandedWidth)
+        .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
+        .opacity(settings.ui.panelOpacity)
     }
 }
