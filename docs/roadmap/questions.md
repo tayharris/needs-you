@@ -1,6 +1,6 @@
 # Questions and choices: what each agent's hooks carry
 
-Status: research, 2026-10-08. Phase A of [ADR 0009](../adr/0009-questions-on-cards.md) is built from it (the question, its choices as read-only steps and a plan's first lines on the card, for Claude Code, Codex, Gemini CLI, opencode, Kimi Code and Copilot's MCP elicitations). Phase B (answering from the card) is a proposal in the ADR, not built.
+Status: research, 2026-10-08. Phase A of [ADR 0009](../adr/0009-questions-on-cards.md) is built from it (the question, its choices as read-only steps and a plan's first lines on the card, for Claude Code, Codex, Gemini CLI, opencode, Kimi Code and Copilot's MCP elicitations). Phase B1 (the `question` field, option rows on the Mac) and B2 (answers from the card, for opencode and any sender using `needs-you answer-wait`) are built; B3 (Claude Code) waits on a live check.
 
 When an agent asks the person something, what does a hook see, and can a hook answer? Every claim is tagged with its source and a confidence:
 

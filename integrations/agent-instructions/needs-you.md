@@ -63,6 +63,18 @@ needs-you add --key "work:billing:rotate-stripe-key" --priority urgent \
 
 A numbered checklist on the Mac, each link a button. At most 10 steps, each one imperative line of 200 characters or fewer. `--step "Text=URL"` labels the button "Open"; for your own label, `--steps-json '[{"text": "...", "link": {"label": "Approve", "url": "https://..."}}]'`. Don't repeat the steps in the body. One action is a title, not a one-step list. Their ticks stay on the Mac: you still resolve.
 
+### Ask and wait for a click
+
+When you're blocked on a choice between a few options and can wait, post an answerable question and wait for the person's click (only your labels come back; never free text):
+
+```bash
+needs-you add --key "work:acme-web:db-choice" --title "Which database for acme-web?" \
+  --question-json '{"id": "db-choice", "answerable": true, "items": [{"header": "Database", "text": "Which database should the service use?", "options": [{"label": "Postgres", "description": "Already used by the team"}, {"label": "SQLite"}]}]}'
+needs-you answer-wait --key "work:acme-web:db-choice" --timeout 600
+```
+
+Exit 0 prints `{"answers": [{"selected": ["Postgres"]}], ...}`; 3 means no answer in time, 4 means none will come (closed or expired). On anything but 0, don't choose for them: ask in your own conversation instead, or stop. 1-4 questions, 1-8 options each, `"multi_select": true` for several picks. Resolve the card once you've acted on the answer.
+
 ### Resolve what you posted
 
 When the blocker clears (they answered, the ticket moved, the job passed): `needs-you resolve --key <same key>`. Before you finish, resolve every card of yours that is no longer true; stale cards teach people to ignore the inbox. On a schedule, pass `--expires-in` of about twice the interval in hours (hourly: `3`) and re-post on every run that still sees the blocker, so a missed resolve expires by itself.

@@ -168,10 +168,44 @@ needs-you add --key "work:billing:rotate-stripe-key" --priority urgent \
   whole list, and a change to the steps re-animates the card.
 - The person's ticks stay on their Mac; you never hear about them. Resolve when the work is
   actually done.
-- Choices you are waiting on the person to pick between are a question, not steps:
-  `--question-json '{"items": [{"text": "Deploy now or wait?", "options": [{"label": "Now"},
-  {"label": "Wait for the migration"}]}]}'` ([API.md](API.md)). Say in the body where they
-  answer; there is no answer path back to you yet.
+- Choices you are waiting on the person to pick between are a question, not steps (next
+  section).
+
+### Asking a multiple-choice question and waiting for the click
+
+When you need the person to pick between a few options and you can wait for it, post the
+question as `answerable` and wait for the answer. The person's Mac shows each option as a
+button; their click comes back to you as JSON. Only the labels you offered can come back,
+never free text, and nothing comes back unless the person clicks.
+
+```bash
+needs-you add --key "work:deploy:api-v2.14" --title "Deploy api v2.14 now or after the migration?" \
+  --body "Canary is green. The migration runs at 15:00." \
+  --question-json '{"id": "deploy-214", "answerable": true, "items": [{"header": "Deploy",
+    "text": "When should v2.14 go out?", "options": [{"label": "Now", "description": "All regions"},
+    {"label": "After the migration"}]}]}'
+answer=$(needs-you answer-wait --key "work:deploy:api-v2.14" --timeout 900)
+case $? in
+  0) choice=$(printf '%s' "$answer" | python3 -c 'import json,sys; print(json.load(sys.stdin)["answers"][0]["selected"][0])') ;;
+  3) choice="" ;;   # no answer in 15 minutes: do nothing rash, ask again later or stop
+  *) choice="" ;;   # 4: the card was closed or the question expired; 2: setup problem
+esac
+needs-you resolve --key "work:deploy:api-v2.14"   # once you've acted on it
+```
+
+- 1 to 4 questions, each with 1 to 8 options (labels up to 80 characters); every question
+  needs options. `"multi_select": true` lets the person pick several. Add `"expires_at"`
+  when you'll stop waiting, so a late click is refused rather than lost.
+- `answer-wait` prints `{"id", "key", "status", "question_id", "answers": [{"selected":
+  [labels]}], "answered_at", "answered_by"}` and exits 0. It exits 3 when `--timeout`
+  runs out and 4 when no answer will come (the card was resolved or dismissed, the question
+  expired, or it isn't answerable). Treat anything but 0 as "no answer": never pick a
+  default for the person.
+- Only the token that posted the question can read its answer. Re-posting the same question
+  keeps the answer; changing it clears it.
+- The item stays open after the click: resolve it once you've acted.
+- Never use this for permission to run something risky that the person should check in
+  context; that belongs where they can see what will run.
 
 ### When something seems wrong
 
