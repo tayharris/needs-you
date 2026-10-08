@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.1.3
+# needs-you-version: 0.1.4
 # install-codex-hooks.sh: add the needs-you hooks to OpenAI Codex CLI's hooks.json.
 #
 #   ./install-codex-hooks.sh                 ~/.codex/hooks.json ($CODEX_HOME/hooks.json if set)
