@@ -25,6 +25,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - **Agent hooks:** free text that reaches a card (an API error message, a notification's text) has token-shaped strings redacted. A `session_id` inside a tool's arguments no longer takes over the card. Odd folder names and session ids no longer lose the card.
 - **Claude Code installer:** the `settings.json` backup is now private (0600) and is never written through a symlink a repo planted under its name, and the hook is copied in through a fresh temp file. A `--settings` directory with shell syntax in its path is refused.
 - **CLI:** config files are written through `mkstemp`, never a predictable temp name a repo could plant as a symlink (`uninstall-hooks` rewrites the current project's settings).
+- **Mac app: a `needsyou://` link with an unknown host does nothing.** It used to open Settings and bring the app forward, so any web page could take focus with one. Only connect links show Settings now.
 - **MCP server:** a deeply nested line is a parse error instead of ending the server.
 
 ## [0.1.5] - 2026-10-08
