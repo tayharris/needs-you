@@ -542,8 +542,10 @@ request (use another owner token, or <code>needs_you_admin.py</code>).</p>
  "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"],
  "hub_id": "hub-a"}</code></pre></div>
 <ul>
-<li><code>name</code> is <code>&lt;invite name&gt;-&lt;host&gt;</code> (the host is reduced to letters, digits, <code>.</code>, <code>_</code>, <code>-</code>). If
-an active token already has that name, <code>-2</code>, <code>-3</code>... is appended.</li>
+<li><code>name</code> is <code>&lt;invite name&gt;-&lt;host&gt;</code> (the host is reduced to letters, digits, <code>.</code>, <code>_</code>, <code>-</code>), or
+just the invite name when it already is the host or ends with it (<code>-</code>, <code>.</code> or <code>_</code> before it;
+no case; the host's first label counts too): an invite named <code>devbox</code> redeemed on <code>devbox</code>
+mints <code>devbox</code>. If an active token already has that name, <code>-2</code>, <code>-3</code>... is appended.</li>
 <li><code>hub_urls</code> is this hub's <code>public_url</code> followed by its peers, in that order. Save it as
 <code>NEEDS_YOU_URLS</code>. When the request comes from the hub's own machine (a loopback address, or
 one of the addresses the hub listens on) and the hub listens on loopback, its loopback URL

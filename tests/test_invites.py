@@ -101,7 +101,33 @@ class Create(InviteCase):
         self.assertEqual(request("GET", self.hub.url + "/v1/invites", self.reader)[0], 403)
 
 
+class TokenNaming(unittest.TestCase):
+    """A redeemed invite's token is `<invite name>-<host>`, without repeating the host."""
+
+    def test_names(self):
+        cases = [
+            ("srv", "box1", "srv-box1"),
+            ("devbox", "devbox", "devbox"),               # invite named after the machine
+            ("DevBox", "devbox", "DevBox"),               # no case games
+            ("work-devbox", "devbox", "work-devbox"),     # already ends with the host
+            ("devbox", "devbox.local", "devbox"),         # the host's first label
+            ("devbox", "devbox.example.ts.net", "devbox"),
+            ("mydevbox", "devbox", "mydevbox-devbox"),    # only at a word boundary
+            ("devbox-ci", "devbox", "devbox-ci-devbox"),  # starts with it: still added
+            ("srv", "", "srv-host"),
+            ("srv", "bad host!", "srv-bad-host"),
+        ]
+        for invite, host, want in cases:
+            with self.subTest(invite=invite, host=host):
+                self.assertEqual(hubmod.invite_token_name(invite, host), want)
+
+
 class Redeem(InviteCase):
+    def test_invite_named_after_the_host_is_not_repeated(self):
+        _, inv = self.invite(name="devbox", uses=3)
+        names = [self.redeem(inv["code"], host)[1]["name"] for host in ("devbox", "devbox", "build-1")]
+        self.assertEqual(names, ["devbox", "devbox-2", "devbox-build-1"])
+
     def test_multi_use_mints_a_token_each(self):
         _, inv = self.invite(uses=3)
         tokens = []

@@ -20,7 +20,7 @@ The join URL is safe to open in a browser first: it's Markdown that explains wha
 | Step | Detail |
 |---|---|
 | Installs the CLI | Downloads `needs-you` from the hub (`/dl/needs-you`), checks it compiles, puts it in `~/.local/bin`, and adds `~/.local/bin` to `PATH` with one line tagged `# added by needs-you` in your shell profile (`~/.zshrc`, `~/.bash_profile` on macOS bash, `~/.bashrc` on Linux bash, else `~/.profile`). `--no-path` prints the line instead. |
-| Redeems the invite | Mints a token for this machine, named `<invite name>-<host>`. One link with `uses: 5` sets up five machines, each with its own token. |
+| Redeems the invite | Mints a token for this machine, named `<invite name>-<host>` (just the invite name if that already is the host). One link with `uses: 5` sets up five machines, each with its own token. |
 | Writes the config | `~/.config/needs-you/env`, mode 600: `NEEDS_YOU_URLS` (the hub plus its peers, in failover order), `NEEDS_YOU_URL`, `NEEDS_YOU_TOKEN`, and `NEEDS_YOU_DEFAULT_CONTEXT` with `--context`. Other lines in the file are kept. |
 | Schedules a flush | Every 5 minutes, `needs-you flush` sends anything queued while no hub answered (e.g. the Mac was asleep): a crontab line on Linux, the LaunchAgent `io.needs-you.flush` on macOS. |
 | Checks and tests | `needs-you health`, then a test `info` item. An unreachable hub is only a warning: the item queues. |

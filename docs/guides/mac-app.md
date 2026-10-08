@@ -170,7 +170,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 
-The Panel and Appearance pages show a sample card as you change things, and the Alerts page plays each alert. **Alerts → Arrivals → Preview on the pill** (**Urgent** or **Normal**) plays your choice on the real pill without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back.
+The Panel and Appearance pages show a sample card as you change things; Appearance draws the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. The Alerts page shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Alerts → Arrivals → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back.
 
 ### Themes
 
@@ -225,7 +225,7 @@ Under **Hubs and machines**:
 
 - **Built-in hub:** three lines on how it works (senders post alerts, a hub stores them and this app has one built in, the pill shows them), **Run hub on this Mac** (on by default; off to use only a server hub) and its two addresses, each with **Copy**: **On this Mac** (`http://127.0.0.1:8765`, for agents on the Mac) and **From your other machines (Tailscale)** (`http://<name>.<tailnet>.ts.net:8765`). Without Tailscale it says other machines can't reach the hub and links to the [Tailscale guide](tailscale.md).
 - **Connect a machine:** pick what it is (*A server or agent that sends alerts*, *Another Mac that shows the same alerts*, or *Another Mac that can also connect machines (advanced)*), a name, uses and expiry, then **Create invite**. See above.
-- **Machines:** every connected sender and Mac with its role (*Sender*, *Mac, reader*, *Mac, owner*), open items and, for senders, the CLI version (*version unknown (hasn't posted since updating)* until it reports one), and the open invite links; **Revoke** any of them. Shows only when you have an owner token.
+- **Machines:** every connected sender and Mac with its role (*Sender*, *Mac, reader*, *Mac, owner*), open items and, for senders, the CLI version (*version unknown (hasn't posted since updating)* until it reports one), and the open invite links; **Revoke** any of them. The app's own row comes first as *this Mac: app*; if you also set up the `needs-you` command or agent hooks on this Mac, they have their own row under their invite's name (a row is never labelled "this Mac" because of its name: a sender picks its own name). Shows only when you have an owner token.
 - **Other hubs (advanced):** you don't need it with the built-in hub. **Join a hub with a link**: paste a `needsyou://connect?...` or `/join/...` link that someone made for this Mac, and it joins their hub. The link comes from another Mac's **Settings → Connect a machine** (*Another Mac that shows the same alerts*) or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`). If the clipboard already holds such a link when the page opens, it's filled in for you; **Paste** does the same by hand. Opening a `needsyou://connect` link does all of this by itself, after asking. **Always-on server hubs** explains them and links to [HUB.md](../HUB.md) (they're set up from the command line). **Hubs by URL and token**: hubs added by hand, tried in order; the *This Mac (built-in hub)* row shows its Tailscale URL too.
 Under **Needs You**:
 
@@ -233,7 +233,7 @@ Under **Needs You**:
 - **Appearance:** the theme and the accent colour, with a sample ([Themes](#themes)).
 - **Alerts:** how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
 - **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
-- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts).
+- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
 
 Built in, not settings yet:
 

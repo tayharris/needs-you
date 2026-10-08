@@ -725,14 +725,14 @@ struct SettingsView: View {
             if connect.accessTokens.isEmpty {
                 Text("Press Refresh to list them.").font(.caption).foregroundStyle(.secondary)
             }
-            ForEach(connect.accessTokens) { token in
+            ForEach(MachineRowText.ordered(connect.accessTokens)) { token in
                 MachineRow(token: token, connect: connect) { pendingRevoke = .token(token) }
             }
             statusText(connect.accessStatus)
         } header: {
             Text("Connected machines")
         } footer: {
-            Text("Revoke a machine to stop it from using your hub. Its open items stay until they're resolved or dismissed.")
+            Text("“this Mac: app” is Needs You itself. If you set up the needs-you command or agent hooks on this Mac too, they have a row of their own, under the name you gave their invite. Revoke a machine to stop it from using your hub. Its open items stay until they're resolved or dismissed.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onAppear { connect.refreshAccess() }
@@ -960,6 +960,7 @@ struct SettingsView: View {
 
     // MARK: Advanced
 
+    @ViewBuilder
     private var advancedSection: some View {
         Section {
             HStack {
@@ -970,10 +971,30 @@ struct SettingsView: View {
             }
         } header: {
             Text("Reset")
+        }
+        Section {
+            HStack {
+                LabelWithDetail("Data folder", Self.abbreviated(LocalHubController.supportDirectory))
+                Spacer()
+                Button("Show in Finder") {
+                    let folder = LocalHubController.supportDirectory
+                    if FileManager.default.fileExists(atPath: folder.path) {
+                        NSWorkspace.shared.activateFileViewerSelecting([folder])
+                    }
+                }
+                .disabled(!FileManager.default.fileExists(atPath: LocalHubController.supportDirectory.path))
+            }
+        } header: {
+            Text("Where things are kept")
         } footer: {
-            Text("Settings are kept in `defaults read app.needsyou.mac`. Tokens and the hub's data are in ~/Library/Application Support/NeedsYou/.")
+            Text("The data folder holds the hub's items (hub.db) and the tokens (owner.token, tokens.json); it can't be moved. The rest of the settings are in macOS's defaults: `defaults read app.needsyou.mac`.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// A path with the home folder shown as ~.
+    private static func abbreviated(_ url: URL) -> String {
+        (url.path as NSString).abbreviatingWithTildeInPath
     }
 
     // MARK: Other hubs → by URL and token

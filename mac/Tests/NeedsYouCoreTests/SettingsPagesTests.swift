@@ -15,6 +15,7 @@ final class SettingsPagesTests: XCTestCase {
         ("testDeepLinksAndOldNames", testDeepLinksAndOldNames),
         ("testConnectChoicesInPlainWords", testConnectChoicesInPlainWords),
         ("testMachineRowText", testMachineRowText),
+        ("testThisMacRows", testThisMacRows),
         ("testLinksUseTheUpdaterRepository", testLinksUseTheUpdaterRepository),
     ]
 
@@ -83,9 +84,29 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertTrue(MachineRowText.detail(unknown).hasSuffix(MachineRowText.versionUnknown))
         // Macs don't run the CLI, so no version line for them.
         let me = TokenSummary(id: "4", name: "mac", role: .owner, current: true)
-        XCTAssertEqual(MachineRowText.detail(me), "Mac, owner · this Mac")
+        XCTAssertEqual(MachineRowText.detail(me), "Mac, owner · this Mac: app")
         let reader = TokenSummary(id: "5", name: "laptop", role: .reader, openItems: 1)
         XCTAssertEqual(MachineRowText.detail(reader), "Mac, reader · 1 open")
+    }
+
+    /// "This Mac" comes only from what the app knows for itself (the token it is using),
+    /// never from a name: a sender picks its own invite name and host, so a machine named
+    /// like this Mac must not be shown as this Mac.
+    func testThisMacRows() {
+        let app = TokenSummary(id: "1", name: "this-mac", role: .owner, current: true)
+        let spoof = TokenSummary(id: "2", name: "devbox", role: .sender)
+        let spoof2 = TokenSummary(id: "3", name: "agent-devbox", role: .sender)
+        let spoof3 = TokenSummary(id: "4", name: "this-mac", role: .sender)
+        let other = TokenSummary(id: "5", name: "build-1", role: .sender)
+        XCTAssertTrue(MachineRowText.isThisMac(app))
+        for token in [spoof, spoof2, spoof3, other] {
+            XCTAssertFalse(MachineRowText.isThisMac(token), token.name)
+            XCTAssertFalse(MachineRowText.detail(token).contains("this Mac"), token.name)
+        }
+        XCTAssertEqual(MachineRowText.detail(app), "Mac, owner · this Mac: app")
+        // The app's own row first, the rest as the hub listed them.
+        XCTAssertEqual(MachineRowText.ordered([other, spoof, app, spoof2]).map(\.id),
+                       ["1", "5", "2", "3"])
     }
 
     func testLinksUseTheUpdaterRepository() {

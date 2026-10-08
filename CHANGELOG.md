@@ -21,6 +21,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **Clearer names for the three parts: the app, the hub, senders.** The Needs You app shows your alerts; a hub stores them (built into the app, or on a server you run); senders post them from any machine where agents or jobs run. Settings → **Your inbox** is now **Built-in hub**, in a group called **Hubs and machines**; its How it works lines, Machines (rows now read *Sender*, *Mac, reader*, *Mac, owner*) and Other hubs use the same names, and Other hubs says plainly that server hubs don't replicate with the built-in hub yet. The Words guide is now [App, hubs and senders](docs/guides/concepts.md), with the three places a hub can run; the README and the site's How it works use the same breakdown.
 
+### Fixed
+
+- **A machine set up with an invite named after it is no longer named twice.** Redeeming an invite named `devbox` on `devbox` now names the token `devbox`, not `devbox-devbox` (also when the invite name already ends with the host). Other invites still mint `<invite name>-<host>` ([API.md](docs/API.md#post-v1invitesredeem-no-token)).
+- **Mac app: Settings → Machines marks the app's own row.** It reads *this Mac: app* and comes first, and the page says that the `needs-you` command and agent hooks set up on this Mac with an invite have a row of their own under that invite's name.
+- **Mac app: Settings → Advanced no longer suggests the data folder can be changed.** It shows the folder (`~/Library/Application Support/NeedsYou/`) with **Show in Finder**, and says it can't be moved.
+- **Mac app: the Appearance sample changes the panel, not the background.** The pill and the open panel are drawn on the panel's own glass over a sample desktop that stays the same for every theme, so picking a theme restyles only what the app draws.
+- **Mac app: the arrival previews show an item arriving.** Settings → Alerts used to replay the animation on a pill that had already settled. Its preview now starts from the pill as it was, springs out to the new item's preview while your arrival animation plays (at your plays and speed), then goes back with the new count. **Preview on the pill** does the same on the real pill with a sample item (nothing is posted).
+
 ## [0.2.1] - 2026-10-08
 
 Answer Claude Code's questions from the card, a `--usage` installer flag, and an installer hardening fix. No database change: hubs on 0.2.0 and 0.2.1 work together. Run `needs-you update` on each sender machine to get the new hook entries (Claude Code's `PermissionRequest` gets a second, synchronous entry for questions).

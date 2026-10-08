@@ -62,7 +62,7 @@
 <thead><tr><th>Step</th><th>Detail</th></tr></thead>
 <tbody>
 <tr><td>Installs the CLI</td><td>Downloads <code>needs-you</code> from the hub (<code>/dl/needs-you</code>), checks it compiles, puts it in <code>~/.local/bin</code>, and adds <code>~/.local/bin</code> to <code>PATH</code> with one line tagged <code># added by needs-you</code> in your shell profile (<code>~/.zshrc</code>, <code>~/.bash_profile</code> on macOS bash, <code>~/.bashrc</code> on Linux bash, else <code>~/.profile</code>). <code>--no-path</code> prints the line instead.</td></tr>
-<tr><td>Redeems the invite</td><td>Mints a token for this machine, named <code>&lt;invite name&gt;-&lt;host&gt;</code>. One link with <code>uses: 5</code> sets up five machines, each with its own token.</td></tr>
+<tr><td>Redeems the invite</td><td>Mints a token for this machine, named <code>&lt;invite name&gt;-&lt;host&gt;</code> (just the invite name if that already is the host). One link with <code>uses: 5</code> sets up five machines, each with its own token.</td></tr>
 <tr><td>Writes the config</td><td><code>~/.config/needs-you/env</code>, mode 600: <code>NEEDS_YOU_URLS</code> (the hub plus its peers, in failover order), <code>NEEDS_YOU_URL</code>, <code>NEEDS_YOU_TOKEN</code>, and <code>NEEDS_YOU_DEFAULT_CONTEXT</code> with <code>--context</code>. Other lines in the file are kept.</td></tr>
 <tr><td>Schedules a flush</td><td>Every 5 minutes, <code>needs-you flush</code> sends anything queued while no hub answered (e.g. the Mac was asleep): a crontab line on Linux, the LaunchAgent <code>io.needs-you.flush</code> on macOS.</td></tr>
 <tr><td>Checks and tests</td><td><code>needs-you health</code>, then a test <code>info</code> item. An unreachable hub is only a warning: the item queues.</td></tr>

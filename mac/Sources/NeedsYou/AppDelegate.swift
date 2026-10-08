@@ -207,6 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
+            // Settings → Alerts → Preview on the pill: a sample urgent item arriving.
+            ("14-arrival-preview", { model in
+                model.settings.ui.theme = .standard
+                model.previewArrival(.urgent)
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
@@ -225,6 +230,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for (tab, shots) in pages {
                 await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
                                                    into: dir, name: "settings-\(tab.rawValue)")
+            }
+            // The Appearance sample in a light and a colourful theme: the desktop stays put.
+            for theme in [PanelTheme.paper, .sunset] {
+                settings.ui.theme = theme
+                await settingsWindow.writeSnapshot(of: .appearance, showcase: showcase, shots: 2,
+                                                   into: dir, name: "settings-appearance-\(theme.rawValue)")
             }
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")

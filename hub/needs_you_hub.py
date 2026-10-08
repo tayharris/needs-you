@@ -332,6 +332,20 @@ def sanitize_host(host: Any) -> str:
     return h or "host"
 
 
+def invite_token_name(invite_name: str, host: Any) -> str:
+    """The name of a token minted by redeeming an invite: `<invite name>-<host>`, or just
+    the invite name when it already is the host or ends with it (an invite named "devbox"
+    redeemed on devbox mints "devbox", not "devbox-devbox"). Compared without case, and
+    against the host's first label too ("devbox.local" matches "devbox")."""
+    h = sanitize_host(host)
+    name = str(invite_name)
+    low = name.lower()
+    for cand in {h.lower(), h.split(".")[0].lower()}:
+        if cand and (low == cand or any(low.endswith(sep + cand) for sep in "-._")):
+            return name
+    return "%s-%s" % (name, h)
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -1673,7 +1687,7 @@ class Store:
             inv["updated_by"] = self.hub_id
             self._write_invite(inv)
             self.enqueue("invite", inv["id"])
-            name = self._unique_token_name("%s-%s" % (inv["name"], sanitize_host(host)))
+            name = self._unique_token_name(invite_token_name(inv["name"], host))
             token = mint_token()
             trec = {"id": new_ulid(now), "name": name, "role": inv["role"], "hash": hash_token(token),
                     "created_at": now, "updated_at": now, "revoked_at": None,

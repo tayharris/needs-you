@@ -75,7 +75,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .updates:
             return "This app's version, automatic updates, and which machines are out of date."
         case .advanced:
-            return "Reset the look and alerts, and where settings are kept."
+            return "Reset the look and alerts, and see where settings and data are kept."
         }
     }
 
@@ -190,7 +190,7 @@ public enum MachineRowText {
 
     public static func detail(_ token: TokenSummary) -> String {
         var parts = [token.role?.machineLabel ?? "Unknown role"]
-        if token.current { parts.append("this Mac") }
+        if isThisMac(token) { parts.append(thisMacLabel) }
         if token.openItems > 0 { parts.append("\(token.openItems) open") }
         if token.role == .sender || token.role == nil {
             if let cli = token.client["cli"], SemVer(cli) != nil {
@@ -200,6 +200,24 @@ public enum MachineRowText {
             }
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+extension MachineRowText {
+    /// The label on the app's own row.
+    public static let thisMacLabel = "this Mac: app"
+
+    /// Whether a token is this Mac: only the token this app is using (`current`, which the
+    /// hub sets for the token making the request). Never decided by name: a sender picks
+    /// its own invite name and host, so a machine named like this Mac (or "this-mac") is
+    /// shown as just its name. Telling which sender runs on this Mac would need the hub to
+    /// say so (a wire change).
+    public static func isThisMac(_ token: TokenSummary) -> Bool { token.current }
+
+    /// Machines in the order shown: the app's own row first, then the rest as the hub
+    /// listed them.
+    public static func ordered(_ tokens: [TokenSummary]) -> [TokenSummary] {
+        tokens.filter(isThisMac) + tokens.filter { !isThisMac($0) }
     }
 }
 
