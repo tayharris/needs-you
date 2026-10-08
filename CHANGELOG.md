@@ -15,6 +15,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- **"Claude is waiting for you" cards now go when you reply in the terminal.** Four ways a card could stay up after you answered: a reply that came while the card was still being posted (a slow or unreachable hub, or the 2 s pause before Kimi's, Copilot's, Cursor's and Cline's turn-end cards) found nothing to resolve, and the card arrived afterwards; a post the hook cut off at its 15 s limit left nothing for the reply to resolve, though the card could still reach the hub from the outbox; the hook's own cards, the context card most of all, counted as the agent's own blocker and held back the next waiting card; and an approved command that failed (`PostToolUseFailure`) left its permission card up for the rest of the turn. Run `needs-you update` to get the new hook and its new event ([Claude Code guide](docs/guides/claude-code.md)).
+- **A resolve reaches the hub that has the card.** With several hub URLs that don't replicate to each other, a card posted to the second hub while the first was down stayed open: the resolve went to the first hub, which had nothing to resolve. Now a resolve that resolves nothing goes on to the next hubs, and a hub that was down gets it from `needs-you flush` ([API.md](docs/API.md#known-limits)).
 - **Open at login can't be turned on from the wrong place any more.** Outside Applications the toggle is greyed out and says why (*Needs You is running from Downloads. Move it to Applications to open it at login.*). If it was turned on for a copy somewhere else, the copy in Applications takes the login item over at launch.
 
 ### Changed
