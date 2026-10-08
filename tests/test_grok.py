@@ -24,9 +24,13 @@ import time
 import unittest
 
 from support import ROOT, wait_until
+from test_cli_update import read
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
+GROK_HOOKS_JSON = os.path.join(ROOT, "integrations", "grok", "grok-hooks.json")
+INSTALLER = os.path.join(ROOT, "integrations", "grok", "install-grok-hooks.sh")
+REAL_HOME = os.path.expanduser("~")
 
 FAKE_CLI = """#!/usr/bin/env python3
 import json, os, sys
@@ -204,6 +208,95 @@ class GrokHook(unittest.TestCase):
         self.run_hook("notify", "Notification", {"notification_type": "idle_prompt"}, agent=None,
                       GROK_HOOK_EVENT=None)
         self.assertEqual(opt(self.wait_calls(4)[-1], "--agent"), "claude-code")
+
+
+class GrokHooksJson(unittest.TestCase):
+    def test_registers_the_events(self):
+        with open(GROK_HOOKS_JSON) as fh:
+            doc = json.load(fh)
+        self.assertRegex(doc["_needs_you_version"], r"^\d+\.\d+\.\d+$")
+        hooks = doc["hooks"]
+        self.assertEqual({ev: g[0]["hooks"][0]["command"].split()[-2:] for ev, g in hooks.items()},
+                         {"Notification": ["notify", "grok"], "StopFailure": ["notify", "grok"],
+                          "UserPromptSubmit": ["resolve", "grok"], "PostToolUse": ["resolve", "grok"],
+                          "PostToolUseFailure": ["resolve", "grok"], "StopCancelled": ["resolve", "grok"],
+                          "SessionStart": ["start", "grok"], "SessionEnd": ["end", "grok"]})
+        self.assertEqual(hooks["Notification"][0]["matcher"], "permission_prompt|idle_prompt")
+        # The "waiting for you" card comes from idle_prompt, not Stop; and never a gate hook
+        # (exit 2 from PreToolUse denies the tool).
+        self.assertFalse({"Stop", "PreToolUse", "SubagentStop", "PermissionRequest"} & set(hooks))
+        for groups in hooks.values():
+            self.assertEqual(len(groups), 1)
+            self.assertEqual(len(groups[0]["hooks"]), 1)
+            h = groups[0]["hooks"][0]
+            self.assertEqual(h["type"], "command")
+            self.assertTrue(h["command"].startswith('"${GROK_HOME:-$HOME/.grok}/hooks/needs-you-hook.sh" '))
+            self.assertLessEqual(h["timeout"], 10)
+
+
+class Installer(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-grok-inst-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.assertNotEqual(self.home, REAL_HOME)
+        self.grok = os.path.join(self.home, ".grok")
+        self.conf = os.path.join(self.grok, "hooks", "needs-you.json")
+        self.hook = os.path.join(self.grok, "hooks", "needs-you-hook.sh")
+
+    def run_installer(self, *args, **env):
+        e = {"HOME": self.home, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        e.update(env)
+        return subprocess.run([BASH, INSTALLER] + list(args), env=e, capture_output=True, text=True, timeout=60)
+
+    def test_install_rerun_and_uninstall(self):
+        os.makedirs(os.path.join(self.grok, "hooks"))
+        mine = os.path.join(self.grok, "hooks", "mine.json")
+        with open(mine, "w") as fh:
+            fh.write('{"hooks": {}}\n')
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Restart running Grok sessions", r.stdout)
+        self.assertIn("grok inspect", r.stdout)
+        self.assertEqual(read(self.conf), read(GROK_HOOKS_JSON))
+        self.assertEqual(read(self.hook), read(HOOK))
+        self.assertTrue(os.access(self.hook, os.X_OK))
+        self.assertEqual(self.run_installer().stdout.count("already up to date"), 2)
+        r = self.run_installer("--uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(self.conf))
+        self.assertFalse(os.path.exists(self.hook))
+        self.assertTrue(os.path.exists(mine))  # other hook files stay
+
+    def test_grok_home_dry_run_and_managed_only_policy(self):
+        other = os.path.join(self.home, "g2")
+        os.makedirs(other)
+        with open(os.path.join(other, "requirements.toml"), "w") as fh:
+            fh.write("allow_managed_hooks_only = true\n")
+        r = self.run_installer("--dry-run", GROK_HOME=other)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(other, "hooks")))
+        r = self.run_installer(GROK_HOME=other)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(other, "hooks", "needs-you.json")))
+        self.assertIn("allows only managed hooks", r.stdout)
+        self.assertFalse(os.path.exists(self.grok))
+        r = self.run_installer("--grok-home", os.path.join(self.home, "g3"))
+        self.assertIn("only when it runs with GROK_HOME=", r.stdout)
+
+    def test_symlinks_are_refused(self):
+        os.makedirs(os.path.join(self.grok, "hooks"))
+        victim = os.path.join(self.home, "victim.json")
+        with open(victim, "w") as fh:
+            fh.write("keep\n")
+        os.symlink(victim, self.conf)
+        r = self.run_installer()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("symlink", r.stderr)
+        r = self.run_installer("--uninstall")
+        self.assertNotEqual(r.returncode, 0)
+        with open(victim) as fh:
+            self.assertEqual(fh.read(), "keep\n")
+        self.assertFalse(os.path.exists(self.hook))
 
 
 if __name__ == "__main__":

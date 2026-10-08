@@ -21,9 +21,20 @@ import time
 import unittest
 
 from support import ROOT, wait_until
+from test_cli_update import read
+
+try:
+    import tomllib  # Python 3.11+: checks the TOML the installer writes; 3.9 skips that part
+except ImportError:  # pragma: no cover
+    tomllib = None
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
+KIMI_HOOKS_TOML = os.path.join(ROOT, "integrations", "kimi", "kimi-hooks.toml")
+INSTALLER = os.path.join(ROOT, "integrations", "kimi", "install-kimi-hooks.sh")
+REAL_HOME = os.path.expanduser("~")
+START = "# needs-you (managed by install-kimi-hooks.sh; do not edit between these markers)"
+END = "# end needs-you"
 
 FAKE_CLI = """#!/usr/bin/env python3
 import json, os, sys, time
@@ -220,6 +231,177 @@ class KimiHook(unittest.TestCase):
             pass
         argv = self.wait_calls(1)[-1]
         self.assertEqual(opt(argv, "--title"), "Kimi wants to run make: my-repo")
+
+
+def hook_tables(text):
+    """The [[hooks]] tables in a block, parsed by hand (Python 3.9 has no tomllib)."""
+    tables, cur = [], None
+    for line in text.splitlines():
+        line = line.strip()
+        if line == "[[hooks]]":
+            cur = {}
+            tables.append(cur)
+        elif cur is not None and "=" in line and not line.startswith("#"):
+            k, v = (x.strip() for x in line.split("=", 1))
+            cur[k] = v
+    return tables
+
+
+class KimiHooksToml(unittest.TestCase):
+    def test_registers_the_events_with_only_the_keys_kimi_allows(self):
+        text = read(KIMI_HOOKS_TOML).decode()
+        lines = text.splitlines()
+        self.assertEqual(lines[0], START)
+        self.assertEqual(lines[-1], END)
+        self.assertRegex(lines[1], r"^# needs-you-version: \d+\.\d+\.\d+$")
+        tables = hook_tables(text)
+        got = {}
+        for t in tables:
+            # Any key besides these four makes Kimi refuse the whole config.
+            self.assertLessEqual(set(t), {"event", "matcher", "command", "timeout"}, t)
+            self.assertTrue(t["command"].startswith("'\"$HOME/.kimi-code/hooks/needs-you-hook.sh\" "), t)
+            self.assertLessEqual(int(t["timeout"]), 30)
+            got[t["event"].strip('"')] = t["command"].strip("'").split()[-2:]
+        self.assertEqual(got, {
+            "PermissionRequest": ["notify", "kimi"], "PreToolUse": ["notify", "kimi"], "Stop": ["notify", "kimi"],
+            "StopFailure": ["notify", "kimi"], "PermissionResult": ["resolve", "kimi"],
+            "UserPromptSubmit": ["resolve", "kimi"], "PostToolUse": ["resolve", "kimi"],
+            "PostToolUseFailure": ["resolve", "kimi"], "Interrupt": ["resolve", "kimi"],
+            "SessionStart": ["start", "kimi"], "SessionEnd": ["end", "kimi"]})
+        self.assertEqual([t.get("matcher") for t in tables if t["event"] == '"PreToolUse"'], ['"^AskUserQuestion$"'])
+        if tomllib:
+            doc = tomllib.loads(text)
+            self.assertEqual(len(doc["hooks"]), len(tables))
+
+
+USER_CONFIG = """# my Kimi config
+default_model = "kimi"
+
+[[hooks]]
+event = "Stop"
+command = "notify-send done"
+
+[providers.kimi]
+type = "kimi"
+api_key = "x"
+"""
+
+
+class Installer(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="ny-kimi-inst-")
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.assertNotEqual(self.home, REAL_HOME)
+        self.kimi = os.path.join(self.home, ".kimi-code")
+        self.conf = os.path.join(self.kimi, "config.toml")
+        self.hook = os.path.join(self.kimi, "hooks", "needs-you-hook.sh")
+
+    def run_installer(self, *args, **env):
+        e = {"HOME": self.home, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+        e.update(env)
+        e = {k: v for k, v in e.items() if v is not None}
+        return subprocess.run([BASH, INSTALLER] + list(args), env=e, capture_output=True, text=True, timeout=60)
+
+    def write_conf(self, text, path=None):
+        path = path or self.conf
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(text)
+
+    def text(self, path=None):
+        with open(path or self.conf) as fh:
+            return fh.read()
+
+    def backups(self):
+        return [n for n in os.listdir(self.kimi) if n.startswith("config.toml.bak-")]
+
+    def test_install_rerun_and_uninstall_keep_the_rest_byte_for_byte(self):
+        self.write_conf(USER_CONFIG.rstrip("\n"))  # no trailing newline
+        os.chmod(self.conf, 0o600)
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("added the needs-you block", r.stdout)
+        self.assertIn("kimi doctor", r.stdout)
+        text = self.text()
+        self.assertTrue(text.startswith(USER_CONFIG.rstrip("\n") + "\n\n" + START + "\n"), text)
+        self.assertTrue(text.endswith(END + "\n"))
+        self.assertEqual(text.count(START), 1)
+        self.assertEqual(os.stat(self.conf).st_mode & 0o777, 0o600)
+        self.assertEqual(len(self.backups()), 1)
+        self.assertEqual(read(self.hook), read(HOOK))
+        self.assertTrue(os.access(self.hook, os.X_OK))
+        if tomllib:
+            doc = tomllib.loads(text)
+            self.assertEqual(doc["hooks"][0], {"event": "Stop", "command": "notify-send done"})
+            self.assertEqual(doc["providers"]["kimi"]["type"], "kimi")
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.count("already up to date"), 2)
+        self.assertEqual(self.text(), text)
+        self.assertEqual(len(self.backups()), 1)
+        # an older block is replaced in place, not added twice
+        self.write_conf(text.replace("timeout = 10", "timeout = 9"))
+        r = self.run_installer()
+        self.assertIn("updated the needs-you block", r.stdout)
+        self.assertEqual(self.text(), text)
+        r = self.run_installer("--uninstall")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.text(), USER_CONFIG.rstrip("\n") + "\n")
+        self.assertFalse(os.path.exists(self.hook))
+        r = self.run_installer("--uninstall")
+        self.assertIn("no needs-you block", r.stdout)
+
+    def test_fresh_home_and_kimi_code_home(self):
+        r = self.run_installer()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.text(), read(KIMI_HOOKS_TOML).decode())
+        self.assertEqual(self.backups(), [])
+        other = os.path.join(self.home, "k2")
+        r = self.run_installer(KIMI_CODE_HOME=other)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = self.text(os.path.join(other, "config.toml"))
+        self.assertIn("command = '\"%s/hooks/needs-you-hook.sh\" notify kimi'" % other, text)
+        self.assertNotIn("$HOME", text)
+        self.assertTrue(os.path.isfile(os.path.join(other, "hooks", "needs-you-hook.sh")))
+        r = self.run_installer("--kimi-home", os.path.join(self.home, "k3"))
+        self.assertIn("only when it runs with KIMI_CODE_HOME=", r.stdout)
+        r = self.run_installer("--kimi-home", os.path.join(self.home, "it's"))
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_dry_run_writes_nothing(self):
+        self.write_conf(USER_CONFIG)
+        r = self.run_installer("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("dry run", r.stdout)
+        self.assertEqual(self.text(), USER_CONFIG)
+        self.assertFalse(os.path.exists(self.hook))
+        self.assertEqual(self.backups(), [])
+
+    def test_refuses_what_it_cant_append_to(self):
+        for bad in ('hooks = []\n', '[hooks]\nx = 1\n', '[hooks.Stop]\ncommand = "x"\n',
+                    START + "\n[[hooks]]\n"):  # a block with no end marker
+            self.write_conf(bad)
+            r = self.run_installer()
+            self.assertNotEqual(r.returncode, 0, bad)
+            self.assertIn("nothing was changed", r.stderr.lower(), bad)
+            self.assertEqual(self.text(), bad)
+            self.assertFalse(os.path.exists(self.hook))
+        # `hooks = ...` inside another table is that table's key, not a conflict
+        self.write_conf('[plugins.x]\nhooks = ["a"]\n')
+        self.assertEqual(self.run_installer().returncode, 0)
+
+    def test_symlinks_are_refused(self):
+        os.makedirs(self.kimi)
+        victim = os.path.join(self.home, "victim.toml")
+        with open(victim, "w") as fh:
+            fh.write("keep\n")
+        os.symlink(victim, self.conf)
+        for args in ((), ("--uninstall",)):
+            r = self.run_installer(*args)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("symlink", r.stderr)
+        self.assertEqual(self.text(victim), "keep\n")
+        self.assertFalse(os.path.exists(self.hook))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,58 @@
+# needs-you (managed by install-kimi-hooks.sh; do not edit between these markers)
+# needs-you-version: 0.1.3
+[[hooks]]
+event = "PermissionRequest"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" notify kimi'
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "^AskUserQuestion$"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" notify kimi'
+timeout = 10
+
+[[hooks]]
+event = "Stop"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" notify kimi'
+timeout = 10
+
+[[hooks]]
+event = "StopFailure"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" notify kimi'
+timeout = 10
+
+[[hooks]]
+event = "PermissionResult"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" resolve kimi'
+timeout = 10
+
+[[hooks]]
+event = "UserPromptSubmit"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" resolve kimi'
+timeout = 10
+
+[[hooks]]
+event = "PostToolUse"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" resolve kimi'
+timeout = 10
+
+[[hooks]]
+event = "PostToolUseFailure"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" resolve kimi'
+timeout = 10
+
+[[hooks]]
+event = "Interrupt"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" resolve kimi'
+timeout = 10
+
+[[hooks]]
+event = "SessionStart"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" start kimi'
+timeout = 10
+
+[[hooks]]
+event = "SessionEnd"
+command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" end kimi'
+timeout = 10
+# end needs-you
