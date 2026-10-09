@@ -17,7 +17,7 @@ public struct PillMeterLayout: Equatable, Sendable {
     /// The pill's height with the meters.
     public var height: CGFloat
     /// The band at the top that the count (or the idle line) is centred in. Bars sit below
-    /// it, so they never cover the digits; for the other styles it's the whole pill.
+    /// it, so they never cover the digits or a descender; with percentages it's the whole pill.
     public var contentHeight: CGFloat
 
     public var showsBars: Bool { count > 0 && style != .percent }
@@ -40,11 +40,14 @@ public struct PillMeterLayout: Equatable, Sendable {
         case .percent:
             return l
         case .thin:
-            // Over the pill, 1 pt above the bottom edge: under the digits at every size.
-            // 1.5 pt lines, 2 pt on a pill 24 pt or taller (0.4.0).
+            // 1.5 pt lines, 2 pt on a pill 24 pt or taller, 1 pt above the bottom edge (0.4.0).
+            // The count moves up a little to clear them; the waiting pill keeps its size, the
+            // shorter idle pill grows a point so "Nothing needs you" keeps its descenders.
             l.barHeight = height >= 24 ? 2 : 1.5
             l.barGap = 1
             l.bottomInset = 1
+            l.contentHeight = max(height - l.band, ceil(font * 1.2))
+            l.height = l.contentHeight + l.band
             return l
         case .bars:
             let u = font / 12

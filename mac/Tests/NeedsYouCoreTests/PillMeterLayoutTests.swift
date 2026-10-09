@@ -119,8 +119,16 @@ final class PillMeterLayoutTests: XCTestCase {
         for style in [PillMeterStyle.thin, .percent] {
             let l = PillMeterLayout.make(style, count: 2, height: medium.height, font: medium.font)
             XCTAssertEqual(l.height, medium.height)
-            XCTAssertEqual(l.contentHeight, medium.height)
         }
+        // Thin bars get their own band too: the count moves up to clear them.
+        let medThin = PillMeterLayout.make(.thin, count: 2, height: medium.height, font: medium.font)
+        XCTAssertEqual(medThin.band, 5)
+        XCTAssertEqual(medThin.contentHeight, 17)
+        XCTAssertEqual(PillMeterLayout.make(.percent, count: 2, height: 22, font: 12).contentHeight, 22)
+        // The 18 pt idle pill grows a point, so the line's descenders clear the bars.
+        let idleThin = PillMeterLayout.make(.thin, count: 2, height: 18, font: 11)
+        XCTAssertEqual(idleThin.contentHeight, 14)
+        XCTAssertEqual(idleThin.height, 19)
         let thin = PillMeterLayout.make(.thin, count: 2, height: 22, font: 12)
         XCTAssertTrue(thin.showsBars)
         XCTAssertFalse(thin.showsPercent)

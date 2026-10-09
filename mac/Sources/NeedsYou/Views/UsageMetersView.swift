@@ -159,8 +159,7 @@ struct UsageTrack: View {
 }
 
 /// The pill's meters as bars or thin bars (PillMeterLayout): one per window, session above
-/// weekly, between the rounded ends. Bars sit in their own band under the count; thin bars
-/// are drawn over the pill's bottom edge.
+/// weekly, between the rounded ends, in their own band under the count.
 struct PillUsageMeter: View {
     let bars: [UsageBar]
     let layout: PillMeterLayout
@@ -206,7 +205,7 @@ struct PillUsagePercent: View {
 }
 
 /// A collapsed pill's content with its meters: the count (or idle line) centred in its band,
-/// bars below it, thin bars over the bottom edge, or percentages after it.
+/// bars or thin bars below it, or percentages after it.
 struct PillWithMeters<Content: View>: View {
     let bars: [UsageBar]
     let layout: PillMeterLayout
@@ -226,16 +225,11 @@ struct PillWithMeters<Content: View>: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: layout.contentHeight)
-            if layout.style == .bars && layout.showsBars {
+            if layout.showsBars {
                 Spacer(minLength: 0)
                 PillUsageMeter(bars: bars, layout: layout, cornerRadius: cornerRadius)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .bottom) {
-            if layout.style == .thin && layout.showsBars {
-                PillUsageMeter(bars: bars, layout: layout, cornerRadius: cornerRadius)
-            }
-        }
     }
 }
