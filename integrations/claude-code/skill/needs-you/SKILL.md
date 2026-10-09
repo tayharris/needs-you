@@ -2,7 +2,7 @@
 name: needs-you
 description: Tell the user, through their needs-you inbox, when you are blocked on a decision, approval or access only they can give, when a long job they're waiting on finishes, or when something broke that they need to know about today. Use the `needs-you` CLI (or curl) to post, and resolve what you posted once it's handled. Don't use it for progress updates.
 ---
-<!-- needs-you-version: 0.3.2 -->
+<!-- needs-you-version: 0.4.0 -->
 
 # needs-you: telling a person you need them
 

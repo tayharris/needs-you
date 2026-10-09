@@ -1,5 +1,5 @@
 # needs-you (managed by install-kimi-hooks.sh; do not edit between these markers)
-# needs-you-version: 0.3.2
+# needs-you-version: 0.4.0
 [[hooks]]
 event = "PermissionRequest"
 command = '"$HOME/.kimi-code/hooks/needs-you-hook.sh" notify kimi'

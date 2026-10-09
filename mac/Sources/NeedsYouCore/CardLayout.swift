@@ -95,7 +95,7 @@ public enum LinkRowPolicy {
         let text: String
         if let name = actionName(link.url) {
             // The app's own actions are named for where they go, whatever the sender called them
-            // (hooks before 0.3.2 labelled the Orca jump "Terminal").
+            // (hooks before 0.4.0 labelled the Orca jump "Terminal").
             text = name
         } else if link.label.trimmingCharacters(in: .whitespaces).isEmpty {
             if let host = URL(string: link.url)?.host, !host.isEmpty {

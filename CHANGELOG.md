@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
+
+A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.
+
 ### Added
 
 - **Copy from a card on the Mac.** A card's text can't be selected (the panel never takes the keyboard), so commands, paths and ids in it, such as Orca's `orca terminal switch --terminal …`, now show as copy chips under the text: one click copies the whole command. Every card's **…** menu has **Copy Title and Text**, **Copy Link URLs** and **Copy Command** ([guide](docs/guides/mac-app.md#using-it)).

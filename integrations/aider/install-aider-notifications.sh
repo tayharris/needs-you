@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.3.2
+# needs-you-version: 0.4.0
 # install-aider-notifications.sh: have Aider post a needs-you card when it waits for you.
 #
 #   ./install-aider-notifications.sh                 ~/.aider.conf.yml

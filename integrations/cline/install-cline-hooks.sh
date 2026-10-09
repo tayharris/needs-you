@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.3.2
+# needs-you-version: 0.4.0
 # install-cline-hooks.sh: add the needs-you hooks to Cline (the VS Code extension and the CLI).
 #
 #   ./install-cline-hooks.sh                        ~/Documents/Cline/Hooks/
