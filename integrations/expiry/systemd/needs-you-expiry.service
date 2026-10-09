@@ -1,0 +1,15 @@
+# systemd user service for needs-you-expiry; started by needs-you-expiry.timer.
+#   mkdir -p ~/.config/systemd/user
+#   cp needs-you-expiry.service needs-you-expiry.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now needs-you-expiry.timer
+#   loginctl enable-linger "$USER"     # keep it running while you're logged out
+# Logs: journalctl --user -u needs-you-expiry
+
+[Unit]
+Description=needs-you: expiring TLS certificates, domains and API keys
+
+[Service]
+Type=oneshot
+# %h is your home directory.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/needs-you-expiry

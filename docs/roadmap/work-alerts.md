@@ -1,6 +1,6 @@
 # Work-tool alerts: tickets, design files, ops, and getting you there
 
-Status (2026-10-09): research only, nothing built. Three research passes (ticketing, design and ops sources, deep links into desktop apps) behind the owner's ask: "if something assigned to me moves to a status, or a ticket I'm assigned gets a comment, it pops up, and I can configure which and how loudly". Vendor facts link to vendor docs; a few are marked unverified and need a live check before we build on them.
+Status (2026-10-09): step 6 built (`integrations/expiry/needs-you-expiry`: TLS certs, domains via RDAP, key dates); the rest is research only. Three research passes (ticketing, design and ops sources, deep links into desktop apps) behind the owner's ask: "if something assigned to me moves to a status, or a ticket I'm assigned gets a comment, it pops up, and I can configure which and how loudly". Vendor facts link to vendor docs; a few are marked unverified and need a live check before we build on them.
 
 ## How events get in: poll, not webhooks or MCP
 
@@ -100,7 +100,7 @@ A card is only as good as its "go there" button. What's built and what's left (t
 | 3 | Jira poller, Cloud and Data Center (saved-state diff; fake HTTP server tests) | M |
 | 4 | Host detection + one primary "go there" button; `needsyou://app/activate` | M |
 | 5 | Generic poller with configs for Sentry, Vercel, GitLab | M |
-| 6 | Cert, domain and key expiry | S |
+| 6 | Cert, domain and key expiry (built: `integrations/expiry/`) | S |
 | 7 | GitHub Projects status cards, Dependabot security alerts | S |
 | 8 | Figma comment polling on a watch list | M |
 | 9 | MCP-agent recipe for Slack, Docs, Notion | S (docs) |

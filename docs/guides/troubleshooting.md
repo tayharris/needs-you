@@ -199,6 +199,14 @@ Grok-specific causes:
 - Too many cards: narrow it with `NEEDS_YOU_GITHUB_EXCLUDE`, `NEEDS_YOU_GITHUB_REASONS` or `NEEDS_YOU_GITHUB_PR_DAYS` ([integrations/github](../../integrations/github/README.md#config)).
 - A card that doesn't clear: it clears on the run after the condition goes away, or 15 minutes after the poller stops. Notification cards clear when you read the thread on GitHub.
 
+## Expiry poller
+
+- `needs-you-expiry -v` prints every date it read and every check that failed. It always exits 0. With no `~/.config/needs-you/expiry.conf` it does nothing (it's opt-in); `-v` says so.
+- "Expiry checks failing on <host>": a check failed 2 runs in a row (`NEEDS_YOU_EXPIRY_FAILS`). The card's body says which and why: `host not found` or `connection refused` (a typo, or the host is down), `timed out` (a firewall; `NEEDS_YOU_EXPIRY_TIMEOUT`), `RDAP HTTP 429` (the registry's rate limit; it passes), `RDAP gives no expiration date` (some ccTLD registries don't publish one: use a `key` line), `line 4: ...` (a typo in the list). The last date it read still counts meanwhile.
+- "TLS certificate for <host> not trusted": the certificate doesn't verify (wrong host name, a missing intermediate, a private CA). Fix the certificate; for an internal host on a private CA, add `verify=no` to its line.
+- A card that doesn't clear after you renewed: a `tls` card clears once the host serves the new certificate (reload the web server), a `domain` card once RDAP shows the new date (can lag the registrar by a day), a `key` card once you change its date in the list. All clear within 72 hours of the poller stopping.
+- No card for a STARTTLS port (SMTP 587, IMAP 143): only implicit TLS is read; use port 465 or 993, or a `key` line.
+
 ## Orca automations
 
 - `needs-you` must be on the `PATH` that Orca's agent terminals get. From an Orca terminal: `command -v needs-you`.

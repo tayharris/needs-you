@@ -1,0 +1,798 @@
+#!/usr/bin/env python3
+"""needs-you-expiry: a card before a TLS certificate, a domain or an API key expires.
+
+  needs-you-expiry [--dry-run] [--verbose] [--state PATH]
+
+Run it once a day (cron, a systemd user timer or a LaunchAgent) on one machine. It does
+nothing until you list what to watch in ~/.config/needs-you/expiry.conf, one per line:
+
+  tls     example.com                    # the certificate served on port 443
+  tls     mail.example.com:993           # any port that speaks TLS from the first byte
+  domain  example.com                    # the registration's expiry, from RDAP
+  key     "Figma PAT"  2026-12-31        # a date you know: the day it stops working
+  key     "Deploy key" 2027-03-01  renew=https://example.com/settings/keys  context=personal
+
+Options on any line: renew=<https URL> (the card's link), context=work|personal; on a
+tls line, verify=no reads the date of a self-signed or private-CA certificate.
+
+Each run reads every date, then for each thing: no card while the date is further away
+than the largest threshold; inside it, one card (key <context>:expiry:<kind>:<name>) whose
+priority rises as the date nears; resolved when the date moves out of the window (you
+renewed) or the line goes away. A check that fails (host unreachable, RDAP error) keeps
+the last date it read; once any check has failed NEEDS_YOU_EXPIRY_FAILS runs in a row,
+one low card per machine lists the failing checks. It always exits 0.
+
+Certificates are verified (system CAs, host name): one that doesn't verify is a failing
+check, except an expired one, which is re-read unverified to date it. Nothing is sent to
+the host but a TLS handshake. Domains
+are looked up over HTTPS RDAP: the server for the TLD comes from IANA's bootstrap file
+(https://data.iana.org/rdap/dns.json), cached for a week next to the state.
+
+Config (environment, else ~/.config/needs-you/env; all optional):
+  NEEDS_YOU_EXPIRY_CONFIG    the list (default: expiry.conf next to the env file)
+  NEEDS_YOU_EXPIRY_DAYS      thresholds, days=priority (default 30=low,7=normal,1=urgent);
+                             expired is always urgent
+  NEEDS_YOU_EXPIRY_CONTEXT   work or personal (default NEEDS_YOU_DEFAULT_CONTEXT, else work)
+  NEEDS_YOU_EXPIRY_FAILS     failed runs in a row before the failing-checks card (default 2)
+  NEEDS_YOU_EXPIRY_INTERVAL  hours between runs (default 24); cards expire after 3x this
+  NEEDS_YOU_EXPIRY_MAX_CARDS at most this many expiry cards open at once (default 20)
+  NEEDS_YOU_EXPIRY_TIMEOUT   seconds per check (default 10)
+  NEEDS_YOU_BIN              path to the needs-you CLI (default: on PATH, else ~/.local/bin)
+
+State: ~/.local/state/needs-you/expiry.json (mode 600): what it posted, the last dates.
+Python 3.9+ standard library only.
+"""
+from __future__ import annotations
+
+import argparse
+import calendar
+import datetime
+import hashlib
+import json
+import os
+import re
+import shlex
+import shutil
+import socket
+import ssl
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
+
+BOOTSTRAP_URL = "https://data.iana.org/rdap/dns.json"
+BOOTSTRAP_MAX_AGE_S = 7 * 86400
+MAX_RESPONSE = 4 * 1024 * 1024
+TITLE_MAX = 100
+NAME_MAX = 60
+KINDS = ("tls", "domain", "key")
+KEY_SAFE = re.compile(r"[^A-Za-z0-9._:/@#+=-]")
+HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9-]{1,63})*\.?$")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DEFAULT_DAYS = "30=low,7=normal,1=urgent"
+PRIORITIES = ("low", "normal", "urgent")
+
+# The hub's link grammar (hub/needs_you_hub.py LINK_RAW_PATTERN and HTTPS_HOST_PATTERN),
+# byte for byte; tests/test_expiry.py checks they match. A renew= URL that doesn't fit is
+# dropped here rather than refused by the hub with the whole card.
+LINK_RAW_PATTERN = (
+    r"(?i:[a-z][a-z0-9+.-]*)://(?:[A-Za-z0-9._~!$&'()*+,;=:-]|%[0-9A-Fa-f]{2})*"
+    r"(?:[/?](?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*)?"
+    r"(?:#(?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*)?"
+)
+LINK_RAW_RE = re.compile(LINK_RAW_PATTERN)
+HTTPS_HOST_PATTERN = r"(?i:https)://[^/?#:]"
+HTTPS_HOST_RE = re.compile(HTTPS_HOST_PATTERN)
+_STRIP = re.compile("[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
+
+
+# ---------------------------------------------------------------------------
+# Config, state, text
+# ---------------------------------------------------------------------------
+
+def warn(msg: str) -> None:
+    sys.stderr.write("needs-you-expiry: %s\n" % msg)
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].strip()
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
+def env_path() -> str:
+    if os.environ.get("NEEDS_YOU_CONFIG"):
+        return os.environ["NEEDS_YOU_CONFIG"]
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "needs-you", "env")
+
+
+def state_base() -> str:
+    return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+
+
+def outbox_has_backlog() -> bool:
+    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
+    try:
+        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
+    except OSError:
+        return False
+
+
+def safe_text(value: Any, limit: int) -> str:
+    """Text fit for a card: no control, bidi or zero-width characters, whitespace collapsed,
+    truncated with an ellipsis."""
+    s = " ".join(_STRIP.sub(" ", str(value or "")).split())
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def link_ok(url: str) -> bool:
+    """An https link the hub accepts: the raw grammar, then a host."""
+    return (len(url) <= 2000 and bool(LINK_RAW_RE.fullmatch(url)) and bool(HTTPS_HOST_RE.match(url)))
+
+
+def parse_thresholds(raw: str) -> List[Tuple[float, str]]:
+    """'30=low,7=normal,1=urgent' -> [(1, urgent), (7, normal), (30, low)], nearest first."""
+    out: Dict[float, str] = {}
+    for part in (raw or "").split(","):
+        days, _, prio = part.strip().partition("=")
+        try:
+            d = float(days)
+        except ValueError:
+            continue
+        if d > 0 and prio.strip().lower() in PRIORITIES:
+            out[d] = prio.strip().lower()
+    return sorted(out.items()) or parse_thresholds(DEFAULT_DAYS)
+
+
+def _int(get: Any, name: str, default: int, low: int) -> int:
+    try:
+        return max(low, int(get(name, str(default))))
+    except ValueError:
+        return default
+
+
+class Config:
+    def __init__(self) -> None:
+        path = env_path()
+        f = read_env_file(path)
+        get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
+        self.list_path = get("NEEDS_YOU_EXPIRY_CONFIG") or os.path.join(os.path.dirname(path), "expiry.conf")
+        ctx = get("NEEDS_YOU_EXPIRY_CONTEXT") or get("NEEDS_YOU_DEFAULT_CONTEXT", "work")
+        ctx = ctx.strip().lower()
+        self.context = ctx if ctx in ("work", "personal") else "work"
+        self.thresholds = parse_thresholds(get("NEEDS_YOU_EXPIRY_DAYS", DEFAULT_DAYS))
+        self.fails_before_card = _int(get, "NEEDS_YOU_EXPIRY_FAILS", 2, 1)
+        self.max_cards = _int(get, "NEEDS_YOU_EXPIRY_MAX_CARDS", 20, 1)
+        try:
+            self.interval_h = max(1.0, float(get("NEEDS_YOU_EXPIRY_INTERVAL", "24")))
+        except ValueError:
+            self.interval_h = 24.0
+        try:
+            self.timeout = min(60.0, max(1.0, float(get("NEEDS_YOU_EXPIRY_TIMEOUT", "10"))))
+        except ValueError:
+            self.timeout = 10.0
+        # Tests point this at a loopback http server; then (only then) RDAP servers on
+        # loopback http are allowed too. Anything else must be https.
+        self.bootstrap_url = get("NEEDS_YOU_EXPIRY_RDAP_BOOTSTRAP", BOOTSTRAP_URL)
+        local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
+        self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
+        self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
+
+
+def parse_list(path: str, default_ctx: str) -> Tuple[Optional[List[Dict[str, Any]]], List[Dict[str, Any]]]:
+    """(things, bad lines). things is None when the file doesn't exist (not opted in)."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except FileNotFoundError:
+        return None, []
+    except (OSError, UnicodeDecodeError) as e:
+        return [], [{"id": "config", "kind": "config", "name": os.path.basename(path),
+                     "error": "can't read it (%s)" % type(e).__name__}]
+    return parse_list_text(text, default_ctx)
+
+
+def parse_list_text(text: str, default_ctx: str = "work") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    lines = text.splitlines()
+    things: List[Dict[str, Any]] = []
+    bad: List[Dict[str, Any]] = []
+    seen = set()
+    for n, raw in enumerate(lines, 1):
+        def fail(why: str) -> None:
+            bad.append({"id": "config:%d" % n, "kind": "config", "name": "line %d" % n, "error": why})
+        try:
+            words = shlex.split(raw, comments=True)
+        except ValueError:
+            fail("unbalanced quotes")
+            continue
+        if not words:
+            continue
+        kind = words[0].lower()
+        opts: Dict[str, str] = {}
+        args: List[str] = []
+        for w in words[1:]:
+            k, eq, v = w.partition("=")
+            if eq and k in ("renew", "context", "verify"):
+                opts[k] = v
+            else:
+                args.append(w)
+        if kind not in KINDS:
+            fail("unknown kind %r (tls, domain or key)" % safe_text(words[0], 20))
+            continue
+        t: Dict[str, Any] = {"kind": kind}
+        if kind == "tls":
+            if len(args) != 1:
+                fail("tls takes one host[:port]")
+                continue
+            host, _, port = args[0].rpartition(":") if ":" in args[0] else (args[0], "", "443")
+            if not HOST_RE.match(host) or not port.isdigit() or not 0 < int(port) < 65536:
+                fail("not a host[:port]: %s" % safe_text(args[0], 60))
+                continue
+            t["host"], t["port"] = host.rstrip(".").lower(), int(port)
+            t["name"] = t["host"] if t["port"] == 443 else "%s:%d" % (t["host"], t["port"])
+            if opts.get("verify", "yes").lower() not in ("yes", "no"):
+                fail("verify= must be yes or no")
+                continue
+            t["verify"] = opts.get("verify", "yes").lower() == "yes"
+        elif kind == "domain":
+            if len(args) != 1 or not HOST_RE.match(args[0]) or "." not in args[0].strip("."):
+                fail("domain takes one domain name")
+                continue
+            t["name"] = args[0].rstrip(".").lower()
+        else:
+            if len(args) != 2 or not DATE_RE.match(args[1]):
+                fail('key takes a name and a date: key "Figma PAT" 2026-12-31')
+                continue
+            try:
+                d = datetime.datetime.strptime(args[1], "%Y-%m-%d")
+            except ValueError:
+                fail("not a date: %s" % safe_text(args[1], 20))
+                continue
+            t["name"] = safe_text(args[0], NAME_MAX)
+            t["date"] = float(calendar.timegm(d.timetuple()))
+            if not t["name"]:
+                fail("key needs a name")
+                continue
+        renew = opts.get("renew", "")
+        if renew and not link_ok(renew):
+            fail("renew= must be an https URL the hub accepts")
+            continue
+        t["renew"] = renew
+        ctx = opts.get("context", default_ctx).lower()
+        if ctx not in ("work", "personal"):
+            fail("context= must be work or personal")
+            continue
+        t["context"] = ctx
+        t["id"] = "%s:%s" % (kind, t["name"])
+        if t["id"] in seen:
+            continue
+        seen.add(t["id"])
+        things.append(t)
+    return things, bad
+
+
+def load_state(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_json(path: str, data: Any) -> None:
+    d = os.path.dirname(path)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    tmp = path + ".%d.tmp" % os.getpid()
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------------
+# Checks
+# ---------------------------------------------------------------------------
+
+class CheckError(Exception):
+    pass
+
+
+class NotTrusted(Exception):
+    """The certificate doesn't verify for a reason other than its date (wrong host name,
+    untrusted chain): its own card at once, never a healthy-looking date."""
+
+
+def _der(b: bytes, i: int) -> Tuple[int, int, int]:
+    """One DER TLV at i: (tag, content start, content end)."""
+    if i + 2 > len(b):
+        raise CheckError("certificate too short")
+    tag, ln = b[i], b[i + 1]
+    i += 2
+    if ln & 0x80:
+        n = ln & 0x7F
+        if n == 0 or n > 4 or i + n > len(b):
+            raise CheckError("bad certificate length")
+        ln = int.from_bytes(b[i:i + n], "big")
+        i += n
+    if i + ln > len(b):
+        raise CheckError("certificate truncated")
+    return tag, i, i + ln
+
+
+def cert_not_after(der: bytes) -> float:
+    """notAfter of a DER X.509 certificate, as a Unix time. Certificate ::= SEQUENCE {
+    tbsCertificate SEQUENCE { [0] version?, serial, signature, issuer, validity, ... } ... }."""
+    tag, s, _ = _der(der, 0)
+    if tag != 0x30:
+        raise CheckError("not a certificate")
+    tag, i, _ = _der(der, s)
+    if tag != 0x30:
+        raise CheckError("not a certificate")
+    if der[i] == 0xA0:
+        i = _der(der, i)[2]
+    for _ in range(3):  # serial, signature algorithm, issuer
+        i = _der(der, i)[2]
+    tag, v, _ = _der(der, i)
+    if tag != 0x30:
+        raise CheckError("no validity in the certificate")
+    v = _der(der, v)[2]  # skip notBefore
+    tag, a, e = _der(der, v)
+    text = der[a:e].decode("ascii", "replace")
+    try:
+        if tag == 0x17:  # UTCTime YYMMDDHHMMSSZ
+            dt = datetime.datetime.strptime(text, "%y%m%d%H%M%SZ")
+        elif tag == 0x18:  # GeneralizedTime YYYYMMDDHHMMSSZ
+            dt = datetime.datetime.strptime(text, "%Y%m%d%H%M%SZ")
+        else:
+            raise ValueError
+    except ValueError:
+        raise CheckError("unreadable notAfter in the certificate")
+    return float(calendar.timegm(dt.timetuple()))
+
+
+X509_V_ERR_CERT_HAS_EXPIRED = 10
+
+
+def _peer_der(cfg: Config, t: Dict[str, Any], verify: bool) -> bytes:
+    if verify:
+        ctx = ssl.create_default_context()
+    else:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE  # verify=no on the line, or dating an expired cert
+    with socket.create_connection((t["host"], t["port"]), timeout=cfg.timeout) as sock:
+        with ctx.wrap_socket(sock, server_hostname=t["host"]) as tls:
+            return tls.getpeercert(binary_form=True) or b""
+
+
+def check_tls(cfg: Config, t: Dict[str, Any]) -> float:
+    """The certificate's notAfter. Verified against the system's CAs and the host name
+    unless the line says verify=no: a certificate that doesn't verify is a failing check
+    (something to fix), except an expired one, which is re-read without verifying so it
+    gets its urgent card."""
+    try:
+        try:
+            der = _peer_der(cfg, t, t.get("verify", True))
+        except ssl.SSLCertVerificationError as e:
+            if getattr(e, "verify_code", None) != X509_V_ERR_CERT_HAS_EXPIRED:
+                raise NotTrusted(safe_text(getattr(e, "verify_message", "") or "untrusted", 80))
+            der = _peer_der(cfg, t, False)
+    except socket.timeout:
+        raise CheckError("timed out")
+    except socket.gaierror:
+        raise CheckError("host not found")
+    except ConnectionRefusedError:
+        raise CheckError("connection refused")
+    except ssl.SSLError as e:
+        raise CheckError("TLS handshake failed (%s)" % safe_text(getattr(e, "reason", "") or type(e).__name__, 60))
+    except OSError as e:
+        raise CheckError("can't connect (%s)" % safe_text(e.strerror or type(e).__name__, 60))
+    if not der:
+        raise CheckError("no certificate")
+    return cert_not_after(der)
+
+
+class _HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    def __init__(self, allow: Any) -> None:
+        self.allow = allow
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        if not self.allow(newurl):
+            raise CheckError("redirected off https")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _loopback_http(url: str) -> bool:
+    return bool(re.match(r"^http://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?/", url))
+
+
+def url_allowed(cfg: Config, url: str) -> bool:
+    if url.startswith("https://"):
+        return True
+    return _loopback_http(cfg.bootstrap_url) and _loopback_http(url)
+
+
+def fetch_json(cfg: Config, url: str, accept: str) -> Any:
+    if not url_allowed(cfg, url):
+        raise CheckError("not an https URL")
+    # The default verifying context (system CAs, host name checked) for every HTTPS fetch;
+    # only check_tls ever reads a certificate without verifying it.
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+                                         _HttpsOnlyRedirects(lambda u: url_allowed(cfg, u)))
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "needs-you-expiry"})
+    try:
+        with opener.open(req, timeout=cfg.timeout) as resp:
+            body = resp.read(MAX_RESPONSE + 1)
+    except urllib.error.HTTPError as e:
+        raise CheckError("RDAP HTTP %d" % e.code if e.code != 404 else "RDAP has no such domain (404)")
+    except urllib.error.URLError as e:
+        raise CheckError("can't reach RDAP (%s)" % safe_text(getattr(e.reason, "strerror", None)
+                                                              or type(e.reason).__name__, 60))
+    except (socket.timeout, OSError):
+        raise CheckError("RDAP timed out")
+    if len(body) > MAX_RESPONSE:
+        raise CheckError("RDAP answer too large")
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise CheckError("RDAP answer isn't JSON")
+
+
+def bootstrap(cfg: Config, cache_path: str, now: float) -> Dict[str, Any]:
+    """IANA's DNS bootstrap file, from the cache when it's under a week old (or when a
+    refresh fails and there is one)."""
+    cached = load_state(cache_path)
+    if cached.get("services") and cached.get("_url") == cfg.bootstrap_url \
+            and now - float(cached.get("_fetched") or 0) < BOOTSTRAP_MAX_AGE_S:
+        return cached
+    try:
+        data = fetch_json(cfg, cfg.bootstrap_url, "application/json")
+        if not isinstance(data, dict) or not isinstance(data.get("services"), list):
+            raise CheckError("RDAP bootstrap file has no services")
+    except CheckError as e:
+        if cached.get("services") and cached.get("_url") == cfg.bootstrap_url:
+            return cached
+        raise CheckError("bootstrap: %s" % e)
+    data = {"services": data["services"], "_url": cfg.bootstrap_url, "_fetched": now}
+    save_json(cache_path, data)
+    return data
+
+
+def rdap_base(boot: Dict[str, Any], domain: str) -> str:
+    """The RDAP base URL for the longest matching label suffix ("co.uk" before "uk")."""
+    labels = domain.split(".")
+    best, best_len = "", 0
+    for svc in boot.get("services") or []:
+        if not (isinstance(svc, list) and len(svc) >= 2 and isinstance(svc[0], list) and isinstance(svc[1], list)):
+            continue
+        urls = [u for u in svc[1] if isinstance(u, str)]
+        url = next((u for u in urls if u.startswith("https://")), urls[0] if urls else "")
+        for tld in svc[0]:
+            if not isinstance(tld, str):
+                continue
+            n = len(tld.split("."))
+            if n > best_len and n < len(labels) + 1 and ".".join(labels[-n:]) == tld.lower():
+                best, best_len = url, n
+    return best
+
+
+def parse_rdap_date(s: str) -> float:
+    s = s.strip()
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$", s)
+    if not m:
+        raise CheckError("unreadable expiration date in RDAP")
+    t = float(calendar.timegm(time.strptime(m.group(1) + " " + m.group(2), "%Y-%m-%d %H:%M:%S")))
+    tz = m.group(3) or "Z"
+    if tz != "Z":
+        sign = 1 if tz[0] == "+" else -1
+        digits = tz[1:].replace(":", "")
+        t -= sign * (int(digits[:2]) * 3600 + int(digits[2:]) * 60)
+    return t
+
+
+def check_domain(cfg: Config, t: Dict[str, Any], boot: Dict[str, Any]) -> Tuple[float, str]:
+    try:
+        ascii_name = t["name"].encode("idna").decode("ascii")
+    except UnicodeError:
+        raise CheckError("not a valid domain name")
+    base = rdap_base(boot, ascii_name)
+    if not base:
+        raise CheckError("no RDAP server for .%s" % ascii_name.rsplit(".", 1)[-1])
+    url = base.rstrip("/") + "/domain/" + urllib.parse.quote(ascii_name)
+    data = fetch_json(cfg, url, "application/rdap+json, application/json")
+    events = data.get("events") if isinstance(data, dict) else None
+    for ev in events if isinstance(events, list) else []:
+        if isinstance(ev, dict) and ev.get("eventAction") == "expiration" and isinstance(ev.get("eventDate"), str):
+            return parse_rdap_date(ev["eventDate"]), url
+    raise CheckError("RDAP gives no expiration date (use a key line instead)")
+
+
+# ---------------------------------------------------------------------------
+# Cards and posting
+# ---------------------------------------------------------------------------
+
+LABEL = {"tls": "TLS certificate for %s", "domain": "Domain %s", "key": "%s"}
+
+
+def priority_for(cfg: Config, seconds_left: float) -> Optional[str]:
+    if seconds_left <= 0:
+        return "urgent"
+    for days, prio in cfg.thresholds:  # nearest first
+        if seconds_left <= days * 86400:
+            return prio
+    return None
+
+
+def expiry_card(cfg: Config, t: Dict[str, Any], when: float, now: float, rdap_url: str) -> Optional[Dict[str, Any]]:
+    prio = priority_for(cfg, when - now)
+    if prio is None:
+        return None
+    day = time.strftime("%Y-%m-%d", time.gmtime(when))
+    what = LABEL[t["kind"]] % t["name"]
+    verb = "expired" if when <= now else "expires"
+    title = safe_text("%s %s %s" % (what, verb, day), TITLE_MAX)
+    links = []
+    if t.get("renew"):
+        links.append(("Renew", t["renew"]))
+    if t["kind"] == "domain" and rdap_url and rdap_url.startswith("https://") and link_ok(rdap_url):
+        links.append(("RDAP", rdap_url))
+    body = {"tls": "Renew the certificate and deploy it; this clears on the next check after %s serves "
+                   "the new one." % t["name"],
+            "domain": "Renew the registration with your registrar; this clears once RDAP shows the new date.",
+            "key": "Rotate it, then change its date in `expiry.conf` on %s; this clears on the next run." % cfg.host}
+    return {"key": KEY_SAFE.sub("-", "%s:expiry:%s:%s" % (t["context"], t["kind"], t["name"]))[:200],
+            "title": title, "priority": prio, "context": t["context"], "links": links,
+            "body": body[t["kind"]], "health": False, "when": when}
+
+
+def untrusted_card(cfg: Config, t: Dict[str, Any], why: str) -> Dict[str, Any]:
+    return {"key": KEY_SAFE.sub("-", "%s:expiry:%s:%s" % (t["context"], t["kind"], t["name"]))[:200],
+            "title": safe_text("TLS certificate for %s not trusted: %s" % (t["name"], why), TITLE_MAX),
+            "priority": "urgent", "context": t["context"], "links": [("Renew", t["renew"])] if t.get("renew") else [],
+            "body": "A client checking it (host name, chain to a trusted CA) refuses it. Fix the certificate "
+                    "%s serves; for a private CA, put `verify=no` on its line in `expiry.conf`." % t["name"],
+            "health": False, "when": -1.0}
+
+
+def poller_failing_card(cfg: Config, err: BaseException) -> Dict[str, Any]:
+    return {"key": KEY_SAFE.sub("-", "%s:expiry:%s:poller-failing" % (cfg.context, cfg.host))[:200],
+            "title": safe_text("Expiry checks stopped on %s: needs-you-expiry failed" % cfg.host, TITLE_MAX),
+            "priority": "low", "context": cfg.context, "links": [], "health": True, "when": 0.0,
+            "body": "`needs-you-expiry` on `%s` stopped with an unexpected %s, so no dates were checked. "
+                    "Run `needs-you-expiry -v` there; this clears on the next good run." % (cfg.host, type(err).__name__)}
+
+
+def _num(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def failing_card(cfg: Config, failing: List[Dict[str, Any]]) -> Dict[str, Any]:
+    lines = []
+    for f in failing[:10]:
+        lines.append("- %s **%s**: %s (since %s)" % (f["kind"], md_escape(safe_text(f["name"], NAME_MAX)),
+                                                     md_escape(safe_text(f["error"], 120)), f["since"]))
+    if len(failing) > 10:
+        lines.append("- and %d more" % (len(failing) - 10))
+    n = len(failing)
+    return {"key": KEY_SAFE.sub("-", "%s:expiry:%s:checks-failing" % (cfg.context, cfg.host))[:200],
+            "title": safe_text("Expiry checks failing on %s: %d %s" % (cfg.host, n, "check" if n == 1 else "checks"),
+                               TITLE_MAX),
+            "priority": "low", "context": cfg.context, "links": [], "health": True, "when": 0.0,
+            "body": "`needs-you-expiry` couldn't read these dates (run `needs-you-expiry -v` there):\n\n"
+                    + "\n".join(lines)}
+
+
+def md_escape(s: str) -> str:
+    return re.sub(r"([\\`*_\[\]()<>#!|~])", r"\\\1", s)
+
+
+def card_hash(c: Dict[str, Any]) -> str:
+    keep = {k: c.get(k) for k in ("title", "priority", "context", "links", "body")}
+    return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def _cli(argv: List[str]) -> bool:
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        warn("cannot run needs-you: %s" % type(e).__name__)
+        return False
+    if r.returncode != 0:
+        warn("needs-you %s exited %d: %s" % (argv[2], r.returncode, safe_text(r.stderr, 300)))
+        return False
+    return True
+
+
+def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
+    argv = [cfg.cli, "-q", "add", "--key=" + c["key"], "--title=" + c["title"], "--priority=" + c["priority"],
+            "--context=" + c["context"], "--agent=expiry", "--project=expiry", "--body=" + c["body"]]
+    if expires_h:
+        argv.append("--expires-in=%.3f" % expires_h)
+    for label, url in c["links"]:
+        argv.append("--link=%s=%s" % (label, url))
+    return _cli(argv)
+
+
+def resolve(cfg: Config, key: str) -> bool:
+    return _cli([cfg.cli, "-q", "resolve", "--key=" + key])
+
+
+# ---------------------------------------------------------------------------
+# One run
+# ---------------------------------------------------------------------------
+
+def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None:
+    things, bad = parse_list(cfg.list_path, cfg.context)
+    state = load_state(state_path)
+    posted: Dict[str, Any] = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+    posted = {k: v for k, v in posted.items() if isinstance(v, dict)}
+    if things is None:
+        if not posted:
+            if verbose:
+                warn("not set up: no %s (see integrations/expiry/README.md)" % cfg.list_path)
+            return
+        things = []  # the list was deleted: resolve what we posted
+    now = time.time()
+    today = time.strftime("%Y-%m-%d", time.gmtime(now))
+    known: Dict[str, Any] = state.get("things") if isinstance(state.get("things"), dict) else {}
+    boot: Optional[Dict[str, Any]] = None
+    boot_err = ""
+    cache = os.path.join(os.path.dirname(state_path), "rdap-dns.json")
+    cards: List[Dict[str, Any]] = []
+    new_known: Dict[str, Any] = {}
+    for t in things:
+        prev = known.get(t["id"]) if isinstance(known.get(t["id"]), dict) else {}
+        rec: Dict[str, Any] = {}
+        rdap_url = ""
+        try:
+            if t["kind"] == "key":
+                when = t["date"]
+            elif t["kind"] == "tls":
+                when = check_tls(cfg, t)
+            else:
+                if boot is None and not boot_err:
+                    try:
+                        boot = bootstrap(cfg, cache, now)
+                    except CheckError as e:
+                        boot_err = str(e)
+                    except Exception as e:  # a bug here must not stop the other checks
+                        boot_err = "bootstrap: unexpected %s" % type(e).__name__
+                if boot is None:
+                    raise CheckError(boot_err)
+                when, rdap_url = check_domain(cfg, t, boot)
+            rec = {"when": when, "url": rdap_url}
+            if verbose:
+                warn("%s %s: %s" % (t["kind"], t["name"], time.strftime("%Y-%m-%d", time.gmtime(when))))
+        except NotTrusted as e:
+            rec = {"untrusted": str(e)}
+            when = None
+            cards.append(untrusted_card(cfg, t, str(e)))
+            warn("%s %s: certificate not trusted (%s)" % (t["kind"], t["name"], e))
+        except Exception as e:  # CheckError, or a bug: count it, keep the last date, carry on
+            why = str(e) if isinstance(e, CheckError) else "unexpected %s (a bug in needs-you-expiry)" % type(e).__name__
+            rec = {"when": _num(prev.get("when")), "url": str(prev.get("url") or ""), "error": why,
+                   "fails": int(_num(prev.get("fails")) or 0) + 1, "since": str(prev.get("since") or today)}
+            when = rec["when"]
+            rdap_url = rec["url"]
+            warn("%s %s: %s" % (t["kind"], t["name"], why))
+        new_known[t["id"]] = rec
+        if isinstance(when, (int, float)):
+            c = expiry_card(cfg, t, float(when), now, rdap_url)
+            if c:
+                cards.append(c)
+    for b in bad:
+        prev = known.get(b["id"]) if isinstance(known.get(b["id"]), dict) else {}
+        new_known[b["id"]] = {"error": b["error"], "fails": int(_num(prev.get("fails")) or 0) + 1,
+                              "since": str(prev.get("since") or today), "kind": "config", "name": b["name"]}
+        warn("%s: %s: %s" % (cfg.list_path, b["name"], b["error"]))
+
+    # Expired and nearest first, then what's already on the panel, so the cap never churns.
+    cards.sort(key=lambda c: (c["when"], c["key"] not in posted, c["key"]))
+    desired: Dict[str, Dict[str, Any]] = {}
+    for c in cards:
+        if c["key"] in desired:
+            continue
+        if len(desired) >= cfg.max_cards:
+            if verbose:
+                warn("over NEEDS_YOU_EXPIRY_MAX_CARDS=%d: skipped %s" % (cfg.max_cards, c["key"]))
+            continue
+        desired[c["key"]] = c
+
+    names = {t["id"]: t for t in things}
+    failing = []
+    for tid, rec in sorted(new_known.items()):
+        if rec.get("error") and int(rec.get("fails") or 0) >= cfg.fails_before_card:
+            t = names.get(tid) or rec
+            failing.append({"kind": t.get("kind", "config"), "name": t.get("name", tid),
+                            "error": rec["error"], "since": rec["since"]})
+    if failing:
+        c = failing_card(cfg, failing)
+        desired[c["key"]] = c
+
+    if not dry_run and not cfg.cli:
+        warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
+        return
+    expires_h = 3 * cfg.interval_h
+    backlog = outbox_has_backlog()
+    for key, c in sorted(desired.items()):
+        h = card_hash(c)
+        prev = posted.get(key) or {}
+        changed = prev.get("h") != h
+        if not changed and (backlog or (c["health"] and prev)):
+            continue  # hub unreachable: don't fill the outbox with renewals
+        if dry_run:
+            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+            continue
+        if post(cfg, c, None if c["health"] else expires_h):
+            posted[key] = {"h": h, "t": now}
+    for key in sorted(set(posted) - set(desired)):
+        if dry_run:
+            print("resolve %s" % key)
+            continue
+        if resolve(cfg, key):
+            del posted[key]
+    if not dry_run:
+        state["posted"] = posted
+        state["things"] = new_known
+        save_json(state_path, state)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(prog="needs-you-expiry", description=__doc__.split("\n")[0])
+    p.add_argument("--dry-run", action="store_true", help="print what would be posted; change nothing")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--state", help="state file (default ~/.local/state/needs-you/expiry.json)")
+    args = p.parse_args(argv)
+    path = args.state or os.path.join(state_base(), "needs-you", "expiry.json")
+    try:
+        run_once(Config(), path, args.dry_run, args.verbose)
+    except Exception as e:  # never fail the scheduler: one line, the poller-failing card, exit 0
+        warn("unexpected error: %s: %s" % (type(e).__name__, safe_text(e, 200)))
+        if not args.dry_run:
+            report_crash(path, e)
+    return 0
+
+
+def report_crash(state_path: str, err: BaseException) -> None:
+    """A bug stopped the run: post the low poller-failing card (once; the next good run
+    resolves it, since it isn't wanted there) and remember it in the state."""
+    try:
+        cfg = Config()
+        c = poller_failing_card(cfg, err)
+        state = load_state(state_path)
+        posted = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+        if isinstance(posted.get(c["key"]), dict) or not cfg.cli:
+            return
+        if post(cfg, c, None):
+            posted[c["key"]] = {"h": card_hash(c), "t": time.time()}
+            state["posted"] = posted
+            save_json(state_path, state)
+    except Exception as e2:
+        warn("could not report it: %s" % type(e2).__name__)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

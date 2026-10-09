@@ -1,0 +1,9 @@
+# ~/.config/needs-you/expiry.conf: what needs-you-expiry watches, one per line.
+# Options on any line: renew=<https URL> (the card's link), context=work|personal.
+# On a tls line, verify=no reads a self-signed or private-CA certificate's date.
+
+tls     example.com
+tls     mail.example.com:993
+domain  example.com              renew=https://registrar.example.com/domains
+key     "Figma PAT"  2026-12-31  renew=https://www.figma.com/settings
+key     "Deploy key" 2027-03-01  context=personal
