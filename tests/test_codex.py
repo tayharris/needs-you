@@ -426,6 +426,23 @@ class CodexMeter(RolloutCase):
         time.sleep(0.3)
         self.assertEqual(len(self.meter_calls()), 1)  # throttled
 
+    def test_numbers_that_arent_finite_and_private_state(self):
+        old = os.umask(0o002)
+        try:
+            self.write_rollout(token_count(float("nan"), 41.0, resets=(None, 1e999)))
+            self.stop(NEEDS_YOU_USAGE_METER=None, NEEDS_YOU_AGENT_TURN_CARDS="0")
+            self.write_rollout(token_count(51.0, 41.0))
+            self.stop(NEEDS_YOU_USAGE_METER=None, NEEDS_YOU_AGENT_TURN_CARDS="0")
+        finally:
+            os.umask(old)
+        self.assertTrue(wait_until(lambda: self.meter_calls()), self.calls())
+        for argv in self.meter_calls():
+            for w in [argv[i + 1] for i, a in enumerate(argv) if a == "--window"]:
+                self.assertRegex(w, r"^(5h|7d)=\d{1,3}(@\d{1,12})?$")
+        self.assertEqual(oct(os.stat(self.usage_state).st_mode & 0o777), "0o700")
+        for n in os.listdir(self.usage_state):
+            self.assertEqual(oct(os.stat(os.path.join(self.usage_state, n)).st_mode & 0o777), "0o600", n)
+
     def test_off_and_reset_windows(self):
         self.write_rollout(token_count(51.0, 41.0))
         self.stop(NEEDS_YOU_AGENT_TURN_CARDS="0")

@@ -120,6 +120,11 @@ class CliStatus(CliTestCase):
                          "--window", "5h=5", urls=[self.hub.url], token=self.sender)
         self.assertEqual(r.returncode, 2)
         self.assertIn("email", r.stderr)
+        for when in ("2026-13-01T00:00:00Z", "2026-02-30T25:61:00Z", "9" * 40):  # no traceback
+            r = self.run_cli("status", "set", "--key", "k", "--provider", "claude", "--window", "5h=5@" + when,
+                             urls=[self.hub.url], token=self.sender)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertNotIn("Traceback", r.stderr)
 
 
     def test_the_claude_status_line_helper_reaches_the_hub(self):
