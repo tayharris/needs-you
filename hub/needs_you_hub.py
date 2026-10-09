@@ -3072,11 +3072,12 @@ class PeerWorker(threading.Thread):
 # HTTP
 # ---------------------------------------------------------------------------
 
+_LOG_WORD = r"(?:\b|(?<=%[0-9A-Fa-f]{2}))"  # a word's start, or just after a %XX escape (x%3Dnyp_...)
 _LOG_SECRET_RES = (
     (re.compile(r"/join/[^/\s\"?#]+"), "/join/<code>"),       # invite codes in join paths
-    (re.compile(r"\bnyi_[A-Za-z0-9_\-]+"), "nyi_<redacted>"),   # invite codes anywhere else
-    (re.compile(r"\bny_[A-Za-z0-9_\-]{16,}"), "ny_<redacted>"), # tokens, should one ever appear
-    (re.compile(r"\bnyp_[A-Za-z0-9_\-]+"), "nyp_<redacted>"), # peer secrets, likewise
+    (re.compile(_LOG_WORD + r"nyi_[A-Za-z0-9_\-]+"), "nyi_<redacted>"),   # invite codes anywhere else
+    (re.compile(_LOG_WORD + r"ny_[A-Za-z0-9_\-]{16,}"), "ny_<redacted>"), # tokens, should one ever appear
+    (re.compile(_LOG_WORD + r"nyp_[A-Za-z0-9_\-]+"), "nyp_<redacted>"), # peer secrets, likewise
 )
 
 
