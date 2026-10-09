@@ -263,8 +263,9 @@ the Mac app keeps the person's ticks locally (it offers Done once every step is 
 and the choices it offered, so a client can show them as choices rather than as a checklist.
 By default it is read-only: the person answers in the agent. With `"answerable": true` the
 sender is waiting for an answer from a client too: the person's Mac posts the options they
-click ([`POST /v1/items/{id}/answer`](#post-v1itemsidanswer-reader)) and the sender reads them
-back ([`GET /v1/items/answer`](#get-v1itemsanswerkeykey-sender)).
+click, or the words they type where the sender takes them (`allow_other`)
+([`POST /v1/items/{id}/answer`](#post-v1itemsidanswer-reader)), and the sender reads them back
+([`GET /v1/items/answer`](#get-v1itemsanswerkeykey-sender)).
 
 ```jsonc
 "question": {
@@ -275,9 +276,10 @@ back ([`GET /v1/items/answer`](#get-v1itemsanswerkeykey-sender)).
     "options": [                  // 0–8; none for a free-text question
       {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
     ],
-    "multi_select": false         // true: the agent takes several options
+    "multi_select": false,        // true: the agent takes several options
+    "allow_other": false          // optional: true when the sender also takes the person's own words
   }],
-  "answerable": false,            // optional: true when the sender waits for an answer (every item needs options)
+  "answerable": false,            // optional: true when the sender waits for an answer (every item needs options or allow_other)
   "expires_at": "2026-10-08T17:04:05.000Z"  // optional: the sender stops waiting then; no answer is taken after it
 }
 ```
@@ -286,9 +288,14 @@ Text follows the same rules as every field (trimmed, no control or bidi characte
 `text` may hold newlines). Unknown fields are ignored. Errors name the part, for example
 `question.items[1].options[0].label`. The hub returns it normalised: `header` and
 `description` as `""` when left out, `options` as `[]`, `multi_select` as a boolean, `id` only
-when given, `answerable` as a boolean, `expires_at` only when given (in the hub's timestamp
-form); an item without one has `"question": null`. An answerable question with an item that has
-no options is refused (`400`, `question.answerable`): only offered labels can be answered.
+when given, `allow_other` only when `true`, `answerable` as a boolean, `expires_at` only when
+given (in the hub's timestamp form); an item without one has `"question": null`.
+`allow_other: true` says the sender takes a free-text answer to that question ("Other" in
+Claude Code and opencode): with options, in place of a single choice or next to a multi-select's
+picks; without options, as the only answer (a free-text question). Set it only when the agent
+really takes typed words for that question. An answerable question with an item that has
+neither options nor `allow_other: true` is refused (`400`, `question.answerable`): there would
+be nothing to answer with.
 So is one with two options of the same label within a question (`400`, the second one's
 `question.items[i].options[j].label`): an answer carries labels only, so the two couldn't be
 told apart. A read-only question may repeat a label; different questions may share labels.
@@ -357,8 +364,8 @@ the item, or `404` for an unknown id. Patching an already-closed item is allowed
 
 ### `POST /v1/items/{id}/answer` (reader)
 
-The person's answer to the item's `question`, from an explicit click on one of its options
-(reader or owner token; sender tokens get `403`, so one agent machine can't answer another
+The person's answer to the item's `question`, from an explicit click on one of its options, or
+the words they typed after an explicit click on "Other…" (reader or owner token; sender tokens get `403`, so one agent machine can't answer another
 agent's question).
 
 ```json
@@ -369,8 +376,20 @@ agent's question).
 - `question_id`: the question's `id` as the client saw it (`null` or absent when it has none).
 - `content_updated_at`: the item's `content_updated_at` as the client saw it.
 - `answers`: one entry per question item, in order. `selected` holds labels from that item's
-  `options`, exactly as given, no repeats: exactly one for a single-choice item, at least one
-  for `multi_select`. There is no free text.
+  `options`, exactly as given, no repeats. `text` (optional) is the person's own words, only
+  for an item with `allow_other: true`: one line, 1–1,000 characters after trimming, no control,
+  bidi or line-separator characters, typed by the person in the Mac's answer window. A
+  single-choice item takes exactly one label **or** `text` (then `selected` is `[]` or absent);
+  a `multi_select` item takes any labels plus `text`, at least one of them. An item without
+  `allow_other` takes no `text` (`400`, `answers[i].text`).
+
+```json
+{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
+ "answers": [{"selected": [], "text": "MySQL, the team knows it"}]}
+```
+
+The hub stores `text` as given (trimmed), never redacts or rewrites it, and never logs it.
+The answer is returned normalised: `{"selected": [...]}` plus `"text"` only when given.
 
 A `question_id` that isn't a string or `null`, or a `content_updated_at` that isn't a
 timestamp, is `400 invalid`. Then the hub takes the answer only if, in this order: the item exists (`404 not_found`), is open
@@ -409,7 +428,7 @@ request older than `request_read_seconds`), so long polls can't starve the hub.
 | `404` | `not_found` | No such item for this token (yet: a post still in the sender's outbox) |
 | `409` | `not_open`, `not_answerable`, `question_expired` | No answer will come: the item closed, has no answerable question, or the question expired |
 
-`answers` has the shape posted to `POST /v1/items/{id}/answer`. Check `question_id`: once
+`answers` has the shape posted to `POST /v1/items/{id}/answer`, `text` included. Check `question_id`: once
 nothing is open under the key, the answer read back is the last item's, which may be an
 earlier question's. `needs-you answer-wait` wraps this (`--question-id` keeps waiting past
 another question's answer; see the [agent guide](AGENT-GUIDE.md)).
@@ -954,8 +973,12 @@ answerable one that repeats a label (from an older hub). `answer`,
 `answered_at` and `answered_by` work the same way (a record without an `answer` key keeps the
 receiver's answer when `content_updated_at` matches). A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
-offered labels, one entry per question, one label for a single choice. Otherwise it is
-dropped with its `answered_at` and `answered_by` (the item stays).
+offered labels (or `text` where the question has `allow_other`), one entry per question, one
+label or the text for a single choice. Otherwise it is
+dropped with its `answered_at` and `answered_by` (the item stays). Hubs before 0.3.0 don't
+know `allow_other` or `text`: they drop the field from the question (and a question with an
+answerable item that has no options), and they drop an answer that has only `text` or keep only
+its labels. Upgrade every hub before senders set `allow_other`.
 
 **Status records** travel in their own `statuses` array, in pushes and in change pages: the
 public status record plus `token_id` and `updated_by`. The receiver checks each as a `PUT` body

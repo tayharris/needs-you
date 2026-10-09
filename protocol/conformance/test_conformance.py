@@ -499,6 +499,32 @@ class Answers(HubCase):
                          404, "not_found")
         call("POST", "/v1/items/resolve", Env.sender, {"key": k})
 
+    def test_free_text_answer(self):
+        k = key("other")
+        q = _question(items=[{"text": "Ship it?", "allow_other": True, "options": [{"label": "Yes"}, {"label": "No"}]},
+                             {"text": "Release name?", "allow_other": True}])
+        _, a = post({"key": k, "title": "a question", "question": q})
+        self.assertEqual([it.get("allow_other") for it in a["question"]["items"]], [True, True])
+        path = "/v1/items/%s/answer" % a["id"]
+        good = {"question_id": "q1", "content_updated_at": a["content_updated_at"],
+                "answers": [{"selected": [], "text": "After the demo"}, {"text": " Otter "}]}
+        self.assertError(call("POST", path, Env.reader, dict(good, answers=[
+            {"selected": ["Yes"], "text": "After the demo"}, {"text": "Otter"}])), 400, "invalid")
+        self.assertError(call("POST", path, Env.reader, dict(good, answers=[
+            {"text": "two\nlines"}, {"text": "Otter"}])), 400, "invalid")
+        status, b = call("POST", path, Env.reader, good)
+        self.assertEqual(status, 200, b)
+        want = [{"selected": [], "text": "After the demo"}, {"selected": [], "text": "Otter"}]
+        self.assertEqual(b["answer"], want)
+        status, got = call("GET", "/v1/items/answer?" + urllib.parse.urlencode({"key": k, "wait": 0}), Env.sender)
+        self.assertEqual((status, got["answers"]), (200, want))
+        _, ro = post({"key": key("no-other"), "title": "no other", "question": _question()})
+        self.assertError(call("POST", "/v1/items/%s/answer" % ro["id"], Env.reader, {
+            "question_id": "q1", "content_updated_at": ro["content_updated_at"],
+            "answers": [{"selected": [], "text": "Maybe"}]}), 400, "invalid")
+        for item in (a, ro):
+            call("POST", "/v1/items/resolve", Env.sender, {"id": item["id"]})
+
     def test_not_answerable(self):
         _, a = post({"key": key("ro-question"), "title": "read-only",
                      "question": {"items": [{"text": "q", "options": [{"label": "A"}]}]}})

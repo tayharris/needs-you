@@ -119,6 +119,8 @@ MAX_QUESTION_TEXT = 500
 MAX_QUESTION_OPTIONS = 8
 MAX_OPTION_LABEL = 80
 MAX_OPTION_DESCRIPTION = 200
+# An answer's own words ("Other"), for a question item with allow_other: one line.
+MAX_ANSWER_TEXT = 1000
 MAX_SOURCE_FIELD = 100
 # Status records (ADR 0011, docs/API.md "Status records"): quiet, keyed, expiring, never items.
 STATUS_TYPES = ("usage", "progress")
@@ -595,8 +597,9 @@ def validate_steps(steps: Any) -> List[Dict[str, Any]]:
 
 def validate_question(question: Any) -> Optional[Dict[str, Any]]:
     """Optional `question`: {"id"?, "items": [{"header"?, "text", "options"?: [{"label",
-    "description"?}], "multi_select"?}]}. Unknown fields are ignored. Normalised to every
-    field present ("" / [] / false for the optional ones), "id" only when given."""
+    "description"?}], "multi_select"?, "allow_other"?}]}. Unknown fields are ignored.
+    Normalised to every field present ("" / [] / false for the optional ones), "id" only
+    when given, "allow_other" only when true."""
     if question is None:
         return None
     if not isinstance(question, dict):
@@ -643,15 +646,20 @@ def validate_question(question: Any) -> Optional[Dict[str, Any]]:
         elif not isinstance(multi, bool):
             raise _invalid(path + ".multi_select", "%s.multi_select must be true or false" % path)
         rec["multi_select"] = multi
+        other = item.get("allow_other")
+        if other is not None and not isinstance(other, bool):
+            raise _invalid(path + ".allow_other", "%s.allow_other must be true or false" % path)
+        if other:
+            rec["allow_other"] = True
         out["items"].append(rec)
     answerable = question.get("answerable")
     if answerable is None:
         answerable = False
     elif not isinstance(answerable, bool):
         raise _invalid("question.answerable", "question.answerable must be true or false")
-    if answerable and any(not it["options"] for it in out["items"]):
+    if answerable and any(not it["options"] and not it.get("allow_other") for it in out["items"]):
         raise _invalid("question.answerable",
-                       "an answerable question needs options for every item (no free-text answers)")
+                       "an answerable question needs options or allow_other for every item")
     if answerable:
         # An answer carries labels only, so two options with one label can't be told apart.
         for i, it in enumerate(out["items"]):
@@ -670,24 +678,36 @@ def validate_question(question: Any) -> Optional[Dict[str, Any]]:
     return out
 
 
-def validate_answers(data: Any, question: Dict[str, Any]) -> List[Dict[str, List[str]]]:
+def validate_answers(data: Any, question: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The `answers` of POST /v1/items/{id}/answer against the item's question: one
-    {"selected": [labels]} per question item, labels among its options, exactly one for a
-    single-choice item, at least one (no repeats) for multi_select. No free text."""
+    {"selected": [labels], "text"?} per question item, labels among its options (no repeats),
+    `text` (the person's own words) only where the item has allow_other. A single-choice
+    item takes exactly one label or the text; a multi_select one any labels plus the text, at
+    least one of them. The text is kept as typed (trimmed), never rewritten."""
     items = question.get("items") or []
     if not isinstance(data, list) or len(data) != len(items):
         raise _invalid("answers", "answers must be a list with one entry per question (%d)" % len(items))
     out = []
     for i, (ans, item) in enumerate(zip(data, items)):
         path = "answers[%d]" % i
-        if not isinstance(ans, dict) or not isinstance(ans.get("selected"), list):
+        if not isinstance(ans, dict):
             raise _invalid(path, '%s must be {"selected": [labels]}' % path)
-        sel = ans["selected"]
+        sel = ans.get("selected")
+        if sel is None and ans.get("text") is not None:
+            sel = []
+        if not isinstance(sel, list):
+            raise _invalid(path, '%s must be {"selected": [labels]}' % path)
+        text = _str_field(ans, "text", MAX_ANSWER_TEXT, path=path + ".text") or None
+        if text is not None:
+            if not item.get("allow_other"):
+                raise _invalid(path + ".text", "%s.text: this question takes only its options" % path)
+            if _LINE_SEP_RE.search(text):
+                raise _invalid(path + ".text", "%s.text contains a line break (U+2028/U+2029)" % path)
         labels = [o["label"] for o in item.get("options") or []]
-        if not sel:
+        if not sel and text is None:
             raise _invalid(path + ".selected", "%s.selected must name at least one option" % path)
-        if not item.get("multi_select") and len(sel) != 1:
-            raise _invalid(path + ".selected", "%s.selected must name exactly one option" % path)
+        if not item.get("multi_select") and len(sel) + (text is not None) != 1:
+            raise _invalid(path + ".selected", "%s must be exactly one option or the text" % path)
         seen: List[str] = []
         for j, label in enumerate(sel):
             where = "%s.selected[%d]" % (path, j)
@@ -696,11 +716,14 @@ def validate_answers(data: Any, question: Dict[str, Any]) -> List[Dict[str, List
             if label in seen:
                 raise _invalid(where, "%s is repeated" % where)
             seen.append(label)
-        out.append({"selected": seen})
+        rec: Dict[str, Any] = {"selected": seen}
+        if text is not None:
+            rec["text"] = text
+        out.append(rec)
     return out
 
 
-def _peer_answer(raw: Any) -> Optional[List[Dict[str, List[str]]]]:
+def _peer_answer(raw: Any) -> Optional[List[Dict[str, Any]]]:
     """A replicated `answer` (its shape and sizes; it was checked against the question where
     it was taken), or None for anything else."""
     if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_QUESTION_ITEMS:
@@ -708,13 +731,23 @@ def _peer_answer(raw: Any) -> Optional[List[Dict[str, List[str]]]]:
     out = []
     for ans in raw:
         sel = ans.get("selected") if isinstance(ans, dict) else None
-        if not isinstance(sel, list) or not 1 <= len(sel) <= MAX_QUESTION_OPTIONS:
+        if not isinstance(sel, list) or len(sel) > MAX_QUESTION_OPTIONS:
             return None
         for x in sel:
             if (not isinstance(x, str) or not 0 < len(x) <= MAX_OPTION_LABEL
                     or re.search(r"[\x00-\x1f\x7f]", x) or _SPOOF_RE.search(x)):
                 return None
-        out.append({"selected": list(sel)})
+        rec: Dict[str, Any] = {"selected": list(sel)}
+        if ans.get("text") is not None:
+            try:
+                rec["text"] = _str_field(ans, "text", MAX_ANSWER_TEXT)
+            except ApiError:
+                return None
+            if not rec["text"] or _LINE_SEP_RE.search(rec["text"]):
+                return None
+        if not sel and "text" not in rec:
+            return None
+        out.append(rec)
     return out
 
 

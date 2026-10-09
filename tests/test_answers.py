@@ -64,7 +64,7 @@ class QuestionFields(AnswerCase):
         cases = [
             ({"answerable": "yes"}, "question.answerable"),
             ({"expires_at": "soon"}, "question.expires_at"),
-            # only offered labels can be answered: every item needs options
+            # nothing to answer with: every item needs options or allow_other
             ({"items": [{"text": "Name it?"}]}, "question.answerable"),
             # an answer carries labels only: two options with one label can't be told apart
             ({"items": [{"text": "Clean up?", "options": [{"label": "Yes", "description": "Delete"},
