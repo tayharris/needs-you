@@ -4,6 +4,12 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **A re-post that only changes `source.event` goes through the alert rules again.** An agent card re-posted under the same key with a new event (it finished, then it asks) kept the decision made for the old event, so a rule such as **Only When It Asks → Always Interrupt** didn't interrupt. The Mac now treats a new event like a new title: the card is announced again and its rules decide how. The hub already passed the re-post on to readers; nothing changes on the wire.
+- **Usage-limit cards no longer offer Alerts for This Session.** The Claude and Codex usage-limit cards belong to the machine, not to one session, so the menu made a rule for no session. They keep **Alerts for All <agent> Sessions**.
+- **A Windsurf or VS Code Insiders session's fallback card no longer has a Claude button that opens VS Code.** When the hub is too old for the bring-forward button, the hook posts the editor buttons instead; for an editor without an allowed link, that included the Claude Code extension's tab link as `vscode://`, which opens VS Code, where that session isn't. Run `needs-you update` on sender machines.
+
 ## [0.5.0] - 2026-10-09
 
 A pre-release: choose how the pill's usage meters look (Bars, Thin bars, Rings or Percentages, in three sizes) and see them on the idle pill too, one Appearance section in Settings, new opt-in cards from Linear, Jira, GitHub Projects statuses, Dependabot alerts and certificate, domain and key expiry, and one "go there" button per agent card. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** before relying on the new bring-forward button (an older hub refuses its link and the card falls back to the editor button), then run `needs-you update` on sender machines for the new hooks.
