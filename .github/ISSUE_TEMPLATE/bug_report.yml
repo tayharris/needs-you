@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the report. **Never paste tokens, peer secrets, invite links or codes.** Replace hostnames you'd rather not share with `hub-a.example.ts.net`.
+        Thanks for the report. **Never paste tokens (`ny_…`), peer secrets, invite links or codes (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env`.** Replace hostnames you'd rather not share with `hub-a.example.ts.net` or `devbox`. Security problems go through [SECURITY.md](https://github.com/tayharris/needs-you/blob/main/SECURITY.md), not an issue.
   - type: dropdown
     id: component
     attributes:
@@ -16,13 +16,49 @@ body:
         - Server hub (needs_you_hub.py)
         - needs-you CLI
         - Invites / joining a machine
-        - Claude Code hooks or skill
+        - An agent's hooks (Claude Code, Codex, Gemini, opencode, ...)
         - Orca integration
-        - CI / cron / systemd integration
+        - MCP server
+        - CI / cron / systemd / GitHub integration
+        - Updates
         - Docs or site
         - Other
     validations:
       required: true
+  - type: input
+    id: version
+    attributes:
+      label: needs-you version
+      description: "`needs-you --version` on the sender, the app's version (right-click the pill → About Needs You), or the commit."
+      placeholder: "CLI 0.3.0, app 0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: Of each machine involved.
+      placeholder: "Mac: macOS 15.1, Apple silicon. Sender: Ubuntu 24.04, python3 3.12"
+    validations:
+      required: true
+  - type: dropdown
+    id: hub
+    attributes:
+      label: Hub
+      description: Where your items are stored.
+      options:
+        - The hub built into the Mac app
+        - A server hub (Linux, systemd)
+        - The Mac's hub peered with server hubs
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent or tool, and its version
+      description: If an agent or integration is involved.
+      placeholder: "Claude Code 2.1.4, Codex CLI 0.50.0, or n/a"
   - type: textarea
     id: what
     attributes:
@@ -40,29 +76,23 @@ body:
     validations:
       required: true
   - type: textarea
+    id: doctor
+    attributes:
+      label: needs-you doctor
+      description: "The output of `needs-you doctor` on the sender, if one is involved. It never prints the token; check for hostnames you'd rather not share."
+      render: text
+  - type: textarea
     id: logs
     attributes:
-      label: Logs or output
-      description: "CLI output, `journalctl -u needs-you-hub`, the `/v1/health` response, or Console.app lines. Redact tokens."
+      label: Logs or other output
+      description: "CLI output, `journalctl -u needs-you-hub`, the `/v1/health` response, the hook log (`NEEDS_YOU_HOOK_LOG`), or Console.app lines. Redact tokens."
       render: text
-  - type: input
-    id: version
-    attributes:
-      label: Version or commit
-      placeholder: "e.g. needs-you --version, the app's About, or git rev-parse --short HEAD"
-    validations:
-      required: true
-  - type: input
-    id: env
-    attributes:
-      label: Environment
-      placeholder: "macOS 14.6 / Ubuntu 24.04, python3 3.9.6, Tailscale 1.76"
   - type: checkboxes
     id: checks
     attributes:
       label: Checks
       options:
-        - label: I read [troubleshooting.md](https://github.com/tayharris/needs-you/blob/main/docs/guides/troubleshooting.md).
+        - label: I read [troubleshooting](https://needsyou.app/guides/troubleshooting.html).
           required: true
-        - label: This report contains no tokens, secrets or invite codes.
+        - label: This report contains no tokens, secrets, invite links or codes.
           required: true

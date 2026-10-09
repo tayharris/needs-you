@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Help us test.** A [guide](docs/guides/help-us-test.md) and a section on needsyou.app listing which AI tools have been used for real, which only against a stub model and which never run, what to try with each and how to report it, with new issue templates for agent test reports and integration requests. For contributors, `scripts/check.sh` runs every check CI runs, and a new `lint` CI job catches real tailnet names and addresses and AI attribution lines in commits ([CONTRIBUTING.md](CONTRIBUTING.md)).
+
 ### Fixed
 
 - **Uninstalling no longer leaves empty config files behind.** A file the installer created only to hold needs-you's part, such as `~/.codex/hooks.json`, Gemini's or Claude Code's `settings.json`, Cursor's `hooks.json`, Kimi Code's `config.toml`, or the shell profile it made for the `PATH` line (`~/.bashrc`, `~/.profile`), is deleted by `--uninstall` and `needs-you uninstall-hooks` once nothing else is in it; it used to stay as `{}` or an empty file. A file that was there before the install stays, even when it's empty. Only files created by this release's installers are recorded; one made by an earlier install stays as it is.

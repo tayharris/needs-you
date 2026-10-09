@@ -1,5 +1,6 @@
 # Tests on every push and PR, and the gate the release workflow calls before it builds.
-# Same suites as the test-all skill. See docs/roadmap/ci-cd.md.
+# Same suites as the test-all skill; scripts/check.sh runs them locally (tests/test_check_script.py
+# keeps its commands identical to these). See docs/roadmap/ci-cd.md.
 name: ci
 
 on:
@@ -63,3 +64,16 @@ jobs:
       # Preinstalled on GitHub's Ubuntu images.
       - run: shellcheck --version
       - run: shellcheck -S warning -f gcc $(git ls-files '*.sh')
+
+  lint:
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) && '"ubuntu-latest"' || vars.CI_LINUX_RUNNER || '"ubuntu-latest"') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the PR's base branch, for the commit-message checks
+          persist-credentials: false
+      # Hard rule 5 (no tailnet names or addresses but the examples) on every file, and no
+      # Co-Authored-By / "Generated with" lines in the PR's commits. A push has no base: files only.
+      - run: /usr/bin/python3 scripts/lint_repo.py
+        env:
+          NEEDS_YOU_LINT_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || 'none' }}

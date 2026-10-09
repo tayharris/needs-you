@@ -14,10 +14,11 @@ Add `.github/workflows/ci.yml`:
 | `python-macos-39` | `macos-14` | `/usr/bin/python3 --version` must print 3.9.x; `/usr/bin/python3 -m unittest discover -s tests`. This is the compatibility floor (stdlib-only, 3.9 syntax). If GitHub's image ever drops `/usr/bin/python3` 3.9, add a `setup-python` 3.9 job instead. |
 | `mac` | `macos-latest` | `cd mac && swift build`; `mac/scripts/test.sh` (XCTest is available on the image); `mac/scripts/bundle.sh`; upload `mac/dist/NeedsYou.app` zipped as a 7-day artifact for PR review. |
 | `shellcheck` | `ubuntu-latest` | `shellcheck` is preinstalled: `shellcheck scripts/*.sh mac/scripts/*.sh deploy/*.sh integrations/*/*.sh`. Start with `-S warning` and fix or annotate existing findings first. |
+| `lint` | `ubuntu-latest` | `scripts/lint_repo.py` (built): no tailnet names or addresses but the examples in any file, and in a PR no `Co-Authored-By` or "Generated with" lines in its commits. `scripts/check.sh` runs every job's commands locally. |
 | `py39-syntax` | `ubuntu-latest` | Cheap guard: `python3 -m py_compile` under a 3.9 interpreter is covered by `python-macos-39`; optionally add `vermin -t=3.9-` later (not a runtime dependency). |
 | `site` | `ubuntu-latest` | Serve `site/` with `python3 -m http.server` and `curl -f` it; run an HTML structure check (a stdlib `html.parser` script in `site/check.py` or `tests/`). |
 
-Settings: `permissions: contents: read`; `concurrency` per ref with cancel-in-progress; path filters so a docs-only change skips `mac`. Pin actions by SHA. Require `python-*`, `mac` and `shellcheck` in branch protection on `main`.
+Settings: `permissions: contents: read`; `concurrency` per ref with cancel-in-progress; path filters so a docs-only change skips `mac`. Pin actions by SHA. Require `python-*`, `mac`, `shellcheck` and `lint` in branch protection on `main`.
 
 Files to add: `.github/workflows/ci.yml`, and later the conformance job (see [ADR 0004](../adr/0004-always-on-hub.md) and [ai-first.md](ai-first.md)) that runs `protocol/conformance` against every hub implementation.
 
@@ -56,7 +57,7 @@ GitHub-hosted jobs stop when the account's Actions billing or spending limit is 
 | Variable | Jobs | Self-hosted value |
 |---|---|---|
 | `CI_LINUX_RUNNERS` | `python-ubuntu` (a JSON list: one job per entry) | `[["self-hosted","linux"]]` |
-| `CI_LINUX_RUNNER` | `shellcheck` | `["self-hosted","linux"]` |
+| `CI_LINUX_RUNNER` | `shellcheck`, `lint` | `["self-hosted","linux"]` |
 | `CI_MAC_RUNNER` | `python-macos-39`, `mac` | `["self-hosted","macOS"]` |
 | `RELEASE_MAC_RUNNER` | the release build | `["self-hosted","macOS"]` (a separate decision from CI) |
 

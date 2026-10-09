@@ -153,6 +153,8 @@ More on everything: [mac-app.md](mac-app.md), [claude-code-everywhere.md](claude
 
 **Collaborators:** open a [new issue](https://github.com/tayharris/needs-you/issues/new/choose) and pick **Tester report**. It asks for the details below. **Everyone else:** send the same details to the owner.
 
+Trying it with an AI tool other than Claude Code? [Help us test](help-us-test.md) says what's been checked for each tool, what to try, and has a report template of its own.
+
 Please include:
 
 - **macOS version** (Apple menu → **About This Mac**), Apple silicon or Intel, and whether it's a managed work Mac.

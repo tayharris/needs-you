@@ -1,0 +1,88 @@
+name: Help us test an AI tool
+description: You used needs-you with an AI coding tool. Tell us which cards appeared and which didn't, even if everything worked.
+labels: ["agent-test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. [Help us test](https://needsyou.app/guides/help-us-test.html) lists what each tool has been checked with and what to try.
+
+        **Never paste a token (`ny_…`), an invite link or code (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env`.** Replace host and tailnet names you'd rather not share with `devbox` and `<tailnet>`.
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Tool
+      options:
+        - Claude Code
+        - Codex CLI
+        - Gemini CLI
+        - opencode
+        - Copilot CLI
+        - Kimi Code
+        - Grok Build
+        - Aider
+        - Cline (VS Code extension)
+        - Cline (CLI)
+        - Cursor
+        - Orca
+        - An agent through the MCP server
+        - Something else (say which below)
+    validations:
+      required: true
+  - type: input
+    id: tool_version
+    attributes:
+      label: Tool version, and the model if it matters
+      placeholder: "codex-cli 0.50.0, gpt-5"
+    validations:
+      required: true
+  - type: input
+    id: needs_you_version
+    attributes:
+      label: needs-you version and OS
+      description: "`needs-you --version` where the tool runs, the app's version (right-click the pill → About Needs You), and the OS of each."
+      placeholder: "CLI 0.3.0 on Ubuntu 24.04 over SSH; app 0.3.0 on macOS 15.1"
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: How you set it up
+      description: The installer flags or guide you followed, and where the tool runs (the Mac itself, SSH, tmux, VS Code, Orca).
+      placeholder: "One-liner with --codex-hooks user, Codex in tmux on a Linux box"
+    validations:
+      required: true
+  - type: textarea
+    id: appeared
+    attributes:
+      label: Cards that appeared
+      description: What made each one appear (approval, question, end of turn), its title, and whether it cleared when you answered.
+      placeholder: |
+        - Approval for `make test`: "Codex wants to run make test", cleared when I approved.
+        - End of turn: "Codex is waiting for you", cleared on my next prompt.
+  - type: textarea
+    id: missing
+    attributes:
+      label: What didn't happen, or happened wrong
+      description: A card you expected and didn't get, one that stayed, one with the wrong text, anything that slowed the tool down or swallowed your typing. "Nothing, it all worked" is a useful answer.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: needs-you doctor
+      description: "The output of `needs-you doctor` where the tool runs. It never prints the token."
+      render: text
+  - type: textarea
+    id: hook_log
+    attributes:
+      label: Hook log
+      description: "With `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` in `~/.config/needs-you/env`: the lines from your test. They hold item keys (with the machine's name) and what each hook did, never tokens."
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This report contains no tokens, invite links or codes, and nothing from `~/.config/needs-you/env`.
+          required: true
