@@ -207,6 +207,15 @@ Grok-specific causes:
 - A card that doesn't clear after you renewed: a `tls` card clears once the host serves the new certificate (reload the web server), a `domain` card once RDAP shows the new date (can lag the registrar by a day), a `key` card once you change its date in the list. All clear within 72 hours of the poller stopping.
 - No card for a STARTTLS port (SMTP 587, IMAP 143): only implicit TLS is read; use port 465 or 993, or a `key` line.
 
+## Linear poller
+
+- Nothing at all, and `needs-you-linear -v` says "not configured": it's opt-in. Put the key in `~/.config/needs-you/linear-key` (mode 600) or point `NEEDS_YOU_LINEAR_KEY_FILE` at it ([Linear guide](linear.md#set-up-4-commands)).
+- "refusing the key file": group or others can read it, it isn't owned by the user the poller runs as, or it's a symlink. `chmod 600` it as that user, and use the real path.
+- "Authentication required" (HTTP 400 or 401): the key was revoked or pasted wrong. Make a new one in Linear and write it to the key file again. `RATELIMITED`: something else on the same key is using Linear's 1,500 requests an hour; the poller uses 12.
+- It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Linear alerts stopped on <host>".
+- A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.
+- Too many cards: narrow it with `NEEDS_YOU_LINEAR_TEAMS`, `NEEDS_YOU_LINEAR_CATEGORIES` or `Backlog=off` in `NEEDS_YOU_LINEAR_STATUSES` ([integrations/linear](../../integrations/linear/README.md#config)).
+
 ## Orca automations
 
 - `needs-you` must be on the `PATH` that Orca's agent terminals get. From an Orca terminal: `command -v needs-you`.

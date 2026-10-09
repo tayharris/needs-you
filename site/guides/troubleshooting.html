@@ -50,6 +50,7 @@
         <li><a href="#cursor-cline-and-aider">Cursor, Cline and Aider</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#expiry-poller">Expiry poller</a></li>
+        <li><a href="#linear-poller">Linear poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
     </nav>
@@ -225,6 +226,15 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li>"TLS certificate for &lt;host&gt; not trusted": the certificate doesn't verify (wrong host name, a missing intermediate, a private CA). Fix the certificate; for an internal host on a private CA, add <code>verify=no</code> to its line.</li>
 <li>A card that doesn't clear after you renewed: a <code>tls</code> card clears once the host serves the new certificate (reload the web server), a <code>domain</code> card once RDAP shows the new date (can lag the registrar by a day), a <code>key</code> card once you change its date in the list. All clear within 72 hours of the poller stopping.</li>
 <li>No card for a STARTTLS port (SMTP 587, IMAP 143): only implicit TLS is read; use port 465 or 993, or a <code>key</code> line.</li>
+</ul>
+<h2 id="linear-poller">Linear poller <a class="anchor" href="#linear-poller" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Nothing at all, and <code>needs-you-linear -v</code> says "not configured": it's opt-in. Put the key in <code>~/.config/needs-you/linear-key</code> (mode 600) or point <code>NEEDS_YOU_LINEAR_KEY_FILE</code> at it (<a href="linear.html#set-up-4-commands">Linear guide</a>).</li>
+<li>"refusing the key file": group or others can read it, it isn't owned by the user the poller runs as, or it's a symlink. <code>chmod 600</code> it as that user, and use the real path.</li>
+<li>"Authentication required" (HTTP 400 or 401): the key was revoked or pasted wrong. Make a new one in Linear and write it to the key file again. <code>RATELIMITED</code>: something else on the same key is using Linear's 1,500 requests an hour; the poller uses 12.</li>
+<li>It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Linear alerts stopped on &lt;host&gt;".</li>
+<li>A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.</li>
+<li>Too many cards: narrow it with <code>NEEDS_YOU_LINEAR_TEAMS</code>, <code>NEEDS_YOU_LINEAR_CATEGORIES</code> or <code>Backlog=off</code> in <code>NEEDS_YOU_LINEAR_STATUSES</code> (<a data-repo="/blob/main/integrations/linear/README.md#config" href="https://github.com/tayharris/needs-you/blob/main/integrations/linear/README.md#config">integrations/linear</a>).</li>
 </ul>
 <h2 id="orca-automations">Orca automations <a class="anchor" href="#orca-automations" aria-label="Link to this section">#</a></h2>
 <ul>

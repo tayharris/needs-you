@@ -1,0 +1,5 @@
+# needs-you-linear every 5 minutes. Install with `crontab -e` as the user who ran the needs-you
+# invite installer (~/.config/needs-you/env) and owns ~/.config/needs-you/linear-key (mode 600).
+# cron's PATH is minimal: the poller finds the CLI in ~/.local/bin by itself.
+# Errors go to cron mail; the poller always exits 0.
+*/5 * * * *  $HOME/.local/bin/needs-you-linear >/dev/null  # needs-you-linear

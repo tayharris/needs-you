@@ -25,7 +25,8 @@ Don't post:
 - A second card for the same wait. Re-post the same key to change the card (below).
 - What the agent hooks already post: permission prompts, plan approvals, "waiting for input".
 - GitHub review requests, deploy approvals and the person's own PRs: one poller on one
-  always-on machine covers them ([guides/github.md](guides/github.md)).
+  always-on machine covers them ([guides/github.md](guides/github.md)). The same goes for
+  Linear assignments, comments, mentions and status changes ([guides/linear.md](guides/linear.md)).
 - A test item. `needs-you doctor` is the test.
 
 ## Setup on a machine (once)

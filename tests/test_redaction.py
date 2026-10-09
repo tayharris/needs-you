@@ -1,7 +1,7 @@
 """Redaction of token-shaped text before untrusted text reaches a card.
 
 One block of code (between the "needs-you redaction" markers) does it, byte for byte the same in
-the agent hook, the CLI (`needs-you run`'s output), the MCP server and the GitHub poller. These
+the agent hook, the CLI (`needs-you run`'s output), the MCP server and the GitHub and Linear pollers. These
 tests check the copies match, what the block catches and keeps, and that it runs in linear time
 on input built to make regular expressions backtrack.
 """
@@ -17,7 +17,8 @@ from support import ROOT, hubmod
 BEGIN = "# --- needs-you redaction (begin) ---\n"
 END = "# --- needs-you redaction (end) ---\n"
 COPIES = ("integrations/claude-code/needs-you-hook.sh", "cli/needs-you",
-          "integrations/mcp/needs_you_mcp.py", "integrations/github/needs-you-github")
+          "integrations/mcp/needs_you_mcp.py", "integrations/github/needs-you-github",
+          "integrations/linear/needs-you-linear")
 
 
 def block(rel):
@@ -140,12 +141,14 @@ class Catches(unittest.TestCase):
             fake("glp", "tt-", "fake" * 5),
             fake("xa", "pp-", "1-FAKE-1234-fake"),
             fake("ya", "29.", "fake-FAKE_fake" * 2),
+            fake("li", "n_api_", "fakeFAKE" * 5),
+            fake("li", "n_oauth_", "fake" * 10),
         )
         for secret in cases:
             with self.subTest(secret[:6]):
                 self.assertEqual(self.redact("use %s now" % secret), "use [redacted] now")
         # look-alikes that aren't keys stay
-        plain = "ASIAN market, sk_live_ alone, npm_config_cache, hf_hub, xapp-x, ya29.x, AKIA1"
+        plain = "ASIAN market, sk_live_ alone, npm_config_cache, hf_hub, xapp-x, ya29.x, AKIA1, lin_api_ alone"
         self.check(plain, keep=(plain,))
 
 

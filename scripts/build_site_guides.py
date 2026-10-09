@@ -92,6 +92,8 @@ CURATED = [
      "Review requests, deploy approvals, failed CI and your PRs' state, from one poller."),
     (SENDERS, "docs/guides/expiry.md", "expiry", "Expiry dates",
      "A card before a TLS certificate, a domain or an API key expires, from one daily poller."),
+    (SENDERS, "docs/guides/linear.md", "linear", "Linear",
+     "Assignments, comments, mentions and status changes from your Linear inbox, from one poller."),
     (RUN, "docs/HUB.md", "hub", "Server hubs",
      "Optional always-on server hubs: install, two-hub setup, backups, upgrades, resource use."),
     (RUN, "docs/guides/updates.md", "updates", "Keeping up to date",

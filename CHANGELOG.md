@@ -16,6 +16,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - **The Claude Code guide names the Orca button.** Its button table still said an Orca session's card has a **Terminal** button; since 0.4.0 it's **Orca**, with no editor button beside it, and a Mac terminal's button is named for the terminal ([guide](docs/guides/claude-code-everywhere.md#buttons)).
 - **The custom connector guide documents `source.event`.** Its field table still said `source` keys other than `host`, `agent` and `project` are ignored, but the hub refuses an `event` that isn't a short slug with a 400. It now gives the event's format, its values and the CLI's `--event` ([guide](docs/guides/custom-connector.md#3-the-item-format)).
 
+### Security
+
+- **Redaction catches Linear keys** (`lin_api_…`, `lin_oauth_…`) in any untrusted text that reaches a card: agent hooks, `needs-you run`'s output, the MCP server and the pollers. Run `needs-you update` on each sender machine, and copy the new `needs-you-github` to `~/.local/bin/` if you use it.
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.

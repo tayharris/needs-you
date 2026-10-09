@@ -45,7 +45,7 @@ Everything that posts is a sender, and all of it is built on one file, the `need
 - **The `needs-you` CLI**: `needs-you add`, `resolve`, `run` (alert when a long job fails or finishes), `doctor`, `update`. It keeps the hub URLs and its token in `~/.config/needs-you/env`.
 - **Agent hooks**: Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok Build, Cursor, Cline and Aider post "agent is waiting" cards and clear them when you answer ([Claude Code](claude-code.md) and the other guides).
 - **The MCP server**, for agents with MCP but no shell ([MCP server](mcp.md)).
-- **CI, cron and scripts** ([Add a sender](add-a-sender.md#cron-systemd-ci)), **Orca** automations ([Orca](orca.md)) and the **GitHub poller** ([GitHub](github.md)).
+- **CI, cron and scripts** ([Add a sender](add-a-sender.md#cron-systemd-ci)), **Orca** automations ([Orca](orca.md)) and the **GitHub** and **Linear pollers** ([GitHub](github.md), [Linear](linear.md)).
 
 One invite link installs the CLI and, with the options you pick, the hooks, the skill or the MCP server.
 
