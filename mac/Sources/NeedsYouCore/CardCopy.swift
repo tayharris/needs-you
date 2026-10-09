@@ -14,24 +14,29 @@ import Foundation
 public enum CardCopy {
     /// At most this many command chips per card.
     public static let maxSnippets = 4
-    /// Longer snippets aren't offered (a chip copies a command, not an essay).
-    public static let maxSnippetLength = 1_000
+    /// Longer snippets aren't offered: a chip shows its whole snippet, wrapped, so what
+    /// the person reads is exactly what's copied.
+    public static let maxSnippetLength = 200
 
     // MARK: - Command snippets
 
-    /// The commands, paths and ids worth a copy chip, in body order: every fenced code
-    /// block, and inline code spans that look like a command (several words), a path or an
+    /// The commands, paths and ids worth a copy chip, in body order: one-line fenced code
+    /// blocks, and inline code spans that look like a command (several words), a path or an
     /// id (`term_4170demo`, `ACME-123`). Single plain words (`claude`, `prod`, `74511`) are
-    /// left as text. Deduplicated, at most `maxSnippets`, each at most `maxSnippetLength`.
-    /// The body is read as the card shows it: the first `LimitedMarkdown.maxLength`
-    /// characters, bidi controls removed (so a chip copies exactly what it reads as).
+    /// left as text. Deduplicated, at most `maxSnippets`.
+    ///
+    /// Card text is untrusted (any sender wrote it) and a chip's text may be pasted into a
+    /// terminal, so a chip copies exactly what it shows, and nothing that could hide
+    /// something is offered (`isSafeSnippet`): no line breaks (so no multi-line blocks), no
+    /// control, bidi, zero-width or other invisible format characters, at most
+    /// `maxSnippetLength` characters, and nothing `redactSecrets` would change.
     public static func snippets(in body: String?) -> [String] {
         guard let body, !body.isEmpty else { return [] }
-        let text = LimitedMarkdown.stripBidiControls(String(body.prefix(LimitedMarkdown.maxLength)))
+        let text = String(body.prefix(LimitedMarkdown.maxLength))
         var found: [String] = []
         func add(_ raw: String, fenced: Bool) {
-            let s = redactSecrets(raw.trimmingCharacters(in: .whitespacesAndNewlines))
-            guard !s.isEmpty, s.count <= maxSnippetLength, fenced || looksCopyable(s),
+            let s = raw.trimmingCharacters(in: .whitespaces)
+            guard isSafeSnippet(s), fenced || looksCopyable(s),
                   !found.contains(s), found.count < maxSnippets else { return }
             found.append(s)
         }
@@ -127,6 +132,27 @@ public enum CardCopy {
         return spans
     }
 
+    /// A chip may offer it: not empty, at most `maxSnippetLength` characters, one line, no
+    /// control (tab, CR, NUL, escape...), format (bidi overrides and isolates, zero-width
+    /// characters, soft hyphen, BOM) or line/paragraph separator characters, and no
+    /// token-shaped text (a copy would have to differ from what the card shows).
+    public static func isSafeSnippet(_ s: String) -> Bool {
+        guard !s.isEmpty, s.count <= maxSnippetLength else { return false }
+        if s.unicodeScalars.contains(where: isHiddenOrControl) { return false }
+        return redactSecrets(s) == s
+    }
+
+    /// Control, format and line/paragraph separator scalars: what can make text read
+    /// differently from what it is, or run on past what's visible.
+    public static func isHiddenOrControl(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .control, .format, .lineSeparator, .paragraphSeparator, .surrogate, .privateUse, .unassigned:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// A command (two or more words), a path (`/srv/photos`, `~/orca/acme`) or an id (eight
     /// or more characters with a digit or punctuation: `term_4170demo`, `ACME-123`). Plain
     /// words and short numbers stay text.
@@ -134,18 +160,6 @@ public enum CardCopy {
         if s.contains(where: { $0.isWhitespace }) { return s.count >= 5 }
         if s.contains("/") || s.hasPrefix("~") { return s.count >= 5 }
         return s.count >= 8 && s.contains(where: { $0.isNumber || "_-.:@=#".contains($0) })
-    }
-
-    /// The chip's label: one line (line breaks shown as ↵), at most `maxLength` characters
-    /// with an ellipsis. The chip's tooltip shows the whole snippet.
-    public static func chipLabel(_ snippet: String, maxLength: Int = 60) -> String {
-        let oneLine = snippet
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " \u{21B5} ")
-        guard oneLine.count > maxLength, maxLength > 1 else { return oneLine }
-        return String(oneLine.prefix(maxLength - 1)) + "\u{2026}"
     }
 
     // MARK: - The "…" menu
@@ -244,16 +258,21 @@ public enum CardCopy {
         return best
     }
 
-    /// "Copy as needs-you add Command": a `needs-you add` command line that posts the same
-    /// card again (key, title, body, context, priority, kind, links, steps, question,
-    /// source), for reproducing a bug. Each value is shell-quoted and given as
-    /// `--flag=value`, so a value starting with "-" isn't read as a flag. The expiry isn't
-    /// carried (it was relative to the first post).
+    /// "Copy as needs-you add Command": a one-line `needs-you add` command that posts the
+    /// same card again (key, title, body, context, priority, kind, links, steps, question,
+    /// source), for reproducing a bug. The expiry isn't carried (it was relative to the
+    /// first post).
+    ///
+    /// Every value is untrusted (a sender wrote it), so the line must be inert when pasted:
+    /// each value is redacted, then cleaned (`shellSafeValue`: no control, bidi, zero-width
+    /// or other format characters), then quoted (`shellQuote`) as `--flag=value`, so a
+    /// value starting with "-" isn't read as a flag. Line breaks are kept only inside
+    /// `$'…'` as `\n`, so the command is always one line: nothing runs until Return.
     public static func addCommand(_ item: Item) -> String {
-        var args: [String] = ["needs-you add"]
+        var args: [String] = ["needs-you", "add"]
         func flag(_ name: String, _ value: String?) {
             guard let value else { return }
-            args.append("--\(name)=" + shellQuote(value))
+            args.append("--\(name)=" + shellQuote(shellSafeValue(redactSecrets(value))))
         }
         flag("key", item.key)
         flag("title", item.title)
@@ -272,7 +291,29 @@ public enum CardCopy {
             if let project = source.project, !project.isEmpty { flag("project", project) }
             if let host = source.host, !host.isEmpty { flag("host", host) }
         }
-        return redactSecrets(args.joined(separator: " \\\n  "))
+        return args.joined(separator: " ")
+    }
+
+    /// A value cleaned for the command line: line and paragraph separators and CR/LF pairs
+    /// become "\n", tabs stay, and every other control or invisible format character
+    /// (NUL, escape, bidi overrides, zero-width characters, BOM) is dropped.
+    public static func shellSafeValue(_ s: String) -> String {
+        var out = String.UnicodeScalarView()
+        var lastWasCR = false
+        for scalar in s.unicodeScalars {
+            defer { lastWasCR = scalar == "\r" }
+            switch scalar {
+            case "\n":
+                if !lastWasCR { out.append("\n") }
+            case "\r", "\u{2028}", "\u{2029}", "\u{85}":
+                out.append("\n")
+            case "\t":
+                out.append(scalar)
+            default:
+                if !isHiddenOrControl(scalar) { out.append(scalar) }
+            }
+        }
+        return String(out)
     }
 
     /// The CLI's `LABEL=URL` (it splits at the first "="): an "=" in the label becomes "-",
@@ -294,12 +335,30 @@ public enum CardCopy {
         return s
     }
 
-    /// POSIX shell quoting: plain words as they are, anything else in single quotes (a
-    /// single quote inside becomes '\''). Safe for sh, bash and zsh.
+    /// Shell quoting for a cleaned value (`shellSafeValue`): plain words as they are;
+    /// otherwise single quotes, with a single quote inside written '"'"' (nothing is special
+    /// inside single quotes in sh, bash or zsh). A value with a line break or tab uses
+    /// ANSI-C quoting, $'…' (bash and zsh), with only \\, \', \n and \t escaped, so the
+    /// command stays on one line. Any other control character is dropped.
     public static func shellQuote(_ s: String) -> String {
         let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-")
         if !s.isEmpty, s.unicodeScalars.allSatisfy({ safe.contains($0) }) { return s }
-        return "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        if !s.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
+            return "'" + s.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+        }
+        var out = "$'"
+        for scalar in s.unicodeScalars {
+            switch scalar {
+            case "\\": out += "\\\\"
+            case "'": out += "\\'"
+            case "\n": out += "\\n"
+            case "\t": out += "\\t"
+            default:
+                // Any other control character is dropped, never passed through.
+                if scalar.properties.generalCategory != .control { out.unicodeScalars.append(scalar) }
+            }
+        }
+        return out + "'"
     }
 
     // MARK: - Secrets

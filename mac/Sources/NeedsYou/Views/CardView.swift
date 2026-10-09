@@ -154,7 +154,8 @@ private struct CardBodyText: View {
 }
 
 /// The body's commands, paths and ids (CardCopy.snippets) as copy chips: a click puts the
-/// whole snippet on the clipboard and the chip says "Copied" for a moment. The panel is
+/// snippet on the clipboard, exactly the text the chip shows (never truncated; unsafe
+/// snippets get no chip), and the chip says "Copied" for a moment. The panel is
 /// never key, so the body's text can't be selected; these are how a command gets out.
 /// Plain buttons like the link chips: nothing here takes focus.
 private struct CommandChips: View {
@@ -172,10 +173,12 @@ private struct CommandChips: View {
                         HStack(spacing: 4) {
                             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                                 .font(.system(size: max(8, model.metrics.linkFont - 2), weight: .semibold))
-                            Text(copied ? "Copied" : CardCopy.chipLabel(snippet))
+                            // The whole snippet, wrapped, never cut: what's copied is what's shown
+                            // (CardCopy.isSafeSnippet keeps it to one short line of visible text).
+                            Text(copied ? "Copied" : snippet)
                                 .font(.system(size: model.metrics.linkFont, design: .monospaced))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .linkChip(horizontal: 7, vertical: 2)
                     }
@@ -632,7 +635,7 @@ private struct CardMenuItems: View {
         } else if commands.count > 1 {
             Menu("Copy Command") {
                 ForEach(commands, id: \.self) { command in
-                    Button(CardCopy.chipLabel(command)) { model.copy(command, from: item, what: "command") }
+                    Button(command) { model.copy(command, from: item, what: "command") }
                 }
             }
         }
