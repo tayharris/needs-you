@@ -43,6 +43,7 @@ let entries =
     + testEntries(QuestionDisplayTests.self, QuestionDisplayTests.allTests)
     + testEntries(AnswerPolicyTests.self, AnswerPolicyTests.allTests, async: AnswerPolicyTests.asyncTests)
     + testEntries(OtherAnswerTests.self, OtherAnswerTests.allTests, async: OtherAnswerTests.asyncTests)
+    + testEntries(TypedAnswerRefusalTests.self, TypedAnswerRefusalTests.allTests, async: TypedAnswerRefusalTests.asyncTests)
     + testEntries(DeliveryPolicyTests.self, DeliveryPolicyTests.allTests)
     + testEntries(FocusStateTests.self, FocusStateTests.allTests)
     + testEntries(BypassRuleTests.self, BypassRuleTests.allTests)

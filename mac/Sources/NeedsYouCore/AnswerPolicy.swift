@@ -44,6 +44,13 @@ public struct AnswerSelection: Equatable, Sendable {
         if texts[question] != nil && !multiSelect { picked[question] = nil }
     }
 
+    /// The picks without any typed words (a hub refused them: only options are left).
+    public func withoutTexts() -> AnswerSelection {
+        var s = self
+        s.texts = [:]
+        return s
+    }
+
     /// Every question has at least one pick, all among its options.
     public func isComplete(for q: ItemQuestion) -> Bool {
         answers(for: q) != nil
@@ -77,10 +84,12 @@ public enum AnswerPolicy {
     /// Can the card answer this item's question? Open, answerable, every question with
     /// options or `allowOther`, options whose labels differ (an answer carries labels, so two
     /// options with one label can't be told apart; hubs refuse that, an older one may still
-    /// serve it), not answered yet, and not past its `expires_at`.
-    public static func canAnswer(_ item: Item, now: Date) -> Bool {
+    /// serve it), not answered yet, and not past its `expires_at`. `mayType` false (no hub
+    /// takes this Mac's typed words, `mayType(roles:)`): a question without options can't be
+    /// answered here.
+    public static func canAnswer(_ item: Item, now: Date, mayType: Bool = true) -> Bool {
         guard item.status == .open, item.answer == nil, let q = item.question, q.answerable,
-              !q.items.isEmpty, q.items.allSatisfy({ !$0.options.isEmpty || $0.allowOther }),
+              !q.items.isEmpty, q.items.allSatisfy({ !$0.options.isEmpty || ($0.allowOther && mayType) }),
               q.items.allSatisfy({ Set($0.options.map(\.label)).count == $0.options.count }),
               item.contentUpdatedAtRaw != nil else { return false }
         if let exp = q.expiresAt, exp <= now { return false }
@@ -152,9 +161,10 @@ public enum AnswerPolicy {
     public static let windowWarning = "Never type a password or token here: the agent gets these words as typed."
 
     /// The button that opens the answer window for a question: "Other…" next to options,
-    /// "Answer…" for a question without them. nil when it takes no typed words.
-    public static func otherTitle(_ q: ItemQuestionItem) -> String? {
-        guard q.allowOther else { return nil }
+    /// "Answer…" for a question without them. nil when it takes no typed words, or this Mac
+    /// may not send any (`mayType`).
+    public static func otherTitle(_ q: ItemQuestionItem, mayType: Bool = true) -> String? {
+        guard q.allowOther, mayType else { return nil }
         return q.options.isEmpty ? "Answer\u{2026}" : "Other\u{2026}"
     }
 
@@ -180,10 +190,28 @@ public enum AnswerPolicy {
         return "Answered: " + picks + (by.isEmpty ? "" : " (\(by))")
     }
 
+    /// May this Mac send typed words? Hubs take them only from an owner token (docs/API.md),
+    /// so no when every configured hub's token role is known (from its invite) and none is
+    /// owner. An unknown role (a token entered by hand) or no hubs (the demo) says yes: the
+    /// hub decides, and a `forbidden` refusal says so on the card.
+    public static func mayType(roles: [HubRole?]) -> Bool {
+        roles.isEmpty || roles.contains { $0 == nil || $0 == .owner }
+    }
+
+    /// Does the answer carry typed words?
+    public static func hasText(_ request: AnswerRequest) -> Bool {
+        request.answers.contains { $0.text != nil }
+    }
+
     /// The card's line for a failed answer, from the hub's error code (nil: a network error).
-    public static func failureText(code: String?) -> String {
+    /// `typed`: the answer carried typed words (a `forbidden` then means only the owner's Mac
+    /// may type them).
+    public static func failureText(code: String?, typed: Bool = false) -> String {
         switch code {
         case nil: return "Not sent: no hub answered. Try again, or answer in the terminal."
+        case "forbidden"? where typed:
+            return "Not sent: this hub takes typed answers only from the owner's Mac. Pick an option instead, or answer in the terminal."
+        case "forbidden"?: return "Not sent: this Mac's token may not answer questions. Answer in the terminal."
         case "already_answered"?: return "Already answered (another click got there first)."
         case "question_changed"?: return "The question changed: look again before answering."
         case "question_expired"?: return "The agent stopped waiting: answer in the terminal."

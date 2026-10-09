@@ -78,19 +78,32 @@ public actor FailoverFeed: ItemFeed {
     }
 
     /// Like patch: the hub that last answered first, the others on transport errors and 421.
+    /// A `forbidden` refusal (this hub's token may not send typed words) also tries the next
+    /// hub: the token there may be an owner one, and a refused answer was not taken, so
+    /// nothing is sent twice. When no hub takes it, that refusal is the outcome.
     public func answer(id: String, _ answer: AnswerRequest) async throws -> AnswerOutcome {
         guard !hubs.isEmpty else { throw HubError.notConfigured }
         let first = current ?? order().first ?? 0
         let attempts = [first] + order().filter { $0 != first }
         var lastError: Error = HubError.notConfigured
+        var forbidden: AnswerOutcome?
         for index in attempts {
             do {
-                return try await hubs[index].feed.answer(id: id, answer)
+                let outcome = try await hubs[index].feed.answer(id: id, answer)
+                if outcome == .refused(code: "forbidden") {
+                    forbidden = outcome
+                    continue
+                }
+                return outcome
             } catch {
                 lastError = error
-                if let e = error as? HubError, e != .invalidResponse, e != .misdirected { throw error }
+                if let e = error as? HubError, e != .invalidResponse, e != .misdirected {
+                    if let forbidden { return forbidden }
+                    throw error
+                }
             }
         }
+        if let forbidden { return forbidden }
         throw lastError
     }
 

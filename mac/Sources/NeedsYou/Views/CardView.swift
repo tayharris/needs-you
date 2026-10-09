@@ -272,7 +272,7 @@ struct QuestionList: View {
     var body: some View {
         let font = model.bodyFont
         let items = QuestionDisplay.visible(question)
-        let answering = AnswerPolicy.canAnswer(item, now: model.now)
+        let answering = AnswerPolicy.canAnswer(item, now: model.now, mayType: model.mayTypeAnswers)
         let state = model.answerStates[item.id]
         let selection = model.answerSelections[item.id] ?? AnswerSelection()
         let locked = state == .sending || state == .sent
@@ -421,7 +421,7 @@ private struct TypedAnswerRow: View {
             }
         } else if let typed {
             OptionRow(option: words(typed, "Your own words"), font: font, chosen: true)
-        } else if answering, let title = AnswerPolicy.otherTitle(question) {
+        } else if answering, let title = AnswerPolicy.otherTitle(question, mayType: model.mayTypeAnswers) {
             Button { model.openAnswerWindow(item, question: index) } label: {
                 OptionRow(option: ItemQuestionOption(label: title, detail: question.options.isEmpty
                                                      ? "Type your answer" : "Type your own answer"),
