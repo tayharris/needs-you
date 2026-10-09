@@ -288,6 +288,44 @@
         </div>
       </div>
       <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>. For any other agent or tool with hooks, webhooks or a notification command, <a href="guides/custom-connector.html">build a custom connector</a>: the guide has the exact item format, which fields are required, and tested examples.</p>
+      <p class="note">Most of these haven't been used with a real model yet. If you use one, <a href="#help-test">help us test it</a>.</p>
+    </section>
+
+    <section id="help-test" aria-labelledby="help-test-title">
+      <h2 id="help-test-title">Help us test</h2>
+      <p>We can't run every AI tool on real work with a real login. If you use one of these, try needs-you with it for a day and tell us which cards appeared and which didn't. "It all worked" is a useful report too. Next to each tool: what nobody has seen it do yet.</p>
+      <!-- Keep in step with the table in docs/guides/help-us-test.md. -->
+      <div class="works">
+        <div class="works-group">
+          <h3 class="works-h3">Run against a stub model, never with a real one</h3>
+          <ul class="works-list">
+            <li><a href="guides/codex.html">Codex CLI</a> <span>approval, question cards</span></li>
+            <li><a href="guides/gemini.html">Gemini CLI</a> <span>waiting, question cards</span></li>
+            <li><a href="guides/opencode.html">opencode</a> <span>answering from the card</span></li>
+            <li><a href="guides/copilot.html">GitHub Copilot CLI</a> <span>edit and MCP-tool prompts</span></li>
+            <li><a href="guides/kimi.html">Kimi Code</a> <span>a real approval</span></li>
+            <li><a href="guides/grok.html">Grok Build</a> <span>permission prompts</span></li>
+            <li><a href="guides/aider.html">Aider</a> <span>a real session</span></li>
+            <li><a href="guides/cline.html">Cline CLI</a> <span>a real session</span></li>
+          </ul>
+        </div>
+        <div class="works-group">
+          <h3 class="works-h3">Never run in the real tool</h3>
+          <ul class="works-list">
+            <li><a href="guides/cursor.html">Cursor</a> <span>anything</span></li>
+            <li><a href="guides/cline.html">Cline for VS Code</a> <span>anything</span></li>
+            <li><a href="guides/mcp.html">MCP server in real clients</a> <span>registering, calling tools</span></li>
+          </ul>
+          <h3 class="works-h3">In use</h3>
+          <ul class="works-list">
+            <li><a href="guides/claude-code.html">Claude Code</a> <span>more setups welcome</span></li>
+            <li><a href="guides/orca.html">Orca</a> <span>more setups welcome</span></li>
+          </ul>
+        </div>
+      </div>
+      <p><a class="button" data-repo="/issues/new?template=agent_test.yml" href="https://github.com/tayharris/needs-you/issues/new?template=agent_test.yml">Report a test</a></p>
+      <p>Or: <a data-repo="/issues/new?template=integration_request.yml" href="https://github.com/tayharris/needs-you/issues/new?template=integration_request.yml">ask for a tool we don't support</a>, <a data-repo="/issues/new?template=feature_request.yml" href="https://github.com/tayharris/needs-you/issues/new?template=feature_request.yml">suggest something</a>, or <a data-repo="/issues/new?template=bug_report.yml" href="https://github.com/tayharris/needs-you/issues/new?template=bug_report.yml">report a bug</a>. A GitHub account is needed.</p>
+      <p class="note">What to try with each tool, and what to put in a report: <a href="guides/help-us-test.html">Help us test</a>. Want to write code? See <a data-repo="/blob/main/CONTRIBUTING.md" href="https://github.com/tayharris/needs-you/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
     </section>
 
     <section id="install" aria-labelledby="install-title">
