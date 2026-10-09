@@ -334,13 +334,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Self.meters(model, .bars)
                 model.settings.usage.onPill = false
             }),
+            // A setup tip (they never show in demo mode, so the tour asks for one): the
+            // integrations tip, whose button opens Settings → Integrations.
+            ("17-setup-tip-integrations", { model in
+                model.settings.usage.onPill = true
+                model.snapshotSetupTips = [.integrations]
+                model.expand()
+                model.scrollTarget = nil
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
                                            (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
-                                           (.panel, 6), (.alerts, 4)]
+                                           (.panel, 6), (.alerts, 4), (.integrations, 4)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
@@ -357,6 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             // The pages show the out-of-the-box look and alerts settings.
+            model.snapshotSetupTips = nil
             model.collapse()
             settings.ui = UIPrefs()
             settings.usage = UsagePrefs()

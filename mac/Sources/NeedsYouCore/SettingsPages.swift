@@ -93,7 +93,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .alerts:
             return "What can interrupt you, and when: delivery, focus, snoozes, rules and reminders."
         case .integrations:
-            return "What the shortcut and a card's Terminal button do, and live updates."
+            return "Cards from Linear, Jira, GitHub and expiry dates, what a card's Terminal button does, and live updates."
         case .updates:
             return "This app's version, automatic updates, and which machines are out of date."
         case .advanced:

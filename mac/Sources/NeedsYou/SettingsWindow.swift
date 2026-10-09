@@ -358,6 +358,8 @@ struct SettingsView: View {
             WorkScreenSection(settings: settings)
             extra[.alerts]
         case .integrations:
+            // The snapshot tour opens the first row, to show what's inside one.
+            IntegrationsSettingsSection(initiallyOpen: showcase == nil ? [] : [IntegrationCatalog.all[0].id])
             terminalJumpSection
             extra[.integrations]
             sendersSection
@@ -975,7 +977,7 @@ struct SettingsView: View {
 
     private var sendersSection: some View {
         Section {
-            Text("Claude Code hooks, Orca automations, CI jobs and scripts are senders: they post alerts to your hub. To set up a machine, make a link for it in Connect a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
+            Text("Claude Code hooks, Orca automations, the pollers above, CI jobs and scripts are senders: they post alerts to your hub. To set up a machine, make a link for it in Connect a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if canInvite {
                 HStack {
