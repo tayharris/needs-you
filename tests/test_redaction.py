@@ -140,12 +140,14 @@ class Catches(unittest.TestCase):
             fake("glp", "tt-", "fake" * 5),
             fake("xa", "pp-", "1-FAKE-1234-fake"),
             fake("ya", "29.", "fake-FAKE_fake" * 2),
+            fake("li", "n_api_", "fakeFAKE" * 5),
+            fake("li", "n_oauth_", "fake" * 10),
         )
         for secret in cases:
             with self.subTest(secret[:6]):
                 self.assertEqual(self.redact("use %s now" % secret), "use [redacted] now")
         # look-alikes that aren't keys stay
-        plain = "ASIAN market, sk_live_ alone, npm_config_cache, hf_hub, xapp-x, ya29.x, AKIA1"
+        plain = "ASIAN market, sk_live_ alone, npm_config_cache, hf_hub, xapp-x, ya29.x, AKIA1, lin_api_ alone"
         self.check(plain, keep=(plain,))
 
 

@@ -164,7 +164,7 @@ _SECRET_RAW = re.compile(r"(?:\b|(?<=%[0-9A-Fa-f]{2}))"
                          r"(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
                          r"|xox[abpr]-[\w-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|ny[ip]?_[A-Za-z0-9_-]{8,}"
                          r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}"
-                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,})")
+                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,}|lin_(?:api|oauth)_\w{16,})")
 # A webhook URL whose path is its secret: the host and the path's start stay.
 _WEBHOOK = re.compile(r"(hooks\.slack\.com/(?:services|workflows|triggers)/"
                       r"|discord(?:app)?\.com/api/(?:v\d+/)?webhooks/)[\w/-]+")
