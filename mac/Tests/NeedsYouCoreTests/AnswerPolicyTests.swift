@@ -117,7 +117,7 @@ final class AnswerPolicyTests: XCTestCase {
         expiring.expiresAt = Date(timeIntervalSince1970: 1001)
         XCTAssertTrue(AnswerPolicy.canAnswer(item(expiring), now: now))
         let free = ItemQuestion(items: [db, ItemQuestionItem(text: "Name?")], answerable: true)
-        XCTAssertFalse(AnswerPolicy.canAnswer(item(free), now: now))   // no free text from the card
+        XCTAssertFalse(AnswerPolicy.canAnswer(item(free), now: now))   // nothing to answer "Name?" with
         var noVersion = item(q)
         noVersion.contentUpdatedAtRaw = nil
         XCTAssertFalse(AnswerPolicy.canAnswer(noVersion, now: now))

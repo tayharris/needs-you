@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var panel: PanelController!
     private var settingsWindow: SettingsWindowController!
+    private var answerWindow: AnswerWindowController!
     private var hotKeys: HotKeyController!
     private var phase3: Phase3Controller?
     private var localHub: LocalHubController!
@@ -49,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.openSettingsHandler = { [weak self] in self?.settingsWindow.show() }
         model.openInviteHandler = { [weak self] in self?.settingsWindow.show(tab: .connect) }
         model.openSettingsPageHandler = { [weak self] page in self?.settingsWindow.show(tab: page) }
+        // The other one: the user clicked "Other…" / "Answer…" on a question card, to type.
+        answerWindow = AnswerWindowController(model: model)
+        model.openAnswerWindowHandler = { [weak self] item, question in self?.answerWindow.show(item: item, question: question) }
         // Setup cards: a click on a card's button (Settings may activate the app then).
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
@@ -67,11 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installTerminationSignal()
 
         // Focus-rule tripwire: activation is only legitimate right after the user opens
-        // Settings. Anything else is a regression; log it loudly.
+        // Settings or clicks "Other…" for the answer window. Anything else is a regression;
+        // log it loudly.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 let settingsFront = NSApp.windows.contains { $0.isVisible && $0.title.hasSuffix("Settings") }
-                NSLog("NeedsYou focus: app became active (settings window visible: \(settingsFront))")
+                let answerFront = NSApp.windows.contains { $0.isVisible && $0 is AnswerWindow }
+                NSLog("NeedsYou focus: app became active (settings window visible: \(settingsFront), answer window visible: \(answerFront))")
             }
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { note in
@@ -153,6 +159,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Nothing here activates the app or makes a window key. The Settings pages are drawn
     /// with the default look; the look settings are put back afterwards. Best run on a test
     /// copy with its own defaults suite, as screenshots.sh does.
+    private static let tourTypedAnswer = "accounts_v2, to match the API naming"
+
+    /// The tour's Claude card that takes typed words (screenshots.sh), until it's answered.
+    private static func tourOtherItem(_ model: AppModel) -> Item? {
+        model.needsItems.first { $0.key.hasPrefix("claude") && $0.answer == nil && $0.question?.answerable == true
+            && $0.question?.items.first?.allowOther == true }
+    }
+
     private func runSnapshotTour(into dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let savedUI = settings.ui
@@ -225,6 +239,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     model.scrollTarget = item.id
                 }
             }),
+            ("6j-question-other", { model in
+                // A question whose agent takes typed words: "Other…" below its options.
+                if let item = Self.tourOtherItem(model) {
+                    model.scrollTarget = item.id
+                }
+            }),
+            ("6l-question-other-sent", { model in
+                // Send in the answer window (6k): the words are the answer, shown on the card.
+                if let item = Self.tourOtherItem(model) {
+                    _ = model.submitTypedAnswer(itemID: item.id, question: 0, text: Self.tourTypedAnswer,
+                                                seenVersion: item.contentUpdatedAtRaw)
+                    model.scrollTarget = item.id
+                }
+            }),
             ("7-summary", { [weak self] model in
                 model.settings.ui.cardBodies = .full
                 model.collapse()
@@ -274,6 +302,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 action(model)
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name).png"))
+                if name == "6j-question-other",
+                   let item = Self.tourOtherItem(model) {
+                    // The answer window "Other…" opens, with words typed (drawn offscreen).
+                    await answerWindow.writeSnapshot(item: item, question: 0, text: Self.tourTypedAnswer,
+                                                     to: dir.appendingPathComponent("6k-answer-window.png"))
+                }
             }
             // The pages show the out-of-the-box look and alerts settings.
             model.collapse()
@@ -442,7 +476,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so hand activation back unless the Settings window is up.
     private func yieldActivation() {
         func handBack() {
-            let settingsFront = NSApp.windows.contains { $0.isVisible && $0.title.hasSuffix("Settings") }
+            let settingsFront = NSApp.windows.contains {
+                $0.isVisible && ($0.title.hasSuffix("Settings") || $0 is AnswerWindow)
+            }
             if NSApp.isActive && !settingsFront { NSApp.deactivate() }
         }
         handBack()

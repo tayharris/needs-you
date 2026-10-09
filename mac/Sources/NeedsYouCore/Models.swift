@@ -124,11 +124,31 @@ public struct ItemQuestion: Codable, Hashable, Sendable {
     }
 }
 
-/// One question's answer: the labels the person clicked, as the hub stores them.
+/// One question's answer: the labels the person clicked, and the words they typed in the
+/// answer window ("Other", only for a question with `allowOther`), as the hub stores them.
 public struct ItemAnswer: Codable, Hashable, Sendable {
     public var selected: [String]
+    /// The person's own words; nil when they only clicked options. Encoded only when set.
+    public var text: String?
 
-    public init(selected: [String]) { self.selected = selected }
+    enum CodingKeys: String, CodingKey { case selected, text }
+
+    public init(selected: [String], text: String? = nil) {
+        self.selected = selected
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? nil
+        // A text-only answer may come without `selected`; a labels answer needs it.
+        if text == nil || c.contains(.selected) {
+            selected = try c.decode([String].self, forKey: .selected)
+        } else {
+            selected = []
+        }
+        self.text = text
+    }
 }
 
 /// The body of POST /v1/items/{id}/answer (docs/API.md).
@@ -164,17 +184,23 @@ public struct ItemQuestionItem: Codable, Hashable, Sendable {
     public var text: String
     public var options: [ItemQuestionOption]
     public var multiSelect: Bool
+    /// The sender also takes the person's own words for this question ("Other"; the only
+    /// answer when there are no options). The card offers "Other…" or "Answer…".
+    public var allowOther: Bool
 
     enum CodingKeys: String, CodingKey {
         case header, text, options
         case multiSelect = "multi_select"
+        case allowOther = "allow_other"
     }
 
-    public init(header: String = "", text: String, options: [ItemQuestionOption] = [], multiSelect: Bool = false) {
+    public init(header: String = "", text: String, options: [ItemQuestionOption] = [], multiSelect: Bool = false,
+                allowOther: Bool = false) {
         self.header = header
         self.text = text
         self.options = options
         self.multiSelect = multiSelect
+        self.allowOther = allowOther
     }
 
     public init(from decoder: Decoder) throws {
@@ -184,6 +210,7 @@ public struct ItemQuestionItem: Codable, Hashable, Sendable {
         options = ((try? c.decodeIfPresent([ItemQuestionOption].self, forKey: .options)) ?? [])
             .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         multiSelect = (try? c.decodeIfPresent(Bool.self, forKey: .multiSelect)) ?? false
+        allowOther = (try? c.decodeIfPresent(Bool.self, forKey: .allowOther)) ?? false
     }
 }
 

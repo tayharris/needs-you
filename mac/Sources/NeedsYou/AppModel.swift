@@ -122,6 +122,9 @@ final class AppModel: ObservableObject {
     var resizeHandler: ((DragPhase) -> Void)?
     /// Set by the app delegate.
     var openSettingsHandler: (() -> Void)?
+    /// Set by AppDelegate: opens the answer window for an item's question (index). Only
+    /// `openAnswerWindow` calls it, from an explicit click on "Other…" or "Answer…".
+    var openAnswerWindowHandler: ((Item, Int) -> Void)?
     /// Set by the app delegate: opens Settings at the invite section (activates the app).
     var openInviteHandler: (() -> Void)?
     /// Set by the app delegate: opens Settings at a page (the menu's Move to Applications…).
@@ -974,6 +977,68 @@ final class AppModel: ObservableObject {
         guard AnswerPolicy.canAnswer(item, now: Date()),
               let request = AnswerPolicy.request(item, answerSelections[item.id] ?? AnswerSelection()) else { return }
         sendAnswer(item, request)
+    }
+
+    /// A click on "Other…" ("Answer…" for a question without options): open the answer
+    /// window, where the person types their own words. The one card button that activates
+    /// the app (CLAUDE.md rule 2): typing needs a key window, and the panel never is one.
+    func openAnswerWindow(_ item: Item, question: Int) {
+        guard AnswerPolicy.canAnswer(item, now: Date()), let q = item.question,
+              q.items.indices.contains(question), q.items[question].allowOther,
+              answerStates[item.id] != .sending, answerStates[item.id] != .sent else { return }
+        openAnswerWindowHandler?(item, question)
+    }
+
+    /// The words already typed for a question on this card (to edit them), if any.
+    func typedAnswer(_ itemID: String, question: Int) -> String? {
+        answerSelections[itemID]?.texts[question]
+    }
+
+    /// Would the words for this question make the card's answer whole (the window's button
+    /// then says Send), and the labels picked on the card that would go with them.
+    func typedAnswerPlan(_ itemID: String, question: Int) -> (complete: Bool, with: [String]) {
+        guard let item = store.items[itemID], let q = item.question,
+              let r = AnswerPolicy.withText(item, answerSelections[itemID] ?? AnswerSelection(),
+                                            question: question, text: "x") else { return (false, []) }
+        let with = q.items.indices.flatMap { i in
+            q.items[i].options.map(\.label).filter { r.selection.isPicked(i, $0) }
+        }
+        return (r.complete, with)
+    }
+
+    /// Send (or Use) in the answer window: the typed words become that question's answer.
+    /// When that makes the card's answer whole it is sent, like a click; otherwise the card
+    /// keeps the words and its Send waits for the other questions. Returns why the words
+    /// weren't taken, for the window; nil when they were (the window closes).
+    func submitTypedAnswer(itemID: String, question: Int, text raw: String, seenVersion: String?) -> String? {
+        guard let item = store.items[itemID], AnswerPolicy.canAnswer(item, now: Date()),
+              answerStates[itemID] != .sending, answerStates[itemID] != .sent else {
+            return "This question can't take an answer any more: answer in the terminal."
+        }
+        guard item.contentUpdatedAtRaw == seenVersion else {
+            return "The question changed while you typed: look at the card again."
+        }
+        switch AnswerPolicy.typedAnswer(raw) {
+        case .refused(let why):
+            return why
+        case .ok(let text):
+            guard let r = AnswerPolicy.withText(item, answerSelections[itemID] ?? AnswerSelection(),
+                                                question: question, text: text) else {
+                return "This question takes only its options."
+            }
+            answerSelections[itemID] = r.selection
+            if case .failed = answerStates[itemID] { answerStates[itemID] = nil }
+            if r.complete, let request = AnswerPolicy.request(item, r.selection) { sendAnswer(item, request) }
+            return nil
+        }
+    }
+
+    /// A click on the typed words' row before Send: take them back.
+    func clearTypedAnswer(_ item: Item, question: Int) {
+        guard var selection = answerSelections[item.id], let q = item.question, q.items.indices.contains(question),
+              answerStates[item.id] != .sending, answerStates[item.id] != .sent else { return }
+        selection.setText(question, nil, multiSelect: q.items[question].multiSelect)
+        answerSelections[item.id] = selection
     }
 
     private func sendAnswer(_ item: Item, _ request: AnswerRequest) {

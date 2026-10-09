@@ -236,8 +236,11 @@ struct StepList: View {
 /// one" or "choose any", then its options as rows, the label and a fainter description. No
 /// tick boxes. When the sender waits for an answer (`answerable`, AnswerPolicy.canAnswer) the
 /// rows are buttons: for one single-choice question a click sends that answer; otherwise
-/// clicks toggle and Send sends. "Answer in the terminal" opens the card's terminal link.
-/// Every control is a plain button: the panel never becomes key and the app never activates.
+/// clicks toggle and Send sends. A question whose sender takes the person's own words
+/// (`allowOther`) gets "Other…" ("Answer…" without options), which opens the answer window:
+/// the only card button that activates the app, since typing needs a key window and the
+/// panel never is one. "Answer in the terminal" opens the card's terminal link. Every other
+/// control is a plain button: the panel never becomes key.
 struct QuestionList: View {
     let item: Item
     let question: ItemQuestion
@@ -253,7 +256,7 @@ struct QuestionList: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, q in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(QuestionDisplay.heading(q, index: index, count: items.count))
+                    Text(QuestionDisplay.heading(q, index: index, count: items.count, answering: answering))
                         .font(.system(size: model.metrics.metaFont, weight: .semibold))
                         .foregroundStyle(Theme.muted)
                     Text(LimitedMarkdown.render(q.text))
@@ -284,6 +287,8 @@ struct QuestionList: View {
                         }
                         .padding(.top, 1)
                     }
+                    TypedAnswerRow(item: item, index: index, question: q, model: model, font: font,
+                                   answering: answering, locked: locked, typed: selection.texts[index])
                 }
             }
             AnswerFooter(item: item, question: question, model: model, answering: answering,
@@ -348,12 +353,64 @@ private struct AnswerFooter: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Bring the agent's terminal forward (for an answer the card can't give, such as your own words)")
+                        .help("Bring the agent's terminal forward (for an answer the card can't give)")
                     }
                     Spacer(minLength: 0)
                 }
             }
         }
+    }
+}
+
+/// Below a question's options, when its sender takes typed words: "Other…" ("Answer…"),
+/// which opens the answer window; the words once typed (click to edit, × to take them back
+/// before Send); or the words of the answer given.
+private struct TypedAnswerRow: View {
+    let item: Item
+    let index: Int
+    let question: ItemQuestionItem
+    @ObservedObject var model: AppModel
+    let font: CGFloat
+    let answering: Bool
+    let locked: Bool
+    let typed: String?
+
+    var body: some View {
+        let given = item.answer.flatMap { $0.indices.contains(index) ? $0[index].text : nil }
+        if let given {
+            OptionRow(option: words(given, "Your own words"), font: font, chosen: true)
+        } else if let typed, answering, !locked {
+            HStack(spacing: 4) {
+                Button { model.openAnswerWindow(item, question: index) } label: {
+                    OptionRow(option: words(typed, "Your own words \u{00B7} click to change"), font: font,
+                              chosen: true, clickable: true)
+                }
+                .buttonStyle(.plain)
+                .help("Change your answer")
+                Button { model.clearTypedAnswer(item, question: index) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: max(10, font - 1)))
+                        .foregroundStyle(Theme.muted)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Take these words back")
+            }
+        } else if let typed {
+            OptionRow(option: words(typed, "Your own words"), font: font, chosen: true)
+        } else if answering, let title = AnswerPolicy.otherTitle(question) {
+            Button { model.openAnswerWindow(item, question: index) } label: {
+                OptionRow(option: ItemQuestionOption(label: title, detail: question.options.isEmpty
+                                                     ? "Type your answer" : "Type your own answer"),
+                          font: font, clickable: true)
+            }
+            .buttonStyle(.plain)
+            .help("Opens a small window to type your answer in")
+        }
+    }
+
+    private func words(_ text: String, _ detail: String) -> ItemQuestionOption {
+        ItemQuestionOption(label: "\u{201C}\(text)\u{201D}", detail: detail)
     }
 }
 
