@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Security issue
+    url: https://github.com/tayharris/needs-you/blob/main/SECURITY.md
+    about: Never in a public issue. SECURITY.md says how to report privately (a private advisory under the Security tab).
   - name: Guides and troubleshooting
-    url: https://github.com/tayharris/needs-you/tree/main/docs/guides
-    about: Setup, the Mac app, senders, Claude Code, Orca, and what to check when an item doesn't show up.
+    url: https://needsyou.app/guides/index.html
+    about: Setup, the Mac app, every agent, and what to check when an item doesn't show up.
   - name: Sender contract (AGENT-GUIDE)
     url: https://github.com/tayharris/needs-you/blob/main/docs/AGENT-GUIDE.md
     about: When and how agents and scripts should post.
-  - name: Security issue
-    url: https://github.com/tayharris/needs-you/security/advisories/new
-    about: Report vulnerabilities privately, never in a public issue. See SECURITY.md.

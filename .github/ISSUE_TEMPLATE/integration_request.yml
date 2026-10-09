@@ -1,0 +1,41 @@
+name: Integration request
+description: A tool needs-you doesn't support yet (an agent, CI system, scheduler, chat or tracker) that should post cards.
+labels: ["integration"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Supported today: see the [guides](https://needsyou.app/guides/index.html). Anything that can run a command can already post with the `needs-you` CLI ([custom connector](https://needsyou.app/guides/custom-connector.html)); this is for a ready-made integration.
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: Its name and a link.
+    validations:
+      required: true
+  - type: textarea
+    id: when
+    attributes:
+      label: When should it alert you?
+      description: The moments the tool is blocked on you (an approval, a question, a finished run, a failure), and what should clear the card.
+    validations:
+      required: true
+  - type: textarea
+    id: hooks
+    attributes:
+      label: Hooks, notifications or API
+      description: How the tool can tell needs-you, if you know it (hooks, a notification command, a plugin system, webhooks). Links to its docs help most.
+  - type: input
+    id: version
+    attributes:
+      label: Version you use, and OS
+      placeholder: "1.4.2 on macOS 15"
+  - type: dropdown
+    id: help
+    attributes:
+      label: Can you help?
+      multiple: true
+      options:
+        - I can test a build with my own login
+        - I'd like to write it (see CONTRIBUTING.md)
+        - Just asking

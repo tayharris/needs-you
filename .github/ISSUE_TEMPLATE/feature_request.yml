@@ -1,7 +1,11 @@
-name: Feature request
-description: Suggest an improvement or a new integration.
+name: Suggestion or feature request
+description: An idea, an improvement, or something that got in your way.
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        For a tool needs-you doesn't support yet, use the **Integration request** template instead.
   - type: textarea
     id: problem
     attributes:
@@ -25,7 +29,7 @@ body:
         - Hub / API
         - CLI
         - Invites and onboarding
-        - New integration (sender)
+        - An existing integration
         - Docs or site
         - Other
     validations:
@@ -38,7 +42,7 @@ body:
     id: constraints
     attributes:
       label: Fits the project's constraints
-      description: See CLAUDE.md. It's fine to propose something that doesn't; say why.
+      description: See CONTRIBUTING.md. It's fine to propose something that doesn't; say why.
       options:
         - label: No new runtime dependencies (Python stdlib only for the hub and CLI)
         - label: Works without a cloud service (loopback or tailnet only)
