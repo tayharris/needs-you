@@ -558,10 +558,6 @@
    "allowed": false
   },
   {
-   "url": "needsyou://app/activate?bundle=dev.zed.Zed ",
-   "allowed": false
-  },
-  {
    "url": "needsyou://app/activate?bundle=dev.zed.Zed%",
    "allowed": false
   },
