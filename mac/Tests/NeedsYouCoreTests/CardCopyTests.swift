@@ -33,6 +33,8 @@ final class CardCopyTests: XCTestCase {
         ("testSecretsAreRedacted", testSecretsAreRedacted),
         ("testAddCommandCarriesTheEvent", testAddCommandCarriesTheEvent),
         ("testCopiesUseTheSenderPriority", testCopiesUseTheSenderPriority),
+        ("testKeyAndIDCopiesAreRedacted", testKeyAndIDCopiesAreRedacted),
+        ("testDebugReportNamesTheRuleEvent", testDebugReportNamesTheRuleEvent),
     ]
 
     private let created = Date(timeIntervalSince1970: 1_800_000_000)
@@ -395,5 +397,30 @@ final class CardCopyTests: XCTestCase {
         XCTAssertEqual(CardCopy.snippets(in: "`export NY_TOKEN=\(token)`"), [], "no chip rather than a copy that differs")
         // Ordinary words that merely contain the prefixes stay.
         XCTAssertEqual(CardCopy.redactSecrets("sunny_day company_name"), "sunny_day company_name")
+    }
+
+    func testKeyAndIDCopiesAreRedacted() {
+        // The hub takes any key characters, so a sender can put a token in one; "Copy Key"
+        // must mask it like every other copy (Developer mode: nothing copied carries one).
+        let token = "ny_" + String(repeating: "B", count: 43)
+        let i = Item(id: "nyp_" + String(repeating: "c", count: 20), key: "work:deploy:\(token)",
+                     title: "Deploy", createdAt: created)
+        XCTAssertEqual(CardCopy.key(i), "work:deploy:ny_<redacted>")
+        XCTAssertEqual(CardCopy.id(i), "nyp_<redacted>")
+        XCTAssertEqual(CardCopy.key(item()), "work:ACME-123:redo-blocked", "an ordinary key is copied as it is")
+        XCTAssertEqual(CardCopy.id(item()), "itm_1")
+    }
+
+    func testDebugReportNamesTheRuleEvent() {
+        // "Treat as urgent" for every card and only for questions are different rules.
+        let rule = BypassRule(match: .keyPrefix, value: "agent:", action: .urgent, event: "question")!
+        let report = CardCopy.debugReport(item(event: "question"),
+                                          info: CardCopy.DebugInfo(appVersion: "1", osVersion: "14", rule: rule))
+        XCTAssertTrue(report.contains("- Bypass rule: Key starts with \u{201C}agent:\u{201D}, when it asks \u{2192} Treat as urgent"),
+                      report)
+        let custom = BypassRule(match: .host, value: "devbox", action: .low, event: "deploy")!
+        let other = CardCopy.debugReport(item(), info: CardCopy.DebugInfo(appVersion: "1", osVersion: "14", rule: custom))
+        XCTAssertTrue(other.contains("- Bypass rule: Host is \u{201C}devbox\u{201D}, when the event is deploy \u{2192} Treat as low"),
+                      other)
     }
 }

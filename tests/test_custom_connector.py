@@ -101,6 +101,16 @@ class GuideMatchesHub(unittest.TestCase):
         v({"title": "t", "body": "line\n\ttab", "expires_at": 1999999999})
         v({"title": "t", "expires_at": "2026-10-08T17:00:00+02:00"})
 
+    def test_source_event_documented(self):
+        # source.event isn't an ignored key: the hub refuses one that isn't a slug, so a
+        # connector reading "other keys ignored" would get a 400 it can't explain.
+        self.assertEqual(hubmod.SOURCE_EVENT_RE.pattern, r"^[a-z][a-z0-9_-]{0,31}\Z")
+        self.has("`event`: a slug of at most 32 characters, `a-z` first, then `a-z 0-9 _ -`")
+        self.has("`--event`")
+        with self.assertRaises(hubmod.ApiError) as cm:
+            hubmod.validate_item_input({"title": "t", "source": {"event": "Deploy failed!"}})
+        self.assertEqual((cm.exception.status, cm.exception.field), (400, "source.event"))
+
     def test_cli_flags_exist(self):
         def help_of(*cmd):
             r = subprocess.run([sys.executable, CLI] + list(cmd) + ["--help"], capture_output=True, text=True,

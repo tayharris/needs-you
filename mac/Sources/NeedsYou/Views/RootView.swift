@@ -189,10 +189,33 @@ extension View {
 
 struct IdlePill: View {
     @ObservedObject var model: AppModel
+    /// Observed too, so a change in Settings → Appearance → Usage meters redraws the meters straight away (the
+    /// panel resizes from the same settings).
+    @ObservedObject var settings: AppSettings
+
+    init(model: AppModel) {
+        self.model = model
+        self.settings = model.settings
+    }
 
     var body: some View {
         // At rest a small, faint "Nothing needs <you>" (still easy to drag, right-click or
-        // hide); on hover the full status line.
+        // hide); on hover the full status line. Usage meters (Settings → Appearance → Usage meters)
+        // go below or after the line, and the pill rests a little stronger while they show
+        // (PillMeterLayout.idleAlpha).
+        let layout = model.idleMeterLayout
+        PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
+                       cornerRadius: model.hovering ? 11 : 9, numberBase: model.metrics.idleFont - 1,
+                       trailing: 8) {
+            line(trailing: layout.showsTrailing ? 0 : 8)
+        }
+        .animation(.easeInOut(duration: 0.15), value: model.hovering)
+        .pillInteraction(model)
+        .help((model.focusSummary.map { "Focus: \($0) · \(model.statusLine)" } ?? model.statusLine)
+              + model.pillUsageHelp)
+    }
+
+    private func line(trailing: CGFloat) -> some View {
         HStack(spacing: 6) {
             if model.isFocused {
                 // Focus is on (right-click → Focus); the link badge when a link set it.
@@ -214,11 +237,8 @@ struct IdlePill: View {
                 .foregroundStyle(Theme.text.opacity(0.85))
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .animation(.easeInOut(duration: 0.15), value: model.hovering)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .pillInteraction(model)
-        .help(model.focusSummary.map { "Focus: \($0) · \(model.statusLine)" } ?? model.statusLine)
+        .padding(.leading, 8)
+        .padding(.trailing, trailing)
     }
 }
 

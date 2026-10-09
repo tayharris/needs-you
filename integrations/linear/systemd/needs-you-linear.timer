@@ -1,0 +1,11 @@
+[Unit]
+Description=needs-you: poll Linear every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

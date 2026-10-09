@@ -74,7 +74,7 @@ private struct SampleAppWindow: View {
 /// the theme's tint, as RootView draws them. Blends with what's behind it in the window.
 struct PanelGlass: View {
     let palette: PanelPalette
-    /// Settings → Panel → Opacity → Background darkness.
+    /// Settings → Appearance → Panel and cards → Opacity → Background darkness.
     let backdrop: Double
     /// The faint idle pill has no backdrop or tint (RootView).
     var idle = false
@@ -111,7 +111,7 @@ private struct PanelMaterial: NSViewRepresentable {
     }
 }
 
-/// The collapsed pill for `items` (Settings → Panel → Collapsed pill), on the glass with
+/// The collapsed pill for `items` (Settings → Appearance → Pill), on the glass with
 /// the ring and Bright's tint in the top item's colour and the pill's opacity, as RootView
 /// and PanelController draw it.
 struct SamplePill: View {

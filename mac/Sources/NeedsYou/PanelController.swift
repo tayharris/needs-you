@@ -306,9 +306,14 @@ final class PanelController {
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
                 + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot
                 + (model.focusSetByLink ? m.idleFont + 4 : 0)
-            return CGSize(width: m.idleWidth(textWidth: width), height: model.hovering ? m.idleHoverHeight : m.idleHeight)
+            // Usage meters (PillMeterLayout): bars make it a little taller, rings and
+            // percentages wider.
+            let meters = model.idleMeterLayout
+            let idleWidth = m.idleWidth(textWidth: width + PillMeterMetrics.trailingWidth(meters, base: m.idleFont - 1))
+            return CGSize(width: max(idleWidth, meters.minWidth(cornerRadius: model.hovering ? 11 : 9)),
+                          height: meters.height)
         case .waiting:
-            // Settings → Panel → Collapsed pill (PillContent; the defaults are the original size).
+            // Settings → Appearance → Pill (PillContent; the defaults are the original size).
             return model.waitingPillSize
         case .preview(let item):
             // PreviewLayout: a long title wraps to a second line, and a link button gets
@@ -364,12 +369,15 @@ final class PanelController {
 
     private func alpha(for display: PanelDisplay) -> CGFloat {
         switch display {
-        case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
+        case .idle:
+            // Faint but findable; "set up" a little more, and readable while it shows usage meters.
+            let base = model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)
+            return CGFloat(PillMeterLayout.idleAlpha(base, showsMeters: model.idleMeterLayout.count > 0))
         case .waiting:
             let ui = model.settings.ui
             return CGFloat(PanelOpacity.alpha(rest: ui.pillOpacity, hover: ui.pillHoverOpacity, hovering: model.hovering))
         case .preview, .digest, .expanded:
-            // Settings → Panel → Opacity; hovering always shows it at full strength.
+            // Settings → Appearance → Panel and cards → Opacity; hovering always shows it at full strength.
             let ui = model.settings.ui
             return CGFloat(PanelOpacity.alpha(rest: ui.panelOpacity, hover: ui.panelHoverOpacity, hovering: model.hovering))
         }
@@ -515,7 +523,7 @@ final class PanelController {
 
     // MARK: Arrival motion
 
-    /// Bounce, shake and slide (Settings → Alerts → Arrival animation) move the glass and
+    /// Bounce, shake and slide (Settings → Appearance → Alert style → Arrivals) move the glass and
     /// the content together. Bounce and shake start once a preview has sprung out (the
     /// shape change takes 0.28 s), so they play on the settled shape. Glow and ripple are drawn
     /// by RootView. Nothing here touches key status or activation.

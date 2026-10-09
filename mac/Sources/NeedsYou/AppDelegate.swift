@@ -167,6 +167,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && $0.question?.items.first?.allowOther == true }
     }
 
+    /// The tour's pill meter look: large unless it says otherwise (the default).
+    private static func meters(_ model: AppModel, _ style: PillMeterStyle, _ arrangement: PillMeterArrangement = .stacked,
+                               size: PillMeterSize = .large, numbers: Bool = false) {
+        model.settings.usage.pillStyle = style
+        model.settings.usage.pillArrangement = arrangement
+        model.settings.usage.pillSize = size
+        model.settings.usage.pillNumbers = numbers
+    }
+
     private func runSnapshotTour(into dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let savedUI = settings.ui
@@ -267,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.settings.ui.pillSplit = .none
                 model.settings.ui.pillDetail = .topItem
             }),
-            // Settings → Appearance: a few themes on the open panel and the pill.
+            // Settings → Appearance → Theme: a few themes on the open panel and the pill.
             ("10-theme-midnight", { model in
                 model.settings.ui.pillDetail = .count
                 model.settings.ui.theme = .midnight
@@ -279,29 +288,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
-            // Settings → Alerts → Preview on the pill: a sample urgent item arriving.
+            // Settings → Appearance → Alert style → Preview on the pill: a sample urgent item arriving.
             ("14-arrival-preview", { model in
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
             }),
-            // Usage meters (DemoFeed.statusFixture): the panel's section and the pill's hairlines.
+            // Usage meters (DemoFeed.statusFixture): the panel's section, then the pill's meters.
             ("15-usage-panel", { model in
                 model.previewItem = nil
                 model.expand()
                 model.scrollTarget = nil
             }),
-            ("16-usage-pill", { $0.collapse() }),
+            // The pill's meter styles (Settings → Appearance → Usage meters) at an everyday 31 % / 10 %:
+            // the waiting pill, then the idle one (nothing waiting). 16 is the default look.
+            ("16-usage-pill", { model in
+                model.collapse()
+                Task { await model.applyDemoStatuses(DemoFeed.quietUsageFixture()) }
+            }),
+            ("16b-usage-pill-thin", { Self.meters($0, .thin, size: .medium) }),
+            ("16c-usage-pill-percent", { Self.meters($0, .percent, size: .medium) }),
+            ("16i-usage-pill-rings-inside", { Self.meters($0, .rings) }),
+            ("16j-usage-pill-rings-side", { Self.meters($0, .rings, .row) }),
+            ("16k-usage-pill-bars-row", { Self.meters($0, .bars, .row) }),
+            ("16l-usage-pill-bars-medium", { Self.meters($0, .bars, size: .medium) }),
+            ("16m-usage-pill-bars-small", { Self.meters($0, .bars, size: .small) }),
+            ("16n-usage-pill-bars-numbers", { Self.meters($0, .bars, numbers: true) }),
+            ("16o-usage-pill-rings-numbers", { Self.meters($0, .rings, .row, numbers: true) }),
+            ("16d-usage-pill-warning", { model in
+                Self.meters(model, .bars)
+                Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
+            }),
+            ("16p-usage-pill-rings-warning", { Self.meters($0, .rings, .row) }),
+            ("16e-usage-idle", { model in
+                Self.meters(model, .bars)
+                Task {
+                    await model.applyDemoStatuses(DemoFeed.quietUsageFixture())
+                    await model.applyDemoOpenSet([])
+                }
+            }),
+            ("16f-usage-idle-thin", { Self.meters($0, .thin, size: .medium) }),
+            ("16g-usage-idle-percent", { Self.meters($0, .percent, size: .medium) }),
+            ("16q-usage-idle-rings", { Self.meters($0, .rings, .row) }),
+            ("16r-usage-idle-bars-row", { Self.meters($0, .bars, .row) }),
+            ("16h-usage-off", { model in
+                Self.meters(model, .bars)
+                model.settings.usage.onPill = false
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
-        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3), (.usage, 1)]
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
+                                           (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
+                                           (.panel, 6), (.alerts, 4)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
                 action(model)
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name).png"))
+                // Progress for screenshots.sh, so a slow run shows where it got to.
+                NSLog("NeedsYou: snapshot \(name)")
                 if name == "6j-question-other",
                    let item = Self.tourOtherItem(model) {
                     // The answer window "Other…" opens, with words typed (drawn offscreen).
@@ -312,15 +359,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The pages show the out-of-the-box look and alerts settings.
             model.collapse()
             settings.ui = UIPrefs()
+            settings.usage = UsagePrefs()
             for (tab, shots) in pages {
                 await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
                                                    into: dir, name: "settings-\(tab.rawValue)")
             }
-            // The Appearance sample in a light and a colourful theme: the desktop stays put.
+            // The Theme sample in a light and a colourful theme: the desktop stays put.
             for theme in [PanelTheme.paper, .sunset] {
                 settings.ui.theme = theme
-                await settingsWindow.writeSnapshot(of: .appearance, showcase: showcase, shots: 2,
-                                                   into: dir, name: "settings-appearance-\(theme.rawValue)")
+                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+                                                   into: dir, name: "settings-theme-\(theme.rawValue)")
             }
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
@@ -517,6 +565,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ok = alert.runModal() == .alertFirstButtonReturn
             yieldActivation()
             if ok { model.run(.terminal(jump)) }
+            return
+        }
+        if url.host?.lowercased() == AppActivation.host {
+            // needsyou://app/activate is for a card's button only: from outside the panel it
+            // does nothing (a web page has no reason to bring a terminal or editor forward).
+            NSLog("NeedsYou: ignored a needsyou://app link opened from outside the panel")
+            yieldActivation()
             return
         }
         if url.host?.lowercased() == FocusLink.host {

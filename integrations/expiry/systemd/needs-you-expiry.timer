@@ -1,0 +1,10 @@
+[Unit]
+Description=needs-you: check expiry dates once a day
+
+[Timer]
+OnCalendar=*-*-* 09:17:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -154,7 +154,8 @@ TOOLS: List[Dict[str, Any]] = [
 # --- needs-you redaction (begin) ---
 # Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
 # block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
-# integrations/mcp/needs_you_mcp.py and integrations/github/needs-you-github
+# integrations/mcp/needs_you_mcp.py, integrations/github/needs-you-github,
+# integrations/linear/needs-you-linear and integrations/jira/needs-you-jira
 # (tests/test_redaction.py checks). Best effort: a secret that looks like a word isn't caught.
 # Every pattern runs in linear time on any input (tests/test_redaction.py times them): each one
 # starts on a literal and never backtracks over a run it has to give back.
@@ -164,7 +165,7 @@ _SECRET_RAW = re.compile(r"(?:\b|(?<=%[0-9A-Fa-f]{2}))"
                          r"(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
                          r"|xox[abpr]-[\w-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|ny[ip]?_[A-Za-z0-9_-]{8,}"
                          r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}"
-                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,})")
+                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,}|lin_(?:api|oauth)_\w{16,})")
 # A webhook URL whose path is its secret: the host and the path's start stay.
 _WEBHOOK = re.compile(r"(hooks\.slack\.com/(?:services|workflows|triggers)/"
                       r"|discord(?:app)?\.com/api/(?:v\d+/)?webhooks/)[\w/-]+")

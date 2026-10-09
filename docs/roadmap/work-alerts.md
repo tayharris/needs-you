@@ -1,6 +1,6 @@
 # Work-tool alerts: tickets, design files, ops, and getting you there
 
-Status (2026-10-09): research only, nothing built. Three research passes (ticketing, design and ops sources, deep links into desktop apps) behind the owner's ask: "if something assigned to me moves to a status, or a ticket I'm assigned gets a comment, it pops up, and I can configure which and how loudly". Vendor facts link to vendor docs; a few are marked unverified and need a live check before we build on them.
+Status (2026-10-09): built: step 2 (the Linear poller, `integrations/linear/`; its GraphQL field names still need a check against a live workspace), step 3 (the Jira poller, `integrations/jira/`; its API calls still need a check against a live Jira), step 4's first two items (host detection with one "go there" button per agent card, `needsyou://app/activate`), step 6 (`integrations/expiry/needs-you-expiry`: TLS certs, domains via RDAP, key dates) and step 7 (GitHub Projects status cards and Dependabot alert cards, opt-in, in `integrations/github/needs-you-github`); the rest is research. Three research passes (ticketing, design and ops sources, deep links into desktop apps) behind the owner's ask: "if something assigned to me moves to a status, or a ticket I'm assigned gets a comment, it pops up, and I can configure which and how loudly". Vendor facts link to vendor docs; a few are marked unverified and need a live check before we build on them.
 
 ## How events get in: poll, not webhooks or MCP
 
@@ -13,7 +13,7 @@ Status (2026-10-09): research only, nothing built. Three research passes (ticket
 | # | Source | Verdict | Event source | Auth | Link | Effort |
 |---|---|---|---|---|---|---|
 | 1 | **Jira** (Cloud and Data Center): assigned issue changed status, new comment, assigned or unassigned, mention | Build | Poll `GET /rest/api/3/search/jql` with `assignee = currentUser() AND updated >= "-15m"` (the old `/search` was removed in 2025; the new one pages with `nextPageToken`); comments only for issues whose `updated` moved. Detect status changes and new comments by diffing against the last run's saved state, not the changelog. A second query, `assignee = currentUser() AND statusCategory != Done`, finds unassigns | Cloud: email + API token (Basic). Data Center 8.14+: PAT as Bearer against `/rest/api/2/search` | `https://acme.atlassian.net/browse/ACME-123` (`?focusedCommentId=<id>` for a comment). No desktop app | M |
-| 2 | **Linear**: assignments, comments and replies, mentions, status changes | Build | Poll `notifications(filter: {updatedAt: {gt: $since}})`; `IssueNotification.category` is an enum (`assignments`, `commentsAndReplies`, `mentions`, `statusChanges`, ...) and carries `readAt`, `snoozedUntilAt`, `archivedAt`, `url` and the issue. `viewer.assignedIssues` resolves on Done or unassign | Personal API key (no `Bearer` prefix); 1,500 requests an hour ([limits](https://linear.app/developers/rate-limiting)) | `https://linear.app/acme/issue/ACME-123` opens the desktop app when "Open in desktop app" is on. `linear://` is on our allow-list but undocumented: check live before using it | S |
+| 2 | **Linear**: assignments, comments and replies, mentions, status changes | Built: [needs-you-linear](../../integrations/linear/README.md) | Poll `notifications(filter: {updatedAt: {gt: $since}})`; `IssueNotification.category` is an enum (`assignments`, `commentsAndReplies`, `mentions`, `statusChanges`, ...) and carries `readAt`, `snoozedUntilAt`, `archivedAt`, `url` and the issue. `viewer.assignedIssues` resolves on Done or unassign | Personal API key (no `Bearer` prefix); 1,500 requests an hour ([limits](https://linear.app/developers/rate-limiting)) | `https://linear.app/acme/issue/ACME-123` opens the desktop app when "Open in desktop app" is on. `linear://` is on our allow-list but undocumented: check live before using it | S |
 | 3 | **GitHub Projects** status changes on issues assigned to me | Add to the GitHub poller | One GraphQL call for `projectItems` field values; a card when Status moves to a configured value | `gh` | `https` | S |
 | 4 | **Sentry**: unresolved issues assigned to me | Build (or a config of the generic poller) | `GET /api/0/organizations/<org>/issues/?query=assigned:me is:unresolved` ([docs](https://docs.sentry.io/api/events/list-an-organizations-issues)) | Token with `event:read` | `https` | S |
 | 5 | **GitLab**: MRs to review, mentions, failed pipelines | Build | `glab api todos?state=pending` ([Todos API](https://docs.gitlab.com/api/todos/)); resolve when the to-do is done | The person's `glab` login | `https` | M |
@@ -44,8 +44,8 @@ Two layers, so a sender never has to guess what's urgent to someone:
 
    ```
    NEEDS_YOU_JIRA_SITE=https://acme.atlassian.net      # or the Data Center base URL
-   NEEDS_YOU_JIRA_AUTH=cloud                           # cloud | dc; token in NEEDS_YOU_JIRA_TOKEN (+ _EMAIL for cloud)
-   NEEDS_YOU_JIRA_EVENTS=status,comment,assign,mention # -mention drops one
+   NEEDS_YOU_JIRA_AUTH=cloud                           # cloud | dc; token in the mode-600 NEEDS_YOU_JIRA_TOKEN_FILE (+ _EMAIL for cloud)
+   NEEDS_YOU_JIRA_EVENTS=status,comment,assigned,mention # -mention drops one
    NEEDS_YOU_JIRA_STATUSES=Blocked=urgent,In Review=normal,QA Failed=urgent,*=low
    NEEDS_YOU_JIRA_PROJECTS=ACME=work:normal,OPS=work:urgent   # context + base priority; also the include list
    NEEDS_YOU_JIRA_JQL_EXTRA='AND labels != noise'
@@ -83,10 +83,12 @@ A card is only as good as its "go there" button. What's built and what's left (t
 
 **Fixed in `tay/orca-jump-label`:** an Orca session's card had a "Terminal" button (it was the Orca jump, mislabelled) and a VS Code button that the hook adds on every Mac. Now the hook labels it **Orca** and adds no editor link when Orca is the host. The Mac names every app-action button for where it goes (Orca, WezTerm, tmux, iTerm2, Terminal, Ghostty), whatever the sender called it.
 
+**Built in `tay/go-there`:** items 1 and 2 below. The hook detects the host once in that order and writes one go-there link; the editor folder link comes only for VS Code or Cursor, or when no go-there link could be built (a remote tmux without `LC_NEEDS_YOU_TERM`, Terminal.app without a tty and no bundle id), so a card always keeps a button. Cursor sessions now get `cursor://` links. `app/activate` brings forward only a running app on a fixed list of 9 terminals and 17 editors (`AppActivation.allowedApps`, mirrored by the hook's `TERMINAL_APPS`/`EDITOR_APPS` and compared by `tests/test_link_mirror.py`); it never launches an app, and from outside the panel it does nothing.
+
 **Left, in order:**
 
-1. **One primary "go there" button per agent card.** Detect the host once (first match wins): `ORCA_TERMINAL_HANDLE` → Orca; an IDE (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`, `TERM_PROGRAM=vscode`, `CURSOR_TRACE_ID`, named by `__CFBundleIdentifier`); `TMUX_PANE`; `WEZTERM_PANE`; `ITERM_SESSION_ID`; `KITTY_WINDOW_ID`; Ghostty; `Apple_Terminal` + tty. Emit the editor folder link only when the host *is* the editor or nothing was detected (today it's added beside every terminal jump).
-2. **`needsyou://app/activate?bundle=<id>`:** bring an allow-listed app forward when we know the app but not the window (any other `__CFBundleIdentifier`). A new app-action path, mirrored in the hub's `APP_LINK_PATHS` and `LinkPolicy.appActionPaths` (hard rule 7).
+1. **One primary "go there" button per agent card.** (Built.) Detect the host once (first match wins): `ORCA_TERMINAL_HANDLE` → Orca; an IDE (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`, `TERM_PROGRAM=vscode`, `CURSOR_TRACE_ID`, named by `__CFBundleIdentifier`); `TMUX_PANE`; `WEZTERM_PANE`; `ITERM_SESSION_ID`; `KITTY_WINDOW_ID`; Ghostty; `Apple_Terminal` + tty. Emit the editor folder link only when the host *is* the editor or nothing was detected (today it's added beside every terminal jump).
+2. **`needsyou://app/activate?bundle=<id>`** (built): bring an allow-listed app forward when we know the app but not the window (any other `__CFBundleIdentifier`). A new app-action path, mirrored in the hub's `APP_LINK_PATHS` and `LinkPolicy.appActionPaths` (hard rule 7).
 3. **New jumps:** kitty (`kitten @ focus-window --match id:N`, needs `allow_remote_control`), Ghostty per terminal (1.3+ AppleScript `focus`, matching the working directory; [docs](https://ghostty.org/docs/features/applescript)), Codex app (`codex://threads/<session-uuid>`, [docs](https://developers.openai.com/codex/app/commands); a new scheme for the allow-list), remote tmux over SSH. Warp can't focus an existing tab yet ([open request](https://github.com/warpdotdev/warp/issues/8929)); Claude desktop can only open a new Code session in a folder (`claude://code/new?folder=`), not an existing one.
 4. **Commands on cards are copyable, not selectable.** The panel never takes focus (hard rule 2), so text can't be selected; `tay/card-copy-dev-mode` adds copy chips for single-line commands in a body (inert, fully visible text only) and a card "…" menu with Copy items. With the Orca button working, the hook's "Jump to its terminal: `orca terminal switch ...`" body line becomes a fallback; consider moving it behind the expander.
 5. **Ticket and design links open the native app** through `https` plus the app's own "open links in the app" setting (Linear, Figma, Slack). Only adopt `linear://` / `figma://` forms after a live check on a Mac.
@@ -96,12 +98,12 @@ A card is only as good as its "go there" button. What's built and what's left (t
 | Step | What | Effort |
 |---|---|---|
 | 1 | `source.event` + per-session and per-event alert rules (in progress, `tay/session-alert-rules`) | in progress |
-| 2 | Linear poller (dedicated; the notifications feed maps almost 1:1 onto the GitHub poller) | S |
-| 3 | Jira poller, Cloud and Data Center (saved-state diff; fake HTTP server tests) | M |
-| 4 | Host detection + one primary "go there" button; `needsyou://app/activate` | M |
+| 2 | Linear poller (dedicated; the notifications feed maps almost 1:1 onto the GitHub poller) | S (built: `integrations/linear/`; live check left) |
+| 3 | Jira poller, Cloud and Data Center (saved-state diff; fake HTTP server tests) | M (built: `integrations/jira/`; live check left) |
+| 4 | Host detection + one primary "go there" button; `needsyou://app/activate` | M (items 1 and 2 built) |
 | 5 | Generic poller with configs for Sentry, Vercel, GitLab | M |
-| 6 | Cert, domain and key expiry | S |
-| 7 | GitHub Projects status cards, Dependabot security alerts | S |
+| 6 | Cert, domain and key expiry (built: `integrations/expiry/`) | S |
+| 7 | GitHub Projects status cards, Dependabot security alerts (built: `integrations/github/`) | S |
 | 8 | Figma comment polling on a watch list | M |
 | 9 | MCP-agent recipe for Slack, Docs, Notion | S (docs) |
 | 10 | Webhook relay (ADR) for Figma "ready for dev", Notion, GitHub org events | L |

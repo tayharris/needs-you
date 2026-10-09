@@ -251,7 +251,7 @@ struct CardList: View {
             if !usage.isEmpty {
                 // Usage meters (status records): read-only, never counted.
                 UsageSection(rows: usage, metrics: model.metrics, bodyFont: model.bodyFont)
-                    .help("Usage limits as the agents' hooks last reported them (Settings → Usage)")
+                    .help("Usage limits as the agents' hooks last reported them (Settings → Appearance → Usage meters)")
             }
             ForEach(model.quietedSenders, id: \.self) { sender in
                 // NoisySenderGuard: a looping sender can't keep interrupting.

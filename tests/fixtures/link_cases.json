@@ -138,6 +138,18 @@
    "allowed": true
   },
   {
+   "url": "needsyou://app/activate?bundle=net.kovidgoyal.kitty",
+   "allowed": true
+  },
+  {
+   "url": "needsyou://app/activate?bundle=com.todesktop.230313mzl4w4u92",
+   "allowed": true
+  },
+  {
+   "url": "NEEDSYOU://APP/ACTIVATE?bundle=dev.zed.Zed",
+   "allowed": true
+  },
+  {
    "url": "https:a.example/x",
    "allowed": false
   },
@@ -524,6 +536,34 @@
   {
    "url": "needsyou://orca/terminal?handle=term_ab12cd34&environment=\u00e9",
    "allowed": false
+  },
+  {
+   "url": "needsyou://app/activate",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://app/activatex?bundle=dev.zed.Zed",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://app/open?bundle=dev.zed.Zed",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://app?bundle=dev.zed.Zed",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://u@app/activate?bundle=dev.zed.Zed",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://app/activate?bundle=dev.zed.Zed%",
+   "allowed": false
+  },
+  {
+   "url": "needsyou://app/activate?bundle=dev.zed.Zed\u200b",
+   "allowed": false
   }
  ],
  "app_stricter": [
@@ -544,6 +584,54 @@
    "hub": true,
    "app": false,
    "why": "pane must be digits"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=com.example.app",
+   "hub": true,
+   "app": false,
+   "why": "only bundle ids on the app's fixed list"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=app.needsyou.mac",
+   "hub": true,
+   "app": false,
+   "why": "never Needs You itself"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=COM.APPLE.TERMINAL",
+   "hub": true,
+   "app": false,
+   "why": "the id must match exactly"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=com.apple.Terminal&bundle=dev.zed.Zed",
+   "hub": true,
+   "app": false,
+   "why": "exactly one bundle parameter"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=com.apple.Terminal&x=1",
+   "hub": true,
+   "app": false,
+   "why": "unknown parameter"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=",
+   "hub": true,
+   "app": false,
+   "why": "empty id"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=com.apple.Terminal#x",
+   "hub": true,
+   "app": false,
+   "why": "no fragment"
+  },
+  {
+   "url": "needsyou://app/activate?bundle=com%2Eapple.Terminal",
+   "hub": true,
+   "app": false,
+   "why": "no escapes in the id"
   }
  ]
 }

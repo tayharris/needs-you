@@ -56,7 +56,7 @@ Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `release-m
 
 What you should see: **no Dock icon and no window.** A faint pill appears at the top right of the screen. That's the idle state ("nothing needs you"):
 
-<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you.">
+<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you, with usage bars under it.">
 
 It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by **right-clicking the pill**: Settings…, About Needs You, Quit Needs You.
 
@@ -64,7 +64,7 @@ It's an accessory app: it lives in that pill (and, optionally, a menu bar icon),
 
 The hub starts by itself (**Run hub on this Mac** is on by default). Check it:
 
-1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Hubs and machines**: **Built-in hub**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
+1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Hubs and machines**: **Built-in hub**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; under **Appearance**: **Theme**, **Pill**, **Panel and cards**, **Alert style**, **Usage meters** (everything about the look); then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
 2. Open **Built-in hub**. It starts with how it works: senders post alerts, a hub stores them (this app has one built in), the pill shows them. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
 3. Optional: **General → Open at login**.
 
@@ -142,7 +142,7 @@ Tick off what you get to; anything that surprises you is worth a report. With a 
 - [ ] **Never steals focus:** keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.
 - [ ] **Work and personal:** post one item with `--context work` and one with `--context personal`. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.
 - [ ] **Focus and snooze:** right-click the pill → **Focus** (Agents and urgent only, Urgent only, Everything later) and **Snooze**.
-- [ ] **Make it yours:** **Settings → Panel** (size, card text, opacity, shortcut) and **Alerts** (how loud). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
+- [ ] **Make it yours:** **Settings → Appearance** (theme, pill, size, card text, opacity, how loud alerts look), **Panel** (shortcut) and **Alerts** (what interrupts). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
 - [ ] **Mac asleep or app quit:** quit Needs You, post from another machine (the CLI says it queued and exits 0), reopen the app. The item arrives within about 5 minutes.
 - [ ] **Machines:** **Settings → Machines → Refresh** lists your machines (names, what they are and CLI versions, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
 - [ ] **Updates:** **Settings → Updates** shows the version and the last check. It checks GitHub Releases on its own (no login needed) and only installs published releases, never drafts.

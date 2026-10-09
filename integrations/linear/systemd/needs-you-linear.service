@@ -1,0 +1,16 @@
+# systemd user service for needs-you-linear; started by needs-you-linear.timer.
+#   mkdir -p ~/.config/systemd/user
+#   cp needs-you-linear.service needs-you-linear.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now needs-you-linear.timer
+#   loginctl enable-linger "$USER"     # keep it running while you're logged out
+# Logs: journalctl --user -u needs-you-linear
+# The key stays in ~/.config/needs-you/linear-key (mode 600); don't put it in Environment=.
+
+[Unit]
+Description=needs-you: Linear inbox
+
+[Service]
+Type=oneshot
+# %h is your home directory.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/needs-you-linear

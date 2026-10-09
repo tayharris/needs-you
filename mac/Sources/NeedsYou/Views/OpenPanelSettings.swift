@@ -25,7 +25,7 @@ struct OpenPanelSettingsSection: View {
         } header: {
             Text("Open panel")
         } footer: {
-            Text("The chevron, a double-click on the header bar and the shortcut always close it. With the setting off, Esc does too, except right after you click in another app (point at the panel again first). A dragged height replaces Cards before scrolling; double-click the edge to go back.")
+            Text("The chevron, a double-click on the header bar and the shortcut always close it. With the setting off, Esc does too, except right after you click in another app (point at the panel again first). A dragged height replaces Cards before scrolling (Appearance → Panel and cards); double-click the edge to go back.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

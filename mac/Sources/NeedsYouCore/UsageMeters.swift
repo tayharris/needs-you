@@ -1,8 +1,8 @@
 import Foundation
 
 // Usage meters (ADR 0011): `usage` status records as bars, one row per provider and
-// account, in the open panel and as two hairlines on the pill. Read-only and quiet: they
-// never count, animate or notify. Settings → Usage picks what shows (UsagePrefs).
+// account, in the open panel and on the collapsed pill (PillMeterStyle). Read-only and quiet: they
+// never count, animate or notify. Settings → Appearance → Usage meters picks what shows (UsagePrefs).
 
 /// Which windows the meters show.
 public enum UsageWindowChoice: String, CaseIterable, Sendable {
@@ -17,7 +17,85 @@ public enum UsageWindowChoice: String, CaseIterable, Sendable {
     }
 }
 
-/// Settings → Usage, in UserDefaults as plain values. Unknown or out-of-range stored values
+/// How the collapsed pill draws its meters (Settings → Appearance → Usage meters): the shape.
+/// PillMeterArrangement, PillMeterSize and "Show percentages" refine it (PillMeterLayout).
+public enum PillMeterStyle: String, CaseIterable, Sendable {
+    /// Bars on a faint track under the count, readable at a glance. The pill grows a few
+    /// points taller for them (PillMeterLayout); the default.
+    case bars
+    /// Thin lines on their track along the bottom edge (the 0.4.0 look): the waiting pill
+    /// keeps its size.
+    case thin
+    /// Rings after the count, filled clockwise from the top: one per window, or one inside
+    /// the other (PillMeterArrangement).
+    case rings
+    /// The percentages in small type after the count ("31% 10%"), in a fixed-width slot so
+    /// the pill doesn't resize as they change.
+    case percent
+
+    public var title: String {
+        switch self {
+        case .bars: return "Bars"
+        case .thin: return "Thin bars"
+        case .rings: return "Rings"
+        case .percent: return "Percentages"
+        }
+    }
+
+    /// Bars and thin bars go in a band under the count; rings and percentages after it.
+    public var isBand: Bool { self == .bars || self == .thin }
+
+    /// Whether "Show percentages" adds anything (the percentages style is nothing else).
+    public var canShowNumbers: Bool { self != .percent }
+
+    /// Whether the arrangement picker means anything (percentages always sit side by side).
+    public var canArrange: Bool { self != .percent }
+}
+
+/// How two meters sit together. Bars and thin bars: one above the other, or side by side. Rings: side by side, or one inside the other.
+public enum PillMeterArrangement: String, CaseIterable, Sendable {
+    case stacked, row
+
+    public func title(for style: PillMeterStyle) -> String {
+        switch (self, style) {
+        case (.stacked, .rings): return "One inside the other"
+        case (.stacked, _): return "Stacked"
+        case (.row, _): return "Side by side"
+        }
+    }
+}
+
+/// How big the meters are: bar thickness, ring size and stroke, the percentages' type.
+public enum PillMeterSize: String, CaseIterable, Sendable {
+    case small, medium, large
+
+    public var title: String {
+        switch self {
+        case .small: return "Small"
+        case .medium: return "Medium"
+        case .large: return "Large"
+        }
+    }
+}
+
+/// Everything about how the pill draws its meters (UsagePrefs.pillAppearance).
+public struct PillMeterAppearance: Equatable, Sendable {
+    public var style: PillMeterStyle
+    public var arrangement: PillMeterArrangement
+    public var size: PillMeterSize
+    /// The percentages after the meters (`.percent` is nothing else).
+    public var showsNumbers: Bool
+
+    public init(_ style: PillMeterStyle = .bars, arrangement: PillMeterArrangement = .stacked,
+                size: PillMeterSize = .medium, showsNumbers: Bool = false) {
+        self.style = style
+        self.arrangement = arrangement
+        self.size = size
+        self.showsNumbers = showsNumbers
+    }
+}
+
+/// Settings → Appearance → Usage meters, in UserDefaults as plain values. Unknown or out-of-range stored values
 /// fall back to the default; `load` never writes and `save` writes only what changed.
 public struct UsagePrefs: Equatable, Sendable {
     public enum Key {
@@ -27,6 +105,10 @@ public struct UsagePrefs: Equatable, Sendable {
         public static let windows = "usageWindows"
         public static let hideUnderPct = "usageHideUnderPct"
         public static let warnPct = "usageWarnPct"
+        public static let pillStyle = "usagePillStyle"
+        public static let pillArrangement = "usagePillArrangement"
+        public static let pillSize = "usagePillSize"
+        public static let pillNumbers = "usagePillNumbers"
     }
 
     /// The choices offered for "Hide under" and "Warning colour from".
@@ -35,8 +117,17 @@ public struct UsagePrefs: Equatable, Sendable {
 
     /// A usage section in the open panel. Default on.
     public var inPanel = true
-    /// Two hairline meters along the pill's bottom edge. Default on.
+    /// Meters on the collapsed pill (waiting and idle). Default on.
     public var onPill = true
+    /// How the pill draws them.
+    public var pillStyle: PillMeterStyle = .bars
+    /// Stacked or side by side (rings: side by side or one inside the other).
+    public var pillArrangement: PillMeterArrangement = .stacked
+    /// Large by default, so the meters read at a glance. A style saved before sizes existed
+    /// keeps the look it had: medium (`load`).
+    public var pillSize: PillMeterSize = .large
+    /// The percentages after the meters too.
+    public var pillNumbers = false
     /// Providers to show (`claude`, `codex`, ...); empty: every provider that reports.
     public var providers: [String] = []
     public var windows: UsageWindowChoice = .both
@@ -50,6 +141,10 @@ public struct UsagePrefs: Equatable, Sendable {
     /// Statuses are fetched only when something shows them.
     public var isShown: Bool { inPanel || onPill }
 
+    public var pillAppearance: PillMeterAppearance {
+        PillMeterAppearance(pillStyle, arrangement: pillArrangement, size: pillSize, showsNumbers: pillNumbers)
+    }
+
     public func shows(provider: String) -> Bool { providers.isEmpty || providers.contains(provider) }
 
     public static func load(from store: UserDefaults) -> UsagePrefs {
@@ -58,6 +153,17 @@ public struct UsagePrefs: Equatable, Sendable {
         if let v = store.object(forKey: Key.onPill) as? NSNumber { p.onPill = v.boolValue }
         if let v = store.stringArray(forKey: Key.providers) { p.providers = v.filter { !$0.isEmpty } }
         if let raw = store.string(forKey: Key.windows), let v = UsageWindowChoice(rawValue: raw) { p.windows = v }
+        // "hairline" was the thin bars' name in early builds of the style picker. A style
+        // saved before sizes existed keeps the size it was drawn at: medium.
+        if let raw = store.string(forKey: Key.pillStyle), let v = PillMeterStyle(rawValue: raw == "hairline" ? "thin" : raw) {
+            p.pillStyle = v
+            p.pillSize = .medium
+        }
+        if let raw = store.string(forKey: Key.pillSize), let v = PillMeterSize(rawValue: raw) { p.pillSize = v }
+        if let raw = store.string(forKey: Key.pillArrangement), let v = PillMeterArrangement(rawValue: raw) {
+            p.pillArrangement = v
+        }
+        if let v = store.object(forKey: Key.pillNumbers) as? NSNumber { p.pillNumbers = v.boolValue }
         if let v = store.object(forKey: Key.hideUnderPct) as? NSNumber, hideUnderChoices.contains(v.intValue) {
             p.hideUnderPct = v.intValue
         }
@@ -70,6 +176,14 @@ public struct UsagePrefs: Equatable, Sendable {
         if previous?.onPill != onPill { store.set(onPill, forKey: Key.onPill) }
         if previous?.providers != providers { store.set(providers, forKey: Key.providers) }
         if previous?.windows != windows { store.set(windows.rawValue, forKey: Key.windows) }
+        // The style and size are written together: a stored style with no size is one saved
+        // before sizes existed, which `load` reads as medium.
+        if previous?.pillStyle != pillStyle || previous?.pillSize != pillSize {
+            store.set(pillStyle.rawValue, forKey: Key.pillStyle)
+            store.set(pillSize.rawValue, forKey: Key.pillSize)
+        }
+        if previous?.pillArrangement != pillArrangement { store.set(pillArrangement.rawValue, forKey: Key.pillArrangement) }
+        if previous?.pillNumbers != pillNumbers { store.set(pillNumbers, forKey: Key.pillNumbers) }
         if previous?.hideUnderPct != hideUnderPct { store.set(hideUnderPct, forKey: Key.hideUnderPct) }
         if previous?.warnPct != warnPct { store.set(warnPct, forKey: Key.warnPct) }
     }
@@ -164,7 +278,7 @@ public enum UsageMeters {
         return Array(best.values)
     }
 
-    /// Every provider that reports now (for Settings → Usage), sorted.
+    /// Every provider that reports now (for Settings → Appearance → Usage meters), sorted.
     public static func providers(_ statuses: [StatusRecord], now: Date) -> [String] {
         Array(Set(latest(statuses, now: now).compactMap { $0.usage?.provider })).sorted()
     }
@@ -205,11 +319,19 @@ public enum UsageMeters {
         return "resets " + f.string(from: date)
     }
 
-    /// The pill's hairlines: per window shown (session, then weekly), the fullest bar of
+    /// The pill's meters: per window shown (session, then weekly), the fullest bar of
     /// any row. At most two.
     public static func pillBars(_ rows: [UsageRow]) -> [UsageBar] {
         ["5h", "7d"].compactMap { name in
             rows.flatMap(\.bars).filter { $0.id == name }.max { $0.pct < $1.pct }
+        }
+    }
+
+    /// A session and a weekly bar at these percentages, coloured with `warnPct`: the
+    /// Settings preview of the pill's meters.
+    public static func exampleBars(session: Double, weekly: Double, warnPct: Int, now: Date = Date()) -> [UsageBar] {
+        [UsageWindow(name: "5h", usedPct: session), UsageWindow(name: "7d", usedPct: weekly)].map {
+            bar($0, warnPct: warnPct, now: now, timeZone: .current)
         }
     }
 

@@ -39,11 +39,27 @@ NEEDS_YOU_GITHUB_EXCLUDE=acme/huge-monorepo            # owners or repos to igno
 NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want); -merged: no "Merged" FYIs
 ```
 
+### Projects statuses and Dependabot alerts (opt-in)
+
+Two more kinds of card are off until you turn them on:
+
+```bash
+NEEDS_YOU_GITHUB_PROJECT_STATUSES=Blocked=urgent,In Review=normal   # a card when an issue or PR assigned to you moves to one of these
+NEEDS_YOU_GITHUB_SECURITY=1                                          # a card per open critical Dependabot alert (low priority)
+NEEDS_YOU_GITHUB_SECURITY_SEVERITIES=critical,high                   # optional: high too
+```
+
+- **Projects:** when an open issue or PR assigned to you moves to a status you named in a GitHub project (for example **Blocked**), you get "acme/app#30 is Blocked in Roadmap: *title*" at the priority you gave it. It clears when the status moves on, the issue closes or you're unassigned. The first run only notes where everything is, so turning it on doesn't post what was already blocked. It needs one more `gh` scope: `gh auth refresh -s read:project`. If your projects call the field something other than `Status`, set `NEEDS_YOU_GITHUB_PROJECT_FIELD`.
+- **Dependabot:** when GitHub sends you a security alert notification, the poller reads that repo's open Dependabot alerts and posts one low card per critical alert: "Critical security alert in acme/app: lodash: *summary*", linking the alert. It clears when the alert is fixed or dismissed, or you read the notification. It needs `gh auth refresh -s security_events`.
+
+If the scope is missing, the poller says so once, with one low card ("GitHub Projects cards on devbox need gh's read:project scope"), and everything else keeps working. These cards say what happened in `source.event` (`status`, `security`), so a Mac alert rule can single them out; they need the `needs-you` CLI 0.4.0 or later (`needs-you update`).
+
 The full list of cards, keys and settings is in [integrations/github/README.md](../../integrations/github/README.md). If you have many open PRs, `NEEDS_YOU_GITHUB_PR_DAYS` (default 14) skips the ones nobody has touched lately, and at most 20 cards are open at once (`NEEDS_YOU_GITHUB_MAX_CARDS`).
 
 ## When it doesn't post
 
 - Run `needs-you-github -v`. It says how many notifications and PRs it saw and any `gh` error. It always exits 0, so cron won't tell you.
+- A "need gh's ... scope" card: run the `gh auth refresh -s ...` command it names. The poller checks again within the hour, and the card goes.
 - `gh` errors (logged out, token expired): fix with `gh auth login`. After 3 failed runs in a row it posts one low card, "GitHub alerts stopped on devbox", which clears on the next good run.
 - Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see [troubleshooting](troubleshooting.md#a-sender-cant-reach-the-hub).
 - To start over, delete `~/.local/state/needs-you/github.json`. Cards it posted expire within 15 minutes on their own.

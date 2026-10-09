@@ -199,6 +199,35 @@ Grok-specific causes:
 - Too many cards: narrow it with `NEEDS_YOU_GITHUB_EXCLUDE`, `NEEDS_YOU_GITHUB_REASONS` or `NEEDS_YOU_GITHUB_PR_DAYS` ([integrations/github](../../integrations/github/README.md#config)).
 - A card that doesn't clear: it clears on the run after the condition goes away, or 15 minutes after the poller stops. Notification cards clear when you read the thread on GitHub.
 
+## Expiry poller
+
+- `needs-you-expiry -v` prints every date it read and every check that failed. It always exits 0. With no `~/.config/needs-you/expiry.conf` it does nothing (it's opt-in); `-v` says so.
+- "Expiry checks failing on <host>": a check failed 2 runs in a row (`NEEDS_YOU_EXPIRY_FAILS`). The card's body says which and why: `host not found` or `connection refused` (a typo, or the host is down), `timed out` (a firewall; `NEEDS_YOU_EXPIRY_TIMEOUT`), `RDAP HTTP 429` (the registry's rate limit; it passes), `RDAP gives no expiration date` (some ccTLD registries don't publish one: use a `key` line), `line 4: ...` (a typo in the list). The last date it read still counts meanwhile.
+- "TLS certificate for <host> not trusted": the certificate doesn't verify (wrong host name, a missing intermediate, a private CA). Fix the certificate; for an internal host on a private CA, add `verify=no` to its line.
+- A card that doesn't clear after you renewed: a `tls` card clears once the host serves the new certificate (reload the web server), a `domain` card once RDAP shows the new date (can lag the registrar by a day), a `key` card once you change its date in the list. All clear within 72 hours of the poller stopping.
+- No card for a STARTTLS port (SMTP 587, IMAP 143): only implicit TLS is read; use port 465 or 993, or a `key` line.
+
+## Linear poller
+
+- Nothing at all, and `needs-you-linear -v` says "not configured": it's opt-in. Put the key in `~/.config/needs-you/linear-key` (mode 600) or point `NEEDS_YOU_LINEAR_KEY_FILE` at it ([Linear guide](linear.md#set-up-4-commands)).
+- "refusing the key file": group or others can read it, it isn't owned by the user the poller runs as, or it's a symlink. `chmod 600` it as that user, and use the real path.
+- "Authentication required" (HTTP 400 or 401): the key was revoked or pasted wrong. Make a new one in Linear and write it to the key file again. `RATELIMITED`: something else on the same key is using Linear's 1,500 requests an hour; the poller uses 12.
+- It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Linear alerts stopped on <host>".
+- A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.
+- Too many cards: narrow it with `NEEDS_YOU_LINEAR_TEAMS`, `NEEDS_YOU_LINEAR_CATEGORIES` or `Backlog=off` in `NEEDS_YOU_LINEAR_STATUSES` ([integrations/linear](../../integrations/linear/README.md#config)).
+
+## Jira poller
+
+- `needs-you-jira -v` prints how many issues changed and are open, how many requests it made, and any error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Jira alerts stopped on <host>".
+- **Nothing at all, no error:** `NEEDS_YOU_JIRA_SITE` isn't set where the poller runs (cron reads `~/.config/needs-you/env`, not your shell profile). The first run never posts: it only records your open issues.
+- **"can be read or written by others: chmod 600":** the token file is group- or world-readable, so the poller refuses it. `chmod 600 ~/.config/needs-you/jira-token` (it must also be owned by the user cron runs as).
+- **"401 Unauthorized":** Cloud: the email in `NEEDS_YOU_JIRA_EMAIL` and the API token don't match, or the token was revoked. Data Center: the personal access token expired. Put a new one in the token file.
+- **"Jira redirected":** the site URL is wrong (`http` vs `https`, a missing context path), or your Jira sends API calls to a browser login. The poller never follows a redirect, so the token isn't sent anywhere else.
+- **"must be an https:// URL":** `NEEDS_YOU_JIRA_SITE` must start with `https://`. A Data Center site on plain `http` isn't supported.
+- **"NEEDS_YOU_JIRA_JQL_EXTRA …":** your extra JQL has unbalanced quotes or parentheses, `ORDER BY`, or a line break; the poller does nothing until it's fixed. A JQL error from Jira itself ("HTTP 400 … ") quotes Jira's message.
+- **A card that doesn't clear:** it clears when the issue is Done, no longer yours, when you comment or move it yourself, after 24 hours with nothing new, or 15 minutes after the poller stops.
+- **Too many cards:** narrow it with `NEEDS_YOU_JIRA_PROJECTS`, `NEEDS_YOU_JIRA_STATUSES` (`Backlog=off`), `NEEDS_YOU_JIRA_EVENTS` or `NEEDS_YOU_JIRA_JQL_EXTRA` ([integrations/jira](../../integrations/jira/README.md#config)).
+
 ## Orca automations
 
 - `needs-you` must be on the `PATH` that Orca's agent terminals get. From an Orca terminal: `command -v needs-you`.

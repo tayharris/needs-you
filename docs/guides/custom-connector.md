@@ -2,7 +2,7 @@
 
 needs-you works with anything that can run a command or make an HTTP request when something happens: an agent's hooks, a plugin system, a webhook, a "notification command" setting. This page is all you need to connect one: when to post, the exact item format, how to map your tool's events to cards, three worked examples, how to test, and how to share what you built.
 
-Built-in connectors already exist for [Claude Code](claude-code.md), [Codex](codex.md), [Gemini CLI](gemini.md), [opencode](opencode.md), [GitHub Copilot CLI](copilot.md), [Kimi Code](kimi.md), [Grok Build](grok.md), [Cursor](cursor.md), [Cline](cline.md), [Aider](aider.md), [Orca](orca.md), [GitHub](github.md) and [cron, systemd and CI](../../integrations/ci/README.md). Use those where they fit.
+Built-in connectors already exist for [Claude Code](claude-code.md), [Codex](codex.md), [Gemini CLI](gemini.md), [opencode](opencode.md), [GitHub Copilot CLI](copilot.md), [Kimi Code](kimi.md), [Grok Build](grok.md), [Cursor](cursor.md), [Cline](cline.md), [Aider](aider.md), [Orca](orca.md), [GitHub](github.md), [Linear](linear.md) and [cron, systemd and CI](../../integrations/ci/README.md). Use those where they fit.
 
 ## Copy this into your agent
 
@@ -85,7 +85,7 @@ The body is one JSON object (UTF-8, at most 64 KiB). Only `title` is required. A
 | `context` | no | string | `work` or `personal` (any case) | `work` | `--context` (default `NEEDS_YOU_DEFAULT_CONTEXT`, else `work`) | Which side of the pill it counts on, and when it's prominent (work hours or not) |
 | `links` | no | array | at most 6 `{"label", "url"}` objects; `label` 1–80 characters, `url` 1–2,000 characters (rules below) | `[]` | `--link "Label=URL"` (repeatable; a bare URL gets the label `Link`) | Buttons on the card; the menu bar and the hotkey open the first link, so put the place to act first |
 | `steps` | no | array | at most 10 step objects (below) | `[]` | `--step "Text"` or `--step "Text=URL"` (link label `Open`), `--steps-json JSON\|@PATH` | A numbered checklist; the app offers Done once every step is ticked |
-| `source` | no | object | optional `host`, `agent`, `project`, each a string of at most 100 characters, no control characters; other keys ignored | `{}` | `--host` (default this machine's short hostname), `--agent`, `--project` | `host · agent` under the card; Alerts rules can match "Agent starts with" and "Host is" |
+| `source` | no | object | optional `host`, `agent`, `project`, each a string of at most 100 characters, no control characters; and `event`: a slug of at most 32 characters, `a-z` first, then `a-z 0-9 _ -` (trimmed and lowercased; anything else is a 400): `question`, `approval`, `finished`, `failed` or `context` ([API.md](../API.md#post-v1items-sender)), or your own; other keys ignored | `{}` | `--host` (default this machine's short hostname), `--agent`, `--project`, `--event` | `host · agent` under the card; Alerts rules can match "Agent starts with" and "Host is", and narrow any rule to one event |
 | `expires_at` | no | timestamp | ISO 8601 (`2026-10-08T17:00:00Z`, fractional seconds and `±HH:MM` offsets allowed, no zone = UTC) or a number of epoch seconds, between 1970-01-01 and 9999-12-31 | `done` / `info`: now + 24 h (the hub's `default_expiry_hours`); `needs`: never | `--expires-in HOURS` | After it, the item counts as resolved and leaves the panel. Every re-post sets it again |
 | `status` | | | **refused** (400), even as `null`: use resolve | | | |
 
@@ -96,7 +96,7 @@ The body is one JSON object (UTF-8, at most 64 KiB). Only `title` is required. A
 - for `https`, have a host;
 - for `vscode` and `cursor`, be exactly one of `vscode://file/<abs path>[:line[:col]]`, `vscode://vscode-remote/ssh-remote+<host>[/<abs path>]`, `vscode://vscode-remote/tunnel+<name>[/<abs path>]` or `vscode://anthropic.claude-code/open?session=<id>` (same with `cursor://`); details in [API.md](../API.md#post-v1items-sender).
 
-The app's own `needsyou://` actions (the **Terminal** button) are accepted only in the fixed shapes in API.md; leave them to the built-in hooks. **One bad link refuses the whole item**, so a connector that copies URLs from events should send only `https://` URLs it has checked, or retry without links when the CLI exits 2 (example (b) does).
+The app's own `needsyou://` actions (the card's "go there" button: Orca, a terminal, or an app brought forward) are accepted only in the fixed shapes in API.md; leave them to the built-in hooks. **One bad link refuses the whole item**, so a connector that copies URLs from events should send only `https://` URLs it has checked, or retry without links when the CLI exits 2 (example (b) does).
 
 **Steps** (each an object; unknown step fields are ignored):
 

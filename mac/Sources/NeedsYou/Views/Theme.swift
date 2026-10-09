@@ -15,7 +15,7 @@ extension NSColor {
 }
 
 enum Theme {
-    /// The panel's colours (Settings → Appearance; PanelTheme in NeedsYouCore). AppModel
+    /// The panel's colours (Settings → Appearance → Theme; PanelTheme in NeedsYouCore). AppModel
     /// sets it when the theme, the accent or macOS's appearance changes, and RootView
     /// redraws everything then. The default palette is the original look: urgent = red
     /// 400, normal = amber 300, low = slate 400, white text on dark glass.
@@ -27,7 +27,7 @@ enum Theme {
     static var urgent: Color { Color(palette.urgent) }
     static var normal: Color { Color(palette.normal) }
     static var low: Color { Color(palette.low) }
-    /// Ticked steps, links in card text, the DEMO badge (Settings → Appearance → Accent).
+    /// Ticked steps, links in card text, the DEMO badge (Settings → Appearance → Theme → Accent).
     static var accent: Color { Color(palette.accent) }
     /// Primary text; the rest is this at an opacity.
     static var text: Color { Color(palette.text) }
@@ -60,7 +60,7 @@ enum Theme {
         Color(palette.color(priority))
     }
 
-    // Type scales with Settings → Panel → Size (PanelStyle); body text has its own size.
+    // Type scales with Settings → Appearance → Panel and cards → Size (PanelStyle); body text has its own size.
     static func title(_ m: PanelMetrics) -> Font { .system(size: m.titleFont, weight: .semibold) }
     static func body(_ points: CGFloat) -> Font { .system(size: points) }
     static func meta(_ m: PanelMetrics) -> Font { .system(size: m.metaFont) }
@@ -68,7 +68,7 @@ enum Theme {
 }
 
 /// The soft glow outside a shape's edge during an arrival pulse (`glow` 0...1 is the
-/// pulse's progress; Settings → Alerts sets the look). Shared by the panel and the
+/// pulse's progress; Settings → Appearance → Alert style sets the look). Shared by the panel and the
 /// Settings preview.
 struct GlowEdge<S: Shape>: View {
     let shape: S
@@ -85,7 +85,7 @@ struct GlowEdge<S: Shape>: View {
     }
 }
 
-/// Plays an ArrivalPlan's frames by animating `set(value)` (Settings → Alerts → Arrival
+/// Plays an ArrivalPlan's frames by animating `set(value)` (Settings → Appearance → Alert style → Arrival
 /// animation; the timing is in NeedsYouCore's ArrivalMotion).
 @MainActor
 enum ArrivalRunner {

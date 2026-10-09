@@ -1,7 +1,8 @@
+import AppKit
 import NeedsYouCore
 import SwiftUI
 
-// Settings → Usage: where the usage meters show, for which providers and windows, and when
+// Settings → Appearance → Usage meters: where the usage meters show, for which providers and windows, and when
 // they take a colour (UsagePrefs; UsageMeters in NeedsYouCore). Settings window only.
 
 struct UsageSettingsSection: View {
@@ -30,8 +31,10 @@ struct UsageSettingsSection: View {
                 LabelWithDetail("Show in the panel", "A USAGE section at the top of the open panel: a bar per window, with the percentage used and when it resets.")
             }
             Toggle(isOn: $settings.usage.onPill) {
-                LabelWithDetail("Show on the pill", "Two thin bars along the collapsed pill's bottom edge: the fullest session and weekly window. Hover the pill for the numbers.")
+                LabelWithDetail("Show on the pill", "The fullest session and weekly window on the collapsed pill, also when nothing is waiting. The count stays readable.")
             }
+            // Style, size, layout and percentages, with a preview of the pill.
+            UsageMeterAppearanceSection(settings: settings)
         } header: {
             Text("Meters")
         } footer: {

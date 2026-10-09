@@ -71,7 +71,7 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    /// Settings → Usage: the usage meters in the panel and on the pill (UsagePrefs).
+    /// Settings → Appearance → Usage meters: the usage meters in the panel and on the pill (UsagePrefs).
     @Published var usage: UsagePrefs {
         didSet { if usage != oldValue { usage.save(to: defaults, previous: oldValue) } }
     }

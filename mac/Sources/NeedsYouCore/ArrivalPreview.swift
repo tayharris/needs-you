@@ -1,6 +1,6 @@
 import Foundation
 
-// Settings → Alerts: previewing an arrival. A preview plays what a real arrival does on the
+// Settings → Appearance → Alert style: previewing an arrival. A preview plays what a real arrival does on the
 // pill, from the state before the item came in to the state after: the pill springs out
 // to the new-item preview while the arrival animation plays (glow, ripple and slide at
 // once, bounce and shake once the spring has landed, as PanelController does), the
@@ -63,7 +63,7 @@ public enum ArrivalPreview {
         /// Seconds the preview stays out in Settings (shorter than the real one; see
         /// `realPreviewSeconds`).
         public var hold: Double
-        /// Settings → Alerts → Show new items for (0: until clicked or pointed at).
+        /// Settings → Alerts → New items → Show new items for (0: until clicked or pointed at).
         public var realPreviewSeconds: Int
 
         /// When each stage starts, in seconds from the start.

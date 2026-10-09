@@ -13,6 +13,8 @@ final class SettingsPagesTests: XCTestCase {
         ("testEveryPageHasTitleSymbolAndSummary", testEveryPageHasTitleSymbolAndSummary),
         ("testTaskBasedNames", testTaskBasedNames),
         ("testDeepLinksAndOldNames", testDeepLinksAndOldNames),
+        ("testAppearanceHoldsTheLookPages", testAppearanceHoldsTheLookPages),
+        ("testPagesByName", testPagesByName),
         ("testConnectChoicesInPlainWords", testConnectChoicesInPlainWords),
         ("testMachineRowText", testMachineRowText),
         ("testThisMacRows", testThisMacRows),
@@ -23,10 +25,12 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertEqual(SettingsSidebarGroup.allCases.map { $0.pages(canInvite: true) }, [
             [.general],
             [.inbox, .connect, .machines, .otherHubs],
-            [.panel, .appearance, .alerts, .usage, .integrations, .updates, .advanced],
+            [.theme, .pill, .cards, .alertStyle, .usageMeters],
+            [.panel, .alerts, .integrations, .updates, .advanced],
         ])
         XCTAssertNil(SettingsSidebarGroup.start.title)
         XCTAssertEqual(SettingsSidebarGroup.hubs.title, "Hubs and machines")
+        XCTAssertEqual(SettingsSidebarGroup.appearance.title, "Appearance")
         // Every page is in exactly one group.
         let listed = SettingsSidebarGroup.allCases.flatMap { $0.pages(canInvite: true) }
         XCTAssertEqual(Set(listed), Set(SettingsTab.allCases))
@@ -61,6 +65,42 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertEqual(SettingsTab.access, .machines)
         XCTAssertEqual(SettingsTab.joinHub, .otherHubs)
         XCTAssertEqual(SettingsTab.hubs, .otherHubs)
+        // Appearance became a group: the old page lands on its first page, Theme (which
+        // holds what the old page did), and Usage moved under it whole.
+        XCTAssertEqual(SettingsTab.appearance, .theme)
+        XCTAssertEqual(SettingsTab.usage, .usageMeters)
+        XCTAssertEqual(SettingsTab.appearance.group, .appearance)
+        XCTAssertEqual(SettingsTab.usage.resolved(canInvite: false), .usageMeters)
+    }
+
+    /// Look and behaviour don't mix: Appearance's pages are all and only the look pages,
+    /// and the behaviour pages keep their names and deep links.
+    func testAppearanceHoldsTheLookPages() {
+        XCTAssertEqual(SettingsSidebarGroup.appearance.pages(canInvite: false).map(\.title),
+                       ["Theme", "Pill", "Panel and cards", "Alert style", "Usage meters"])
+        for tab in [SettingsTab.panel, .alerts, .integrations, .updates, .advanced] {
+            XCTAssertEqual(tab.group, .app, tab.rawValue)
+            XCTAssertEqual(tab.resolved(canInvite: false), tab)
+        }
+        // No page is called just "Appearance" or "Usage": those are a group and a subpage.
+        let titles = Set(SettingsTab.allCases.map(\.title))
+        XCTAssertFalse(titles.contains("Appearance"))
+        XCTAssertFalse(titles.contains("Usage"))
+    }
+
+    func testPagesByName() {
+        for tab in SettingsTab.allCases {
+            XCTAssertEqual(SettingsTab(name: tab.rawValue), tab)
+        }
+        XCTAssertEqual(SettingsTab(name: "appearance"), .theme)
+        XCTAssertEqual(SettingsTab(name: "usage"), .usageMeters)
+        XCTAssertEqual(SettingsTab(name: "thisMac"), .inbox)
+        XCTAssertEqual(SettingsTab(name: "invite"), .connect)
+        XCTAssertEqual(SettingsTab(name: "access"), .machines)
+        XCTAssertEqual(SettingsTab(name: "joinHub"), .otherHubs)
+        XCTAssertEqual(SettingsTab(name: "hubs"), .otherHubs)
+        XCTAssertNil(SettingsTab(name: "nope"))
+        XCTAssertNil(SettingsTab(name: ""))
     }
 
     func testConnectChoicesInPlainWords() {

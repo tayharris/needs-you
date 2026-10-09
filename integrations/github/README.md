@@ -20,11 +20,14 @@ Each run:
 1. **Notifications:** `gh api -i /notifications` (unread threads), with `If-Modified-Since` from the last answer, at most once per `X-Poll-Interval` (GitHub says 60 s). A `304` costs no rate limit and keeps the last list. Every 30 minutes it fetches without the condition, so threads you've read drop off.
 2. **Your PRs:** one `gh api graphql` call: your open PRs updated in the last 14 days (review decision, mergeable, the checks on the head commit), and the open PRs that still request your review.
 3. **Merged PRs:** the poller remembers your open PRs from run to run. When one leaves the open list, one more `gh api graphql` call (one for up to 30 PRs) asks whether it merged. Merged: one `done` card, posted once. Closed without merging, or no longer visible to you: forgotten. Still open (it went quiet past `NEEDS_YOU_GITHUB_PR_DAYS`): looked up again on later runs until it hasn't been seen open for that many days. Nothing happens on the first run, so installing the poller never posts a burst of old merges.
-4. **Cards:** one per condition, with a stable key. A card is re-posted on every run while its condition holds, with `--expires-in` of 3x the interval (15 minutes), so a poller that stops (machine off, gh logged out) leaves nothing stale behind. Re-posting identical content doesn't re-animate a card. When the condition clears, it resolves the key.
+4. **Opt-in extras** (both off unless configured):
+   - **Projects statuses** (`NEEDS_YOU_GITHUB_PROJECT_STATUSES`): one `gh api graphql` call for the open issues and PRs assigned to you and the value of each one's `Status` field in every project it's in. The poller remembers each item's last status, so it can tell a *move*: a card when the status moves to one you named, kept while it stays there. The first run only records, so turning it on doesn't post a burst of everything already blocked; after that, an item newly assigned to you in a watched status counts as a move.
+   - **Dependabot alerts** (`NEEDS_YOU_GITHUB_SECURITY=1`): for each repo with an unread `security_alert` notification (up to 10 a run), one `gh api /repos/<repo>/dependabot/alerts?state=open&severity=...` call. A card per open alert at the severities you named (critical by default).
+5. **Cards:** one per condition, with a stable key. A card is re-posted on every run while its condition holds, with `--expires-in` of 3x the interval (15 minutes), so a poller that stops (machine off, gh logged out) leaves nothing stale behind. Re-posting identical content doesn't re-animate a card. When the condition clears, it resolves the key.
 
 It posts through the `needs-you` CLI, so the outbox and hub failover apply. While the outbox has a backlog (no hub reachable), unchanged cards aren't renewed, so a sleeping Mac doesn't fill it.
 
-What it posted is in `~/.local/state/needs-you/github.json` (mode 600; no tokens, just keys, content hashes, the last notification list, and your open PRs' titles and URLs for the merged check).
+What it posted is in `~/.local/state/needs-you/github.json` (mode 600; no tokens, just keys, content hashes, the last notification list, your open PRs' titles and URLs for the merged check, and, with Projects on, each assigned item's last status).
 
 ## Cards
 
@@ -42,9 +45,12 @@ What it posted is in `~/.local/state/needs-you/github.json` (mode 600; no tokens
 | `conflict` | your PR: `mergeable: CONFLICTING` | Resolve conflicts in owner/repo#22: *title* | normal | `<ctx>:gh:owner/repo#22:conflict` | Conflicts, PR; steps: Resolve the conflicts, Push | mergeable again |
 | `checks` | your PR: check rollup `FAILURE`/`ERROR` | Fix failing checks on owner/repo#23: *title* | normal | `<ctx>:gh:owner/repo#23:checks` | Checks, PR; a step per failing check (up to 3) linking its logs | checks pass |
 | `merged` | your PR left the open list and a lookup says it merged | Merged owner/repo#20: *title* | low, a `done` FYI | `<ctx>:gh:owner/repo#20:merged` | PR | never resolved: it expires after 24 h like every `done`, and isn't counted |
+| *(opt-in)* | an open issue or PR assigned to you moved to a status in `NEEDS_YOU_GITHUB_PROJECT_STATUSES` (event `status`) | owner/repo#30 is Blocked in *project*: *title* | as configured (`Blocked=urgent`), else normal | `<ctx>:gh:owner/repo#30:project:<project owner>/<project number>` | Open, Project | the status moves to one you didn't name, the issue or PR closes, you're unassigned, or it leaves the project. Another watched status updates the same card |
+| *(opt-in)* | an open Dependabot alert at a configured severity, in a repo with an unread `security_alert` notification (event `security`) | Critical security alert in owner/repo: *package*: *advisory summary* | `NEEDS_YOU_GITHUB_SECURITY_PRIORITY` (low) | `<ctx>:gh:owner/repo:security:<alert number>` | Alert, Dependabot | the alert is fixed or dismissed, or the notification is read |
+| | `gh` lacks the scope an opt-in feature needs | GitHub Projects (or Dependabot) cards on devbox need gh's read:project (security_events) scope | low | `<default ctx>:gh:<host>:scope:read-project` (`:scope:security_events`) | body: run `gh auth refresh -s <scope>` | the scope works again (checked hourly), or the feature is turned off |
 | | `gh` failed 3 runs in a row | GitHub alerts stopped on devbox: check gh | low | `<default ctx>:gh:<host>:poller-failing` | body: run `gh auth status` | the next successful run |
 
-Draft PRs, `subscribed`, `author`, `state_change`, `security_alert` and other reasons are ignored. At most `NEEDS_YOU_GITHUB_MAX_CARDS` (20) cards are open at once: urgent first, then cards already on the panel, so the 60-item volume guard is never hit and the panel isn't churned.
+Draft PRs, `subscribed`, `author`, `state_change` and other reasons are ignored, and so is `security_alert` unless `NEEDS_YOU_GITHUB_SECURITY=1`. The opt-in cards set `source.event` (`status`, `security`), so a Mac alert rule can treat them on their own; they need the `needs-you` CLI 0.4.0 or later (`needs-you update`). At most `NEEDS_YOU_GITHUB_MAX_CARDS` (20) cards are open at once: urgent first, then cards already on the panel, so the 60-item volume guard is never hit and the panel isn't churned.
 
 ## Config
 
@@ -59,6 +65,11 @@ In `~/.config/needs-you/env` (or the environment). All optional.
 | `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |
 | `NEEDS_YOU_GITHUB_PR_DAYS` | `14` | Only your PRs updated in the last N days (stale PRs aren't gates) |
 | `NEEDS_YOU_GITHUB_MAX_CARDS` | `20` | Cap on open cards from this poller |
+| `NEEDS_YOU_GITHUB_PROJECT_STATUSES` | none (off) | Projects statuses that make a card, each with an optional priority: `Blocked=urgent,In Review=normal` (no `=`: normal). Names match case-insensitively. Needs `gh auth refresh -s read:project` |
+| `NEEDS_YOU_GITHUB_PROJECT_FIELD` | `Status` | The single-select field to watch, if your projects call it something else |
+| `NEEDS_YOU_GITHUB_SECURITY` | off | `1`: cards for open Dependabot alerts. Needs `gh auth refresh -s security_events` |
+| `NEEDS_YOU_GITHUB_SECURITY_SEVERITIES` | `critical` | Which severities make a card: `critical,high` (also `medium`, `low`) |
+| `NEEDS_YOU_GITHUB_SECURITY_PRIORITY` | `low` | Priority of those cards: `urgent`, `normal` or `low` |
 | `NEEDS_YOU_GITHUB_GH` | `gh` on `PATH` | Path to `gh` |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | Path to the CLI |
 
@@ -66,7 +77,8 @@ Run it on **one** machine. Keys dedupe, so a second machine wouldn't duplicate c
 
 ## Safety
 
-- Auth is your `gh` login (`gh auth login`); the poller never reads, stores or prints a token. It needs the `notifications` and `repo` scopes that `gh auth login` grants.
+- Auth is your `gh` login (`gh auth login`); the poller never reads, stores or prints a token. It needs the `notifications` and `repo` scopes that `gh auth login` grants; Projects statuses also need `read:project`, and Dependabot alerts `security_events` (`gh auth refresh -s read:project,security_events`). When one is missing, the poller says so once (one stderr line and one low card), keeps everything else working, and asks GitHub again once an hour; it doesn't count as the poller failing.
+- From Projects only the project's title and the status name are used; from Dependabot only the package name and the advisory's one-line summary, cleaned the same way. Advisory descriptions are never copied.
 - Everything from GitHub is untrusted data. Only PR/issue titles reach a card, with control, bidi and zero-width characters removed and truncated to 70 characters; check names go into steps with markdown escaped. Bodies, comments and review text are never copied. Links are built from the repo URL and number, and only `https://` links from GitHub are kept.
 - It always exits 0. When `gh` is missing or failing, it changes nothing (no posts, no resolves), writes one line to stderr, and after 3 failed runs in a row posts the single low `poller-failing` card.
 

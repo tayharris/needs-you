@@ -5,7 +5,7 @@ import Foundation
 // and tint on the count pill. Pure numbers, so the urgent floor is unit-tested.
 // `.normal` is the original look (AlertStyleTests pins it).
 
-/// Settings → Alerts: off, subtle, normal or bright. Chosen separately for urgent items and
+/// Settings → Appearance → Alert style: off, subtle, normal or bright. Chosen separately for urgent items and
 /// for everything else.
 public enum AlertIntensity: String, CaseIterable, Codable, Sendable, Comparable {
     case off, subtle, normal, bright

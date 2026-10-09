@@ -1,0 +1,825 @@
+#!/usr/bin/env python3
+"""needs-you-linear: turn your Linear inbox (assignments, comments, mentions, status changes) into needs-you cards.
+
+  needs-you-linear [--dry-run] [--verbose] [--state PATH]
+
+Opt-in: it does nothing until a Linear personal API key is configured. Run it every ~5
+minutes (cron, a systemd user timer or a LaunchAgent) on one machine. Each run makes one
+GraphQL request to https://api.linear.app/graphql (more only when the inbox has more than a
+page of new notifications):
+
+  1. The notifications updated since the last run (assignments, comments and replies,
+     mentions, status changes), and the ones behind the cards already open, so a read,
+     archived or snoozed notification clears its card.
+  2. viewer.assignedIssues (not done or canceled), so an issue that leaves it (done,
+     canceled or unassigned from you) clears its card.
+  3. One card per issue, key <context>:linear:<ISSUE-ID>, titled by the latest event, with a
+     count line as its body. It is re-posted while it holds (so its --expires-in keeps
+     moving), and resolved when every notification behind it is read, archived or snoozed,
+     the issue is done, canceled or no longer yours, or after 24 h with nothing new.
+
+The key is read from a file (mode 600, owned by you) and sent only to the API URL; it is
+never logged, printed, stored in the state file or passed to another program. Everything
+read from Linear is untrusted: only issue titles and status names (cleaned, redacted and
+truncated) reach a card, and only https://linear.app links to that issue. Comment bodies are
+never read. It always exits 0.
+
+Config (environment, else ~/.config/needs-you/env):
+  NEEDS_YOU_LINEAR_KEY_FILE   file holding the personal API key (default ~/.config/needs-you/linear-key
+                              if it exists). Must be a regular file, yours, mode 600 or stricter
+  NEEDS_YOU_LINEAR_KEY        the key itself, from the process environment only (not the env file)
+  NEEDS_YOU_LINEAR_CATEGORIES events to post, comma list (default all): assigned status comment mention,
+                              or Linear's names (assignments statusChanges commentsAndReplies mentions);
+                              "-mention" turns one off
+  NEEDS_YOU_LINEAR_STATUSES   priority by the issue's status: "Blocked=urgent,In Review=normal,*=low";
+                              "Backlog=off" posts no status-change card for that status
+  NEEDS_YOU_LINEAR_TEAMS      team key=context:priority, "ACME=work:normal,OPS=work:urgent". When set,
+                              also the list of teams to watch (default: every team, default context)
+  NEEDS_YOU_LINEAR_INTERVAL   minutes between runs (default 5); cards expire after 3x this
+  NEEDS_YOU_LINEAR_MAX_CARDS  at most this many cards open at once (default 20; urgent first)
+  NEEDS_YOU_LINEAR_MAX_AGE_H  a card with nothing new for this many hours resolves (default 24)
+  NEEDS_YOU_LINEAR_API        the GraphQL URL (default https://api.linear.app/graphql; https, or http
+                              to a loopback address for tests)
+  NEEDS_YOU_BIN               path to the needs-you CLI (default: on PATH, else ~/.local/bin)
+
+Priority is the highest of the status rule, the team's base and the event's floor (comment
+and mention: normal; assigned and status: low).
+
+State: ~/.local/state/needs-you/linear.json (mode 600): what it posted, the notifications
+behind open cards, the time of the last run. No key.
+Python 3.9+ standard library only.
+"""
+from __future__ import annotations
+
+import argparse
+import calendar
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import stat
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+API_URL = "https://api.linear.app/graphql"
+EVENTS = ("assigned", "status", "comment", "mention")
+CATEGORY_EVENT = {"assignments": "assigned", "statuschanges": "status", "commentsandreplies": "comment",
+                  "mentions": "mention"}
+EVENT_ALIASES = dict(CATEGORY_EVENT, assigned="assigned", assign="assigned", status="status",
+                     comment="comment", comments="comment", mention="mention")
+# Used only when a notification has no category (older API answers).
+TYPE_EVENT = {"issueassignedtoyou": "assigned", "issuestatuschanged": "status", "issuenewcomment": "comment",
+              "issuemention": "mention", "issuecommentmention": "mention"}
+EVENT_FLOOR = {"assigned": "low", "status": "low", "comment": "normal", "mention": "normal"}
+PRIORITIES = ("low", "normal", "urgent")
+DONE_TYPES = ("completed", "canceled")
+FAILS_BEFORE_CARD = 3
+TITLE_MAX = 100
+SUBJECT_MAX = 70
+PAGE = 50
+MAX_PAGES = 5
+TRACKED_MAX = 100
+ASSIGNED_MAX = 250
+OVERLAP_S = 300  # re-read this much before the last run, against clock skew
+MAX_RESPONSE = 4 * 1024 * 1024
+KEY_SAFE = re.compile(r"[^A-Za-z0-9._:/@#+=-]")
+IDENT = re.compile(r"^[A-Za-z0-9]{1,10}-\d{1,9}$")
+NOTIF_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+CURSOR = re.compile(r"^[A-Za-z0-9_=+/-]{1,256}$")
+API_KEY = re.compile(r"^[A-Za-z0-9_-]{8,200}$")
+LINEAR_URL = re.compile(r"^https://linear\.app/[A-Za-z0-9][A-Za-z0-9_-]{0,63}/issue/(?P<ident>[A-Za-z0-9]{1,10}-\d{1,9})"
+                        r"(?:/[A-Za-z0-9._~%-]{0,200})?(?:#[A-Za-z0-9_-]{1,100})?$")
+
+FIELDS = """id type readAt archivedAt snoozedUntilAt createdAt updatedAt
+      ... on IssueNotification { category url
+        issue { identifier title url team { key } state { name type } } }"""
+
+
+# ---------------------------------------------------------------------------
+# Config, state, text hygiene
+# ---------------------------------------------------------------------------
+
+_SECRETS: List[str] = []  # the key, once read: scrubbed from every line written to stderr
+
+
+def warn(msg: str) -> None:
+    for s in _SECRETS:
+        msg = msg.replace(s, "[redacted]")
+    sys.stderr.write("needs-you-linear: %s\n" % msg)
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].strip()
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
+def state_base() -> str:
+    return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+
+
+def outbox_has_backlog() -> bool:
+    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
+    try:
+        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
+    except OSError:
+        return False
+
+
+def _csv(value: str) -> List[str]:
+    return [p.strip() for p in (value or "").split(",") if p.strip()]
+
+
+def _max_prio(*ps: str) -> str:
+    return max((p for p in ps if p in PRIORITIES), key=PRIORITIES.index, default="low")
+
+
+class Config:
+    def __init__(self) -> None:
+        if os.environ.get("NEEDS_YOU_CONFIG"):
+            path = os.environ["NEEDS_YOU_CONFIG"]
+        else:
+            base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+            path = os.path.join(base, "needs-you", "env")
+        f = read_env_file(path)
+        get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
+        default_key = os.path.join(os.path.dirname(path), "linear-key")
+        self.key_file = get("NEEDS_YOU_LINEAR_KEY_FILE") or (default_key if os.path.lexists(default_key) else "")
+        self.key_file = os.path.expanduser(self.key_file)
+        self.key_env = "" if self.key_file else os.environ.get("NEEDS_YOU_LINEAR_KEY", "")
+        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
+        self.default_context = ctx if ctx in ("work", "personal") else "work"
+
+        raw = [r.lower() for r in _csv(get("NEEDS_YOU_LINEAR_CATEGORIES"))]
+        if raw and all(r.startswith("-") for r in raw):
+            off = {EVENT_ALIASES.get(r[1:], "") for r in raw}
+            self.events = {e for e in EVENTS if e not in off}
+        elif raw:
+            self.events = {EVENT_ALIASES[r] for r in raw if r in EVENT_ALIASES}
+        else:
+            self.events = set(EVENTS)
+
+        self.statuses: Dict[str, str] = {}
+        for pair in _csv(get("NEEDS_YOU_LINEAR_STATUSES")):
+            name, _, p = pair.rpartition("=")
+            p = p.strip().lower()
+            if name.strip() and (p in PRIORITIES or p == "off"):
+                self.statuses[name.strip().lower()] = p
+
+        self.teams: Dict[str, Tuple[str, str]] = {}
+        for pair in _csv(get("NEEDS_YOU_LINEAR_TEAMS")):
+            team, _, rest = pair.partition("=")
+            c, p = self.default_context, "low"
+            for part in rest.split(":"):
+                part = part.strip().lower()
+                if part in ("work", "personal"):
+                    c = part
+                elif part in PRIORITIES:
+                    p = part
+            if team.strip():
+                self.teams[team.strip().upper()] = (c, p)
+
+        def num(name: str, default: float, low: float) -> float:
+            try:
+                return max(low, float(get(name, str(default))))
+            except ValueError:
+                return default
+        self.interval_min = num("NEEDS_YOU_LINEAR_INTERVAL", 5, 1)
+        self.max_cards = int(num("NEEDS_YOU_LINEAR_MAX_CARDS", 20, 1))
+        self.max_age_s = num("NEEDS_YOU_LINEAR_MAX_AGE_H", 24, 1) * 3600
+        self.api = get("NEEDS_YOU_LINEAR_API", API_URL)
+        local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
+        self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
+        self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.key_file or self.key_env)
+
+    def team_of(self, team: str) -> Optional[Tuple[str, str]]:
+        """(context, base priority), or None for a team that isn't watched."""
+        if not self.teams:
+            return self.default_context, "low"
+        return self.teams.get(team.upper())
+
+    def status_rule(self, name: str) -> str:
+        return self.statuses.get(name.lower()) or self.statuses.get("*") or "low"
+
+
+_STRIP = re.compile("[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
+
+
+# --- needs-you redaction (begin) ---
+# Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
+# block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
+# integrations/mcp/needs_you_mcp.py, integrations/github/needs-you-github,
+# integrations/linear/needs-you-linear and integrations/jira/needs-you-jira
+# (tests/test_redaction.py checks). Best effort: a secret that looks like a word isn't caught.
+# Every pattern runs in linear time on any input (tests/test_redaction.py times them): each one
+# starts on a literal and never backtracks over a run it has to give back.
+REDACTED = "[redacted]"
+# A %XX escape before a key (x%3Dghp_..., %22ghp_...) counts as a word's start.
+_SECRET_RAW = re.compile(r"(?:\b|(?<=%[0-9A-Fa-f]{2}))"
+                         r"(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
+                         r"|xox[abpr]-[\w-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|ny[ip]?_[A-Za-z0-9_-]{8,}"
+                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}"
+                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,}|lin_(?:api|oauth)_\w{16,})")
+# A webhook URL whose path is its secret: the host and the path's start stay.
+_WEBHOOK = re.compile(r"(hooks\.slack\.com/(?:services|workflows|triggers)/"
+                      r"|discord(?:app)?\.com/api/(?:v\d+/)?webhooks/)[\w/-]+")
+# A JWT: the whole run is taken greedily, then checked (a failed match never rescans the run).
+_JWT_RUN = re.compile(r"\beyJ[\w.-]+")
+_JWT = re.compile(r"eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*")
+# A name ending in a secret's keyword, then its value (`:`, `=`, `=>`, or URL-encoded %3A/%3D).
+# Only the keyword is matched, never the name's prefix (PGPASSWORD, X_API_KEY, client_secret).
+# Keywords other than "password" start a word or follow _ or - (DB_PASS, not bypass).
+_SECRET_KV = re.compile(r"(?i)(password|(?<![a-z0-9])(?:passwd|pwd|pw|pass(?:phrase)?|token|secret"
+                        r"|(?:api|access|secret|private)[_-]?key|auth|credentials?|sig(?:nature)?))"
+                        r"([\"']?\s*(?:=>|[:=]|%3[ad])\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+# A command line's --password VALUE (with a space): _flag() checks the keyword ends a --flag.
+_SECRET_FLAG = re.compile(r"(?i)(?<=-)(password|passwd|token|secret|api-key)([ \t]+)(?!-)(\S+)")
+_SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
+_PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*?"
+                  r"(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|\Z)", re.S)
+_LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
+_LONG_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
+_SPACES = re.compile(r"(\s+)")
+
+
+def _long_run(m):
+    s = m.group(0)
+    # base64-ish: digits and both cases, few separators (not a path or a branch name)
+    if (len(re.findall(r"[-_/]", s)) <= 3 and re.search(r"[0-9]", s) and re.search(r"[a-z]", s)
+            and re.search(r"[A-Z]", s)):
+        return REDACTED
+    return s
+
+
+def _jwt(m):
+    j = _JWT.match(m.group(0))
+    return REDACTED + m.group(0)[j.end():] if j else m.group(0)
+
+
+def _flag(m):
+    i = m.start()
+    while i > 0 and (m.string[i - 1].isalnum() or m.string[i - 1] in "-_"):
+        i -= 1
+    if m.string.startswith("--", i):
+        return m.group(1) + m.group(2) + REDACTED
+    return m.group(0)
+
+
+def _url_creds(word):
+    """scheme://user:<password>@host in one whitespace-free word: the password runs to the last
+    "@" before the query, so one holding "/" or "@" goes whole (a path's "@" may go with it)."""
+    parts = word.split("://")
+    for i in range(1, len(parts)):
+        seg = parts[i]
+        end = len(seg)
+        for c in "?#":
+            k = seg.find(c)
+            if 0 <= k < end:
+                end = k
+        at = seg.rfind("@", 0, end)
+        colon = seg.find(":", 0, at)
+        if at > 0 and 0 <= colon < at - 1 and "/" not in seg[:colon]:
+            parts[i] = seg[:colon + 1] + REDACTED + seg[at:]
+    return "://".join(parts)
+
+
+def redact(text):
+    text = _PEM.sub(REDACTED, text)
+    if "://" in text:
+        text = "".join(_url_creds(w) if "://" in w else w for w in _SPACES.split(text))
+    text = _WEBHOOK.sub(lambda m: m.group(1) + REDACTED, text)
+    text = _SECRET_RAW.sub(REDACTED, text)
+    text = _JWT_RUN.sub(_jwt, text)
+    text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _SECRET_FLAG.sub(_flag, text)
+    text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _LONG_HEX.sub(REDACTED, text)
+    return _LONG_RUN.sub(_long_run, text)
+# --- needs-you redaction (end) ---
+
+
+def safe_text(value: Any, limit: int) -> str:
+    """Untrusted Linear text, made fit for a card: no control, bidi or zero-width characters,
+    token-shaped text redacted, whitespace collapsed, truncated with an ellipsis."""
+    s = " ".join(redact(_STRIP.sub(" ", str(value or ""))).split())
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def md_escape(s: str) -> str:
+    """Body text is inline markdown: an untrusted name must not become a link or emphasis."""
+    return re.sub(r"([\\`*_\[\]()<>#!|~])", r"\\\1", s)
+
+
+def linear_url(url: Any, ident: str) -> str:
+    """An https://linear.app link to this issue (any path or comment anchor under it), else ""."""
+    u = str(url or "")
+    m = LINEAR_URL.match(u)
+    return u if m and m.group("ident").upper() == ident.upper() else ""
+
+
+def iso(t: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(t))
+
+
+def parse_time(value: Any) -> Optional[float]:
+    m = re.match(r"^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?Z$", str(value or ""))
+    if not m:
+        return None
+    return float(calendar.timegm(tuple(int(x) for x in m.groups()) + (0, 0, 0)))
+
+
+def load_state(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(path: str, state: Dict[str, Any]) -> None:
+    d = os.path.dirname(path)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    tmp = path + ".%d.tmp" % os.getpid()
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, indent=1, sort_keys=True)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------------
+# The key and the API
+# ---------------------------------------------------------------------------
+
+class LinearError(Exception):
+    pass
+
+
+def read_key(cfg: Config) -> str:
+    """The key from its file (a regular file, owned by you, no group or other access; a
+    symlink is refused), else from NEEDS_YOU_LINEAR_KEY in the environment."""
+    if cfg.key_file:
+        path = cfg.key_file
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        except OSError as e:
+            raise LinearError("cannot open the key file %s (%s)" % (path, e.strerror or type(e).__name__))
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise LinearError("the key file %s is not a regular file" % path)
+            if hasattr(os, "geteuid") and st.st_uid != os.geteuid():
+                raise LinearError("refusing the key file %s: it isn't owned by you" % path)
+            if st.st_mode & 0o077:
+                raise LinearError("refusing the key file %s: group or others can read it (mode %o); "
+                                  "run chmod 600 %s" % (path, stat.S_IMODE(st.st_mode), path))
+            raw = os.read(fd, 4096)
+        finally:
+            os.close(fd)
+        try:
+            key = raw.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            key = ""
+    else:
+        key = cfg.key_env.strip()
+    if not API_KEY.match(key):
+        raise LinearError("the Linear API key %s doesn't look like a key (one line, letters, digits, _ and -)"
+                          % ("in " + cfg.key_file if cfg.key_file else "in NEEDS_YOU_LINEAR_KEY"))
+    _SECRETS.append(key)
+    return key
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        return None  # never follow a redirect with the key on it
+
+
+def check_api_url(url: str) -> None:
+    p = urllib.parse.urlsplit(url)
+    host = (p.hostname or "").lower()
+    if p.scheme == "https" and host:
+        return
+    if p.scheme == "http" and host in ("127.0.0.1", "localhost", "::1"):
+        return
+    raise LinearError("NEEDS_YOU_LINEAR_API must be an https URL (or http to a loopback address)")
+
+
+def graphql(cfg: Config, key: str, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    check_api_url(cfg.api)
+    host = (urllib.parse.urlsplit(cfg.api).hostname or "").lower()
+    handlers: List[Any] = [_NoRedirect()]
+    if host in ("127.0.0.1", "localhost", "::1"):
+        handlers.append(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(*handlers)
+    body = json.dumps({"query": query, "variables": variables or {}}).encode("utf-8")
+    req = urllib.request.Request(cfg.api, data=body, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Authorization", key)  # a personal API key: no "Bearer"
+    req.add_header("User-Agent", "needs-you-linear")
+    status = 0
+    try:
+        with opener.open(req, timeout=30) as resp:
+            status = resp.status
+            raw = resp.read(MAX_RESPONSE + 1)
+    except urllib.error.HTTPError as e:
+        status = e.code
+        try:
+            raw = e.read(64 * 1024)
+        except OSError:
+            raw = b""
+        msg = _first_error(raw)
+        raise LinearError("Linear answered HTTP %d%s" % (status, ": " + msg if msg else ""))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        reason = getattr(e, "reason", None) or e
+        raise LinearError("cannot reach %s: %s" % (host or "the Linear API", safe_text(reason, 120)))
+    if len(raw) > MAX_RESPONSE:
+        raise LinearError("Linear's answer is too large")
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise LinearError("Linear answered HTTP %d with something that isn't JSON" % status)
+    if not isinstance(doc, dict):
+        raise LinearError("unexpected answer from Linear")
+    if doc.get("errors"):
+        raise LinearError("Linear: %s" % (_first_error(raw) or "error"))
+    data = doc.get("data")
+    if not isinstance(data, dict):
+        raise LinearError("unexpected answer from Linear (no data)")
+    return data
+
+
+def _first_error(raw: bytes) -> str:
+    try:
+        errs = json.loads(raw.decode("utf-8")).get("errors") or []
+        e = errs[0]
+        code = ((e.get("extensions") or {}).get("code") or "") if isinstance(e, dict) else ""
+        msg = safe_text(e.get("message") if isinstance(e, dict) else e, 160)
+        return "%s%s" % (msg, " (%s)" % safe_text(code, 40) if code else "")
+    except (ValueError, AttributeError, IndexError, TypeError, UnicodeDecodeError):
+        return ""
+
+
+def _gql_string(s: str) -> str:
+    return json.dumps(s)  # a JSON string of these characters is a GraphQL string literal
+
+
+def fetch(cfg: Config, key: str, since: str, tracked: List[str]) -> Tuple[List[Dict[str, Any]], Set[str],
+                                                                       Optional[Set[str]], bool]:
+    """(notifications, tracked ids Linear returned, identifiers of your open assigned issues
+    or None when the list was cut off, whether more new notifications wait than were read)."""
+    ids = ", ".join(_gql_string(i) for i in tracked if NOTIF_ID.match(i))
+    parts = [
+        'viewer { assignedIssues(first: %d, filter: {state: {type: {nin: ["completed", "canceled"]}}}) '
+        "{ nodes { identifier } pageInfo { hasNextPage } } }" % ASSIGNED_MAX,
+        "notifications(first: %d, after: $after, includeArchived: true, filter: {updatedAt: {gt: %s}}) "
+        "{ nodes { %s } pageInfo { hasNextPage endCursor } }" % (PAGE, _gql_string(since), FIELDS),
+    ]
+    if ids:
+        parts.append("tracked: notifications(first: %d, includeArchived: true, filter: {id: {in: [%s]}}) "
+                     "{ nodes { %s } }" % (TRACKED_MAX, ids, FIELDS))
+    data = graphql(cfg, key, "query($after: String) {\n  %s\n}" % "\n  ".join(parts), {"after": None})
+    try:
+        ai = data["viewer"]["assignedIssues"]
+        assigned: Optional[Set[str]] = {str(n.get("identifier") or "").upper()
+                                        for n in ai["nodes"] if isinstance(n, dict)}
+        if (ai.get("pageInfo") or {}).get("hasNextPage"):
+            assigned = None  # can't tell "unassigned" from "past the first page"
+        conn = data["notifications"]
+        nodes = [n for n in conn["nodes"] if isinstance(n, dict)]
+        tracked_nodes = [n for n in ((data.get("tracked") or {}).get("nodes") or []) if isinstance(n, dict)]
+    except (KeyError, TypeError):
+        raise LinearError("unexpected answer from Linear")
+    seen = {str(n.get("id")) for n in tracked_nodes}
+    more = False
+    pages = 1
+    page = conn.get("pageInfo") or {}
+    while page.get("hasNextPage"):
+        cursor = str(page.get("endCursor") or "")
+        if pages >= MAX_PAGES or not CURSOR.match(cursor):
+            more = True
+            break
+        q = ("query($after: String) {\n  notifications(first: %d, after: $after, includeArchived: true, "
+             "filter: {updatedAt: {gt: %s}}) { nodes { %s } pageInfo { hasNextPage endCursor } }\n}"
+             % (PAGE, _gql_string(since), FIELDS))
+        d = graphql(cfg, key, q, {"after": cursor})
+        try:
+            conn = d["notifications"]
+            nodes += [n for n in conn["nodes"] if isinstance(n, dict)]
+        except (KeyError, TypeError):
+            raise LinearError("unexpected answer from Linear")
+        page = conn.get("pageInfo") or {}
+        pages += 1
+    return tracked_nodes + nodes, seen, assigned, more
+
+
+# ---------------------------------------------------------------------------
+# Notifications -> records -> cards
+# ---------------------------------------------------------------------------
+
+def event_of(n: Dict[str, Any]) -> Optional[str]:
+    cat = str(n.get("category") or "").lower()
+    if cat:
+        return CATEGORY_EVENT.get(cat)
+    return TYPE_EVENT.get(str(n.get("type") or "").lower())
+
+
+def record(cfg: Config, n: Dict[str, Any], now: float) -> Optional[Dict[str, Any]]:
+    """Only the fields we use, cleaned. None for a notification we don't turn into a card."""
+    issue = n.get("issue")
+    nid = str(n.get("id") or "")
+    if not isinstance(issue, dict) or not NOTIF_ID.match(nid):
+        return None
+    ident = str(issue.get("identifier") or "").upper()
+    ev = event_of(n)
+    if not IDENT.match(ident) or ev not in cfg.events:
+        return None
+    team = str((issue.get("team") or {}).get("key") or ident.split("-", 1)[0]).upper()
+    if cfg.team_of(team) is None:
+        return None
+    created = parse_time(n.get("createdAt")) or now
+    snoozed = parse_time(n.get("snoozedUntilAt"))
+    state = issue.get("state") if isinstance(issue.get("state"), dict) else {}
+    return {
+        "id": nid, "ident": ident, "e": ev, "c": created, "team": team,
+        "open": not n.get("readAt") and not n.get("archivedAt") and not (snoozed and snoozed > now),
+        "u": linear_url(n.get("url"), ident),
+        "issue": {"t": safe_text(issue.get("title"), 200), "u": linear_url(issue.get("url"), ident),
+                  "s": safe_text(state.get("name"), 40), "st": str(state.get("type") or "").lower()[:20],
+                  "team": team},
+    }
+
+
+def _title(prefix: str, subject: str) -> str:
+    room = TITLE_MAX - len(prefix) - 2
+    return prefix + (": " + safe_text(subject, min(SUBJECT_MAX, room)) if subject and room > 10 else "")
+
+
+def _sentence(s: str) -> str:
+    return s[:1].upper() + s[1:]
+
+
+def _plural(n: int, one: str, many: str) -> str:
+    return "%d %s" % (n, one if n == 1 else many)
+
+
+def issue_card(cfg: Config, ident: str, info: Dict[str, Any], notifs: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    status = info.get("s") or ""
+    rule = cfg.status_rule(status) if status else (cfg.statuses.get("*") or "low")
+    if rule == "off":
+        notifs = [n for n in notifs if n["e"] != "status"]
+    if not notifs:
+        return None
+    latest = max(notifs, key=lambda n: (n["c"], n["id"]))
+    ev = latest["e"]
+    subject = info.get("t") or ""
+    if ev == "status":
+        title = _title("%s moved to %s" % (ident, status) if status else "%s changed status" % ident, subject)
+    elif ev == "comment":
+        title = _title("New comment on %s" % ident, subject)
+    elif ev == "mention":
+        title = _title("You were mentioned in %s" % ident, subject)
+    else:
+        title = _title("Assigned to you: %s" % ident, subject)
+    counts = {e: sum(1 for n in notifs if n["e"] == e) for e in EVENTS}
+    parts = []
+    if counts["comment"]:
+        parts.append(_plural(counts["comment"], "new comment", "new comments"))
+    if counts["mention"]:
+        parts.append(_plural(counts["mention"], "mention", "mentions"))
+    if counts["status"]:
+        parts.append(_plural(counts["status"], "status change", "status changes"))
+    if counts["assigned"]:
+        parts.append("assigned to you")
+    if status:
+        parts.append("status " + md_escape(status))
+    team = info.get("team") or ident.split("-", 1)[0]
+    ctx, base = cfg.team_of(team) or (cfg.default_context, "low")
+    prio = _max_prio(rule if rule != "off" else "low", base, EVENT_FLOOR[ev])
+    url = latest.get("u") if ev in ("comment", "mention") else ""
+    links = [("Comment", url)] if url else ([("Issue", info["u"])] if info.get("u") else [])
+    return {"key": KEY_SAFE.sub("-", "%s:linear:%s" % (ctx, ident))[:200], "title": title[:TITLE_MAX],
+            "priority": prio, "context": ctx, "project": team, "event": ev, "src": "linear",
+            "links": [[label, u] for label, u in links], "body": _sentence(", ".join(parts))}
+
+
+# ---------------------------------------------------------------------------
+# Posting through the CLI
+# ---------------------------------------------------------------------------
+
+def card_hash(c: Dict[str, Any]) -> str:
+    keep = {k: c.get(k) for k in ("title", "priority", "context", "links", "body", "project", "event")}
+    return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
+    argv = [cfg.cli, "-q", "add", "--key=" + c["key"], "--title=" + c["title"], "--priority=" + c["priority"],
+            "--context=" + c["context"], "--agent=linear", "--project=" + c["project"]]
+    if c.get("event"):
+        argv.append("--event=" + c["event"])
+    if expires_h:
+        argv.append("--expires-in=%.3f" % expires_h)
+    for label, url in c.get("links") or []:
+        argv.append("--link=%s=%s" % (label, url))
+    if c.get("body"):
+        argv.append("--body=" + c["body"])
+    return _cli(argv)
+
+
+def resolve(cfg: Config, key: str) -> bool:
+    return _cli([cfg.cli, "-q", "resolve", "--key=" + key])
+
+
+def _cli(argv: List[str]) -> bool:
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        warn("cannot run needs-you: %s" % type(e).__name__)
+        return False
+    if r.returncode != 0:
+        warn("needs-you %s exited %d: %s" % (argv[2], r.returncode, safe_text(r.stderr, 300)))
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# One run
+# ---------------------------------------------------------------------------
+
+def update_tracking(cfg: Config, state: Dict[str, Any], nodes: List[Dict[str, Any]], tracked_ids: List[str],
+                    returned: Set[str], assigned: Optional[Set[str]], now: float) -> None:
+    notifs: Dict[str, Any] = state.setdefault("notifs", {})
+    issues: Dict[str, Any] = state.setdefault("issues", {})
+    for nid in tracked_ids:
+        if nid not in returned:
+            notifs.pop(nid, None)  # deleted, or no longer ours
+    for n in nodes:
+        r = record(cfg, n, now)
+        if r is None:
+            notifs.pop(str(n.get("id") or ""), None)
+            continue
+        prev = issues.get(r["ident"]) or {}
+        issues[r["ident"]] = dict(r["issue"], a=bool(prev.get("a")))
+        if r["open"] and now - r["c"] < cfg.max_age_s:
+            notifs[r["id"]] = {"ident": r["ident"], "e": r["e"], "c": r["c"], "u": r["u"]}
+        else:
+            notifs.pop(r["id"], None)
+    for ident, info in list(issues.items()):
+        if not isinstance(info, dict):
+            issues.pop(ident)
+            continue
+        gone = info.get("st") in DONE_TYPES
+        if assigned is not None:
+            if ident in assigned:
+                info["a"] = True
+            elif info.get("a"):
+                gone = True  # it was yours and isn't now: done, canceled or unassigned
+        if gone:
+            for nid in [k for k, v in notifs.items() if (v or {}).get("ident") == ident]:
+                notifs.pop(nid)
+            info["a"] = False
+    for nid, v in list(notifs.items()):
+        if not isinstance(v, dict) or now - float(v.get("c") or 0) >= cfg.max_age_s or v.get("ident") not in issues:
+            notifs.pop(nid)  # nothing new for MAX_AGE_H
+    live = {v["ident"] for v in notifs.values()}
+    for ident in [i for i in issues if i not in live]:
+        issues.pop(ident)
+
+
+def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None:
+    if not cfg.configured:
+        if verbose:
+            warn("not configured: put a Linear personal API key in ~/.config/needs-you/linear-key (mode 600) "
+                 "or set NEEDS_YOU_LINEAR_KEY_FILE")
+        return
+    state = load_state(state_path)
+    now = time.time()
+    errors: List[str] = []
+    last = parse_time(state.get("since"))
+    since = iso(max(last - OVERLAP_S, now - cfg.max_age_s) if last else now - cfg.max_age_s)
+    notifs = state.get("notifs") if isinstance(state.get("notifs"), dict) else {}
+    state["notifs"] = notifs
+    if not isinstance(state.get("issues"), dict):
+        state["issues"] = {}
+    tracked_ids = sorted(notifs, key=lambda k: -float((notifs[k] or {}).get("c") or 0))[:TRACKED_MAX]
+    try:
+        key = read_key(cfg)
+        nodes, returned, assigned, more = fetch(cfg, key, since, tracked_ids)
+        update_tracking(cfg, state, nodes, tracked_ids, returned, assigned, now)
+        state["since"] = iso(now)
+        if verbose:
+            warn("notifications: %d new or changed since %s, %d behind open cards; %s assigned issues"
+                 % (len(nodes) - len(returned), since, len(state["notifs"]),
+                    "?" if assigned is None else len(assigned)))
+        if more:
+            warn("more than %d new notifications: the rest are read on the next run" % (PAGE * MAX_PAGES))
+    except LinearError as e:
+        errors.append(str(e))
+
+    posted: Dict[str, Any] = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+    desired: Dict[str, Dict[str, Any]] = {}
+    if not errors:
+        by_issue: Dict[str, List[Dict[str, Any]]] = {}
+        for nid, v in state["notifs"].items():
+            by_issue.setdefault(v["ident"], []).append(dict(v, id=nid))
+        cards = [c for c in (issue_card(cfg, ident, state["issues"].get(ident) or {}, ns)
+                             for ident, ns in by_issue.items()) if c]
+        # Urgent first, then what's already on the panel, so the cap never churns cards.
+        rank = {"urgent": 0, "normal": 1, "low": 2}
+        cards.sort(key=lambda c: (rank.get(c["priority"], 3), c["key"] not in posted, c["key"]))
+        for c in cards:
+            if c["key"] in desired:
+                continue
+            if len(desired) >= cfg.max_cards:
+                if verbose:
+                    warn("over NEEDS_YOU_LINEAR_MAX_CARDS=%d: skipped %s" % (cfg.max_cards, c["key"]))
+                continue
+            desired[c["key"]] = c
+
+    # One card if Linear keeps failing (one stable key, posted once, never one per run).
+    fails = int(state.get("fails") or 0) + 1 if errors else 0
+    state["fails"] = fails
+    health_key = "%s:linear:%s:poller-failing" % (cfg.default_context, KEY_SAFE.sub("-", cfg.host))
+    if errors:
+        warn("; ".join(errors))
+        if fails >= FAILS_BEFORE_CARD:
+            desired[health_key] = {
+                "key": health_key, "title": "Linear alerts stopped on %s: check the API key" % cfg.host,
+                "priority": "low", "context": cfg.default_context, "project": "linear", "src": "health",
+                "links": [],
+                "body": "`needs-you-linear` on `%s` can't read Linear (the error is in its log). Check that the "
+                        "key file is mode 600 and the key still works: `needs-you-linear -v`." % cfg.host}
+
+    if not dry_run and not cfg.cli:
+        warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
+        return
+    expires_h = 3 * cfg.interval_min / 60.0
+    backlog = outbox_has_backlog()
+    for key, c in sorted(desired.items()):
+        h = card_hash(c)
+        prev = posted.get(key) or {}
+        changed = prev.get("h") != h
+        if not changed and (backlog or (c["src"] == "health" and prev)):
+            continue  # hub unreachable: don't fill the outbox with renewals
+        if dry_run:
+            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+            continue
+        if post(cfg, c, None if c["src"] == "health" else expires_h):
+            posted[key] = {"h": h, "t": now, "src": c["src"]}
+    for key in sorted(set(posted) - set(desired)):
+        if errors and (posted[key] or {}).get("src") == "linear":
+            continue  # couldn't look: leave it to its expiry
+        if dry_run:
+            print("resolve %s" % key)
+            continue
+        if resolve(cfg, key):
+            del posted[key]
+    if not dry_run:
+        state["posted"] = posted
+        save_state(state_path, state)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(prog="needs-you-linear", description=__doc__.split("\n")[0])
+    p.add_argument("--dry-run", action="store_true", help="print what would be posted; change nothing")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--state", help="state file (default ~/.local/state/needs-you/linear.json)")
+    args = p.parse_args(argv)
+    path = args.state or os.path.join(state_base(), "needs-you", "linear.json")
+    try:
+        run_once(Config(), path, args.dry_run, args.verbose)
+    except Exception as e:  # never fail the scheduler: one line, exit 0
+        warn("unexpected error: %s: %s" % (type(e).__name__, safe_text(e, 200)))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
