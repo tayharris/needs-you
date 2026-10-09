@@ -16,6 +16,9 @@
 # (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-*.png (each pill meter style, layout
 # and size at 31 % / 10 %, waiting and idle; pill-idle.png is 16e) and settings-usageMeters*.png
 # (Settings → Appearance → Usage meters).
+# Theme colours: 13b-13l (Solid, dark and light; Increase Contrast via an in-process override,
+# never the Mac's own setting; accent swatches), settings-theme-solid-teal, settings-cards-solid
+# (Opacity dimmed under Solid) and settings-theme-custom-red (a refused accent).
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
 #
