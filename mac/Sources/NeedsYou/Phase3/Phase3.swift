@@ -62,7 +62,7 @@ final class Phase3Controller: ObservableObject {
     // MARK: New-item preview
 
     /// The pill springs out to a 320 pt preview of the top new item with a glow pulse,
-    /// stays out for Settings → Alerts → Show new items for (14 s by default; pointing at it
+    /// stays out for Settings → Alerts → New items → Show new items for (14 s by default; pointing at it
     /// holds it), then springs back. Urgent pulses twice. (The panel controller animates
     /// the size change with an overshoot curve, or a fade under Reduce Motion.)
     private func announce(_ items: [Item]) {

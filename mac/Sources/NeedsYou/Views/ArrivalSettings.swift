@@ -1,9 +1,10 @@
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Alerts → Arrivals: the arrival animation (urgent and the rest), its timing,
-/// how long the new-item preview (and the Later summary peek) stays out, the repeat
-/// reminder for unseen urgent items, and a Preview that plays it on the pill.
+/// Settings → Appearance → Alert style → Arrivals: the arrival animation (urgent and the
+/// rest), how many times it plays and how fast, and a Preview that plays it on the pill.
+/// How long the preview stays out and the urgent reminder are behaviour, on Alerts
+/// (ArrivalTimingSection).
 struct ArrivalSettingsSection: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
@@ -30,17 +31,6 @@ struct ArrivalSettingsSection: View {
             } label: {
                 LabelWithDetail("Speed", "How quickly each pulse, hop or shake plays.")
             }
-            Picker(selection: $settings.ui.previewSeconds) {
-                ForEach(PeekDuration.choices, id: \.self) { Text(PeekDuration.title($0)).tag($0) }
-            } label: {
-                LabelWithDetail("Show new items for", "How long the preview of a new item stays out before the pill goes back.")
-            }
-            Picker(selection: $settings.ui.urgentReminderMinutes) {
-                ForEach(UrgentReminder.choices, id: \.self) { Text(UrgentReminder.title($0)).tag($0) }
-            } label: {
-                LabelWithDetail("Remind about unseen urgent items",
-                                "Plays urgent's arrival again until you open the panel. Not while snoozed, hidden or in a focus that holds urgent.")
-            }
             HStack {
                 LabelWithDetail("Preview on the pill", model.isPanelVisible
                                 ? "A sample item arrives on the floating pill the way a real one does. Nothing is posted."
@@ -53,7 +43,35 @@ struct ArrivalSettingsSection: View {
         } header: {
             Text("Arrivals")
         } footer: {
-            Text("Pointing at the preview holds it open; it goes \(Int(PeekDuration.hoverGrace)) s after the pointer leaves. Click it to open the panel. With Reduce Motion on, every animation is a gentle fade.")
+            Text("With Reduce Motion on, every animation is a gentle fade. How long a new item stays out, and the reminder for unseen urgent items, are in Alerts.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Settings → Alerts → New items: how long the new-item preview (and the Later summary
+/// peek) stays out, and the repeat reminder for unseen urgent items. How they look is
+/// Appearance → Alert style (ArrivalSettingsSection).
+struct ArrivalTimingSection: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Section {
+            Picker(selection: $settings.ui.previewSeconds) {
+                ForEach(PeekDuration.choices, id: \.self) { Text(PeekDuration.title($0)).tag($0) }
+            } label: {
+                LabelWithDetail("Show new items for", "How long the preview of a new item stays out before the pill goes back.")
+            }
+            Picker(selection: $settings.ui.urgentReminderMinutes) {
+                ForEach(UrgentReminder.choices, id: \.self) { Text(UrgentReminder.title($0)).tag($0) }
+            } label: {
+                LabelWithDetail("Remind about unseen urgent items",
+                                "Plays urgent's arrival again until you open the panel. Not while snoozed, hidden or in a focus that holds urgent.")
+            }
+        } header: {
+            Text("New items")
+        } footer: {
+            Text("Pointing at the preview holds it open; it goes \(Int(PeekDuration.hoverGrace)) s after the pointer leaves. Click it to open the panel. How a new item looks as it arrives is in Appearance → Alert style.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

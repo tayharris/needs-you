@@ -2,7 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Appearance: the theme (PanelTheme) and an accent colour, with a live sample.
+/// Settings → Appearance → Theme: the theme (PanelTheme) and an accent colour, with a live sample.
 /// Lives in the Settings window only; the panel never takes focus.
 struct AppearanceSettingsSection: View {
     @ObservedObject var model: AppModel

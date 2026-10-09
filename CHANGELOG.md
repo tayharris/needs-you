@@ -6,6 +6,13 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Added
 
+
+
+### Changed
+
+- **Usage on the pill, also when nothing is waiting, in the style you pick.** The idle "Nothing needs you" pill, which shows most of the day, had no usage meters at all; now it carries them too. The default style is **Bars**: two 3-point bars on a faint track under the count (session above weekly), clearly readable at 31 % and 10 %; the pill grows a few points taller while two show and never covers the count. **Settings → Usage → On the pill** switches to **Thin bars** (0.4.0's lines along the bottom edge; the pill keeps its size) or **Percentages** (`31% 10%` after the count, in a fixed-width slot so the pill doesn't resize as they change), with a preview of both pills. While the idle pill shows meters it rests at 60 % opacity instead of 35 %, so they can be read ([guide](docs/guides/mac-app.md#usage-meters)).
+- **Settings: one Appearance section for everything about the look.** Look settings used to be spread over Panel, Appearance, Alerts and Usage. The sidebar now has an **Appearance** group with short pages: **Theme** (theme and accent colour), **Pill** (the collapsed pill), **Panel and cards** (size, card text, links, cards before scrolling, background darkness and opacity), **Alert style** (how loud a new item looks, and its arrival animation with **Preview on the pill**) and **Usage meters** (the former Usage page, whole). **Panel** keeps what shows and where (panel and menu bar icon, opening and closing, list height, setup tips, Orca, the shortcut), and **Alerts** keeps what may interrupt you; how long a new item stays out and the urgent reminder are now under **Alerts → New items**. No setting changed its value or default ([guide](docs/guides/mac-app.md#make-it-yours)).
+
 ### Fixed
 
 - **A card's alert rules no longer hide each other.** Every rule made from a card's menu went to the top of the list, and the first match wins, so choosing **Always Interrupt** (or any rule for everything) after **Only When It Asks → Treat as Urgent** stopped questions being urgent while the menu still showed both. Card-made rules now go in by how specific they are: a session's above its agent's, an "Only When It…" rule above the same menu's rule for everything, the latest first among equals, all above the rules made in Settings. The menu's checkmarks and summary show only the rules that apply, in the order they do ([guide](docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).

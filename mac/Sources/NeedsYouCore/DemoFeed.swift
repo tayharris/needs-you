@@ -271,6 +271,26 @@ extension DemoFeed: StatusFeed {
         .fresh(statuses, etag: nil)
     }
 
+    /// The snapshot tour: the usage records become exactly these.
+    public func replaceStatuses(with records: [StatusRecord]) {
+        statuses = records
+    }
+
+    /// One Claude account at 31 % of its session and 10 % of its week: the quiet,
+    /// everyday case the pill's meters must still show plainly (the snapshot tour).
+    public static func quietUsageFixture(now: Date = Date()) -> [StatusRecord] {
+        let hours = { (h: Double) in now.addingTimeInterval(h * 3600) }
+        return [
+            StatusRecord(id: "st_demo_claude", key: "usage:claude", label: "Claude",
+                         usage: StatusUsage(provider: "claude", windows: [
+                            UsageWindow(name: "5h", usedPct: 31, resetsAt: hours(3.4)),
+                            UsageWindow(name: "7d", usedPct: 10, resetsAt: hours(140)),
+                         ]),
+                         source: ItemSource(host: "devbox", agent: "claude-code"),
+                         updatedAt: now.addingTimeInterval(-60), expiresAt: hours(140)),
+        ]
+    }
+
     /// Claude and Codex usage as the producers report it: Claude's session past the warning
     /// line, Codex calm. Example hosts only.
     public static func statusFixture(now: Date = Date()) -> [StatusRecord] {

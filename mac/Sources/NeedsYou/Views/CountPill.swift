@@ -26,8 +26,15 @@ extension AppModel {
         settings.ui.pillDetail == .dot && !hovering ? pillMetrics.height / 2 : pillMetrics.cornerRadius
     }
 
-    /// The visible shape's size for `.waiting` (PanelController adds the glow padding).
-    var waitingPillSize: CGSize { PillLayout.size(pillContent, metrics: pillMetrics) }
+    /// The visible shape's size for `.waiting` (PanelController adds the glow padding), with
+    /// room for the usage meters (PillMeterLayout: a second bar, or the percentages' slots).
+    var waitingPillSize: CGSize {
+        let content = pillContent
+        let size = PillLayout.size(content, metrics: pillMetrics)
+        let meters = waitingMeterLayout(content)
+        return CGSize(width: size.width + PillMeterMetrics.percentWidth(meters, size: pillMetrics.smallFont),
+                      height: meters.height)
+    }
 }
 
 enum PillLayout {
@@ -52,27 +59,18 @@ struct CountPill: View {
         self.settings = model.settings
     }
 
-    private var usageHelp: String {
-        let rows = settings.usage.onPill ? model.usageRows : []
-        if rows.isEmpty { return "" }
-        return " · Usage: " + UsageMeters.summary(rows)
-    }
-
     var body: some View {
         let content = model.pillContent
-        PillContentView(content: content, metrics: model.pillMetrics,
-                        focused: model.isFocused, focusSetByLink: model.focusSetByLink)
+        let layout = model.waitingMeterLayout(content)
+        // Usage meters (Settings → Usage → On the pill): below or beside the count, never over it.
+        PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
+                       cornerRadius: model.pillCornerRadius, percentSize: model.pillMetrics.smallFont) {
+            PillContentView(content: content, metrics: model.pillMetrics,
+                            focused: model.isFocused, focusSetByLink: model.focusSetByLink)
+        }
             .animation(.easeInOut(duration: 0.15), value: model.hovering)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .bottom) {
-                // Usage meters (Settings → Usage): hairlines over the pill, never its count.
-                let bars = content.isDot ? [] : model.pillUsageBars
-                if !bars.isEmpty {
-                    PillUsageMeter(bars: bars, metrics: model.pillMetrics)
-                }
-            }
             .pillInteraction(model)
-            .help(content.help + (model.focusSummary.map { " · Focus: \($0)" } ?? "") + usageHelp + " · \(model.statusLine)")
+            .help(content.help + (model.focusSummary.map { " · Focus: \($0)" } ?? "") + model.pillUsageHelp + " · \(model.statusLine)")
     }
 }
 

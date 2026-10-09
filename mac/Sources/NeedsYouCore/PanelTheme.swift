@@ -99,7 +99,7 @@ public struct PanelPalette: Hashable, Sendable {
     public var faintOpacity: Double
     public var hairlineOpacity: Double
     public var cardFillOpacity: Double
-    /// The layer behind the glass (Settings → Panel → Opacity → Background darkness):
+    /// The layer behind the glass (Settings → Appearance → Panel and cards → Opacity → Background darkness):
     /// black on dark themes, white on light ones.
     public var backdrop: ThemeRGB
     /// The least backdrop this theme draws, whatever the setting (high contrast).
@@ -280,7 +280,7 @@ public enum PanelTheme: String, CaseIterable, Codable, Sendable {
     )
 }
 
-/// Settings → Appearance → Accent colour: the theme's own, a preset, or any colour.
+/// Settings → Appearance → Theme → Accent colour: the theme's own, a preset, or any colour.
 /// Stored under `themeAccent` as "" (the theme's), a preset name, or "#RRGGBB"; anything
 /// else falls back to the theme's.
 public enum ThemeAccent: Hashable, Sendable {

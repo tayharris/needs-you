@@ -67,7 +67,7 @@ struct PanelPreview: View {
     }
 }
 
-/// Settings → Alerts: an item arriving on the pill, as it really does (ArrivalPreview). The
+/// Settings → Appearance → Alert style: an item arriving on the pill, as it really does (ArrivalPreview). The
 /// pill shows what was waiting, springs out to the new item's preview while the arrival
 /// animation plays at the chosen plays and speed, then springs back with the new count.
 /// Plays when an alert or arrival setting changes; Urgent and Normal play it again. Over
@@ -122,7 +122,7 @@ struct AlertPreview: View {
         let real = settings.ui.previewSeconds
         let shown = holdSeconds > 0 ? String(format: "%.1f s", holdSeconds) : "a moment"
         let realText = real > 0 ? "\(real) s" : "until you click or point at it"
-        return "Shown for \(shown) here; on your screen the new item stays out \(realText) (Show new items for, below). Nothing is posted."
+        return "Shown for \(shown) here; on your screen the new item stays out \(realText) (Alerts → New items → Show new items for). Nothing is posted."
     }
 
     private var waiting: [Item] { ArrivalPreview.waitingBefore() }

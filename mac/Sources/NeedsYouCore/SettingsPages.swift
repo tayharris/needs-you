@@ -7,16 +7,22 @@ import Foundation
 /// One Settings page. (The name is from when these were tabs; menu items and links open
 /// one with `SettingsWindowController.show(tab:)`.)
 ///
-/// The middle group uses the product's three part names (docs/guides/concepts.md): Built-in
+/// The hubs group uses the product's three part names (docs/guides/concepts.md): Built-in
 /// hub (the hub inside this app), Connect a machine (an invite link for a sender or another
 /// Mac), Machines (who's connected) and Other hubs (advanced: server hubs, another hub,
 /// adding one by hand).
+///
+/// Look and behaviour are kept apart: every setting that only changes how something looks
+/// is under Appearance (Theme, Pill, Panel and cards, Alert style, Usage meters); Panel and
+/// Alerts keep what shows, where, and what may interrupt you.
 public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     case general
     // Hubs and machines
     case inbox, connect, machines, otherHubs
+    // Appearance
+    case theme, pill, cards, alertStyle, usageMeters
     // The app
-    case panel, appearance, alerts, usage, integrations, updates, advanced
+    case panel, alerts, integrations, updates, advanced
 
     public var title: String {
         switch self {
@@ -25,10 +31,13 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .connect: return "Connect a machine"
         case .machines: return "Machines"
         case .otherHubs: return "Other hubs (advanced)"
+        case .theme: return "Theme"
+        case .pill: return "Pill"
+        case .cards: return "Panel and cards"
+        case .alertStyle: return "Alert style"
+        case .usageMeters: return "Usage meters"
         case .panel: return "Panel"
-        case .appearance: return "Appearance"
         case .alerts: return "Alerts"
-        case .usage: return "Usage"
         case .integrations: return "Integrations"
         case .updates: return "Updates"
         case .advanced: return "Advanced"
@@ -43,10 +52,13 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .connect: return "plus.circle"
         case .machines: return "desktopcomputer"
         case .otherHubs: return "server.rack"
+        case .theme: return "paintpalette"
+        case .pill: return "capsule"
+        case .cards: return "rectangle.stack"
+        case .alertStyle: return "sparkles"
+        case .usageMeters: return "gauge.medium"
         case .panel: return "rectangle.on.rectangle"
-        case .appearance: return "paintpalette"
         case .alerts: return "bell.badge"
-        case .usage: return "gauge.medium"
         case .integrations: return "puzzlepiece.extension"
         case .updates: return "arrow.down.circle"
         case .advanced: return "gearshape.2"
@@ -66,20 +78,26 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
             return "Every sender and Mac connected to your hub, and open invite links. Revoke any of them."
         case .otherHubs:
             return "Optional. Join a hub someone else runs, or add one by URL. Always-on server hubs are added in Built-in hub."
-        case .panel:
-            return "How the floating pill and its cards look, where they show, and the shortcut."
-        case .appearance:
+        case .theme:
             return "The pill's and cards' colours: a theme, light or dark, and an accent colour."
-        case .alerts:
-            return "How loudly new items arrive, what can interrupt you, and when."
-        case .usage:
+        case .pill:
+            return "The collapsed pill: its size, what it says, how it splits the count, and the new badge."
+        case .cards:
+            return "The open panel's size, its cards' text and links, and how see-through it is."
+        case .alertStyle:
+            return "How a new item looks as it arrives: the glow and ring, and the animation on the pill."
+        case .usageMeters:
             return "Meters for your agents' session and weekly limits, as their hooks report them. Never counted or announced."
+        case .panel:
+            return "Whether the pill and menu bar icon show, how the open panel behaves, what it lists, and the shortcut."
+        case .alerts:
+            return "What can interrupt you, and when: delivery, focus, snoozes, rules and reminders."
         case .integrations:
             return "What the shortcut and a card's Terminal button do, and live updates."
         case .updates:
             return "This app's version, automatic updates, and which machines are out of date."
         case .advanced:
-            return "Reset the look and alerts, developer mode, and where settings and data are kept."
+            return "Reset the appearance and alerts, developer mode, and where settings and data are kept."
         }
     }
 
@@ -87,7 +105,24 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .general: return .start
         case .inbox, .connect, .machines, .otherHubs: return .hubs
-        case .panel, .appearance, .alerts, .usage, .integrations, .updates, .advanced: return .app
+        case .theme, .pill, .cards, .alertStyle, .usageMeters: return .appearance
+        case .panel, .alerts, .integrations, .updates, .advanced: return .app
+        }
+    }
+
+    /// A page by name: today's raw value, or a page that was renamed, merged or split up
+    /// (`usage` is now Appearance → Usage meters, `appearance` is Appearance → Theme).
+    /// For names kept in prefs, links or scripts; nil for an unknown one.
+    public init?(name: String) {
+        if let tab = SettingsTab(rawValue: name) { self = tab; return }
+        switch name {
+        case "appearance": self = .theme
+        case "usage": self = .usageMeters
+        case "thisMac": self = .inbox
+        case "invite": self = .connect
+        case "access": self = .machines
+        case "joinHub", "hubs": self = .otherHubs
+        default: return nil
         }
     }
 
@@ -115,11 +150,17 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     public static let joinHub = SettingsTab.otherHubs
     @available(*, deprecated, renamed: "otherHubs")
     public static let hubs = SettingsTab.otherHubs
+    /// Appearance is a group now; its first page is Theme (what the old page held).
+    @available(*, deprecated, renamed: "theme")
+    public static let appearance = SettingsTab.theme
+    /// Usage moved under Appearance, whole.
+    @available(*, deprecated, renamed: "usageMeters")
+    public static let usage = SettingsTab.usageMeters
 }
 
 /// The sidebar's groups, in order.
 public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
-    case start, hubs, app
+    case start, hubs, appearance, app
 
     public var id: String { rawValue }
 
@@ -128,6 +169,7 @@ public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .start: return nil
         case .hubs: return "Hubs and machines"
+        case .appearance: return "Appearance"
         case .app: return "Needs You"
         }
     }

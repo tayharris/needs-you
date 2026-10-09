@@ -13,7 +13,8 @@
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
 # example items below (among them agents' questions: 6e-6l, 6k the answer window), and once
 # with one agent card (preview-agent.png). Demo mode also shows example usage meters
-# (DemoFeed.statusFixture): 15-usage-panel.png, 16-usage-pill.png and settings-usage*.png.
+# (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-pill*.png (each pill meter style at
+# 31 % / 10 %, waiting and idle) and settings-usageMeters*.png (Settings → Appearance → Usage meters).
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
 #
@@ -178,7 +179,10 @@ defaults write "$SUITE" expandedListHeight -float 840
 defaults write "$SUITE" collapseOnClickOutside -bool false
 
 mkdir -p "$OUT"
-WAIT=240   # half-seconds a tour may take
+# Half-seconds a tour may take. The default tour takes about a minute on an idle Mac (each
+# step waits 1.2 s, each Settings page 1.5 s and more per scrolled screen); at `nice -n 19` on
+# a busy one it can take several, so the limit is generous and a run that dies stops the wait.
+WAIT=600
 run() {   # run <fixture> <snapshot dir> [extra env...]
   local fixture="$1" dir="$2"
   shift 2
@@ -189,18 +193,21 @@ run() {   # run <fixture> <snapshot dir> [extra env...]
   PID=$!
   for _ in $(seq 1 "$WAIT"); do
     grep -q "snapshots written" "$T/run.log" && break
+    kill -0 "$PID" 2>/dev/null || break   # it quit or crashed: the log says why
     sleep 0.5
   done
   kill -TERM "$PID" 2>/dev/null; wait "$PID" 2>/dev/null || true
   PID=""
-  grep -q "snapshots written" "$T/run.log" || { echo "error: the snapshot tour didn't finish" >&2; tail -20 "$T/run.log"; exit 1; }
+  grep -q "snapshots written" "$T/run.log" || {
+    echo "error: the snapshot tour didn't finish ($(ls "$dir" | wc -l | tr -d ' ') PNGs written)" >&2
+    tail -20 "$T/run.log"; exit 1; }
 }
 
 if [[ $FORMATS == 1 ]]; then
   echo "==> format fixtures"
   /usr/bin/python3 scripts/format-fixtures.py "$T/formats"
   echo "==> format tour"
-  WAIT=600
+  WAIT=2400
   run "$T/formats/formats.json" "$T/shots" NEEDS_YOU_SNAPSHOT_TOUR=formats NEEDS_YOU_DEMO_REPOST="$T/formats/formats-repost.json"
   cp "$T/shots/"*.png "$OUT/"
   echo "==> wrote $(ls "$T/shots" | wc -l | tr -d ' ') PNGs to $OUT"

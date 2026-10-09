@@ -57,7 +57,7 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 
 **Usage meter.** On the same `Stop`, from the same numbers, the hook sends a quiet usage status
 (`needs-you status set --key usage:codex[:<account>] ...`, never a card) that the Mac app
-shows as Codex's session and weekly bars (Settings → Usage). On by default; it goes out when a
+shows as Codex's session and weekly bars (Settings → Appearance → Usage meters). On by default; it goes out when a
 number changed (at most every 15 s) and every 5 minutes otherwise, a window that has reset
 since Codex wrote it counts as 0 %, and `NEEDS_YOU_USAGE_METER=0` turns it off.
 

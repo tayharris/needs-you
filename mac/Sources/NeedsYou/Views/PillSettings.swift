@@ -1,7 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
-// Settings → Panel → Collapsed pill: its size, how much it says, how it splits the count,
+// Settings → Appearance → Pill: its size, how much it says, how it splits the count,
 // and the "N new" badge (UIPrefs pill keys; PillContent in NeedsYouCore). Settings window
 // only, never the floating panel.
 
@@ -14,7 +14,7 @@ struct PillSettingsSection: View {
             Picker(selection: $settings.ui.pillSize) {
                 ForEach(PillSize.allCases, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("Pill size", "The collapsed pill only, on top of Size above.")
+                LabelWithDetail("Pill size", "The collapsed pill only, on top of Size in Panel and cards.")
             }
             Picker(selection: $settings.ui.pillDetail) {
                 ForEach(PillDetail.allCases, id: \.self) { Text($0.title).tag($0) }

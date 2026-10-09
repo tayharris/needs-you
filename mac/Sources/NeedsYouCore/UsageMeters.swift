@@ -1,7 +1,7 @@
 import Foundation
 
 // Usage meters (ADR 0011): `usage` status records as bars, one row per provider and
-// account, in the open panel and as two hairlines on the pill. Read-only and quiet: they
+// account, in the open panel and on the collapsed pill (PillMeterStyle). Read-only and quiet: they
 // never count, animate or notify. Settings → Usage picks what shows (UsagePrefs).
 
 /// Which windows the meters show.
@@ -17,6 +17,27 @@ public enum UsageWindowChoice: String, CaseIterable, Sendable {
     }
 }
 
+/// How the collapsed pill draws its meters (Settings → Usage → On the pill).
+public enum PillMeterStyle: String, CaseIterable, Sendable {
+    /// Two 3 pt bars on a faint track under the count, readable at a glance. The pill grows a
+    /// few points taller while two of them show (PillMeterLayout); the default.
+    case bars
+    /// Two thin lines on their track along the bottom edge, over the pill (the 0.4.0 look):
+    /// the pill's size never changes.
+    case thin
+    /// The percentages in small type after the count ("31% 10%"), in a fixed-width slot so
+    /// the pill doesn't resize as they change.
+    case percent
+
+    public var title: String {
+        switch self {
+        case .bars: return "Bars"
+        case .thin: return "Thin bars"
+        case .percent: return "Percentages"
+        }
+    }
+}
+
 /// Settings → Usage, in UserDefaults as plain values. Unknown or out-of-range stored values
 /// fall back to the default; `load` never writes and `save` writes only what changed.
 public struct UsagePrefs: Equatable, Sendable {
@@ -27,6 +48,7 @@ public struct UsagePrefs: Equatable, Sendable {
         public static let windows = "usageWindows"
         public static let hideUnderPct = "usageHideUnderPct"
         public static let warnPct = "usageWarnPct"
+        public static let pillStyle = "usagePillStyle"
     }
 
     /// The choices offered for "Hide under" and "Warning colour from".
@@ -35,8 +57,10 @@ public struct UsagePrefs: Equatable, Sendable {
 
     /// A usage section in the open panel. Default on.
     public var inPanel = true
-    /// Two hairline meters along the pill's bottom edge. Default on.
+    /// Meters on the collapsed pill (waiting and idle). Default on.
     public var onPill = true
+    /// How the pill draws them.
+    public var pillStyle: PillMeterStyle = .bars
     /// Providers to show (`claude`, `codex`, ...); empty: every provider that reports.
     public var providers: [String] = []
     public var windows: UsageWindowChoice = .both
@@ -58,6 +82,7 @@ public struct UsagePrefs: Equatable, Sendable {
         if let v = store.object(forKey: Key.onPill) as? NSNumber { p.onPill = v.boolValue }
         if let v = store.stringArray(forKey: Key.providers) { p.providers = v.filter { !$0.isEmpty } }
         if let raw = store.string(forKey: Key.windows), let v = UsageWindowChoice(rawValue: raw) { p.windows = v }
+        if let raw = store.string(forKey: Key.pillStyle), let v = PillMeterStyle(rawValue: raw) { p.pillStyle = v }
         if let v = store.object(forKey: Key.hideUnderPct) as? NSNumber, hideUnderChoices.contains(v.intValue) {
             p.hideUnderPct = v.intValue
         }
@@ -70,6 +95,7 @@ public struct UsagePrefs: Equatable, Sendable {
         if previous?.onPill != onPill { store.set(onPill, forKey: Key.onPill) }
         if previous?.providers != providers { store.set(providers, forKey: Key.providers) }
         if previous?.windows != windows { store.set(windows.rawValue, forKey: Key.windows) }
+        if previous?.pillStyle != pillStyle { store.set(pillStyle.rawValue, forKey: Key.pillStyle) }
         if previous?.hideUnderPct != hideUnderPct { store.set(hideUnderPct, forKey: Key.hideUnderPct) }
         if previous?.warnPct != warnPct { store.set(warnPct, forKey: Key.warnPct) }
     }
@@ -205,7 +231,7 @@ public enum UsageMeters {
         return "resets " + f.string(from: date)
     }
 
-    /// The pill's hairlines: per window shown (session, then weekly), the fullest bar of
+    /// The pill's meters: per window shown (session, then weekly), the fullest bar of
     /// any row. At most two.
     public static func pillBars(_ rows: [UsageRow]) -> [UsageBar] {
         ["5h", "7d"].compactMap { name in

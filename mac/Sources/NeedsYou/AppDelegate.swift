@@ -267,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.settings.ui.pillSplit = .none
                 model.settings.ui.pillDetail = .topItem
             }),
-            // Settings → Appearance: a few themes on the open panel and the pill.
+            // Settings → Appearance → Theme: a few themes on the open panel and the pill.
             ("10-theme-midnight", { model in
                 model.settings.ui.pillDetail = .count
                 model.settings.ui.theme = .midnight
@@ -279,29 +279,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
-            // Settings → Alerts → Preview on the pill: a sample urgent item arriving.
+            // Settings → Appearance → Alert style → Preview on the pill: a sample urgent item arriving.
             ("14-arrival-preview", { model in
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
             }),
-            // Usage meters (DemoFeed.statusFixture): the panel's section and the pill's hairlines.
+            // Usage meters (DemoFeed.statusFixture): the panel's section, then the pill's meters.
             ("15-usage-panel", { model in
                 model.previewItem = nil
                 model.expand()
                 model.scrollTarget = nil
             }),
-            ("16-usage-pill", { $0.collapse() }),
+            // The pill's meter styles (Settings → Usage → On the pill) at an everyday 31 % / 10 %:
+            // the waiting pill, then the idle one (nothing waiting).
+            ("16-usage-pill", { model in
+                model.collapse()
+                Task { await model.applyDemoStatuses(DemoFeed.quietUsageFixture()) }
+            }),
+            ("16b-usage-pill-thin", { $0.settings.usage.pillStyle = .thin }),
+            ("16c-usage-pill-percent", { $0.settings.usage.pillStyle = .percent }),
+            ("16d-usage-pill-warning", { model in
+                model.settings.usage.pillStyle = .bars
+                Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
+            }),
+            ("16e-usage-idle", { model in
+                Task {
+                    await model.applyDemoStatuses(DemoFeed.quietUsageFixture())
+                    await model.applyDemoOpenSet([])
+                }
+            }),
+            ("16f-usage-idle-thin", { $0.settings.usage.pillStyle = .thin }),
+            ("16g-usage-idle-percent", { $0.settings.usage.pillStyle = .percent }),
+            ("16h-usage-off", { model in
+                model.settings.usage.pillStyle = .bars
+                model.settings.usage.onPill = false
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
-        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3), (.usage, 1)]
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
+                                           (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
+                                           (.panel, 6), (.alerts, 4)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
                 action(model)
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name).png"))
+                // Progress for screenshots.sh, so a slow run shows where it got to.
+                NSLog("NeedsYou: snapshot \(name)")
                 if name == "6j-question-other",
                    let item = Self.tourOtherItem(model) {
                     // The answer window "Other…" opens, with words typed (drawn offscreen).
@@ -312,15 +339,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The pages show the out-of-the-box look and alerts settings.
             model.collapse()
             settings.ui = UIPrefs()
+            settings.usage = UsagePrefs()
             for (tab, shots) in pages {
                 await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
                                                    into: dir, name: "settings-\(tab.rawValue)")
             }
-            // The Appearance sample in a light and a colourful theme: the desktop stays put.
+            // The Theme sample in a light and a colourful theme: the desktop stays put.
             for theme in [PanelTheme.paper, .sunset] {
                 settings.ui.theme = theme
-                await settingsWindow.writeSnapshot(of: .appearance, showcase: showcase, shots: 2,
-                                                   into: dir, name: "settings-appearance-\(theme.rawValue)")
+                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+                                                   into: dir, name: "settings-theme-\(theme.rawValue)")
             }
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")

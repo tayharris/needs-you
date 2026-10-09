@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-// Settings → Alerts → Arrival animation: how a new item announces itself on the pill, and
+// Settings → Appearance → Alert style → Arrivals: how a new item announces itself on the pill, and
 // its timing. The motion is pure keyframes here (ArrivalMotionTests); the app only plays
 // them. `.glow` at normal speed with automatic repeats is the original pulse exactly.
 
