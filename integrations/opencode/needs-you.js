@@ -1,4 +1,4 @@
-// needs-you-version: 0.4.0
+// needs-you-version: 0.5.0
 // needs-you.js: opencode plugin that mirrors "the agent is waiting on you" to needs-you.
 //
 // Installed by install-opencode-plugin.sh as <opencode config>/plugins/needs-you.js, next

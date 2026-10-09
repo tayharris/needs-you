@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-09
+
+A pre-release: choose how the pill's usage meters look (Bars, Thin bars, Rings or Percentages, in three sizes) and see them on the idle pill too, one Appearance section in Settings, new opt-in cards from Linear, Jira, GitHub Projects statuses, Dependabot alerts and certificate, domain and key expiry, and one "go there" button per agent card. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** before relying on the new bring-forward button (an older hub refuses its link and the card falls back to the editor button), then run `needs-you update` on sender machines for the new hooks.
+
 ### Added
 
 - **Linear poller** ([guide](docs/guides/linear.md)): `integrations/linear/needs-you-linear` runs every 5 minutes on one machine with a Linear personal API key and posts one card per issue from your Linear inbox: assigned to you, a new comment or reply, a mention, or a status change. The title says the latest event ("New comment on ACME-123: *title*", "ACME-123 moved to Blocked: *title*"), the body counts what's waiting, the button opens the issue or the comment, and `source.event` (`assigned`, `status`, `comment`, `mention`) lets alert rules treat them differently. A card clears when you read, archive or snooze the notification in Linear, when the issue is done or no longer yours, or after 24 hours with nothing new. Opt-in: it does nothing without a key, and refuses a key file that group or others can read. Priority by status and team, and which events to post, are set with `NEEDS_YOU_LINEAR_STATUSES`, `NEEDS_YOU_LINEAR_TEAMS` and `NEEDS_YOU_LINEAR_CATEGORIES`. Only cleaned issue titles and status names reach a card; comment bodies are never read; it always exits 0. Examples for cron, a systemd user timer and a LaunchAgent.

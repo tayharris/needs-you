@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.4.0
+# needs-you-version: 0.5.0
 # install-grok-hooks.sh: add the needs-you hooks to Grok Build (xAI's `grok`).
 #
 #   ./install-grok-hooks.sh                  ~/.grok/hooks/ ($GROK_HOME/hooks/ if set)
