@@ -201,12 +201,17 @@ def parse_list(path: str, default_ctx: str) -> Tuple[Optional[List[Dict[str, Any
     """(things, bad lines). things is None when the file doesn't exist (not opted in)."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
+            text = fh.read()
     except FileNotFoundError:
         return None, []
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         return [], [{"id": "config", "kind": "config", "name": os.path.basename(path),
                      "error": "can't read it (%s)" % type(e).__name__}]
+    return parse_list_text(text, default_ctx)
+
+
+def parse_list_text(text: str, default_ctx: str = "work") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    lines = text.splitlines()
     things: List[Dict[str, Any]] = []
     bad: List[Dict[str, Any]] = []
     seen = set()
@@ -312,6 +317,11 @@ class CheckError(Exception):
     pass
 
 
+class NotTrusted(Exception):
+    """The certificate doesn't verify for a reason other than its date (wrong host name,
+    untrusted chain): its own card at once, never a healthy-looking date."""
+
+
 def _der(b: bytes, i: int) -> Tuple[int, int, int]:
     """One DER TLV at i: (tag, content start, content end)."""
     if i + 2 > len(b):
@@ -385,8 +395,7 @@ def check_tls(cfg: Config, t: Dict[str, Any]) -> float:
             der = _peer_der(cfg, t, t.get("verify", True))
         except ssl.SSLCertVerificationError as e:
             if getattr(e, "verify_code", None) != X509_V_ERR_CERT_HAS_EXPIRED:
-                raise CheckError("certificate doesn't verify (%s)" % safe_text(
-                    getattr(e, "verify_message", "") or "untrusted", 80))
+                raise NotTrusted(safe_text(getattr(e, "verify_message", "") or "untrusted", 80))
             der = _peer_der(cfg, t, False)
     except socket.timeout:
         raise CheckError("timed out")
@@ -426,7 +435,10 @@ def url_allowed(cfg: Config, url: str) -> bool:
 def fetch_json(cfg: Config, url: str, accept: str) -> Any:
     if not url_allowed(cfg, url):
         raise CheckError("not an https URL")
-    opener = urllib.request.build_opener(_HttpsOnlyRedirects(lambda u: url_allowed(cfg, u)))
+    # The default verifying context (system CAs, host name checked) for every HTTPS fetch;
+    # only check_tls ever reads a certificate without verifying it.
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+                                         _HttpsOnlyRedirects(lambda u: url_allowed(cfg, u)))
     req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "needs-you-expiry"})
     try:
         with opener.open(req, timeout=cfg.timeout) as resp:
@@ -553,6 +565,27 @@ def expiry_card(cfg: Config, t: Dict[str, Any], when: float, now: float, rdap_ur
             "body": body[t["kind"]], "health": False, "when": when}
 
 
+def untrusted_card(cfg: Config, t: Dict[str, Any], why: str) -> Dict[str, Any]:
+    return {"key": KEY_SAFE.sub("-", "%s:expiry:%s:%s" % (t["context"], t["kind"], t["name"]))[:200],
+            "title": safe_text("TLS certificate for %s not trusted: %s" % (t["name"], why), TITLE_MAX),
+            "priority": "urgent", "context": t["context"], "links": [("Renew", t["renew"])] if t.get("renew") else [],
+            "body": "A client checking it (host name, chain to a trusted CA) refuses it. Fix the certificate "
+                    "%s serves; for a private CA, put `verify=no` on its line in `expiry.conf`." % t["name"],
+            "health": False, "when": -1.0}
+
+
+def poller_failing_card(cfg: Config, err: BaseException) -> Dict[str, Any]:
+    return {"key": KEY_SAFE.sub("-", "%s:expiry:%s:poller-failing" % (cfg.context, cfg.host))[:200],
+            "title": safe_text("Expiry checks stopped on %s: needs-you-expiry failed" % cfg.host, TITLE_MAX),
+            "priority": "low", "context": cfg.context, "links": [], "health": True, "when": 0.0,
+            "body": "`needs-you-expiry` on `%s` stopped with an unexpected %s, so no dates were checked. "
+                    "Run `needs-you-expiry -v` there; this clears on the next good run." % (cfg.host, type(err).__name__)}
+
+
+def _num(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
 def failing_card(cfg: Config, failing: List[Dict[str, Any]]) -> Dict[str, Any]:
     lines = []
     for f in failing[:10]:
@@ -612,6 +645,7 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
     things, bad = parse_list(cfg.list_path, cfg.context)
     state = load_state(state_path)
     posted: Dict[str, Any] = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+    posted = {k: v for k, v in posted.items() if isinstance(v, dict)}
     if things is None:
         if not posted:
             if verbose:
@@ -641,18 +675,26 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
                         boot = bootstrap(cfg, cache, now)
                     except CheckError as e:
                         boot_err = str(e)
+                    except Exception as e:  # a bug here must not stop the other checks
+                        boot_err = "bootstrap: unexpected %s" % type(e).__name__
                 if boot is None:
                     raise CheckError(boot_err)
                 when, rdap_url = check_domain(cfg, t, boot)
             rec = {"when": when, "url": rdap_url}
             if verbose:
                 warn("%s %s: %s" % (t["kind"], t["name"], time.strftime("%Y-%m-%d", time.gmtime(when))))
-        except CheckError as e:
-            rec = {"when": prev.get("when"), "url": prev.get("url", ""), "error": str(e),
-                   "fails": int(prev.get("fails") or 0) + 1, "since": prev.get("since") or today}
+        except NotTrusted as e:
+            rec = {"untrusted": str(e)}
+            when = None
+            cards.append(untrusted_card(cfg, t, str(e)))
+            warn("%s %s: certificate not trusted (%s)" % (t["kind"], t["name"], e))
+        except Exception as e:  # CheckError, or a bug: count it, keep the last date, carry on
+            why = str(e) if isinstance(e, CheckError) else "unexpected %s (a bug in needs-you-expiry)" % type(e).__name__
+            rec = {"when": _num(prev.get("when")), "url": str(prev.get("url") or ""), "error": why,
+                   "fails": int(_num(prev.get("fails")) or 0) + 1, "since": str(prev.get("since") or today)}
             when = rec["when"]
             rdap_url = rec["url"]
-            warn("%s %s: %s" % (t["kind"], t["name"], e))
+            warn("%s %s: %s" % (t["kind"], t["name"], why))
         new_known[t["id"]] = rec
         if isinstance(when, (int, float)):
             c = expiry_card(cfg, t, float(when), now, rdap_url)
@@ -660,8 +702,8 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
                 cards.append(c)
     for b in bad:
         prev = known.get(b["id"]) if isinstance(known.get(b["id"]), dict) else {}
-        new_known[b["id"]] = {"error": b["error"], "fails": int(prev.get("fails") or 0) + 1,
-                              "since": prev.get("since") or today, "kind": "config", "name": b["name"]}
+        new_known[b["id"]] = {"error": b["error"], "fails": int(_num(prev.get("fails")) or 0) + 1,
+                              "since": str(prev.get("since") or today), "kind": "config", "name": b["name"]}
         warn("%s: %s: %s" % (cfg.list_path, b["name"], b["error"]))
 
     # Expired and nearest first, then what's already on the panel, so the cap never churns.
@@ -724,9 +766,29 @@ def main(argv: Optional[List[str]] = None) -> int:
     path = args.state or os.path.join(state_base(), "needs-you", "expiry.json")
     try:
         run_once(Config(), path, args.dry_run, args.verbose)
-    except Exception as e:  # never fail the scheduler: one line, exit 0
+    except Exception as e:  # never fail the scheduler: one line, the poller-failing card, exit 0
         warn("unexpected error: %s: %s" % (type(e).__name__, safe_text(e, 200)))
+        if not args.dry_run:
+            report_crash(path, e)
     return 0
+
+
+def report_crash(state_path: str, err: BaseException) -> None:
+    """A bug stopped the run: post the low poller-failing card (once; the next good run
+    resolves it, since it isn't wanted there) and remember it in the state."""
+    try:
+        cfg = Config()
+        c = poller_failing_card(cfg, err)
+        state = load_state(state_path)
+        posted = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+        if isinstance(posted.get(c["key"]), dict) or not cfg.cli:
+            return
+        if post(cfg, c, None):
+            posted[c["key"]] = {"h": card_hash(c), "t": time.time()}
+            state["posted"] = posted
+            save_json(state_path, state)
+    except Exception as e2:
+        warn("could not report it: %s" % type(e2).__name__)
 
 
 if __name__ == "__main__":
