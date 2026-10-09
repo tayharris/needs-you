@@ -4,6 +4,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Linear poller** ([guide](docs/guides/linear.md)): `integrations/linear/needs-you-linear` runs every 5 minutes on one machine with a Linear personal API key and posts one card per issue from your Linear inbox: assigned to you, a new comment or reply, a mention, or a status change. The title says the latest event ("New comment on ACME-123: *title*", "ACME-123 moved to Blocked: *title*"), the body counts what's waiting, the button opens the issue or the comment, and `source.event` (`assigned`, `status`, `comment`, `mention`) lets alert rules treat them differently. A card clears when you read, archive or snooze the notification in Linear, when the issue is done or no longer yours, or after 24 hours with nothing new. Opt-in: it does nothing without a key, and refuses a key file that group or others can read. Priority by status and team, and which events to post, are set with `NEEDS_YOU_LINEAR_STATUSES`, `NEEDS_YOU_LINEAR_TEAMS` and `NEEDS_YOU_LINEAR_CATEGORIES`. Only cleaned issue titles and status names reach a card; comment bodies are never read; it always exits 0. Examples for cron, a systemd user timer and a LaunchAgent.
+
+### Security
+
+- **Redaction catches Linear keys** (`lin_api_…`, `lin_oauth_…`) in any untrusted text that reaches a card: agent hooks, `needs-you run`'s output, the MCP server and the pollers. Run `needs-you update` on each sender machine, and copy the new `needs-you-github` to `~/.local/bin/` if you use it.
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.
