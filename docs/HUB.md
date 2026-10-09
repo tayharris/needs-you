@@ -208,7 +208,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `db` | `--db` | `needs-you-hub.db` | SQLite path. |
 | `hub_id` | `--hub-id` | short hostname | Unique per hub; LWW tie-break and self-peer detection. |
 | `peers` | `--peer` (repeatable) | `[]` | Peer public URLs: used for replication and handed to senders as `hub_urls`. |
-| `peer_secret` / `peer_secret_file` | `--peer-secret-file` | | Required (16+ chars) when `peers` is set. Also `$NEEDS_YOU_PEER_SECRET`. |
+| `peer_secret` / `peer_secret_file` | `--peer-secret-file` | | Required (16+ chars) when `peers` is set. Also `$NEEDS_YOU_PEER_SECRET`. A `peer_secret_file` that group or other users can read or write stops the hub at start with `chmod 600 <path>` (the secret lets anyone replicate as a peer). |
 | `owner_token_file` | `--owner-token-file` | | On start, make sure an owner token with the secret in this file exists (the Mac app uses this). |
 | `owner_token_name` | `--owner-token-name` | `this-mac` | Its name. A changed secret replaces the old one. |
 | `parent_pid` | `--parent-pid` | | Exit cleanly when that process is gone (checked every 2 s). |

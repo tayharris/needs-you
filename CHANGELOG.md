@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Security
+
+- **A peer secret file others can read stops the hub.** A `peer_secret_file` (`--peer-secret-file`) that group or other users can read or write used to start the hub with a warning; the hub now refuses to start and says `chmod 600 <path>`, since the secret lets anyone replicate as a peer. Hubs set up by `install-hub.sh` keep the secret in their config file and aren't affected; check a hand-made secret file (such as the Mac's hand-set-peers `peer-secret`) before upgrading ([HUB.md](docs/HUB.md#config-reference)).
+
 ## [0.3.1] - 2026-10-09
 
 A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.
