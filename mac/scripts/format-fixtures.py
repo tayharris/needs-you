@@ -57,10 +57,16 @@ def hook_item(tmp, agent, name, extra):
     with open(cli, "w") as fh:
         fh.write(FAKE_CLI)
     os.chmod(cli, 0o755)
+    # The card names the machine: an example name, never this Mac's.
+    fake_bin = os.path.join(home, "bin")
+    os.makedirs(fake_bin)
+    with open(os.path.join(fake_bin, "hostname"), "w") as fh:
+        fh.write("#!/bin/sh\necho devbox\n")
+    os.chmod(os.path.join(fake_bin, "hostname"), 0o755)
     with open(os.path.join(QUESTIONS, name)) as fh:
         payload = json.load(fh)
     payload.update(session_id="fmt-%s-session" % agent, sessionId="fmt-%s-session" % agent, cwd=cwd)
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "NEEDS_YOU_BIN": cli,
+    env = {"PATH": fake_bin + os.pathsep + os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "NEEDS_YOU_BIN": cli,
            "FAKE_CLI_LOG": log, "NEEDS_YOU_AGENT_ALERTS": "1", "NEEDS_YOU_HOOK_PLATFORM": "linux", "NY_TURN_WAIT": "0"}
     env.update({k: v.replace("{cwd}", cwd) for k, v in extra.items()})
     subprocess.run(["bash", HOOK, "notify", agent], input=json.dumps(payload), env=env, cwd=cwd,
