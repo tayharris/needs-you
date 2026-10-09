@@ -106,6 +106,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var answerStates: [String: AnswerState] = [:]
     /// The item each selection and state was made for (AnswerPolicy.stamp).
     private var answerStamps: [String: String] = [:]
+    /// The footer's update line ("Update available: 0.3.0 → 0.3.1"), set by UpdateController.
+    /// Footer text only: not an item, never counted, never animates the pill or notifies.
+    @Published var updateFooter: UpdateFooter?
     /// The card the open panel scrolls to (ExpandFocus); the list clears it once scrolled.
     @Published var scrollTarget: String?
     /// The card drawn highlighted for a moment after the panel opened at it.
@@ -507,6 +510,13 @@ final class AppModel: ObservableObject {
         guard let demoFeed else { return }
         await demoFeed.upsert(items)
         pollNow()
+    }
+
+    /// The format tour: the demo's open items become exactly these.
+    func applyDemoOpenSet(_ items: [Item]) async {
+        guard let demoFeed else { return }
+        await demoFeed.replaceOpen(with: items)
+        pollNow(full: true)
     }
 
     private func startInjector(_ demo: DemoFeed) {
