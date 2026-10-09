@@ -548,6 +548,13 @@ final class AppModel: ObservableObject {
         pollNow()
     }
 
+    /// The snapshot tour: the demo's usage records become exactly these.
+    func applyDemoStatuses(_ records: [StatusRecord]) async {
+        guard let demoFeed else { return }
+        await demoFeed.replaceStatuses(with: records)
+        pollNow()
+    }
+
     /// The format tour: the demo's open items become exactly these.
     func applyDemoOpenSet(_ items: [Item]) async {
         guard let demoFeed else { return }

@@ -284,13 +284,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
             }),
-            // Usage meters (DemoFeed.statusFixture): the panel's section and the pill's hairlines.
+            // Usage meters (DemoFeed.statusFixture): the panel's section, then the pill's meters.
             ("15-usage-panel", { model in
                 model.previewItem = nil
                 model.expand()
                 model.scrollTarget = nil
             }),
-            ("16-usage-pill", { $0.collapse() }),
+            // The pill's meter styles (Settings → Usage → On the pill) at an everyday 31 % / 10 %:
+            // the waiting pill, then the idle one (nothing waiting).
+            ("16-usage-pill", { model in
+                model.collapse()
+                Task { await model.applyDemoStatuses(DemoFeed.quietUsageFixture()) }
+            }),
+            ("16b-usage-pill-hairline", { $0.settings.usage.pillStyle = .hairline }),
+            ("16c-usage-pill-percent", { $0.settings.usage.pillStyle = .percent }),
+            ("16d-usage-pill-warning", { model in
+                model.settings.usage.pillStyle = .bars
+                Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
+            }),
+            ("16e-usage-idle", { model in
+                Task {
+                    await model.applyDemoStatuses(DemoFeed.quietUsageFixture())
+                    await model.applyDemoOpenSet([])
+                }
+            }),
+            ("16f-usage-idle-hairline", { $0.settings.usage.pillStyle = .hairline }),
+            ("16g-usage-idle-percent", { $0.settings.usage.pillStyle = .percent }),
+            ("16h-usage-off", { model in
+                model.settings.usage.pillStyle = .bars
+                model.settings.usage.onPill = false
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
@@ -302,6 +325,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 action(model)
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name).png"))
+                // Progress for screenshots.sh, so a slow run shows where it got to.
+                NSLog("NeedsYou: snapshot \(name)")
                 if name == "6j-question-other",
                    let item = Self.tourOtherItem(model) {
                     // The answer window "Other…" opens, with words typed (drawn offscreen).
@@ -312,6 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The pages show the out-of-the-box look and alerts settings.
             model.collapse()
             settings.ui = UIPrefs()
+            settings.usage = UsagePrefs()
             for (tab, shots) in pages {
                 await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
                                                    into: dir, name: "settings-\(tab.rawValue)")
