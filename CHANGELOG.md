@@ -83,6 +83,9 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - **The hub warns when `peer_secret_file` can be read by other users** (anyone who reads it can replicate as a peer): `chmod 600` it.
 - **Move to Applications moves only the app that's running.** It checked that the copy had a valid signature, which any re-signed bundle has; the copy must now carry the running app's code directory hash, so a bundle swapped on disk while Needs You ran from Downloads can't be moved, lose its quarantine and be opened.
 - **The always-on hub command is built from a checked link.** The server runs it with `sudo`; Settings now builds it only from a join link of the hub's shape (`…/join/nyi_…`), quoted, and shows no command for anything else.
+- **Status writes have a per-token rate.** A set after a clear is never too fast and each new key is a new row, so one sender could write statuses (and every paired hub store them) without end. Sets and clears now get `429 rate_limited` past the post rate (120 a minute by default), counted apart from posts.
+- **A status key or `source` field that looks like a secret is refused** (`400 secret_in_text`), as the label, detail and account already were: statuses are listed and replicated whole.
+- **Usage meters are sturdier.** The status line helper printed a traceback instead of its line on numbers like `NaN` or `1e999`; its state files and the Codex meter's are now mode 600. The Codex meter posts in the background. The Mac app bounds and cleans what a hub sends for meters (64 records, 4 windows, short single-line text) and fetches them without holding up new items.
 
 ## [0.2.1] - 2026-10-08
 
