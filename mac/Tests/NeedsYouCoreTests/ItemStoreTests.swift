@@ -27,6 +27,7 @@ final class ItemStoreMergeTests: XCTestCase {
         ("testInsertsNewItems", testInsertsNewItems),
         ("testUpsertWithInvisibleChangeIsTouchedNotAnnounced", testUpsertWithInvisibleChangeIsTouchedNotAnnounced),
         ("testUpsertWithTitleBodyOrPriorityChangeIsAnnounced", testUpsertWithTitleBodyOrPriorityChangeIsAnnounced),
+        ("testEventOnlyRepostIsAnnounced", testEventOnlyRepostIsAnnounced),
         ("testStaleUpdateIsIgnored", testStaleUpdateIsIgnored),
         ("testIncrementalPollKeepsUnmentionedItems", testIncrementalPollKeepsUnmentionedItems),
         ("testFullSnapshotDropsItemsNoLongerOpen", testFullSnapshotDropsItemsNoLongerOpen),
@@ -71,6 +72,27 @@ final class ItemStoreMergeTests: XCTestCase {
         XCTAssertEqual(r.changed.map(\.id).sorted(), ["a", "b", "c"])
         XCTAssertTrue(r.inserted.isEmpty)
         XCTAssertEqual(store.items["a"]?.title, "Two")
+    }
+
+    func testEventOnlyRepostIsAnnounced() {
+        // Alert rules match on source.event: a re-post that only says something else happened
+        // ("finished", then "question") goes through them again, under the same key or a new id.
+        func agent(_ id: String, _ event: String?, updated: Double) -> Item {
+            var i = item(id, key: "claude-code:devbox:acme", title: "Claude: acme", updated: updated)
+            i.source = ItemSource(host: "devbox", agent: "claude-code", event: event)
+            return i
+        }
+        var store = ItemStore()
+        store.merge([agent("a", "finished", updated: 0)], isFullSnapshot: true, now: t0)
+        var r = store.merge([agent("a", "question", updated: 10)], isFullSnapshot: false, now: t0)
+        XCTAssertEqual(r.changed.map(\.id), ["a"])
+        XCTAssertEqual(store.items["a"]?.source?.event, "question")
+        r = store.merge([agent("a", "question", updated: 20)], isFullSnapshot: false, now: t0)
+        XCTAssertTrue(r.announce.isEmpty)
+        XCTAssertEqual(r.touched.map(\.id), ["a"])
+        r = store.merge([agent("b", "failed", updated: 30)], isFullSnapshot: false, now: t0)
+        XCTAssertEqual(r.changed.map(\.id), ["b"])
+        XCTAssertNil(store.items["a"])
     }
 
     func testStaleUpdateIsIgnored() {
