@@ -123,7 +123,7 @@ public enum HubError: Error, LocalizedError, Equatable {
 /// Client for the hub's v1 API, as specified in docs/API.md.
 public final class HubClient: ItemFeed, @unchecked Sendable {
     public let config: HubConfig
-    private let session: URLSession
+    let session: URLSession  // (internal: StatusRecords.swift fetches statuses with it)
 
     /// `session` defaults to `HubSession.shared` (ephemeral, no URLCache, no cookies), so
     /// rebuilding clients on a hub switch never leaves sessions behind.
