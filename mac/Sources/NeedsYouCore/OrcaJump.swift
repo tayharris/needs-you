@@ -1,6 +1,6 @@
 import Foundation
 
-/// The card's "Terminal" link: `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]`.
+/// The card's "Orca" link: `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]`.
 ///
 /// Senders only hold a token, so the app never runs anything from item data. This is the
 /// one fixed action: `orca terminal switch` with a validated handle and environment, as an

@@ -93,7 +93,11 @@ public enum LinkRowPolicy {
     /// link really goes behind a look-alike prefix such as `https://github.co…`.
     public static func label(_ link: ItemLink, maxLength: Int?) -> String {
         let text: String
-        if link.label.trimmingCharacters(in: .whitespaces).isEmpty {
+        if let name = actionName(link.url) {
+            // The app's own actions are named for where they go, whatever the sender called them
+            // (hooks before 0.3.2 labelled the Orca jump "Terminal").
+            text = name
+        } else if link.label.trimmingCharacters(in: .whitespaces).isEmpty {
             if let host = URL(string: link.url)?.host, !host.isEmpty {
                 // Keep the end of the host (the registrable part), not the start.
                 if let maxLength, maxLength > 1, host.count > maxLength {
@@ -107,6 +111,16 @@ public enum LinkRowPolicy {
         }
         guard let maxLength, maxLength > 1, text.count > maxLength else { return text }
         return String(text.prefix(maxLength - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
+    /// The button name for one of the app's own actions: "Orca", or the terminal app
+    /// ("iTerm2", "tmux"). nil for any other link.
+    public static func actionName(_ url: String) -> String? {
+        switch AppAction.parse(url) {
+        case .orca?: return "Orca"
+        case .terminal(let jump)?: return jump.app.displayName
+        case nil: return nil
+        }
     }
 
     /// Where an allowed link really goes, shown faintly after its label so a label can't
