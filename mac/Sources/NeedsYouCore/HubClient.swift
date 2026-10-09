@@ -21,7 +21,9 @@ public protocol ItemFeed: Sendable {
 public enum AnswerOutcome: Equatable, Sendable {
     case taken
     /// 400, 404, 409 or 429, with the hub's `error` code (`already_answered`,
-    /// `question_changed`, `question_expired`, `not_open`, `not_answerable`, ...).
+    /// `question_changed`, `question_expired`, `not_open`, `not_answerable`, ...); also a 403
+    /// `forbidden` (the token is good, its role may not answer this way: typed `text` from a
+    /// token that isn't an owner).
     case refused(code: String)
 }
 
@@ -279,13 +281,20 @@ public final class HubClient: ItemFeed, @unchecked Sendable {
     public static func answerOutcome(status: Int, body: Data) throws -> AnswerOutcome {
         switch status {
         case 200..<300: return .taken
+        case 403 where errorCode(body) == "forbidden":
+            // A good token whose role may not answer this way (typed words from a reader):
+            // the hub's refusal, not a token error, so the card can say what to do instead.
+            return .refused(code: "forbidden")
         case 401, 403: throw HubError.unauthorized
         case 421: throw HubError.misdirected
         case 400, 404, 409, 429:
-            let code = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["error"] as? String
-            return .refused(code: code ?? "http_\(status)")
+            return .refused(code: errorCode(body) ?? "http_\(status)")
         default: throw HubError.http(status: status)
         }
+    }
+
+    private static func errorCode(_ body: Data) -> String? {
+        (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["error"] as? String
     }
 
     public func health() async throws {
