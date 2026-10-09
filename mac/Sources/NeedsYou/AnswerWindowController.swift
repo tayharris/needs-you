@@ -55,7 +55,7 @@ final class AnswerWindowController: NSObject, NSWindowDelegate {
         // Back to what the person was doing, unless they're in Settings.
         let settingsFront = NSApp.windows.contains { $0.isVisible && $0.title.hasSuffix("Settings") }
         if let app = previousApp, !settingsFront, !app.isTerminated {
-            app.activate()
+            _ = app.activate(options: [])
         }
         previousApp = nil
     }

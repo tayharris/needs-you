@@ -268,6 +268,7 @@ final class PanelController {
         if escapeMonitors.isEmpty {
             if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
                 guard event.keyCode == 53 else { return event }
+                if event.window is AnswerWindow { return event }  // its Cancel
                 MainActor.assumeIsolated { self?.model.collapse() }
                 return nil
             }) { escapeMonitors.append(local) }
@@ -278,7 +279,10 @@ final class PanelController {
         }
         if swallow, escapeHotKey == nil {
             escapeHotKey = HotKey(id: 2, keyCode: 53, modifiers: 0) { [weak self] in
-                MainActor.assumeIsolated { self?.model.collapse() }
+                MainActor.assumeIsolated {
+                    // Typing in the answer window: Escape cancels it, as its Cancel button says.
+                    if let answer = NSApp.keyWindow as? AnswerWindow { answer.performClose(nil) } else { self?.model.collapse() }
+                }
             }
         } else if !swallow {
             escapeHotKey = nil
