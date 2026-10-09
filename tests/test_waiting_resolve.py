@@ -170,11 +170,11 @@ class WaitingResolve(unittest.TestCase):
         # meanwhile: resolve the card and don't wait (nothing would end the wait but Stop).
         p = self.start(["ask"], {"hook_event_name": "PermissionRequest", "tool_name": "AskUserQuestion",
                                  "tool_input": QUESTION},
-                       FAKE_ADD_UNTIL=os.path.join(self.tmp, "add-may-end"), FAKE_ADD_STARTED=self.started)
+                       FAKE_ADD_UNTIL=os.path.join(self.home, "add-may-end"), FAKE_ADD_STARTED=self.started)
         self.in_flight()
         self.run_hook(["resolve"], {"hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion",
                                     "tool_input": dict(QUESTION, answers={"Which database?": "SQLite"})})
-        open(os.path.join(self.tmp, "add-may-end"), "w").close()  # the add ends only after the answer
+        open(os.path.join(self.home, "add-may-end"), "w").close()  # the add ends only after the answer
         self.finish(p)
         self.assertEqual(p.stdout.read(), b"")  # no decision printed
         self.assert_resolved_after_add()
