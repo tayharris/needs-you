@@ -13,8 +13,8 @@
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
 # example items below (among them agents' questions: 6e-6l, 6k the answer window), and once
 # with one agent card (preview-agent.png). Demo mode also shows example usage meters
-# (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-pill*.png (each pill meter style at
-# 31 % / 10 %, waiting and idle) and settings-usage*.png.
+# (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-*.png (each pill meter style, layout
+# and size at 31 % / 10 %, waiting and idle; pill-idle.png is 16e) and settings-usage*.png.
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
 #
@@ -216,10 +216,13 @@ fi
 
 echo "==> idle run"
 run "$T/empty.json" "$T/idle"
-cp "$T/idle/1-collapsed.png" "$OUT/pill-idle.png"
+cp "$T/idle/1-collapsed.png" "$OUT/pill-idle-demo.png"
 echo "==> example items run"
 run "$T/items.json" "$T/items"
 cp "$T/items/"*.png "$OUT/"
+# The site's idle pill: the default meters at an everyday 31 % / 10 % (the idle run's demo
+# numbers are past the warning line).
+cp "$T/items/16e-usage-idle.png" "$OUT/pill-idle.png"
 echo "==> agent preview run"
 run "$T/agent.json" "$T/agent"
 cp "$T/agent/6-preview.png" "$OUT/preview-agent.png"

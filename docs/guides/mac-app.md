@@ -49,7 +49,7 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 
 The pill when nothing needs you, with 4 work items and 1 personal one waiting (count only, then split work | personal and count and top item), and a new item springing out:
 
-<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: Nothing needs you."> &nbsp; <img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal shown faintly, in a red ring."> &nbsp; <img src="../../site/img/pill-split.png" width="90" alt="The split pill: W 4, P 1."> &nbsp; <img src="../../site/img/pill-top-item.png" width="248" alt="The pill showing the count and the top item's title.">
+<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: Nothing needs you, with session and weekly usage bars under it."> &nbsp; <img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal shown faintly, in a red ring."> &nbsp; <img src="../../site/img/pill-split.png" width="90" alt="The split pill: W 4, P 1."> &nbsp; <img src="../../site/img/pill-top-item.png" width="248" alt="The pill showing the count and the top item's title.">
 
 <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
 
