@@ -185,7 +185,7 @@ If nothing shows up, see [troubleshooting](../../docs/guides/troubleshooting.md#
 
 With `needs-you-usage` as your status line (installed as below), the Mac app shows Claude's
 session (5-hour) and weekly limits as two bars in the panel, and as a hairline meter on the
-pill (Settings → Usage). The helper sends both percentages and reset times to the hub as a
+pill (Settings → Appearance → Usage meters). The helper sends both percentages and reset times to the hub as a
 quiet **usage status** (`needs-you status set --key usage:claude ...`; [API](../../docs/API.md#status-records-usage-meters)):
 never a card, never counted. It goes out when a number changed (at most every 15 s) and every
 5 minutes otherwise, detached, so the status line never waits; a status is never queued, so
