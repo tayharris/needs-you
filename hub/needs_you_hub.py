@@ -4848,6 +4848,7 @@ curl -fsSL %(join)s/install.sh | bash -s -- --yes --claude-hooks user --skill --
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links (`{cwd}`, `{host}`, `{session}`, `{handle}`); `none` turns editor links off. |
 | `--orca-environment NAME` | A paired Orca server: its name in the Mac's Orca (`orca environment list` there). |
 | `--orca` | This machine runs Orca automations: write the prompt snippet for them to `~/.config/needs-you/orca-snippet.md` and print it. |
+| `--orca-usage` | This machine's Orca manages several Claude or Codex accounts: the 5-minute flush sends a usage meter for each to the Mac (`NEEDS_YOU_ORCA_USAGE=1`; it runs `orca account list` and nothing else). Only when the user asks for it. |
 | `--context work\\|personal` | Default context for items from this machine (the CLI's `--context` still wins). |
 | `--host NAME` | Name for this machine (default: short hostname). |
 | `--hub URL` | Use another URL for this same hub, e.g. `http://127.0.0.1:8765` on the hub's own Mac when the name above doesn't resolve. It is saved first in this machine's hub list. |

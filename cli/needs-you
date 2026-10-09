@@ -41,6 +41,11 @@
   needs-you orca [--environment NAME]... [--all] [--archived] [--limit N] [--json]
                                                      Orca's worktrees: host, name, status, live
                                                      terminals (read-only; runs orca worktree ps)
+  needs-you orca usage [--dry-run] [--enable | --disable]
+                                                     a usage meter status for every Orca-managed
+                                                     Claude and Codex account (runs orca account
+                                                     list; never queued). With NEEDS_YOU_ORCA_USAGE=1
+                                                     (--enable sets it) the flush runs it
   needs-you uninstall-hooks [--user] [--project [DIR]] [--codex] [--gemini] [--opencode] [--copilot]
                             [--cursor] [--cline] [--aider] [--kimi] [--grok] [--mcp] [--instructions]
                             [--dry-run]              remove the agent hooks: by default Claude
@@ -1979,6 +1984,23 @@ def status_command(cfg: Config, args: argparse.Namespace) -> int:
         warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); status not sent (statuses are never queued)"
              % config_path())
         return 0
+    rc, why, resp = send_status(cfg, method, key, body)
+    if rc == 0:
+        if args.json:
+            print(json.dumps(resp, sort_keys=True))
+        elif not args.quiet:
+            done = "set" if method == "PUT" else ("cleared" if resp.get("cleared") else "nothing to clear")
+            print("status %s: %s via %s" % (done, clean(key), why))
+    else:
+        warn(why)
+    return 2 if rc == 2 else 0
+
+
+def send_status(cfg: Config, method: str, key: str, body: Optional[Dict[str, Any]]
+                ) -> Tuple[int, str, Dict[str, Any]]:
+    """One status PUT or DELETE to the first hub that answers, never queued: (0, url, resp)
+    when sent, (1, why, {}) when it wasn't (no hub reachable, too old, 429), (2, why, resp)
+    when a hub refused it."""
     path = "/v1/status/" + urllib.parse.quote(key, safe="")
     errors = []
     for url in cfg.urls:
@@ -1988,12 +2010,7 @@ def status_command(cfg: Config, args: argparse.Namespace) -> int:
             errors.append("%s: %s" % (url, getattr(e, "reason", e)))
             continue
         if 200 <= status < 300:
-            if args.json:
-                print(json.dumps(resp, sort_keys=True))
-            elif not args.quiet:
-                done = "set" if method == "PUT" else ("cleared" if resp.get("cleared") else "nothing to clear")
-                print("status %s: %s via %s" % (done, clean(key), url))
-            return 0
+            return 0, url, resp
         if status == 404 and resp.get("error") != "invalid":
             errors.append("%s: this hub predates statuses (404)" % url)
             continue
@@ -2002,12 +2019,10 @@ def status_command(cfg: Config, args: argparse.Namespace) -> int:
             continue
         msg = clean(resp.get("message") or resp.get("error") or "")
         if status == 429:
-            warn("hub said slow down: HTTP 429 %s; not sent (statuses are never queued)" % msg)
-            return 0
-        warn("hub rejected the status: HTTP %d %s" % (status, msg))
-        return 2
-    warn("status not sent (%s); statuses are never queued" % ("; ".join(errors) or "no hub URL configured"))
-    return 0
+            return 1, "hub said slow down: HTTP 429 %s; not sent (statuses are never queued)" % msg, {}
+        return 2, "hub rejected the status: HTTP %d %s" % (status, msg), resp
+    return 1, "status not sent (%s); statuses are never queued" % (
+        "; ".join(errors) or "no hub URL configured"), {}
 
 
 def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, Any]:
@@ -2180,6 +2195,16 @@ def _main(argv: Optional[List[str]] = None) -> int:
                     help="at most N rows per environment (Orca's own default otherwise)")
     op.add_argument("--json", dest="orca_json", action="store_true",
                     help="machine-readable: {ok, worktrees: [...], scopes: {...}, errors: [...]}")
+    op.add_argument("orca_what", nargs="?", choices=("usage",), metavar="usage",
+                    help="`orca usage`: send a usage meter status for each Orca-managed Claude and Codex "
+                         "account (runs `orca account list`); the flush does it with NEEDS_YOU_ORCA_USAGE=1")
+    op.add_argument("--dry-run", dest="orca_dry_run", action="store_true",
+                    help="usage: print the records it would send; send nothing")
+    og = op.add_mutually_exclusive_group()
+    og.add_argument("--enable", dest="orca_enable", action="store_true",
+                    help="usage: let the 5-minute flush send them (NEEDS_YOU_ORCA_USAGE=1), then send now")
+    og.add_argument("--disable", dest="orca_disable", action="store_true",
+                    help="usage: stop (NEEDS_YOU_ORCA_USAGE=0) and clear the ones it sent")
 
     args = p.parse_args(argv)
     if args.cmd == "post":  # the docs say "post an item"; agents guess it
@@ -2209,7 +2234,18 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return install_instructions(args.agents, args.source, args.dry_run, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
+    if args.cmd == "orca" and args.orca_what == "usage":  # statuses: never queued
+        if args.orca_enable or args.orca_disable:
+            if not set_orca_usage(cfg, args.orca_enable, args.quiet):
+                return 1
+            if args.orca_disable:
+                orca_usage_clear_all(cfg, args.quiet)
+                return 0
+        return orca_usage(cfg, quiet=args.quiet, as_json=args.json or args.orca_json, dry_run=args.orca_dry_run)
     if args.cmd == "orca":  # read-only, local: no hub, no outbox
+        if args.orca_dry_run or args.orca_enable or args.orca_disable:
+            warn("--dry-run, --enable and --disable go with `orca usage`")
+            return 2
         if args.orca_limit < 0:
             warn("--limit must be 0 or more")
             return 2
@@ -2242,6 +2278,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
             print("sent %d, dropped %d, %d still queued" % (sent, dropped, remaining)
                   + (", resolved %d from ended sessions" % reaped if reaped else ""))
         auto_update(cfg)
+        orca_usage_from_flush(cfg)
         return 0
     if args.cmd == "health":
         return health(cfg, remaining)
@@ -4742,6 +4779,14 @@ class Doctor:
             parts.append("NEEDS_YOU_ORCA_ENVIRONMENT not set")
             hint = ("on a paired Orca server, set NEEDS_YOU_ORCA_ENVIRONMENT in %s to the name "
                     "`orca environment list` shows on the Mac" % _tilde(self.env_path))
+        usage, where = self.setting("NEEDS_YOU_ORCA_USAGE")
+        if usage.strip().lower() in _ON:
+            st = _orca_usage_state()
+            ran = st.get("ran_at") if isinstance(st.get("ran_at"), (int, float)) else None
+            parts.append("account usage meters on (%s)%s" % (where, ", last run %s ago" % _age(time.time() - ran)
+                                                              if ran else ", not run yet"))
+        else:
+            parts.append("account usage meters off (`needs-you orca usage --enable` turns them on)")
         self.add("orca", "INFO", "; ".join(parts), hint)
 
     # -- flush schedule ----------------------------------------------------
@@ -5581,12 +5626,12 @@ def orca_text(value: Any, limit: int = 60) -> str:
     return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
 
 
-def orca_run(orca: str, args: List[str]) -> Tuple[Optional[Dict[str, Any]], str]:
-    """(the `result` object, "") or (None, why). No shell; 20 s at most."""
+def orca_run(orca: str, args: List[str], timeout: float = 20.0) -> Tuple[Optional[Dict[str, Any]], str]:
+    """(the `result` object, "") or (None, why). No shell; 20 s at most by default."""
     import subprocess
     try:
         r = subprocess.run([orca] + args + ["--json"], stdin=subprocess.DEVNULL, capture_output=True,
-                           text=True, timeout=20)
+                           text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return None, "orca %s timed out" % " ".join(args[:2])
     except (OSError, subprocess.SubprocessError) as e:
@@ -5717,6 +5762,320 @@ def orca_summary(environments: List[str], all_envs: bool, include_archived: bool
             line += "; more rows than shown (--limit)"
         say_clean(line)
     return 0
+
+
+# ---------------------------------------------------------------------------
+# orca usage: usage meters for every Orca-managed Claude and Codex account
+# ---------------------------------------------------------------------------
+#
+# `orca account list --json` lists the accounts Orca manages and the rate limits it last
+# fetched for each (rateLimits.claude/.codex: the active account; inactive*Accounts: the
+# others). Each becomes a `usage` status (ADR 0011), as `needs-you status set` sends them.
+# Only that one command runs: never Orca's auth files, tokens or cookies. Account emails,
+# workspace and organisation names are never read into a record: an account is labelled
+# "orca-" + the first 8 hex of sha256(its Orca account id).
+#
+# The account with no managed id (Orca's "system default") is the one the local producers
+# (needs-you-usage, the Codex hook) see, so it goes under their key and account
+# (usage:<provider>[:NEEDS_YOU_USAGE_ACCOUNT]): one record, one row on the Mac. While a local
+# producer has sent within ORCA_USAGE_LOCAL_LIVE it is left to that producer (its numbers are
+# fresher), and this command never clears that key.
+
+ORCA_USAGE_PROVIDERS = (("claude", "Claude", "inactiveClaudeAccounts"), ("codex", "Codex", "inactiveCodexAccounts"))
+ORCA_USAGE_WINDOWS = (("session", "5h"), ("weekly", "7d"))
+ORCA_USAGE_OK = ("ok", "fetching")         # "fetching" keeps the last numbers Orca fetched
+ORCA_USAGE_EVERY = 240.0                   # from flush: at most this often (flush runs every 5 min)
+ORCA_USAGE_MAX_AGE = 12 * 3600.0           # numbers Orca fetched longer ago than this are skipped
+ORCA_USAGE_LOCAL_LIVE = 15 * 60.0          # a local producer that sent within this owns the default account
+ORCA_USAGE_MAX_RECORDS = 12                # the hub keeps at most 20 live statuses per token
+ORCA_USAGE_TIMEOUT = 15.0
+ORCA_ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._-]{0,40}$")
+ORCA_PATHS = ("~/.local/bin/orca", "/usr/local/bin/orca", "/opt/homebrew/bin/orca",
+              "/Applications/Orca.app/Contents/Resources/bin/orca")
+
+
+def orca_bin(cfg: Config) -> Optional[str]:
+    """NEEDS_YOU_ORCA_BIN, else `orca` on PATH, else where Orca installs it (cron's PATH is short)."""
+    import shutil
+    given = _setting(cfg, "NEEDS_YOU_ORCA_BIN").strip()
+    cands = [os.path.expanduser(given)] if given else [shutil.which("orca") or ""] + [
+        os.path.expanduser(p) for p in ORCA_PATHS]
+    for c in cands:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def orca_account_label(account_id: str) -> str:
+    return "orca-" + hashlib.sha256(account_id.encode("utf-8")).hexdigest()[:8]
+
+
+def _orca_number(v: Any) -> Optional[float]:
+    import math
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    f = float(v)
+    return f if math.isfinite(f) else None
+
+
+def orca_window(w: Any, name: str, now: float) -> Optional[Dict[str, Any]]:
+    """Orca's {usedPercent, resetsAt (epoch ms)} as a status window, or None."""
+    if not isinstance(w, dict):
+        return None
+    pct = _orca_number(w.get("usedPercent"))
+    if pct is None:
+        return None
+    pct = round(max(0.0, min(100.0, pct)), 1)
+    out: Dict[str, Any] = {"name": name, "used_pct": int(pct) if pct == int(pct) else pct, "resets_at": None}
+    resets = _orca_number(w.get("resetsAt"))
+    if resets is not None and resets > 0:
+        secs = resets / 1000.0 if resets > 1e11 else resets
+        if secs <= now:
+            out["used_pct"] = 0  # the window has reset since Orca fetched it
+        elif secs < 1e11:
+            out["resets_at"] = int(secs)
+    return out
+
+
+def orca_snapshot(snap: Any, now: float) -> Tuple[List[Dict[str, Any]], str]:
+    """(windows, "") or ([], why it was skipped)."""
+    if not isinstance(snap, dict):
+        return [], "no numbers"
+    status = snap.get("status")
+    if status not in ORCA_USAGE_OK:
+        return [], "status %s" % (orca_text(status, 20) or "unknown")
+    upd = _orca_number(snap.get("updatedAt"))
+    secs = (upd / 1000.0 if upd > 1e11 else upd) if upd else 0.0
+    if secs <= 0 or now - secs > ORCA_USAGE_MAX_AGE:
+        return [], "stale"
+    wins = [w for w in (orca_window(snap.get(field), name, now) for field, name in ORCA_USAGE_WINDOWS) if w]
+    return (wins, "") if wins else ([], "no windows")
+
+
+def _orca_active_id(block: Dict[str, Any], target: Any) -> Optional[str]:
+    """The managed account rateLimits.<provider> belongs to: the one active for Orca's target
+    runtime (the host, or a WSL distro), or None for the system default."""
+    active = block.get("activeAccountId")
+    by_rt = block.get("activeAccountIdsByRuntime")
+    if isinstance(target, dict) and target.get("runtime") == "wsl":
+        wsl = by_rt.get("wsl") if isinstance(by_rt, dict) else None
+        distro = target.get("wslDistro")
+        active = wsl.get(distro) if isinstance(wsl, dict) and isinstance(distro, str) else None
+    return active if isinstance(active, str) and active else None
+
+
+def _local_meter_live(provider: str, account: str, now: float) -> bool:
+    """Has needs-you-usage or the Codex hook sent this provider's meter lately?"""
+    path = os.path.join(state_dir(), "usage", "%s%s.meter.json" % (provider, "-" + account if account else ""))
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            sent = float(json.load(fh).get("sent") or 0)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+    return now - sent < ORCA_USAGE_LOCAL_LIVE
+
+
+def orca_usage_plan(result: Dict[str, Any], cfg: Config, now: float) -> Dict[str, Any]:
+    """From `orca account list`'s result: {"records": [(key, body)], "skipped": [(key, why)],
+    "present": the managed-account keys Orca still lists, with numbers or not}."""
+    rl = result.get("rateLimits") if isinstance(result.get("rateLimits"), dict) else {}
+    local = _setting(cfg, "NEEDS_YOU_USAGE_ACCOUNT").strip()
+    local = local if ORCA_ACCOUNT_RE.match(local) else ""
+    records: List[Tuple[str, Dict[str, Any]]] = []
+    skipped: List[Tuple[str, str]] = []
+    present: List[str] = []
+    for provider, title, inactive_field in ORCA_USAGE_PROVIDERS:
+        block = result.get(provider) if isinstance(result.get(provider), dict) else {}
+        active = _orca_active_id(block, rl.get(provider + "Target"))
+        entries: List[Tuple[Optional[str], Any]] = [(active, rl.get(provider))]
+        inactive = rl.get(inactive_field)
+        for a in inactive if isinstance(inactive, list) else []:
+            aid = a.get("accountId") if isinstance(a, dict) else None
+            if isinstance(aid, str) and aid and len(aid) <= 200 and aid not in [e[0] for e in entries]:
+                entries.append((aid, a.get("rateLimits")))
+        for aid, snap in entries:
+            if aid is None:  # the system default: the local producers' account
+                if snap is None:
+                    continue
+                account = local
+                key = "usage:%s%s" % (provider, ":" + account if account else "")
+                if _local_meter_live(provider, account, now):
+                    skipped.append((key, "a local producer reports it"))
+                    continue
+            else:
+                account = orca_account_label(aid)
+                key = "usage:%s:%s" % (provider, account)
+                present.append(key)
+            wins, why = orca_snapshot(snap, now)
+            if not wins:
+                skipped.append((key, why))
+                continue
+            if len(records) >= ORCA_USAGE_MAX_RECORDS:
+                skipped.append((key, "more than %d accounts" % ORCA_USAGE_MAX_RECORDS))
+                continue
+            resets = [w["resets_at"] for w in wins if w["resets_at"]]
+            minutes = min((max(resets) - now) / 60.0 if resets else STATUS_USAGE_DEFAULT_MINUTES,
+                          STATUS_USAGE_MAX_MINUTES)
+            records.append((key, {
+                "type": "usage", "label": title,
+                "usage": {"provider": provider, "account": account, "windows": wins},
+                "expires_at": round(now + max(minutes, 1.0) * 60.0, 3),
+                "source": {"host": cfg.host, "agent": "orca"}}))
+    return {"records": records, "skipped": skipped, "present": present}
+
+
+def _orca_usage_state_path() -> str:
+    return os.path.join(state_dir(), "orca-usage.json")
+
+
+def _orca_usage_state() -> Dict[str, Any]:
+    try:
+        with open(_orca_usage_state_path(), "r", encoding="utf-8") as fh:
+            st = json.load(fh)
+        return st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _orca_usage_save(st: Dict[str, Any]) -> None:
+    try:
+        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
+        _write_atomic(_orca_usage_state_path(), json.dumps(st, sort_keys=True).encode("utf-8"), 0o600)
+    except OSError:
+        pass
+
+
+def _orca_usage_keys(st: Dict[str, Any]) -> List[str]:
+    keys = st.get("keys")
+    return [k for k in keys if isinstance(k, str) and k.startswith("usage:")] if isinstance(keys, list) else []
+
+
+def orca_usage(cfg: Config, quiet: bool = False, as_json: bool = False, dry_run: bool = False) -> int:
+    """`needs-you orca usage`: a usage status for each Orca account, and a clear for each one
+    this command sent before that Orca no longer lists. Exit 0 unless a hub refused a record
+    (2): a missing or broken `orca`, or no hub, only warns."""
+    def say(msg: str) -> None:
+        if not quiet and not as_json:
+            say_clean(msg)
+
+    def complain(msg: str) -> None:
+        if not quiet:
+            warn(msg)
+
+    now = time.time()
+    orca = orca_bin(cfg)
+    if not orca:
+        complain("orca usage: the Orca CLI isn't on PATH (or NEEDS_YOU_ORCA_BIN); nothing sent")
+        return 0
+    try:
+        timeout = float(_setting(cfg, "NEEDS_YOU_ORCA_TIMEOUT") or ORCA_USAGE_TIMEOUT)
+    except ValueError:
+        timeout = ORCA_USAGE_TIMEOUT
+    timeout = min(max(timeout, 1.0), 60.0) if timeout == timeout else ORCA_USAGE_TIMEOUT
+    result, err = orca_run(orca, ["account", "list"], timeout=timeout)
+    if result is None:
+        complain("orca usage: %s; nothing sent" % err)
+        if as_json:
+            print(json.dumps({"ok": False, "error": err}))
+        return 0
+    try:
+        plan = orca_usage_plan(result, cfg, now)
+    except Exception as e:  # noqa: BLE001 - Orca's output is untrusted: never a traceback
+        complain("orca usage: couldn't read orca's account list (%s); nothing sent" % type(e).__name__)
+        return 0
+    skipped = [{"key": k, "reason": why} for k, why in plan["skipped"]]
+    if dry_run:
+        print(json.dumps({"records": [{"key": k, "body": b} for k, b in plan["records"]], "skipped": skipped},
+                         indent=1, sort_keys=True))
+        return 0
+    if not cfg.ok:
+        complain("orca usage: NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); nothing sent" % config_path())
+        return 0
+    st = _orca_usage_state()
+    before = _orca_usage_keys(st)
+    sent: List[str] = []
+    rc = 0
+    for key, body in plan["records"]:
+        code, why, _ = send_status(cfg, "PUT", key, body)
+        if code == 0:
+            sent.append(key)
+            say("sent %s: %s" % (key, ", ".join("%s %s%%" % (w["name"], w["used_pct"])
+                                                 for w in body["usage"]["windows"])))
+        else:
+            complain("orca usage: %s: %s" % (key, why))
+            rc = max(rc, code)
+    for key, why in plan["skipped"]:
+        say("skipped %s: %s" % (key, why))
+    cleared: List[str] = []
+    keep = [k for k in before if k in plan["present"]]
+    keep += [k for k in sent if k in plan["present"] and k not in keep]
+    for key in before:
+        if key in plan["present"]:
+            continue
+        code, why, _ = send_status(cfg, "DELETE", key, None)
+        if code == 0:
+            cleared.append(key)
+            say("cleared %s (no longer in Orca)" % key)
+        else:
+            keep.append(key)  # tried again next time
+            complain("orca usage: clearing %s: %s" % (key, why))
+    st["keys"] = keep
+    _orca_usage_save(st)
+    if as_json:
+        print(json.dumps({"ok": rc == 0, "sent": sent, "cleared": cleared, "skipped": skipped}, sort_keys=True))
+    return 2 if rc == 2 else 0
+
+
+def orca_usage_clear_all(cfg: Config, quiet: bool) -> None:
+    """`orca usage --disable`: clear what this command sent (best effort)."""
+    st = _orca_usage_state()
+    keep = []
+    for key in _orca_usage_keys(st):
+        code, why, _ = send_status(cfg, "DELETE", key, None) if cfg.ok else (1, "no hub configured", {})
+        if code != 0:
+            keep.append(key)
+            if not quiet:
+                warn("orca usage: clearing %s: %s" % (key, why))
+    st["keys"] = keep
+    _orca_usage_save(st)
+
+
+def set_orca_usage(cfg: Config, on: bool, quiet: bool) -> bool:
+    """`orca usage --enable` / `--disable`: NEEDS_YOU_ORCA_USAGE in the env file."""
+    try:
+        set_env_setting("NEEDS_YOU_ORCA_USAGE", "1" if on else "0")
+    except OSError as e:
+        warn("couldn't write %s (%s)" % (config_path(), type(e).__name__))
+        return False
+    if not quiet:
+        print("Orca account usage meters %s (NEEDS_YOU_ORCA_USAGE=%s in %s%s)"
+              % ("on" if on else "off", "1" if on else "0", _tilde(config_path()),
+                 "; the 5-minute flush sends them" if on else ""))
+    env = os.environ.get("NEEDS_YOU_ORCA_USAGE", "").strip().lower()
+    if env and (env in _ON) != on:
+        warn("NEEDS_YOU_ORCA_USAGE=%s in this shell's environment overrides the file" % clean(env))
+    return True
+
+
+def orca_usage_from_flush(cfg: Config) -> None:
+    """From `flush`, only with NEEDS_YOU_ORCA_USAGE=1: `orca usage`, quietly, at most every
+    ORCA_USAGE_EVERY seconds. Never raises, never prints."""
+    try:
+        if _setting(cfg, "NEEDS_YOU_ORCA_USAGE").strip().lower() not in _ON or not cfg.ok:
+            return
+        st = _orca_usage_state()
+        now = time.time()
+        try:
+            last = float(st.get("ran_at") or 0)
+        except (TypeError, ValueError):
+            last = 0.0
+        if 0 <= now - last < ORCA_USAGE_EVERY:
+            return
+        st["ran_at"] = int(now)
+        _orca_usage_save(st)
+        orca_usage(cfg, quiet=True)
+    except Exception:  # noqa: BLE001 - flush must never fail because of this
+        pass
 
 
 if __name__ == "__main__":

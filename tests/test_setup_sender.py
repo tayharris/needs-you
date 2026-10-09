@@ -151,14 +151,14 @@ class SetupSender(HubTestCase):
         with open(bashrc, "w") as fh:
             fh.write("# my bashrc\n")
         self.run_setup("--alerts", "--context-alert", "75", "--ssh-alias", "devbox",
-                       "--agent-link", "VS Code=vscode://file{cwd}", "--orca-environment", "My Devbox")
+                       "--agent-link", "VS Code=vscode://file{cwd}", "--orca-environment", "My Devbox", "--orca-usage")
         env_path = os.path.join(self.home, ".config", "needs-you", "env")
         self.assertEqual(stat.S_IMODE(os.stat(env_path).st_mode), 0o600)
         text = self.env_text()
         for line in ("NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_AGENT_ALERTS=1",
                      "NEEDS_YOU_CONTEXT_ALERT_PCT=75", "NEEDS_YOU_SSH_ALIAS=devbox",
                      "NEEDS_YOU_AGENT_LINK='VS Code=vscode://file{cwd}'",
-                     "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'"):
+                     "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'", "NEEDS_YOU_ORCA_USAGE=1"):
             self.assertIn(line + "\n", text)
         cli = os.path.join(self.home, ".local", "bin", "needs-you")
         with open(self.cron) as fh:

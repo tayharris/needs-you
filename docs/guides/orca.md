@@ -169,6 +169,25 @@ needs-you orca --environment "My Devbox" --json
 
 It runs `orca worktree ps --json` (no shell, 20 s at most) and prints only the host, name, branch, repo, workspace status, live terminal and agent counts, unread flag, linked PR number and last activity, each cleaned to one short line. It never prints a terminal's `preview`, a worktree's comment, its path or any URL: those are free text from terminals and trackers. Archived worktrees are left out (`--archived` adds them). It never posts, queues or reaches a hub, and it exits 1 when `orca` isn't on `PATH` or can't answer. `--json` gives `{ok, worktrees: [...], scopes: {...}, errors: [...]}`.
 
+## Usage meters for every Orca account
+
+When Orca manages several Claude or Codex logins on a machine (`orca account add`), the hooks only see the account the current session runs on. `needs-you orca usage` sends the Mac's [usage meters](mac-app.md#usage-meters) a row for each of them, from the numbers Orca already fetched:
+
+```bash
+needs-you orca usage --enable     # NEEDS_YOU_ORCA_USAGE=1 in the env file, and send once now
+needs-you orca usage --dry-run    # print what it would send; send nothing
+needs-you orca usage --disable    # stop, and clear the rows it sent
+```
+
+With `NEEDS_YOU_ORCA_USAGE=1` (or the invite installer's `--orca-usage`), the 5-minute `needs-you flush` runs it, at most every 4 minutes. It runs `orca account list --json` and nothing else (15 s at most, `NEEDS_YOU_ORCA_TIMEOUT`); it never reads Orca's login files, tokens or cookies. If Orca isn't running, or its answer can't be read, nothing is sent and the flush stays quiet. Cron's `PATH` is short, so it also looks in `~/.local/bin`, `/usr/local/bin`, `/opt/homebrew/bin` and `/Applications/Orca.app/Contents/Resources/bin`; `NEEDS_YOU_ORCA_BIN` names another path.
+
+- **One row per account.** A managed account shows as `Claude · orca-1a2b3c4d`: `orca-` and the first 8 hex digits of the sha256 of its Orca account id. Never its email, workspace or organisation name. `--dry-run` prints the labels Orca's accounts get here.
+- **The account Orca didn't add** (Orca's "system default": the login Claude Code or Codex uses outside Orca's managed accounts) is the one the local hooks already report, so it goes under their row (`Claude`, or `Claude · <NEEDS_YOU_USAGE_ACCOUNT>`). While `needs-you-usage` or the Codex hook has sent that meter in the last 15 minutes, the poller leaves it to them.
+- **What's skipped:** a provider other than Claude and Codex, an account Orca reports with an error or no numbers, numbers Orca fetched more than 12 hours ago, and more than 12 accounts. A window whose reset time has passed is sent as 0 %.
+- **An account you remove from Orca** loses its row on the next run; one that only failed to refresh keeps its last row until it expires (at its latest reset).
+
+Orca refreshes the active account's numbers itself; the other accounts' numbers are refreshed when you open Orca's usage view, so their rows can lag. Statuses are never queued: with no hub reachable, that run's numbers are dropped and the next run sends fresh ones.
+
 ## Check it works
 
 From an Orca terminal:
@@ -180,4 +199,4 @@ needs-you resolve --key "work:orca-test:hello"
 
 Then run one automation by hand (`orca automations run ...`) and watch for its card.
 
-`needs-you doctor` prints an `orca` INFO line in an Orca terminal or wherever `orca` is on `PATH` (whether the terminal handle, worktree id and `NEEDS_YOU_ORCA_ENVIRONMENT` are set). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when `orca` is on `PATH` and you didn't pass `--orca`, that the flag exists.
+`needs-you doctor` prints an `orca` INFO line in an Orca terminal or wherever `orca` is on `PATH` (whether the terminal handle, worktree id and `NEEDS_YOU_ORCA_ENVIRONMENT` are set, and whether the account usage meters are on). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when `orca` is on `PATH` and you didn't pass `--orca`, that the flag exists.

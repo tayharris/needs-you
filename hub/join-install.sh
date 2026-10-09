@@ -39,6 +39,7 @@ HUB_GIVEN=""
 ALERTS=""
 AGENT_LINK=""
 ORCA_ENV=""
+ORCA_USAGE=""     # --orca-usage: NEEDS_YOU_ORCA_USAGE=1 (Orca accounts' usage meters, sent by the flush)
 SSH_ALIAS=""
 CONTEXT_ALERT=""
 SET_PATH=1
@@ -130,6 +131,9 @@ Options:
   --orca-environment NAME       on a paired Orca server: its name in the Mac's Orca
   --orca                        write the Orca automation snippet and print the
                                 block to paste into automation prompts
+  --orca-usage                  usage meters for every Orca-managed Claude and Codex
+                                account here, sent by the flush (NEEDS_YOU_ORCA_USAGE=1;
+                                `needs-you orca usage`)
   --context work|personal       default context for this machine's items
   --host NAME                   this machine's name (default: short hostname)
   --hub URL                     use this URL for the hub (saved first in the hub list)
@@ -181,6 +185,7 @@ while [ $# -gt 0 ]; do
     --agent-instructions=*) INSTRUCTIONS=${1#*=}; shift ;;
     --usage) USAGE=1; shift ;;
     --orca) ORCA=1; shift ;;
+    --orca-usage) ORCA_USAGE=1; shift ;;
     --context) CONTEXT=${2:-}; shift 2 || die "--context needs work or personal" ;;
     --context=*) CONTEXT=${1#*=}; shift ;;
     --host) HOST_NAME=${2:-}; shift 2 || die "--host needs a name" ;;
@@ -531,6 +536,7 @@ fi
 [ "$MCP" != "-" ] && say "  mcp     -> $BIN_DIR/needs-you-mcp, registered with: ${MCP//,/, }"
 [ "$USAGE" -eq 1 ] && say "  usage   -> $BIN_DIR/needs-you-usage (no settings changed)"
 [ "$ORCA" -eq 1 ] && say "  orca    -> $CONF_DIR/orca-snippet.md"
+[ "$ORCA_USAGE" = 1 ] && say "  orca    -> usage meters for its accounts, sent by the flush (NEEDS_YOU_ORCA_USAGE=1)"
 if [ "$YES" -ne 1 ]; then
   if [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then
     printf 'Continue? [y/N] ' >/dev/tty
@@ -610,9 +616,10 @@ fi
 
 # Rewrite the env file: keep unrelated lines, replace ours. The token never touches argv.
 python3 - "$ENV_FILE" "$TMP/resp.json" "$CONTEXT" "$HUB_GIVEN" "$ALERTS" "$CONTEXT_ALERT" \
-  "$SSH_ALIAS" "$AGENT_LINK" "$ORCA_ENV" "$AUTO_UPDATE" <<'PY'
+  "$SSH_ALIAS" "$AGENT_LINK" "$ORCA_ENV" "$AUTO_UPDATE" "$ORCA_USAGE" <<'PY'
 import json, os, re, sys
-path, resp_path, context, given, alerts, ctx_alert, ssh_alias, agent_link, orca_env, auto_update = sys.argv[1:11]
+(path, resp_path, context, given, alerts, ctx_alert, ssh_alias, agent_link, orca_env, auto_update,
+ orca_usage) = sys.argv[1:12]
 lines = []
 if os.path.exists(path):
     with open(path, encoding="utf-8") as fh:
@@ -652,7 +659,8 @@ if context:
     updates["NEEDS_YOU_DEFAULT_CONTEXT"] = context
 for k, v in (("NEEDS_YOU_AGENT_ALERTS", alerts), ("NEEDS_YOU_CONTEXT_ALERT_PCT", ctx_alert),
              ("NEEDS_YOU_SSH_ALIAS", ssh_alias), ("NEEDS_YOU_AGENT_LINK", agent_link),
-             ("NEEDS_YOU_ORCA_ENVIRONMENT", orca_env), ("NEEDS_YOU_AUTO_UPDATE", auto_update)):
+             ("NEEDS_YOU_ORCA_ENVIRONMENT", orca_env), ("NEEDS_YOU_AUTO_UPDATE", auto_update),
+             ("NEEDS_YOU_ORCA_USAGE", orca_usage)):
     if v:
         updates[k] = v if re.match(r"^[A-Za-z0-9._:/,@+%-]*$", v) else "'%s'" % v
 out, seen = [], set()

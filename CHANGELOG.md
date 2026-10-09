@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Usage meters for every account Orca manages.** On a machine where Orca holds several Claude or Codex logins, `needs-you orca usage --enable` (or the invite installer's `--orca-usage`) makes the 5-minute flush send a meter row for each one to the Mac, from `orca account list --json` and nothing else: no login files, tokens or cookies. An account shows as `Claude · orca-1a2b3c4d` (a short hash of Orca's account id), never its email. Orca's own default login shares the local hooks' row rather than adding a second one, accounts removed from Orca lose their row, and an absent or broken Orca only means no rows. `--dry-run` shows what it would send; `--disable` stops it and clears its rows ([Orca guide](docs/guides/orca.md#usage-meters-for-every-orca-account)).
+
 ## [0.3.1] - 2026-10-09
 
 A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.
