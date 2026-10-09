@@ -62,10 +62,24 @@ struct ExpandedView: View {
                     .background(Capsule().fill(Theme.accent.opacity(0.25)))
                     .foregroundStyle(Theme.accent)
             }
-            Text(model.statusLine)
-                .font(Theme.meta(model.metrics))
-                .foregroundStyle(model.lastError == nil ? Theme.faint : Theme.urgent.opacity(0.8))
-                .lineLimit(1)
+            if let update = model.updateFooter, model.lastError == nil {
+                // In place of the hub line (still in the tooltip); a hub error wins. A click
+                // opens Settings → Updates: the explicit-click exception that may activate.
+                Button { model.openSettings(page: .updates) } label: {
+                    Label(update.text, systemImage: update.failed ? "exclamationmark.triangle" : (update.available ? "arrow.down.circle" : "checkmark.circle"))
+                        .font(Theme.meta(model.metrics))
+                        .foregroundStyle(update.failed ? Theme.urgent.opacity(0.8) : Theme.muted)
+                        .lineLimit(1)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("\(model.statusLine). Click for Settings → Updates.")
+            } else {
+                Text(model.statusLine)
+                    .font(Theme.meta(model.metrics))
+                    .foregroundStyle(model.lastError == nil ? Theme.faint : Theme.urgent.opacity(0.8))
+                    .lineLimit(1)
+            }
             Spacer()
             Text(model.settings.hotKey.display)
                 .font(Theme.mono(model.metrics))
@@ -91,16 +105,33 @@ struct CardBottomsKey: PreferenceKey {
 struct ExpandedHeader: View {
     @ObservedObject var model: AppModel
 
+    private func titleAndSwitch(_ style: ContextSwitch.Style) -> some View {
+        HStack(spacing: 5) {
+            title.fixedSize()
+            ContextSwitch(model: model, style: style).fixedSize()
+        }
+    }
+
+    private var title: some View {
+        Text(model.needsLabel)
+            .font(.system(size: model.metrics.headerFont, weight: .semibold))
+            .foregroundStyle(Theme.text)
+            .lineLimit(1)
+    }
+
     var body: some View {
         HStack(spacing: 5) {
-            Text(model.needsLabel)
-                .font(.system(size: model.metrics.headerFont, weight: .semibold))
-                .foregroundStyle(Theme.text)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(-1)
-            ContextSwitch(model: model)
-                .fixedSize()
+            // The title stays whole: with big counts the switch gets tighter first ("99+",
+            // less padding, then "W"/"P"); only a very long custom title is still cut.
+            ViewThatFits(in: .horizontal) {
+                titleAndSwitch(.regular)
+                titleAndSwitch(.compact)
+                titleAndSwitch(.initials)
+                HStack(spacing: 5) {
+                    title.truncationMode(.tail).layoutPriority(-1)
+                    ContextSwitch(model: model, style: .initials).fixedSize()
+                }
+            }
             Spacer(minLength: 4)
             Menu {
                 ForEach(SnoozeOption.panelChoices) { option in
@@ -163,30 +194,43 @@ private struct HeaderButton: View {
 
 /// Work / Personal toggle with counts. The other side stays visible, never fully hidden.
 struct ContextSwitch: View {
+    /// From roomiest to tightest; the header takes the first that fits beside its title.
+    enum Style {
+        /// "Work 128"
+        case regular
+        /// "Work 99+", less padding
+        case compact
+        /// "W 99+"
+        case initials
+    }
+
     @ObservedObject var model: AppModel
+    var style: Style = .regular
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: style == .regular ? 2 : 1) {
             ForEach(ItemContext.allCases, id: \.self) { ctx in
                 let selected = ctx == model.context
                 let n = model.store.needsCount(in: ctx, now: model.now)
+                let name = ctx.rawValue.capitalized
                 Button {
                     model.setContext(ctx)
                 } label: {
-                    HStack(spacing: 4) {
-                        Text(ctx.rawValue.capitalized)
+                    HStack(spacing: style == .regular ? 4 : 3) {
+                        Text(style == .initials ? String(name.prefix(1)) : name)
                         if n > 0 {
-                            Text("\(n)").monospacedDigit()
+                            Text(style == .regular ? "\(n)" : (MenuBarFormat.countTitle(count: n, showCount: true) ?? "")).monospacedDigit()
                                 .foregroundStyle(selected ? Theme.color(model.store.highestPriority(in: ctx, now: model.now)) : Theme.faint)
                         }
                     }
                     .font(.system(size: model.metrics.headerFont - 1, weight: selected ? .semibold : .regular))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .padding(.horizontal, style == .regular ? 8 : 5).padding(.vertical, 3)
                     .background(Capsule().fill(selected ? Theme.text.opacity(0.12) : .clear))
                     .foregroundStyle(selected ? Theme.text : Theme.muted)
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .help("\(name): \(n) open")
             }
         }
     }

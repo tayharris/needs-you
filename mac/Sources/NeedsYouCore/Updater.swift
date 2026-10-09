@@ -673,10 +673,13 @@ public struct UpdateNotice: Equatable, Sendable {
     public var text: String
     /// The update didn't land: shown as a warning, not a success.
     public var failed: Bool
+    /// The panel footer's short form ("Updated to 0.3.1"), UpdateFooter.
+    public var footer: String
 
-    public init(text: String, failed: Bool) {
+    public init(text: String, failed: Bool, footer: String = "") {
         self.text = text
         self.failed = failed
+        self.footer = footer
     }
 
     /// What the updater writes to `UpdatePaths.attemptFile` before it starts install.sh.
@@ -692,13 +695,50 @@ public struct UpdateNotice: Equatable, Sendable {
         if let current, SemVer(tried) == current {
             return UpdateNotice(text: (from.map { "Updated from \($0) to \(current)." } ?? "Updated to \(current).")
                 + " If macOS asks whether python3 may accept incoming connections, choose Allow, or other machines can't reach this Mac's hub.",
-                failed: false)
+                failed: false, footer: "Updated to \(current)")
         }
         if rolledBack == tried {
             return UpdateNotice(text: "The update to \(tried) didn't stay running, so \(from.map { "\($0)" } ?? "the previous version") was put back. "
-                + "\(tried) won't be offered again; a later release will be. What happened is in \(log).", failed: true)
+                + "\(tried) won't be offered again; a later release will be. What happened is in \(log).", failed: true,
+                footer: "Update failed \u{2014} " + (from.map { "rolled back to \($0)" } ?? "rolled back"))
         }
         return nil
+    }
+}
+
+/// The open panel's footer line about updates: what an install just did (for a day), else
+/// an update that's out and will install. A click opens Settings → Updates. It is only
+/// footer text: never an item, never counted, never animates the pill or notifies.
+public struct UpdateFooter: Equatable, Sendable {
+    public var text: String
+    /// A rollback: drawn as a warning.
+    public var failed: Bool
+    /// An update that's out (rather than one that just happened).
+    public var available: Bool
+
+    /// How long "Updated to …" or a rollback stays in the footer after the relaunch.
+    public static let noticeLifetime: TimeInterval = 24 * 3600
+
+    public init(text: String, failed: Bool, available: Bool = false) {
+        self.text = text
+        self.failed = failed
+        self.available = available
+    }
+
+    public static func line(current: SemVer?, decision: UpdateDecision?, staged: SemVer?,
+                            notice: UpdateNotice?, noticeAt: Date?, now: Date) -> UpdateFooter? {
+        if let notice, !notice.footer.isEmpty, let at = noticeAt, now.timeIntervalSince(at) < noticeLifetime {
+            return UpdateFooter(text: notice.footer, failed: notice.failed)
+        }
+        var next = staged
+        if next == nil, let decision {
+            switch decision {
+            case .ready(let c), .wait(let c, _): next = c.version
+            default: break
+            }
+        }
+        guard let next, let current, next > current else { return nil }
+        return UpdateFooter(text: "Update available: \(current) \u{2192} \(next)", failed: false, available: true)
     }
 }
 

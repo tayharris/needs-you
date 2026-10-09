@@ -27,14 +27,16 @@ final class UpdateController: ObservableObject {
         didSet { if prefs != oldValue { prefs.save(to: defaults); if prefs.channel != oldValue.channel || prefs.soakHours != oldValue.soakHours { recheckSoon() } } }
     }
     @Published private(set) var phase: Phase = .idle
-    @Published private(set) var decision: UpdateDecision?
+    @Published private(set) var decision: UpdateDecision? { didSet { refreshFooter() } }
     /// The last check's outcome or error, for Settings.
     @Published private(set) var lastResult: String?
     @Published private(set) var lastError: String?
     /// Where the GitHub credential came from ("GitHub CLI (gh auth token)"), never the token.
     @Published private(set) var authSource: String = "not checked yet"
     /// After an update or a rollback: what happened, shown once in Settings → Updates.
-    @Published private(set) var notice: UpdateNotice?
+    @Published private(set) var notice: UpdateNotice? { didSet { refreshFooter() } }
+    /// When `notice` appeared (the relaunch), for how long the footer repeats it.
+    private var noticeAt: Date?
 
     let current: SemVer?
     let build: String
@@ -49,7 +51,7 @@ final class UpdateController: ObservableObject {
     private let launchedAt = Date()
     private var timer: Timer?
     private var checkTask: Task<Void, Never>?
-    private var staged: StagedApp?
+    private var staged: StagedApp? { didSet { refreshFooter() } }
     private var auth: UpdateAuth?
     private let fm = FileManager.default
 
@@ -104,7 +106,16 @@ final class UpdateController: ObservableObject {
         _ = launchInstaller(staged, relaunch: false)
     }
 
+    /// The panel footer's update line (UpdateFooter): only text in the open panel, never an
+    /// item, a count, a pill animation or a notification.
+    private func refreshFooter() {
+        let line = UpdateFooter.line(current: current, decision: decision, staged: staged?.version,
+                                     notice: notice, noticeAt: noticeAt, now: Date())
+        if model.updateFooter != line { model.updateFooter = line }
+    }
+
     private func tick() {
+        refreshFooter()  // a day-old notice leaves the footer
         guard enabled else { return }
         let now = Date()
         if prefs.checkAutomatically, checkTask == nil, phase == .idle || isWaiting,
@@ -556,6 +567,7 @@ final class UpdateController: ObservableObject {
         let attempt = updatesDirectory.appendingPathComponent(UpdatePaths.attemptFile)
         guard let raw = try? String(contentsOf: attempt, encoding: .utf8) else { return }
         try? fm.removeItem(at: attempt)
+        noticeAt = Date()
         notice = UpdateNotice.afterInstall(attempt: raw, current: current, rolledBack: rolledBackVersion(),
                                            log: updatesDirectory.appendingPathComponent(UpdatePaths.installLog).path)
         if let notice {

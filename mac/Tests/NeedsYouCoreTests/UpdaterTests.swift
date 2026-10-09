@@ -39,6 +39,7 @@ final class UpdaterTests: XCTestCase {
         ("testSignerAndLinks", testSignerAndLinks),
         ("testSummariesSayWhatHappensNext", testSummariesSayWhatHappensNext),
         ("testNoticeAfterInstall", testNoticeAfterInstall),
+        ("testFooterLine", testFooterLine),
     ]
 
     func testManifestSignature() {
@@ -312,11 +313,40 @@ final class UpdaterTests: XCTestCase {
         let old = UpdateNotice.afterInstall(attempt: "0.2.0\n", current: SemVer(0, 2, 0), rolledBack: nil, log: log)
         XCTAssertTrue(old?.text.hasPrefix("Updated to 0.2.0. ") == true, old?.text ?? "")
         let back = UpdateNotice.afterInstall(attempt: "0.2.0\n0.1.9", current: SemVer(0, 1, 9), rolledBack: "0.2.0", log: log)
-        XCTAssertEqual(back, UpdateNotice(text: "The update to 0.2.0 didn't stay running, so 0.1.9 was put back. 0.2.0 won't be offered again; a later release will be. What happened is in /tmp/install.log.", failed: true))
+        XCTAssertEqual(back, UpdateNotice(text: "The update to 0.2.0 didn't stay running, so 0.1.9 was put back. 0.2.0 won't be offered again; a later release will be. What happened is in /tmp/install.log.", failed: true,
+                                          footer: "Update failed \u{2014} rolled back to 0.1.9"))
+        XCTAssertEqual(done?.footer, "Updated to 0.2.0")
         let backOld = UpdateNotice.afterInstall(attempt: "0.2.0", current: SemVer(0, 1, 9), rolledBack: "0.2.0", log: log)
         XCTAssertTrue(backOld?.text.hasPrefix("The update to 0.2.0 didn't stay running, so the previous version was put back.") == true)
         XCTAssertNil(UpdateNotice.afterInstall(attempt: "0.2.0", current: SemVer(0, 1, 9), rolledBack: nil, log: log))
         XCTAssertEqual(UpdateNotice.attempt(trying: SemVer(0, 2, 0), from: SemVer(0, 1, 9)), "0.2.0\n0.1.9\n")
+    }
+
+    /// The panel footer's one quiet line: what just happened (for a day), else an update
+    /// that's out and will install; nothing for skipped or refused releases.
+    func testFooterLine() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let current = SemVer(0, 1, 9)
+        guard case .ready(let c) = decide() else { return XCTFail() }
+        func line(_ d: UpdateDecision?, staged: SemVer? = nil, notice: UpdateNotice? = nil, age: TimeInterval = 60) -> UpdateFooter? {
+            UpdateFooter.line(current: current, decision: d, staged: staged, notice: notice,
+                              noticeAt: now.addingTimeInterval(-age), now: now)
+        }
+        XCTAssertNil(line(nil))
+        XCTAssertNil(line(.upToDate))
+        XCTAssertNil(line(.skipped(SemVer(0, 2, 0), "you chose Skip")))
+        XCTAssertNil(line(.blocked(SemVer(0, 2, 0), "It's still a draft.")))
+        XCTAssertEqual(line(.ready(c)), UpdateFooter(text: "Update available: 0.1.9 \u{2192} 0.2.0", failed: false, available: true))
+        XCTAssertEqual(line(.wait(c, until: now))?.text, "Update available: 0.1.9 \u{2192} 0.2.0")
+        XCTAssertEqual(line(nil, staged: SemVer(0, 2, 1))?.text, "Update available: 0.1.9 \u{2192} 0.2.1")
+        XCTAssertNil(line(nil, staged: SemVer(0, 1, 9)))  // never "available" for what's running
+        let done = UpdateNotice(text: "Updated from 0.1.8 to 0.1.9.", failed: false, footer: "Updated to 0.1.9")
+        XCTAssertEqual(line(.upToDate, notice: done), UpdateFooter(text: "Updated to 0.1.9", failed: false))
+        let back = UpdateNotice(text: "…", failed: true, footer: "Update failed \u{2014} rolled back to 0.1.9")
+        XCTAssertEqual(line(.ready(c), notice: back), UpdateFooter(text: "Update failed \u{2014} rolled back to 0.1.9", failed: true))
+        // A day later the notice has had its say; an available update still shows.
+        XCTAssertNil(line(.upToDate, notice: done, age: UpdateFooter.noticeLifetime + 1))
+        XCTAssertEqual(line(.ready(c), notice: back, age: UpdateFooter.noticeLifetime + 1)?.text, "Update available: 0.1.9 \u{2192} 0.2.0")
     }
 
     func testSkippedAndRolledBack() {

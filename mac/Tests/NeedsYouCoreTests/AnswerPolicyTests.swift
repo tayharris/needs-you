@@ -19,6 +19,7 @@ final class AnswerPolicyTests: XCTestCase {
         ("testClickSendsOnlyForOneSingleChoiceQuestion", testClickSendsOnlyForOneSingleChoiceQuestion),
         ("testTexts", testTexts),
         ("testTerminalLink", testTerminalLink),
+        ("testOneTerminalButton", testOneTerminalButton),
         ("testHubOutcomes", testHubOutcomes),
         ("testRepostMakesPicksAndStateStale", testRepostMakesPicksAndStateStale),
     ]
@@ -167,6 +168,24 @@ final class AnswerPolicyTests: XCTestCase {
         let term = ItemLink(label: "Terminal", url: "needsyou://terminal/focus?app=wezterm&pane=1")
         XCTAssertNotNil(AppAction.parse(term.url))
         XCTAssertEqual(AnswerPolicy.terminalLink(item(nil, links: [web, term])), term)
+    }
+
+    /// A question card had two buttons that both bring the terminal forward: "Answer in the
+    /// terminal" and the Terminal link. While the first shows, the links row leaves the
+    /// second out; once answered (or sent), the link is back on the links row.
+    func testOneTerminalButton() {
+        let web = ItemLink(label: "PR", url: "https://github.com/acme/app/pull/1")
+        let term = ItemLink(label: "Terminal", url: "needsyou://terminal/focus?app=wezterm&pane=1")
+        let asked = item(ItemQuestion(items: [db]), links: [web, term])
+        XCTAssertTrue(AnswerPolicy.showsTerminalButton(asked, sent: false))
+        XCTAssertEqual(AnswerPolicy.rowLinks(asked, sent: false), [web])
+        XCTAssertFalse(AnswerPolicy.showsTerminalButton(asked, sent: true))
+        XCTAssertEqual(AnswerPolicy.rowLinks(asked, sent: true), [web, term])
+        let answered = item(ItemQuestion(items: [db]), answer: [ItemAnswer(selected: ["Postgres"])], links: [web, term])
+        XCTAssertEqual(AnswerPolicy.rowLinks(answered, sent: false), [web, term])
+        let plain = item(nil, links: [web, term])  // no question: no button, the link stays
+        XCTAssertFalse(AnswerPolicy.showsTerminalButton(plain, sent: false))
+        XCTAssertEqual(AnswerPolicy.rowLinks(plain, sent: false), [web, term])
     }
 
     func testHubOutcomes() throws {

@@ -269,5 +269,8 @@ final class DemoFeedTests: XCTestCase {
         XCTAssertEqual(Set(delta.map(\.id)), ["01A", "01B"])
         XCTAssertEqual(delta.first { $0.id == "01A" }?.title, "New")
         XCTAssertEqual(delta.first { $0.id == "01A" }?.createdAt, then)
+        await feed.replaceOpen(with: [Item(id: "01C", key: "k3", title: "Only", createdAt: then)])
+        let open = try await feed.fetchOpen(since: nil)
+        XCTAssertEqual(open.map(\.id), ["01C"])
     }
 }

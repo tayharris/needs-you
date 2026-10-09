@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
         }
         // Self-update (docs/roadmap/rollout-updates.md). Checks and installs never activate
-        // the app; Settings → Updates is the only UI.
+        // the app; Settings → Updates has the detail, the open panel's footer one quiet line.
         updates = UpdateController(defaults: settings.defaults, model: model)
         let updates = self.updates!, connect = self.connect!
         settingsWindow.extraSettings[.updates] = { AnyView(UpdatesSettingsView(updates: updates, connect: connect)) }
@@ -388,6 +388,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await card(item, "reposted")
                 }
             }
+            // The header with 9, 12 and 128 open work items in each panel size (the title must
+            // stay whole), and the footer's update lines.
+            model.previewItem = nil
+            for n in [9, 12, 128] {
+                let now = Date()
+                var open = (0..<n).map { i in
+                    Item(id: String(format: "01HEAD%05d%015d", n, i), key: "header:\(n):\(i)", title: "Header check \(i + 1) of \(n)",
+                         source: ItemSource(host: "devbox", agent: "format-tour"), createdAt: now)
+                }
+                open.append(Item(id: String(format: "01HEADP%05d%014d", n, 0), key: "header:\(n):personal", context: .personal,
+                                 title: "A personal item", createdAt: now))
+                await model.applyDemoOpenSet(open)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                for size in PanelSize.allCases {
+                    settings.ui.panelSize = size
+                    model.expand()
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    panel.writeSnapshot(to: dir.appendingPathComponent("header-\(n)-\(size.rawValue).png"))
+                }
+                settings.ui.panelSize = savedUI.panelSize
+            }
+            let footers = [("available", UpdateFooter(text: "Update available: 0.3.0 \u{2192} 0.3.1", failed: false, available: true)),
+                           ("installed", UpdateFooter(text: "Updated to 0.3.1", failed: false)),
+                           ("rolled-back", UpdateFooter(text: "Update failed \u{2014} rolled back to 0.3.0", failed: true))]
+            for (name, line) in footers {
+                model.updateFooter = line
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                panel.writeSnapshot(to: dir.appendingPathComponent("footer-update-\(name).png"))
+            }
+            model.updateFooter = nil
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
