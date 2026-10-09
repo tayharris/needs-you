@@ -123,7 +123,8 @@ same key is a different record). Body:
   (`400 secret_in_text`, the same patterns the hooks redact), `@` refused in `account` (no
   emails), `provider` and window `name` from `[a-z0-9-]{1,20}`, at most 4 windows.
 - Limits: at most 20 live statuses per token and 64 per hub (`429 too_many_status`); at most
-  one write per key every 10 s (`429 too_fast`, with `Retry-After`). A status is never counted
+  one write per key every 10 s (`429 too_fast`, with `Retry-After`); sets and clears per token
+  at the post rate, counted apart from posts (`429 rate_limited`). A status is never counted
   by the item volume guard.
 - Storage: a `status` table (schema 9, backed up first like 7 and 8). Expired rows are deleted
   by housekeeping an hour after `expires_at`; nothing is kept for history.
