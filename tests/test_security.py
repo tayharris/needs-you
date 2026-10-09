@@ -545,9 +545,11 @@ class DatabaseFileModes(HubTestCase):
 
 
 class PeerSecretFileMode(unittest.TestCase):
-    def test_a_secret_file_others_can_read_is_warned_about(self):
+    def test_a_secret_file_others_can_read_stops_the_hub(self):
         """The mesh secret lets anyone replicate as a peer (read every item, write tokens): a
-        peer_secret_file readable by other users is named on stderr, without the secret."""
+        peer_secret_file readable by other users stops the hub with `chmod 600 <path>`, without
+        the secret; a private one is read."""
+        import subprocess
         import tempfile
         from contextlib import redirect_stderr
         d = tempfile.mkdtemp(prefix="needs-you-test-")
@@ -556,14 +558,30 @@ class PeerSecretFileMode(unittest.TestCase):
         secret = "mesh-secret-0123456789abcdef"
         with open(path, "w") as fh:
             fh.write(secret + "\n")
-        for mode, warned in ((0o644, True), (0o640, True), (0o600, False), (0o400, False)):
+        for mode in (0o644, 0o640, 0o604, 0o660):
+            os.chmod(path, mode)
+            err = io.StringIO()
+            with redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+                hubmod.load_config(None, {"peer_secret_file": path, "db": os.path.join(d, "x.db")})
+            msg = str(cm.exception)
+            self.assertIn("chmod 600 " + path, msg, oct(mode))
+            self.assertIn("%03o" % mode, msg)
+            self.assertNotIn(secret, msg + err.getvalue())
+        for mode in (0o600, 0o400):
             os.chmod(path, mode)
             err = io.StringIO()
             with redirect_stderr(err):
                 cfg = hubmod.load_config(None, {"peer_secret_file": path, "db": os.path.join(d, "x.db")})
-            self.assertEqual(cfg["peer_secret"], secret)
-            self.assertEqual("chmod 600" in err.getvalue(), warned, (oct(mode), err.getvalue()))
-            self.assertNotIn(secret, err.getvalue())
+            self.assertEqual((cfg["peer_secret"], err.getvalue()), (secret, ""), oct(mode))
+        # The real command line: it exits non-zero before binding anything.
+        os.chmod(path, 0o644)
+        r = subprocess.run([sys.executable, hubmod.__file__, "--bind", "127.0.0.1", "--port", "0",
+                            "--db", os.path.join(d, "y.db"), "--peer-secret-file", path],
+                           capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("chmod 600 " + path, r.stderr)
+        self.assertNotIn(secret, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(d, "y.db")))
 
 
 class CliOutput(unittest.TestCase):
