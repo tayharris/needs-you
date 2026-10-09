@@ -3013,8 +3013,11 @@ def cross_check(cfg: Config, manifest: Dict[str, Any], changes: List[Dict[str, A
     """Every file about to be installed must match the GitHub release of the hub's version.
     Raises UpdateRefused on a mismatch; returns a note when the check couldn't run (and
     raises instead with NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=1)."""
-    names = sorted({c["file"] for c in changes} | ({"install-hooks.sh", "needs-you-hook.sh"}
-                                                  if any(c["file"] == "hooks.json" for c in changes) else set())
+    # "hooks.json" and "project hooks" changes run install-hooks.sh with the hook and hooks.json:
+    # check those three ("project hooks" is a label, not a release file).
+    names = sorted({c["file"] for c in changes if c["file"] != "project hooks"}
+                   | ({"install-hooks.sh", "needs-you-hook.sh", "hooks.json"}
+                      if any(c["file"] in ("hooks.json", "project hooks") for c in changes) else set())
                    | {n for c in changes if _other_agent(c["file"])
                       for n in (_other_agent(c["file"])[5], "needs-you-hook.sh")})
     try:
