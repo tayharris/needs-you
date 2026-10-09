@@ -89,7 +89,7 @@ struct CardView: View {
                         .foregroundStyle(Theme.muted)
                 }
 
-                if !item.links.isEmpty {
+                if !AnswerPolicy.rowLinks(item, sent: model.answerStates[item.id] == .sent).isEmpty {
                     LinkRow(item: item, model: model)
                         .padding(.top, 2)
                 }
@@ -148,7 +148,9 @@ struct LinkRow: View {
 
     var body: some View {
         let compact = model.settings.ui.compactLinks
-        let plan = LinkRowPolicy.plan(item.links, compact: compact, expanded: model.expandedCards.contains(item.id))
+        // On a question card "Answer in the terminal" is the terminal button; the link isn't repeated.
+        let links = AnswerPolicy.rowLinks(item, sent: model.answerStates[item.id] == .sent)
+        let plan = LinkRowPolicy.plan(links, compact: compact, expanded: model.expandedCards.contains(item.id))
         FlowLayout(spacing: compact ? 4 : 6, lineSpacing: compact ? 4 : 6) {
             ForEach(Array(plan.shown.enumerated()), id: \.offset) { _, link in
                 if LinkPolicy.isAllowed(link.url) {
@@ -361,7 +363,7 @@ private struct AnswerFooter: View {
                         .disabled(!ready)
                         .help(ready ? "Send these choices to the agent" : "Choose an option for every question first")
                     }
-                    if let terminal, item.answer == nil, state != .sent {
+                    if let terminal, AnswerPolicy.showsTerminalButton(item, sent: state == .sent) {
                         Button { model.open(terminal.url, from: item) } label: {
                             Label("Answer in the terminal", systemImage: "terminal")
                                 .font(.system(size: m.actionFont))

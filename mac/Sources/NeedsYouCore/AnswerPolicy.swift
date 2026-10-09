@@ -125,6 +125,19 @@ public enum AnswerPolicy {
         Set(stamps.filter { id, stamp in items[id].map { Self.stamp($0) != stamp } ?? true }.keys)
     }
 
+    /// Does the question card show "Answer in the terminal"? While it waits for an answer
+    /// and has a terminal link; then the links row leaves that link out (rowLinks), so the
+    /// card has one terminal button, not two.
+    public static func showsTerminalButton(_ item: Item, sent: Bool) -> Bool {
+        item.question != nil && item.answer == nil && !sent && terminalLink(item) != nil
+    }
+
+    /// The links the card's links row draws.
+    public static func rowLinks(_ item: Item, sent: Bool) -> [ItemLink] {
+        guard showsTerminalButton(item, sent: sent), let terminal = terminalLink(item) else { return item.links }
+        return item.links.filter { $0 != terminal }
+    }
+
     /// The link that brings forward the agent's terminal (or Orca terminal), for "Answer in
     /// the terminal". nil when the card has none.
     public static func terminalLink(_ item: Item) -> ItemLink? {
