@@ -49,6 +49,7 @@
         <li><a href="#grok-build-hooks">Grok Build hooks</a></li>
         <li><a href="#cursor-cline-and-aider">Cursor, Cline and Aider</a></li>
         <li><a href="#github-poller">GitHub poller</a></li>
+        <li><a href="#expiry-poller">Expiry poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
     </nav>
@@ -216,6 +217,14 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li><code>gh: Bad credentials</code> or <code>gh auth login</code> errors: log in again as the user cron runs as. cron and systemd have a short <code>PATH</code>; set <code>NEEDS_YOU_GITHUB_GH</code> to the full path of <code>gh</code> if it isn't in <code>/usr/bin</code>.</li>
 <li>Too many cards: narrow it with <code>NEEDS_YOU_GITHUB_EXCLUDE</code>, <code>NEEDS_YOU_GITHUB_REASONS</code> or <code>NEEDS_YOU_GITHUB_PR_DAYS</code> (<a data-repo="/blob/main/integrations/github/README.md#config" href="https://github.com/tayharris/needs-you/blob/main/integrations/github/README.md#config">integrations/github</a>).</li>
 <li>A card that doesn't clear: it clears on the run after the condition goes away, or 15 minutes after the poller stops. Notification cards clear when you read the thread on GitHub.</li>
+</ul>
+<h2 id="expiry-poller">Expiry poller <a class="anchor" href="#expiry-poller" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><code>needs-you-expiry -v</code> prints every date it read and every check that failed. It always exits 0. With no <code>~/.config/needs-you/expiry.conf</code> it does nothing (it's opt-in); <code>-v</code> says so.</li>
+<li>"Expiry checks failing on &lt;host&gt;": a check failed 2 runs in a row (<code>NEEDS_YOU_EXPIRY_FAILS</code>). The card's body says which and why: <code>host not found</code> or <code>connection refused</code> (a typo, or the host is down), <code>timed out</code> (a firewall; <code>NEEDS_YOU_EXPIRY_TIMEOUT</code>), <code>RDAP HTTP 429</code> (the registry's rate limit; it passes), <code>RDAP gives no expiration date</code> (some ccTLD registries don't publish one: use a <code>key</code> line), <code>line 4: ...</code> (a typo in the list). The last date it read still counts meanwhile.</li>
+<li>"TLS certificate for &lt;host&gt; not trusted": the certificate doesn't verify (wrong host name, a missing intermediate, a private CA). Fix the certificate; for an internal host on a private CA, add <code>verify=no</code> to its line.</li>
+<li>A card that doesn't clear after you renewed: a <code>tls</code> card clears once the host serves the new certificate (reload the web server), a <code>domain</code> card once RDAP shows the new date (can lag the registrar by a day), a <code>key</code> card once you change its date in the list. All clear within 72 hours of the poller stopping.</li>
+<li>No card for a STARTTLS port (SMTP 587, IMAP 143): only implicit TLS is read; use port 465 or 993, or a <code>key</code> line.</li>
 </ul>
 <h2 id="orca-automations">Orca automations <a class="anchor" href="#orca-automations" aria-label="Link to this section">#</a></h2>
 <ul>

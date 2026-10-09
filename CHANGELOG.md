@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **A card before a certificate, a domain or a key expires.** `needs-you-expiry` runs once a day on one machine and watches what you list in `~/.config/needs-you/expiry.conf`: the TLS certificate a host serves, a domain's registration (read from RDAP), or a date you know for an API key. A card appears 30 days out (low), turns normal at 7 days and urgent at 1 day or once expired, and clears itself when you renew or take the line out; the thresholds are yours to set. A certificate that doesn't verify gets an urgent "not trusted" card. A host or lookup that keeps failing is one low card per machine, never one per host. No token needed, nothing happens until the list exists ([guide](docs/guides/expiry.md)).
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.

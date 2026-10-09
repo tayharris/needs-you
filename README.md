@@ -44,6 +44,7 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 | Any MCP agent | The agent calls `needs_you_add` itself; for agents with MCP but no shell | `--mcp claude,codex,gemini,opencode,copilot,cursor` | [MCP server](docs/guides/mcp.md) |
 | Orca | Automations post blockers and run summaries; agent cards get a **Terminal** button | `--orca` | [Orca](docs/guides/orca.md) |
 | GitHub | Review requests, deploy approvals, failed CI, your PRs ready to merge or blocked, and an FYI when one merges | a poller on one machine | [GitHub](docs/guides/github.md) |
+| Expiry dates | A TLS certificate, a domain or an API key expires within 30 days (louder as it nears) | a daily poller on one machine | [Expiry](docs/guides/expiry.md) |
 | CI, cron, scripts | A job fails, or a long one finishes (`needs-you run`) | the CLI | [Add a sender](docs/guides/add-a-sender.md#cron-systemd-ci) |
 
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
@@ -119,7 +120,7 @@ Next:
 - [Quickstart](docs/guides/quickstart.md): the whole setup, step by step.
 - [Claude Code alerts everywhere](docs/guides/claude-code-everywhere.md): one copy-paste path to "my Claude sessions alert my Mac", on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca.
 - [Tailscale](docs/guides/tailscale.md): connecting servers to the Mac.
-- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md) and [GitHub](docs/guides/github.md) integrations.
+- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md), [GitHub](docs/guides/github.md) and [expiry](docs/guides/expiry.md) integrations.
 - [AGENT-GUIDE.md](docs/AGENT-GUIDE.md): the rules agents follow when they post.
 
 To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
