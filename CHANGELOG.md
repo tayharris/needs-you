@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **Uninstalling no longer leaves empty config files behind.** A file the installer created only to hold needs-you's part, such as `~/.codex/hooks.json`, Gemini's or Claude Code's `settings.json`, Cursor's `hooks.json`, Kimi Code's `config.toml`, or the shell profile it made for the `PATH` line (`~/.bashrc`, `~/.profile`), is deleted by `--uninstall` and `needs-you uninstall-hooks` once nothing else is in it; it used to stay as `{}` or an empty file. A file that was there before the install stays, even when it's empty. Only files created by this release's installers are recorded; one made by an earlier install stays as it is.
+- **An answer from the card no longer vanishes when the agent re-posts its question on another hub at the same moment.** With two hubs, an answer taken on one could lose to a re-post of the same question on the other before they synced: the answer disappeared everywhere and the card asked again. Hubs now keep an answer whenever the question and the sender are the same, and every hub ends up with it; a re-post that changes the question still clears it. A re-post that only rewords the title or body keeps the answer, on one hub or several ([API](docs/API.md#replication-between-hubs)). Upgrade every hub.
+
 ## [0.3.0] - 2026-10-09
 
 Usage meters for Claude and Codex in the panel and on the pill, answering an agent's question in your own words ("Other") from the Mac, the Mac's built-in hub pairing with an always-on server hub, short retention, and a security pass over everything since 0.2.1. **The database changes (schema 8 to 11): upgrade the Mac app and every server hub together**, then run `needs-you update` on each sender machine. The app is ad-hoc signed: the first launch of a downloaded copy needs right-click → Open, and endpoint security tools may flag it.

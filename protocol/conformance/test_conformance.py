@@ -737,6 +737,36 @@ class Replication(HubCase):
         self.assertEqual(len(body["skipped"]), 1)
         call("POST", "/v1/items/resolve", Env.sender, {"id": a["id"]})
 
+    def test_an_answer_outlives_a_concurrent_repost(self):
+        """An answer to the same question from the same token survives LWW both ways (API.md,
+        Replication): a newer record without it keeps it, an older one with it gives it."""
+        _, a = post({"key": key("ans-race"), "title": "asks", "question": _question()})
+        rec = self.record(a["id"])
+        good = {"question_id": "q1", "content_updated_at": a["content_updated_at"], "answers": [{"selected": ["Yes"]}]}
+        self.assertEqual(call("POST", "/v1/items/%s/answer" % a["id"], Env.reader, good)[0], 200)
+        later = parse_ts(self.record(a["id"])["updated_at"]) + 60
+        repost = dict(rec, title="asks again", answer=None, answered_at=None, answered_by=None,
+                      updated_by="conformance-peer", updated_at=fmt_ts(later), content_updated_at=fmt_ts(later))
+        self.assertEqual(self.push([repost])[1]["applied"], 1)
+        got = item(a["id"])[1]
+        self.assertEqual((got["title"], got["answer"]), ("asks again", [{"selected": ["Yes"]}]))
+        # another question clears it
+        other = dict(repost, question=_question(id="q2"), updated_at=fmt_ts(later + 1),
+                     content_updated_at=fmt_ts(later + 1))
+        self.assertEqual(self.push([other])[1]["applied"], 1)
+        self.assertIsNone(item(a["id"])[1]["answer"])
+        call("POST", "/v1/items/resolve", Env.sender, {"id": a["id"]})
+        # an older record carrying an answer the hub lacks: taken, with a newer version
+        _, b = post({"key": key("ans-late"), "title": "asks", "question": _question()})
+        rec = self.record(b["id"])
+        older = dict(rec, answer=[{"selected": ["No"]}], answered_by="mac", updated_by="conformance-peer",
+                     answered_at=rec["updated_at"], updated_at=fmt_ts(parse_ts(rec["updated_at"]) - 60))
+        self.assertEqual(self.push([older])[1]["applied"], 1)
+        got = item(b["id"])[1]
+        self.assertEqual(got["answer"], [{"selected": ["No"]}])
+        self.assertGreater(parse_ts(got["updated_at"]), parse_ts(rec["updated_at"]))
+        call("POST", "/v1/items/resolve", Env.sender, {"id": b["id"]})
+
     def test_tombstones(self):
         """Short retention (ADR 0012): a closed item's text-free tombstone replicates and closes
         the item; one that is open isn't taken; an equal version with text never restores it."""

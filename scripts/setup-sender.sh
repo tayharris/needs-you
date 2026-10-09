@@ -561,6 +561,7 @@ fi
 
 # ---------------------------------------------------------------- 5. PATH
 PATH_TAG="# added by needs-you"
+MADE_TAG="(and the file with it)"  # the invite installer's --uninstall deletes a profile it made
 profile_file() {
   case "${SHELL##*/}" in
     zsh) printf '%s' "${ZDOTDIR:-$HOME}/.zshrc" ;;
@@ -585,7 +586,8 @@ if [ -x "$BIN_DIR/needs-you" ]; then
           info "PATH: $RC already adds $SHOWN"
         else
           if [ -s "$RC" ]; then printf '\n%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"
-          else printf '%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"; fi
+          elif [ -e "$RC" ] || [ -L "$RC" ]; then printf '%s  %s\n' "$PATH_LINE" "$PATH_TAG" >>"$RC"
+          else printf '%s  %s %s\n' "$PATH_LINE" "$PATH_TAG" "$MADE_TAG" >"$RC"; fi
           info "PATH: added $SHOWN to PATH in $RC (new shells pick it up; in this one run: $PATH_LINE)"
         fi
       fi ;;

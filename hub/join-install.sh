@@ -272,6 +272,7 @@ LABEL="io.needs-you.flush"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 CRON_TAG="# needs-you-flush"
 PATH_TAG="# added by needs-you"
+MADE_TAG="(and the file with it)"  # after PATH_TAG when the profile didn't exist: --uninstall deletes it
 OS=$(uname -s)
 
 # ---------------------------------------------------------------- schedule
@@ -383,16 +384,19 @@ path_setup() {
     say "PATH: $rc already adds $shown"
   else
     if [ -s "$rc" ]; then printf '\n%s  %s\n' "$line" "$PATH_TAG" >>"$rc"
-    else printf '%s  %s\n' "$line" "$PATH_TAG" >>"$rc"; fi
+    elif [ -e "$rc" ] || [ -L "$rc" ]; then printf '%s  %s\n' "$line" "$PATH_TAG" >>"$rc"
+    else printf '%s  %s %s\n' "$line" "$PATH_TAG" "$MADE_TAG" >"$rc"; fi
     say "PATH: added $shown to PATH in $rc"
   fi
   say "  (new shells pick it up; in this one run: $line)"
 }
 
 path_remove() {
-  local rc
+  local rc made
   for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
     [ -f "$rc" ] && grep -qF "$PATH_TAG" "$rc" || continue
+    made=0
+    grep -qF "$PATH_TAG $MADE_TAG" "$rc" && made=1
     # cat > keeps the file's inode, mode and any symlink (dotfile managers)
     # The tagged line and the blank line path_setup put before it.
     awk -v t="$PATH_TAG" '
@@ -402,6 +406,8 @@ path_remove() {
       { print }
       END { if (held) print "" }' "$rc" >"$rc.needs-you.tmp" && cat "$rc.needs-you.tmp" >"$rc"
     rm -f "$rc.needs-you.tmp"
+    # A profile path_setup made for the line goes with it, if nothing else was added since.
+    if [ "$made" -eq 1 ] && [ ! -s "$rc" ] && [ ! -L "$rc" ]; then rm -f "$rc"; fi
   done
 }
 

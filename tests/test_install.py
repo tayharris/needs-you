@@ -190,13 +190,11 @@ class InstallScript(HubTestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(self.cron) as fh:
             self.assertEqual(fh.read().strip(), "0 1 * * * other-job")
-        with open(os.path.join(self.home, ".profile")) as fh:  # it made it: no blank line left in it
-            self.assertEqual(fh.read(), "")
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".profile")))  # it made it: gone
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "bin", "needs-you")))
         self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "needs-you", "env")))
         self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "state", "needs-you")))
-        with open(os.path.join(self.home, ".claude", "settings.json")) as fh:
-            self.assertNotIn("needs-you-hook.sh", fh.read())
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "settings.json")))  # likewise
         # a new machine can't use it
         r = self.install(inv, "--yes", "--host", "lin2", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 1)
@@ -241,6 +239,34 @@ class InstallScript(HubTestCase):
         empty = [os.path.relpath(dp, self.home) for dp, dns, fns in os.walk(self.home)
                  if dp != self.home and not dns and not fns]
         self.assertEqual(empty, ["Documents"])
+        # nor files: the agents' config files it made (~/.codex/hooks.json as {}, ...) and the
+        # profile it made for the PATH line. (Backups taken while installing stay.)
+        left = [os.path.relpath(os.path.join(dp, f), self.home) for dp, _, fns in os.walk(self.home)
+                for f in fns if ".bak-" not in f]
+        self.assertEqual(left, [])
+
+    def test_uninstall_leaves_files_that_were_there(self):
+        # The same files, there before the install (empty, or nothing but defaults): an
+        # uninstall takes needs-you's part out and leaves the files.
+        inv = self.invite(uses=1)
+        before = {".profile": "", ".codex/hooks.json": "{}\n", ".gemini/settings.json": "{}",
+                  ".claude/settings.json": "{}\n", ".kimi-code/config.toml": "",
+                  ".cursor/hooks.json": '{"version": 1}'}
+        for rel, text in before.items():
+            os.makedirs(os.path.dirname(os.path.join(self.home, rel)), exist_ok=True)
+            with open(os.path.join(self.home, rel), "w") as fh:
+                fh.write(text)
+        flags = "--claude-hooks user --codex-hooks user --gemini-hooks user --cursor-hooks user --kimi-hooks user"
+        r = self.install(inv, "--yes", "--host", "had", *flags.split(), STUB_UNAME="Linux", SHELL="/bin/sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.home, ".profile")) as fh:
+            self.assertIn("# added by needs-you", fh.read())
+        r = self.install(inv, "--uninstall", STUB_UNAME="Linux", SHELL="/bin/sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for rel in before:
+            self.assertTrue(os.path.exists(os.path.join(self.home, rel)), rel)
+        with open(os.path.join(self.home, ".profile")) as fh:
+            self.assertEqual(fh.read(), "")
 
     def test_uninstall_removes_project_hooks_locally(self):
         inv = self.invite(uses=1)
@@ -256,10 +282,10 @@ class InstallScript(HubTestCase):
         # Run from the home directory: the recorded project install goes too, via the CLI.
         r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("removed the needs-you hooks from ~/src/app/.claude/settings.json", r.stdout)
+        # (both settings files were made by the installer: deleted, not left as {})
+        self.assertIn("removed the needs-you hooks and deleted ~/src/app/.claude/settings.json", r.stdout)
         for settings in (project_settings, os.path.join(self.home, ".claude", "settings.json")):
-            with open(settings) as fh:
-                self.assertNotIn("needs-you-hook.sh", fh.read())
+            self.assertFalse(os.path.exists(settings), settings)
         self.assertFalse(os.path.exists(os.path.join(proj, ".claude", "hooks", "needs-you-hook.sh")))
 
     def test_uninstall_without_the_cli_still_uses_the_hub(self):
@@ -269,8 +295,8 @@ class InstallScript(HubTestCase):
         os.remove(os.path.join(self.home, ".local", "bin", "needs-you"))
         r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(os.path.join(self.home, ".claude", "settings.json")) as fh:
-            self.assertNotIn("needs-you-hook.sh", fh.read())
+        self.assertIn("needs-you hooks removed", r.stdout)  # by the hub's install-hooks.sh, which made the file
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "settings.json")))
 
     def test_one_line_claude_setup_settings_and_path(self):
         inv = self.invite(uses=1)
@@ -595,8 +621,7 @@ class InstallScript(HubTestCase):
         self.assertNotIn("Grok", checks["update"]["detail"])
         r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(os.path.join(kimi, "config.toml")) as fh:
-            self.assertNotIn("needs-you", fh.read())
+        self.assertFalse(os.path.exists(os.path.join(kimi, "config.toml")))  # the installer made it
         self.assertFalse(os.path.exists(os.path.join(kimi, "hooks", "needs-you-hook.sh")))
         self.assertFalse(os.path.exists(os.path.join(grok, "needs-you.json")))
         for flag in ("--kimi-hooks", "--grok-hooks"):
@@ -687,8 +712,7 @@ class InstallScript(HubTestCase):
         self.assertNotIn("gemini", checks["update"]["detail"])
         r = self.install(inv, "--uninstall", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(os.path.join(gemini, "settings.json")) as fh:
-            self.assertNotIn("hooks", json.load(fh))
+        self.assertFalse(os.path.exists(os.path.join(gemini, "settings.json")))  # the installer made it
         self.assertFalse(os.path.exists(os.path.join(gemini, "hooks", "needs-you-hook.sh")))
 
     def test_no_path_prints_the_line_and_bad_values_fail(self):

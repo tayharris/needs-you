@@ -1,6 +1,6 @@
 # Roadmap
 
-Plans, and the record of plans that are built. Each file's status line says what exists on `main` (as of 2026-10-08, release 0.1.5). Once a plan is built, how it works for users lives in the [guides](../guides/); the plan keeps only what's still to do. Design decisions that are already made live in [../adr/](../adr/).
+Plans, and the record of plans that are built. Each file's status line says what exists on `main` (as of 2026-10-09, release 0.3.0). Once a plan is built, how it works for users lives in the [guides](../guides/); the plan keeps only what's still to do. Design decisions that are already made live in [../adr/](../adr/).
 
 **Choosing what's next:** [next-big-item.md](next-big-item.md) compares the always-on hub, the iPhone widget, the Focus filter and GitHub webhooks, and recommends one, with a first plan. The owner decides.
 
@@ -8,8 +8,8 @@ Plans, and the record of plans that are built. Each file's status line says what
 
 | Plan | Status | What's left |
 |---|---|---|
-| [next-big-item.md](next-big-item.md) | For a decision | The four candidates compared; recommends peering the Mac's hub with an always-on hub (ADR 0004 phases 1–2) |
-| [status-and-usage.md](status-and-usage.md) | Plan; the Claude usage-limit card is built | Orca worktree status and connections, a "PR merged" card, a quiet status strip, usage meters per provider and account |
+| [next-big-item.md](next-big-item.md) | Its recommendation is built (0.3.0) | The four candidates compared; the pick, peering the Mac's hub with an always-on hub (ADR 0004 phases 1–2, [ADR 0012](../adr/0012-mac-hub-peers.md)), shipped in 0.3.0. Left: the iPhone widget, the Focus filter, GitHub webhooks |
+| [status-and-usage.md](status-and-usage.md) | Mostly built in 0.3.0: usage meters (status records), the ORCA panel section, `needs-you orca`, Claude and Codex usage cards, the "PR merged" card | The Orca accounts usage poller, the progress strip from status records (deferred by ADR 0011), a deploy-finished CI recipe |
 | [ios-widget.md](ios-widget.md) | Plan | iPhone app and widgets: reaching a hub from a phone, refresh and push, shared Swift core |
 | [future.md](future.md) | Plans | GitHub org webhooks, Discord/Slack fallback for urgent items, team mode, in-app help and onboarding, keyboard navigation in the open panel |
 | [ai-first.md](ai-first.md) | MCP server and `doctor` built | A machine-readable API spec, a conformance suite, the repo moves, routing |
@@ -23,7 +23,7 @@ Plans, and the record of plans that are built. Each file's status line says what
 | [sharing-checklist.md](sharing-checklist.md) | Public | Developer ID, self-hosted runners on a public repo, a fresh-user run |
 | [launch-prep.md](launch-prep.md) | Mostly built | A donate link, repo topics and a social preview image |
 | [fresh-user-test-plan.md](fresh-user-test-plan.md) | Not run yet | Install from a release on a second Mac or user account |
-| [questions.md](questions.md) | Research done; phase A built | What each agent's hooks carry when it asks a question, and which can answer. Left: [ADR 0009](../adr/0009-questions-on-cards.md) phase B (a `question` field, answering from the card) |
+| [questions.md](questions.md) | Phases A and B built | What each agent's hooks carry when it asks a question, and which can answer. [ADR 0009](../adr/0009-questions-on-cards.md) phase B (the `question` field, answering from the card, typed "Other" answers) is built; left: agents whose hooks can't take an answer |
 
 ## Done, kept for the record
 
@@ -41,7 +41,7 @@ Plans, and the record of plans that are built. Each file's status line says what
 | [test-plan-2026-10-08.md](test-plan-2026-10-08.md) | After 0.1.4: preview layout, hub restart, real-model agent checks (Codex, Gemini, opencode, Copilot, Kimi, Grok, Cursor, Cline, Aider), `--mcp`, `--agent-instructions`, the site demo |
 | [test-plan-2026-10-07.md](test-plan-2026-10-07.md) | The first Mac session after 2026-10-07: panel and alert settings, stale cards, focus tiers, updates, GitHub gates, the terminal jump, the DMG |
 
-Related decision in progress: [ADR 0004: an always-on hub](../adr/0004-always-on-hub.md) (Proposed). The phone widget and GitHub webhooks both depend on it.
+Related decision in progress: [ADR 0004: an always-on hub](../adr/0004-always-on-hub.md) (Proposed; phases 1–2 are built as [ADR 0012](../adr/0012-mac-hub-peers.md)). The phone widget and GitHub webhooks both depend on it.
 
 ## Licensing
 

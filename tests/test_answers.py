@@ -146,13 +146,20 @@ class PostAnswer(AnswerCase):
         self.assertEqual(self.answer(item, question_id=5)[1].get("field"), "question_id")
         self.assertEqual(self.answer(item, content_updated_at=None)[1].get("field"), "content_updated_at")
 
-    def test_a_changed_question_clears_the_answer_an_unchanged_one_keeps_it(self):
+    def test_a_changed_question_clears_the_answer_the_same_one_keeps_it(self):
         item = self.ask()
         self.assertEqual(self.answer(item)[0], 200)
         self.clock.advance(5)
         same = self.ask()
         self.assertFalse(same["changed"])
         self.assertIsNotNone(same["answer"])
+        self.clock.advance(5)
+        # a new title, body or priority is new content, but the same question: still answered
+        reworded = self.ask(body="Pick one", priority="urgent")
+        self.assertTrue(reworded["changed"])
+        self.assertNotEqual(reworded["content_updated_at"], item["content_updated_at"])
+        self.assertEqual(reworded["answer"], GOOD)
+        self.assertEqual(self.read()[1]["answers"], GOOD)
         self.clock.advance(5)
         q2 = dict(QUESTION, id="toolu_02")
         new = self.ask(question=q2)
@@ -387,6 +394,47 @@ class Replication(HubTestCase):
         # no question, no answer
         st.apply_item(self.rec(question=None, answer=GOOD, updated_at="2026-10-06T10:01:00.000Z"))
         self.assertIsNone(hubmod.item_wire(st.get_item(iid))["answer"])
+
+    def race(self, b_question=None, b_title="Claude asks", run=""):
+        """Hub A takes an answer; hub B, not having heard of it yet, takes a later re-post of
+        the key by the same token. Returns both stores after both records crossed, in turn."""
+        clock = FakeClock()
+        a = self.make_hub("hub-a" + run, clock=clock, start=False).store
+        b = self.make_hub("hub-b" + run, clock=clock, start=False).store
+        tok = {"id": "tok-1", "name": "sender-1"}
+        post = {"key": "q", "title": "Claude asks", "question": QUESTION}
+        item, _, _ = a.upsert_item(hubmod.validate_item_input(post), tok, 0, 3600_000)
+        b.apply_item(hubmod.item_wire(a.get_item(item["id"])))
+        clock.advance(1)
+        a.answer(item["id"], "toolu_01", item["content_updated_at"], GOOD, "mac")
+        clock.advance(1)
+        again = dict(post, title=b_title, question=b_question or QUESTION)
+        b.upsert_item(hubmod.validate_item_input(again), tok, 0, 3600_000)
+        from_a = hubmod.item_wire(a.get_item(item["id"]))
+        from_b = hubmod.item_wire(b.get_item(item["id"]))
+        a.apply_item(from_b)
+        b.apply_item(from_a)
+        # and whatever each now holds crosses once more, as the outboxes would send it
+        a.apply_item(hubmod.item_wire(b.get_item(item["id"])))
+        b.apply_item(hubmod.item_wire(a.get_item(item["id"])))
+        return item["id"], a, b
+
+    def test_an_answer_survives_a_concurrent_repost_of_the_same_question(self):
+        for n, title in enumerate(("Claude asks", "Claude asks again")):  # unchanged, or only the title
+            iid, a, b = self.race(b_title=title, run=str(n))
+            for st in (a, b):
+                wire = hubmod.item_wire(st.get_item(iid))
+                self.assertEqual(wire["answer"], GOOD, (title, st.hub_id))
+                self.assertEqual(wire["answered_by"], "mac")
+                self.assertEqual(wire["title"], title)
+            self.assertEqual(hubmod.item_wire(a.get_item(iid)), hubmod.item_wire(b.get_item(iid)))
+
+    def test_a_concurrent_repost_of_another_question_still_clears_it(self):
+        iid, a, b = self.race(b_question=dict(QUESTION, id="toolu_02"))
+        for st in (a, b):
+            wire = hubmod.item_wire(st.get_item(iid))
+            self.assertIsNone(wire["answer"], st.hub_id)
+            self.assertEqual(wire["question"]["id"], "toolu_02")
 
     def test_answer_replicates_between_hubs(self):
         a = self.make_hub("hub-a", start=False)
