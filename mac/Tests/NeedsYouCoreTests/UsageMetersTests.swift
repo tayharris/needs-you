@@ -39,18 +39,18 @@ final class StatusRecordTests: XCTestCase {
         let list = try StatusRecord.decodeList(Data(#"{"statuses": [\#(records.joined(separator: ","))]}"#.utf8))
         XCTAssertEqual(list.count, StatusRecord.maxRecords)
         let s = list[0]
-        XCTAssertLessThanOrEqual(s.label.count, 60)
-        XCTAssertLessThanOrEqual(s.detail.count, 120)
+        XCTAssertTrue(s.label.count <= 60)
+        XCTAssertTrue(s.detail.count <= 120)
         XCTAssertFalse(s.label.unicodeScalars.contains { $0.value == 0x202e || $0.value == 0x07 })
         XCTAssertEqual(s.usage?.provider, "claude")
-        XCTAssertLessThanOrEqual(s.usage?.account.count ?? 99, 40)
+        XCTAssertTrue((s.usage?.account.count ?? 99) <= 40)
         XCTAssertFalse((s.usage?.account ?? "").unicodeScalars.contains { $0.value == 0x2066 })
         let names = s.usage?.windows.map(\.name) ?? []
-        XCTAssertLessThanOrEqual(names.count, 4)
+        XCTAssertTrue(names.count <= 4)
         XCTAssertEqual(Set(names).count, names.count)
         XCTAssertTrue(names.allSatisfy { $0.count <= 20 })
         let rows = UsageMeters.rows(list, prefs: UsagePrefs(), now: Date(timeIntervalSince1970: 1_790_000_000))
-        XCTAssertLessThanOrEqual(rows.count, StatusRecord.maxRecords)
+        XCTAssertTrue(rows.count <= StatusRecord.maxRecords)
         XCTAssertFalse((rows.first?.host ?? "").unicodeScalars.contains { $0.value == 0x202e })
     }
 
