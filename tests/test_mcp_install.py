@@ -220,6 +220,8 @@ class InstallMcp(CliCase):
                            timeout=60, cwd=self.tmp)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.run_cli("install-mcp", "gemini").returncode, 0)
+        # a setting of the person's, so the file is rewritten twice rather than deleted
+        self.write(".gemini/settings.json", json.dumps(dict(self.json(".gemini/settings.json"), theme="dark")))
         r = self.run_cli("uninstall-hooks")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         text = self.text(".gemini/settings.json")

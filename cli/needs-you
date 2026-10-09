@@ -443,6 +443,8 @@ def _strip_hook_file(path: str, follow: bool, dry_run: bool, say: Any) -> Option
     new = _without_hook_entries(settings)
     if new == settings:  # mentioned somewhere other than a hook command; leave it
         return False
+    if new in ({}, {"version": 1}) and _delete_created(path, dry_run, say):
+        return True
     if dry_run:
         say("would remove the needs-you hooks from %s" % _tilde(path))
         return True
@@ -498,6 +500,8 @@ def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
         i += 1
     if not found:
         return False
+    if not "".join(kept).strip() and _delete_created(path, dry_run, say):
+        return True
     if dry_run:
         say("would remove the needs-you hooks from %s" % _tilde(path))
         return True
@@ -509,6 +513,25 @@ def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
         warn("%s: couldn't write it (%s)" % (_tilde(path), e))
         return None
     say("removed the needs-you hooks from %s (backup: %s.bak-*)" % (_tilde(path), _tilde(path)))
+    return True
+
+
+def _delete_created(path: str, dry_run: bool, say: Any) -> bool:
+    """An agent config file left with nothing but defaults: delete it if a needs-you installer
+    made it (update.json `created_files`), with no backup (nothing in it was anyone else's).
+    True when it did (or would). A file that was there before needs-you stays."""
+    if os.path.islink(path) or not _was_created(path):
+        return False
+    if dry_run:
+        say("would delete %s (needs-you created it)" % _tilde(path))
+        return True
+    try:
+        os.remove(path)
+    except OSError as e:
+        warn("%s: couldn't delete it (%s)" % (_tilde(path), e))
+        return False
+    _note_created(path, False)
+    say("removed the needs-you hooks and deleted %s (needs-you created it)" % _tilde(path))
     return True
 
 
@@ -4872,8 +4895,15 @@ def _created_files() -> List[str]:
     return [p for p in _read_state().get("created_files") or [] if isinstance(p, str)]
 
 
+def _was_created(path: str) -> bool:
+    """Did a needs-you installer make this file? (The shell installers record real paths.)"""
+    real = os.path.realpath(path)
+    return any(os.path.realpath(p) == real for p in _created_files())
+
+
 def _note_created(path: str, created: bool) -> None:
-    files = [p for p in _created_files() if p != path] + ([path] if created else [])
+    real = os.path.realpath(path)
+    files = [p for p in _created_files() if os.path.realpath(p) != real] + ([path] if created else [])
     _write_state(created_files=files)
 
 
@@ -5196,7 +5226,7 @@ def _mcp_remove_one(agent: str, dry_run: bool, say: Any) -> Optional[bool]:
         say("would remove the needs-you MCP server from %s" % _tilde(path))
         return True
     try:
-        if empty and path in _created_files():
+        if empty and _was_created(path):
             os.remove(path)  # needs-you made this file and nothing else is in it
             _note_created(path, False)
             say("deleted %s (needs-you created it)" % _tilde(path))

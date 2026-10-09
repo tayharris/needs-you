@@ -102,6 +102,35 @@ END = "# end needs-you"
 NO_EOL = "# (the file had no newline at its end)"
 
 
+
+def created(path, mark=None):
+    """needs-you's record of the agent config files its installers made (`created_files` in
+    its update.json, which `needs-you uninstall-hooks` reads too): mark=True adds path, False
+    drops it. Returns whether path was recorded. Best effort: never fails the install."""
+    import json, tempfile
+    d = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"),
+                     "needs-you")
+    p, real = os.path.join(d, "update.json"), os.path.realpath(path)
+    try:
+        with open(p, encoding="utf-8") as fh:
+            st = json.load(fh)
+        st = st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        st = {}
+    files = [f for f in st.get("created_files") or [] if isinstance(f, str)]
+    was = any(os.path.realpath(f) == real for f in files)
+    if mark is not None and mark != was:
+        st["created_files"] = [f for f in files if os.path.realpath(f) != real] + ([real] if mark else [])
+        try:
+            os.makedirs(d, mode=0o700, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=d, prefix=".update.")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(st, fh, sort_keys=True)
+            os.replace(tmp, p)
+        except OSError:
+            pass
+    return was
+
 def die(msg):
     sys.stderr.write("error: %s\n" % msg)
     sys.exit(1)
@@ -185,6 +214,13 @@ if dry_run:
           % ("remove" if action == "uninstall" else "write", conf))
     sys.exit(0)
 
+# A file this installer made goes again once the block is all it held.
+if action == "uninstall" and not new.strip() and created(conf):
+    os.remove(conf)
+    created(conf, False)
+    print("config:   removed the needs-you block; deleted %s (needs-you created it)" % conf)
+    sys.exit(0)
+
 os.makedirs(os.path.dirname(conf), exist_ok=True)
 mode = 0o600
 if exists:
@@ -199,6 +235,8 @@ with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
     fh.write(new)
 os.chmod(tmp, mode)
 os.replace(tmp, conf)
+if action == "install" and not exists:
+    created(conf, True)
 if action == "uninstall":
     print("config:   removed the needs-you block%s" % (" (backup: config.toml.bak-*)" if exists else ""))
 else:

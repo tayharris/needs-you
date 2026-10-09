@@ -55,6 +55,8 @@ class UninstallHooks(unittest.TestCase):
         self.install("--project", self.other, "--local")
 
     def has_hooks(self, path):
+        if not os.path.exists(path):  # (an installer made it; the uninstall deleted it)
+            return False
         with open(path) as fh:
             return "needs-you-hook.sh" in fh.read()
 
@@ -274,6 +276,45 @@ class UninstallHooks(unittest.TestCase):
                  if dp != self.home and not dns and not fns and not dp.endswith("mine")]
         self.assertEqual(empty, [])
         self.assertTrue(os.path.isdir(os.path.join(self.home, "Documents", "mine")))  # never the person's
+        # nor the config files the installers made, left as {} or empty (backups stay)
+        left = [os.path.relpath(os.path.join(dp, f), self.home) for dp, _, fns in os.walk(self.home)
+                for f in fns if ".bak-" not in f and not dp.startswith(os.path.join(self.home, ".local", "state"))]
+        self.assertEqual(left, [])
+
+    # The agent config files whose installers create them when missing, and what is left in
+    # one when needs-you's part is taken out.
+    MADE = {"codex/install-codex-hooks.sh": (".codex/hooks.json", "{}\n"),
+            "gemini/install-gemini-hooks.sh": (".gemini/settings.json", "{}"),
+            "cursor/install-cursor-hooks.sh": (".cursor/hooks.json", '{"version": 1}\n'),
+            "kimi/install-kimi-hooks.sh": (".kimi-code/config.toml", ""),
+            "claude-code/install-hooks.sh": (".claude/settings.json", "{}\n")}
+
+    def run_installers(self, *flags):
+        for script in self.MADE:
+            r = subprocess.run([BASH, os.path.join(ROOT, "integrations", script)] + list(flags), env=self.env,
+                               capture_output=True, text=True, timeout=60, cwd=self.tmp)
+            self.assertEqual(r.returncode, 0, script + r.stdout + r.stderr)
+
+    def test_config_files_made_by_an_installer_go_files_that_were_there_stay(self):
+        for how in ("cli", "installers"):
+            for there in (False, True):
+                shutil.rmtree(self.home)
+                os.makedirs(self.home)
+                for rel, text in self.MADE.values():
+                    if there:  # empty, or only defaults, before needs-you came
+                        os.makedirs(os.path.dirname(os.path.join(self.home, rel)), exist_ok=True)
+                        with open(os.path.join(self.home, rel), "w") as fh:
+                            fh.write(text)
+                self.run_installers()
+                for rel, _ in self.MADE.values():
+                    self.assertTrue(self.has_hooks(os.path.join(self.home, rel)), rel)
+                if how == "cli":
+                    r = self.cli()
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                else:  # each installer's own --uninstall
+                    self.run_installers("--uninstall")
+                for rel, _ in self.MADE.values():
+                    self.assertEqual(os.path.exists(os.path.join(self.home, rel)), there, (how, there, rel))
 
     def test_other_agents_symlinks_are_never_followed(self):
         self.install_agents()

@@ -87,6 +87,35 @@ MARK = "needs-you-hook.sh"
 SNIPPET_PREFIX = '"$HOME/.codex/hooks/needs-you-hook.sh"'
 
 
+
+def created(path, mark=None):
+    """needs-you's record of the agent config files its installers made (`created_files` in
+    its update.json, which `needs-you uninstall-hooks` reads too): mark=True adds path, False
+    drops it. Returns whether path was recorded. Best effort: never fails the install."""
+    import json, tempfile
+    d = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"),
+                     "needs-you")
+    p, real = os.path.join(d, "update.json"), os.path.realpath(path)
+    try:
+        with open(p, encoding="utf-8") as fh:
+            st = json.load(fh)
+        st = st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        st = {}
+    files = [f for f in st.get("created_files") or [] if isinstance(f, str)]
+    was = any(os.path.realpath(f) == real for f in files)
+    if mark is not None and mark != was:
+        st["created_files"] = [f for f in files if os.path.realpath(f) != real] + ([real] if mark else [])
+        try:
+            os.makedirs(d, mode=0o700, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=d, prefix=".update.")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(st, fh, sort_keys=True)
+            os.replace(tmp, p)
+        except OSError:
+            pass
+    return was
+
 def ours(hook):
     return isinstance(hook, dict) and MARK in str(hook.get("command", ""))
 
@@ -179,6 +208,14 @@ if dry_run:
     print("hooks.json: dry run, nothing written")
     sys.exit(0)
 
+# A file an installer made goes again once the uninstall leaves only defaults in it; one
+# that was there before stays.
+if action == "uninstall" and doc in ({}, {"version": 1}) and created(path):
+    os.remove(path)
+    created(path, False)
+    print("hooks.json: needs-you hooks removed; deleted %s (needs-you created it)" % path)
+    sys.exit(0)
+
 real = path
 os.makedirs(os.path.dirname(real), exist_ok=True)
 if original_text is not None:
@@ -204,6 +241,8 @@ with os.fdopen(fd, "w", encoding="utf-8") as f:
     f.write(new_text)
 os.chmod(tmp, mode)
 os.replace(tmp, real)
+if action == "install" and original_text is None:
+    created(path, True)
 print("hooks.json: %s" % ("needs-you hooks installed" if action == "install" else "needs-you hooks removed"))
 PY
 
