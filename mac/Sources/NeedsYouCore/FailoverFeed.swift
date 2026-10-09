@@ -27,6 +27,8 @@ public actor FailoverFeed: ItemFeed {
     private let clock: @Sendable () -> Date
     private var current: Int?
     private var failedUntil: [Int: Date] = [:]
+    /// The hub the last status fetch went to (its ETag means nothing to another hub).
+    private var statusHub: Int?
 
     public init(hubs: [Hub], cooldown: TimeInterval = 120, clock: @escaping @Sendable () -> Date = { Date() }) {
         self.hubs = hubs
@@ -109,6 +111,19 @@ public actor FailoverFeed: ItemFeed {
             }
         }
         throw lastError
+    }
+}
+
+// MARK: - Statuses
+
+extension FailoverFeed: StatusFeed {
+    /// Statuses from the hub that answered the last items poll (none before the first).
+    /// Another hub than last time gets no ETag, so its full list comes back.
+    public func fetchStatuses(etag: String?) async throws -> StatusFetch {
+        guard let index = current, let feed = hubs[index].feed as? StatusFeed else { return .fresh([], etag: nil) }
+        let same = index == statusHub
+        statusHub = index
+        return try await feed.fetchStatuses(etag: same ? etag : nil)
     }
 }
 

@@ -4,8 +4,8 @@ Black-box tests every needs-you hub implementation must pass ([ADR 0004](../../d
 [ADR 0012](../../docs/adr/0012-mac-hub-peers.md)). They talk to a running hub over HTTP and
 check the contract in [API.md](../../docs/API.md): health, roles, validation (including the
 shared link cases in `tests/fixtures/link_cases.json`), upsert and dedupe, resolve, patch,
-`cursor`/`since` paging, the volume guard, answers, invites and peer invites, and replication
-(last writer wins, the same-key merge, a second hub catching writes, tokens and answers).
+`cursor`/`since` paging, the volume guard, answers, status records, invites and peer invites, and replication
+(last writer wins, the same-key merge, a second hub catching writes, tokens, answers and statuses).
 
 Python 3.9+ standard library only. Run it against a throwaway hub: it writes items, mints
 tokens and pairs (then removes) a fake peer.

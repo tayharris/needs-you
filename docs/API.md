@@ -27,8 +27,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 
   | Role | Can call |
   |---|---|
-  | `sender` | `POST /v1/items`, `POST /v1/items/resolve` |
-  | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream` |
+  | `sender` | `POST /v1/items`, `POST /v1/items/resolve`, `PUT`/`DELETE /v1/status/<key>` |
+  | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream`, `GET /v1/status` |
   | `owner` | everything `reader` can, plus invites (`/v1/invites`), tokens (`/v1/tokens`) and peers (`/v1/peers`): list, create, revoke, remove and request updates (the Mac app) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
@@ -66,6 +66,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
   | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds) |
+  | 400 | `secret_in_text` | A status label, detail or account looks like a token or key ([status records](#status-records-usage-meters)) |
+  | 429 | `too_many_status`, `too_fast` | A status write over the live-status limits, or a second write to one status key within 10 s (with `Retry-After`) |
   | 500 | `internal` | Bug; details are in the hub's log |
 
 - Unknown JSON fields in requests are ignored, so newer clients can send extra fields.
@@ -499,6 +501,89 @@ A comment line (`: ping`) is sent about every 15 s. Reconnect with `Last-Event-I
 sequence number, so after failover to another hub, reconnect without `Last-Event-ID` and do a
 full poll. Expiry is not an event; clients compare `expires_at` with the clock themselves.
 
+## Status records (usage meters)
+
+A **status** is a small keyed record that is *not* an item ([ADR 0011](adr/0011-status-records.md)):
+it never counts, never makes a card, never notifies, and never appears in `GET /v1/items`,
+`/v1/stream` or `/v1/items/answer`, so a client that predates statuses never sees one. Today
+the Mac app shows `usage` statuses as meters (session and weekly limits per provider and
+account); `progress` statuses are accepted and listed but not shown yet. Producers are hooks,
+status line helpers and pollers (`needs-you status set`), not agents.
+
+```jsonc
+{
+  "id": "st_3f0c9b1e2a7d4c58b6e1f0a9d2c4b7e1", // opaque, the same on every hub (derived from the token and key)
+  "key": "usage:claude",                    // the sender's key: the item key grammar, per token
+  "type": "usage",                          // usage | progress
+  "label": "Claude",                        // <= 60 chars, one line, plain text ("" allowed for usage)
+  "state": null,                            // progress only: working | waiting | idle | done | failed
+  "progress": null,                         // progress only: 0-100, or null for "no percentage"
+  "detail": "",                             // <= 120 chars, one line, plain text
+  "usage": {                                // usage only (null for progress)
+    "provider": "claude",                   // [a-z0-9-]{1,20}
+    "account": "",                          // a local label or hash, [A-Za-z0-9._-]{0,40}: never an email
+    "windows": [                            // 1-4 windows
+      {"name": "5h", "used_pct": 51, "resets_at": "2026-10-08T14:00:00.000Z"},
+      {"name": "7d", "used_pct": 41.5, "resets_at": null}
+    ]
+  },
+  "source": {"host": "devbox", "agent": "claude-code"},  // as on items
+  "created_at": "2026-10-08T09:00:00.000Z",
+  "updated_at": "2026-10-08T09:41:10.000Z",
+  "expires_at": "2026-10-14T09:00:00.000Z"
+}
+```
+
+Window `name` is `[a-z0-9-]{1,20}`; the producers send `5h` (the session window) and `7d`
+(the weekly one), and clients show other names as they are. `used_pct` is a number from 0 to
+100 (kept to one decimal). `resets_at` is a timestamp or `null`; a client shows a window whose
+`resets_at` has passed as reset (0 %), since the numbers are only as fresh as the last write.
+
+### `PUT /v1/status/<key>` (sender)
+
+Sets the status `<key>` of the calling token (a key is per token: another token's `PUT` to the
+same key is a different record). The body is the record above without `id`, `key` or the
+times, plus a required `expires_at`:
+
+| Field | Rule |
+|---|---|
+| `type` | `usage` or `progress` (required) |
+| `label` | string <= 60, one line; required and non-empty for `progress` |
+| `state` | `progress`: one of `working`, `waiting`, `idle`, `done`, `failed` (default `working`); ignored for `usage` |
+| `progress` | `progress`: integer 0-100 or `null`; ignored for `usage` |
+| `detail` | string <= 120, one line, optional |
+| `usage` | `usage`: required, as above; ignored for `progress` |
+| `source` | as on items, optional |
+| `expires_at` | required, in the future: at most now + 1 h for `progress`, now + 8 days for `usage` |
+
+Text fields refuse control, bidi and line-separator characters like item text, and
+token-shaped text (`400 secret_in_text`, with `field`). `@` in `account` is refused (no emails).
+
+Response `200` with the stored record. A write to an existing key replaces it entirely.
+
+Limits: at most 20 live (unexpired) statuses per token and 64 per hub (`429 too_many_status`),
+and one write per key every 10 s (`429 too_fast`, with `Retry-After` and `retry_after`).
+Statuses never count toward the item volume guard or the item post rate limit.
+
+### `DELETE /v1/status/<key>` (sender)
+
+Clears the calling token's status `<key>`: `200 {"ok": true, "cleared": true}`, or
+`"cleared": false` when there was none (or it had expired). A clear is a write (it sets
+`expires_at` to now and replicates); it is never refused by `too_fast`.
+
+### `GET /v1/status` (reader)
+
+```json
+{"statuses": [ ...status records, newest updated_at first... ], "server_time": "2026-10-08T09:41:12.000Z"}
+```
+
+Every unexpired status on this hub, except those of a revoked token. The response carries an
+`ETag`; a request with that value in `If-None-Match` gets `304` with no body while nothing
+changed. A hub that predates statuses answers `404`; clients treat that as "no statuses".
+
+Expiry is computed, never written, as for items. Housekeeping deletes a status an hour after
+its `expires_at`; nothing is kept for history.
+
 ## Invites
 
 An invite is a link that sets up one or more machines. Redeeming it mints a **new token per
@@ -826,6 +911,7 @@ The hub cleans up after itself every 10 minutes (`maintenance_seconds`):
 - Hard-deletes items (tombstones by then) that were resolved or dismissed more than
   `retention_days` (default 30) ago, and items whose `expires_at` passed more than
   `retention_days` ago. Open `needs` items are never purged.
+- Deletes [status records](#status-records-usage-meters) an hour after their `expires_at`.
 - Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).
 - Deletes expired invites, and revoked ones 24 h after their last change. Used-up invites
   are kept until they expire.
@@ -869,13 +955,24 @@ answerable one that repeats a label (from an older hub). `answer`,
 receiver's answer when `content_updated_at` matches). A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
 offered labels, one entry per question, one label for a single choice. Otherwise it is
-dropped with its `answered_at` and `answered_by` (the item stays). Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
+dropped with its `answered_at` and `answered_by` (the item stays).
+
+**Status records** travel in their own `statuses` array, in pushes and in change pages: the
+public status record plus `token_id` and `updated_by`. The receiver checks each as a `PUT` body
+(text, usage, no secrets; a past `expires_at` is fine, since a clear is an expiry, and up to a
+day past the future limits for clock skew) and that its `id` is the one derived from its
+`token_id` and `key`, then applies it by last writer wins on `(updated_at, updated_by)` like an
+item. One it can't read is listed in `skipped` with `"kind": "status"` and dropped (statuses
+are short-lived: no quarantine). A hub that already holds 256 live statuses skips new ones.
+Hubs that predate statuses ignore the array, so a mixed mesh keeps working and their own
+clients just see no meters. Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
 token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ### Push: `POST /v1/replicate`
 
 ```json
-{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}
+{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ],
+ "statuses": [ ...status records... ]}
 ```
 
 Response `{"ok": true, "applied": <n>, "hub_id": "hub-b", "skipped": [...]}`; `409 self` if
@@ -904,7 +1001,7 @@ refused record is alone, then skips it if it is an item and holds it (as above) 
 token or invite, and goes back to full batches. Any other failure (a timeout, `5xx`, `413`) is
 retried with backoff as before.
 
-Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
+Every accepted write (create, upsert, resolve, patch, token add/revoke, merge, status set/clear) inserts one row
 per peer into a durable `outbox` table in the same SQLite transaction as the write. A worker
 thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's *current* version, and
 deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
@@ -921,7 +1018,7 @@ Every stored version gets a per-hub sequence number. The response is
 
 ```json
 {"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
- "items": [ ... ], "tokens": [ ... ]}
+ "items": [ ... ], "tokens": [ ... ], "statuses": [ ... ]}
 ```
 
 Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and

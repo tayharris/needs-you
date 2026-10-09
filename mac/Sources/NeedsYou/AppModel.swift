@@ -75,6 +75,10 @@ final class AppModel: ObservableObject {
     /// Every row Orca returned (for the header's "of N").
     @Published private(set) var orcaTotal: [OrcaWorktreeRow] = []
     private var orcaFetchedAt: Date?
+    /// The hub's status records (GET /v1/status), shown as usage meters (UsageMeters).
+    /// Never counted, animated or announced; empty from a hub that predates them.
+    @Published private(set) var statuses: [StatusRecord] = []
+    private var statusETag: String?
     private var orcaFetching = false
     /// The Later section in the expanded panel is open.
     @Published var showLater = false
@@ -460,6 +464,8 @@ final class AppModel: ObservableObject {
         activeHub = nil
         demoFeed = nil
         feedHubCount = 0
+        statuses = []
+        statusETag = nil
 
         if settings.isDemo {
             var seed: [Item]?
@@ -575,6 +581,7 @@ final class AppModel: ObservableObject {
             if !isDemo, !senderObserved, !updated.items.isEmpty { senderObserved = true }
             recordSetupProgress()
             if isExpanded { markVisibleSeen() }
+            await refreshStatuses(generation: generation)
         } catch {
             guard generation == feedGeneration else { return }
             let many = feedHubCount > 1
@@ -582,6 +589,22 @@ final class AppModel: ObservableObject {
             if (error as? URLError) != nil { lastError = many ? "No hub reachable" : "Hub unreachable" }
             activeHub = nil
             planner.forceFull()
+        }
+    }
+
+    /// After a good items poll: the same hub's statuses, when Settings → Usage shows them.
+    /// A failure keeps the last ones (they carry their own expiry) and never touches items.
+    private func refreshStatuses(generation: Int) async {
+        guard settings.usage.isShown, let statusFeed = feed as? StatusFeed else {
+            if !statuses.isEmpty { statuses = [] }
+            statusETag = nil
+            return
+        }
+        guard let fetch = try? await statusFeed.fetchStatuses(etag: statusETag),
+              generation == feedGeneration else { return }
+        if case let .fresh(records, etag) = fetch {
+            statusETag = etag
+            if records != statuses { statuses = records }
         }
     }
 

@@ -23,6 +23,16 @@
                                                      through; on failure post a card (exit code and
                                                      the last stderr lines), on success resolve it,
                                                      and after a long run post a `done` FYI
+  needs-you status set --key KEY [--label TEXT] [--detail TEXT] [--expires-in MINUTES]
+                       (--provider NAME [--account LABEL] --window NAME=PCT[@RESETS]...
+                        | --state working|waiting|idle|done|failed [--progress N])
+                                                     a quiet status record (ADR 0011), not a card:
+                                                     usage meters on the Mac (--provider: a usage
+                                                     status; RESETS is epoch seconds or ISO 8601)
+                                                     or a progress row. For hooks, status line
+                                                     helpers and pollers. Never queued: with no hub
+                                                     reachable it says so and exits 0
+  needs-you status clear --key KEY                   end that status now
   needs-you flush                                    send anything queued in the outbox, and
                                                      resolve Claude Code cards whose session ended
   needs-you health                                   check each configured hub and the token
@@ -75,7 +85,8 @@ Config: ~/.config/needs-you/env (KEY=VALUE lines), overridden by the environment
   needs-you self-update                              same as `update` (the old name)
 
 If no hub answers, the request is written to ~/.local/state/needs-you/outbox/ and the
-command still exits 0. Every invocation sends the outbox first, and a request goes out only
+command still exits 0. (`status` is the exception: it is never queued and doesn't touch
+the outbox.) Every invocation sends the outbox first, and a request goes out only
 behind what is queued, so `resolve K` never overtakes a queued `add K`. While another run is
 sending the outbox, a request waits for it up to 2 s, then stays queued behind it (exit 0).
 A queued item the hub refuses for now (429: the open-items guard, or too many posts from
@@ -1843,6 +1854,129 @@ def parse_steps_json(raw: str) -> List[Any]:
     return steps
 
 
+STATUS_USAGE_MAX_MINUTES = 8 * 24 * 60.0  # the hub's limits (docs/API.md "Status records")
+STATUS_PROGRESS_MAX_MINUTES = 60.0
+STATUS_USAGE_DEFAULT_MINUTES = 6 * 60.0  # a usage status with no reset time
+
+
+def parse_window(raw: str) -> Dict[str, Any]:
+    """--window NAME=PCT[@RESETS]: "5h=51@1791234567" or "7d=41.5@2026-10-14T09:00:00Z"."""
+    name, sep, rest = raw.partition("=")
+    if not sep or not re.match(r"^[a-z0-9-]{1,20}$", name.strip()):
+        raise argparse.ArgumentTypeError("expected NAME=PCT[@RESETS], NAME of a-z, 0-9, -: %r" % raw)
+    pct_s, _, resets = rest.partition("@")
+    try:
+        pct = float(pct_s)
+    except ValueError:
+        raise argparse.ArgumentTypeError("the percentage in %r is not a number" % raw)
+    if not 0 <= pct <= 100:
+        raise argparse.ArgumentTypeError("the percentage in %r is not 0-100" % raw)
+    w: Dict[str, Any] = {"name": name.strip(), "used_pct": int(pct) if pct == int(pct) else pct}
+    resets = resets.strip()
+    if resets:
+        w["resets_at"] = float(resets) if re.match(r"^\d{1,12}(\.\d+)?$", resets) else resets
+    return w
+
+
+def _epoch(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)):
+        return float(value)
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]00:?00)?$", str(value))
+    if not m:
+        return None
+    import calendar
+    return float(calendar.timegm(tuple(int(g) for g in m.groups()[:6]) + (0, 0, 0)))
+
+
+def build_status(args: argparse.Namespace, cfg: Config) -> Dict[str, Any]:
+    now = time.time()
+    usage = bool(args.provider or args.window)
+    body: Dict[str, Any] = {"type": "usage" if usage else "progress"}
+    if args.label is not None:
+        body["label"] = args.label
+    if args.detail:
+        body["detail"] = args.detail
+    if usage:
+        body["usage"] = {"provider": args.provider or "", "account": args.account or "",
+                         "windows": args.window or []}
+        resets = [t for t in (_epoch(w.get("resets_at")) for w in args.window or []) if t and t > now]
+        minutes = args.expires_in if args.expires_in is not None else (
+            (max(resets) - now) / 60.0 if resets else STATUS_USAGE_DEFAULT_MINUTES)
+        minutes = min(minutes, STATUS_USAGE_MAX_MINUTES)
+    else:
+        body["state"] = args.state or "working"
+        if args.progress is not None:
+            body["progress"] = args.progress
+        minutes = min(args.expires_in if args.expires_in is not None else STATUS_PROGRESS_MAX_MINUTES,
+                      STATUS_PROGRESS_MAX_MINUTES)
+    body["expires_at"] = round(now + max(minutes, 0.05) * 60.0, 3)
+    source = {"host": args.host or cfg.host}
+    if args.agent:
+        source["agent"] = args.agent
+    if args.project:
+        source["project"] = args.project
+    body["source"] = source
+    return body
+
+
+def status_command(cfg: Config, args: argparse.Namespace) -> int:
+    """`status set` / `status clear`: straight to the first hub that answers, never queued (a
+    stale status is worse than none). Exit 0 unless the hub refused the request itself."""
+    key = (args.key or "").strip()
+    if not key:
+        warn("status: --key must not be empty")
+        return 2
+    if args.status_cmd == "set":
+        if args.account and not args.provider:
+            warn("status set: --account needs --provider")
+            return 2
+        if args.expires_in is not None and not 0 < args.expires_in < float("inf"):
+            warn("status set: --expires-in must be a positive number of minutes")
+            return 2
+        if (args.provider or args.window) and not (args.provider and args.window):
+            warn("status set: a usage status needs --provider and at least one --window")
+            return 2
+        if not (args.provider or args.window) and not args.label:
+            warn("status set: a progress status needs --label (or give --provider and --window for usage)")
+            return 2
+        method, body = "PUT", build_status(args, cfg)
+    else:
+        method, body = "DELETE", None
+    if not cfg.ok:
+        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); status not sent (statuses are never queued)"
+             % config_path())
+        return 0
+    path = "/v1/status/" + urllib.parse.quote(key, safe="")
+    errors = []
+    for url in cfg.urls:
+        try:
+            status, resp = _call(url, cfg.token, method, path, body, cfg.timeout)
+        except (OSError, ValueError) as e:
+            errors.append("%s: %s" % (url, getattr(e, "reason", e)))
+            continue
+        if 200 <= status < 300:
+            if args.json:
+                print(json.dumps(resp, sort_keys=True))
+            elif not args.quiet:
+                done = "set" if method == "PUT" else ("cleared" if resp.get("cleared") else "nothing to clear")
+                print("status %s: %s via %s" % (done, clean(key), url))
+            return 0
+        if status == 404 and resp.get("error") != "invalid":
+            errors.append("%s: this hub predates statuses (404)" % url)
+            continue
+        if status in (421,) or status >= 500:
+            errors.append("%s: HTTP %d" % (url, status))
+            continue
+        msg = clean(resp.get("message") or resp.get("error") or "")
+        if status == 429:
+            warn("hub said slow down: HTTP 429 %s; not sent (statuses are never queued)" % msg)
+            return 0
+        warn("hub rejected the status: HTTP %d %s" % (status, msg))
+        return 2
+    warn("status not sent (%s); statuses are never queued" % ("; ".join(errors) or "no hub URL configured"))
+    return 0
+
+
 def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, Any]:
     body = args.body
     if args.body_file:
@@ -1938,6 +2072,27 @@ def _main(argv: Optional[List[str]] = None) -> int:
                     help="only an answer to the question with this id (its \"id\" in --question-json) counts")
     ap.add_argument("--timeout", type=float, default=600.0, metavar="SECONDS",
                     help="give up after this long (default 600)")
+    sp = sub.add_parser("status", help="a quiet status record (usage meters), never a card; for hooks and pollers")
+    ssub = sp.add_subparsers(dest="status_cmd")
+    ss = ssub.add_parser("set", help="set a status (usage with --provider/--window, else progress)")
+    ss.add_argument("--key", required=True, help="per-token key, e.g. usage:claude or usage:codex:team-2")
+    ss.add_argument("--label", help="<= 60 chars, one line (required for progress)")
+    ss.add_argument("--detail", help="<= 120 chars, one line")
+    ss.add_argument("--provider", help="usage: the provider, a-z 0-9 - (claude, codex)")
+    ss.add_argument("--account", help="usage: a local label or hash for the account, never an email")
+    ss.add_argument("--window", action="append", type=parse_window, metavar="NAME=PCT[@RESETS]",
+                    help="usage: a limit window, e.g. 5h=51@1791234567 (repeatable, at most 4)")
+    ss.add_argument("--state", choices=("working", "waiting", "idle", "done", "failed"),
+                    help="progress: the state (default working)")
+    ss.add_argument("--progress", type=int, choices=range(0, 101), metavar="0-100", help="progress: a percentage")
+    ss.add_argument("--expires-in", type=float, metavar="MINUTES",
+                    help="default: progress 60 (the most); usage: the latest window reset (8 days at most), "
+                         "else 6 hours")
+    ss.add_argument("--agent", help="source agent")
+    ss.add_argument("--project", help="source project")
+    ss.add_argument("--host", help="source host (default: this machine's hostname)")
+    sc = ssub.add_parser("clear", help="end a status now")
+    sc.add_argument("--key", required=True)
     add_run_parser(sub)
     sub.add_parser("flush", help="send queued items now")
     sub.add_parser("health", help="check hubs and token")
@@ -2028,6 +2183,11 @@ def _main(argv: Optional[List[str]] = None) -> int:
                             args.json or args.orca_json)
     if args.cmd == "run":  # the command starts at once; the outbox is sent after it
         return run_command(cfg, args)
+    if args.cmd == "status":  # never queued, and it doesn't wait on the outbox
+        if not getattr(args, "status_cmd", None):
+            warn("status: use `status set` or `status clear`")
+            return 2
+        return status_command(cfg, args)
 
     # Every invocation drains the outbox first, so queued items go out in order (add and
     # resolve do it in deliver(), holding the outbox lock until their own request is sent).

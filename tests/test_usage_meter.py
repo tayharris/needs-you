@@ -1,5 +1,6 @@
 """integrations/claude-code/needs-you-usage: the status line helper that posts a low `info`
-card when Claude's 5-hour or weekly limit passes a threshold.
+card when Claude's 5-hour or weekly limit passes a threshold, and the usage status behind the
+Mac's meters (MeterStatus below; the card tests turn the meter off).
 
 Runs with a temporary HOME and a fake `needs-you` CLI that records its argv, so nothing
 touches the real ~/.claude or ~/.config.
@@ -26,7 +27,7 @@ with open(os.environ["FAKE_CLI_LOG"], "a") as fh:
 """
 
 
-class UsageMeterTest(unittest.TestCase):
+class UsageCase(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="ny-usage-")
         self.addCleanup(shutil.rmtree, self.home, True)
@@ -51,7 +52,7 @@ class UsageMeterTest(unittest.TestCase):
 
     def run_it(self, data, args=(), expect_calls=None, **extra):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.home,
-               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log}
+               "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_USAGE_METER": "0"}
         env.update(extra)
         env = {k: v for k, v in env.items() if v is not None}
         r = subprocess.run([sys.executable, SCRIPT] + list(args), input=json.dumps(data), env=env,
@@ -71,7 +72,9 @@ class UsageMeterTest(unittest.TestCase):
         except OSError:
             return []
 
-    def test_off_by_default(self):
+
+class UsageMeterTest(UsageCase):
+    def test_card_off_by_default(self):
         r = self.run_it(self.payload(99, 99), expect_calls=0)
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         self.assertFalse(os.path.exists(os.path.dirname(self.state)))
@@ -141,3 +144,47 @@ class UsageMeterTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MeterStatus(UsageCase):
+    """The meter is on by default: a `status set` per change, throttled; never a card."""
+
+    def meter_state(self, account=""):
+        return os.path.join(os.path.dirname(self.state), "claude%s.meter.json" % ("-" + account if account else ""))
+
+    def age_meter(self, seconds, account=""):
+        with open(self.meter_state(account)) as fh:
+            st = json.load(fh)
+        st["sent"] -= seconds
+        with open(self.meter_state(account), "w") as fh:
+            json.dump(st, fh)
+
+    def test_on_by_default_and_throttled(self):
+        on = {"NEEDS_YOU_USAGE_METER": None}
+        r = self.run_it(self.payload(23, 41), expect_calls=1, **on)
+        self.assertEqual(r.returncode, 0)
+        args = self.calls()[0]
+        self.assertEqual(args[:5], ["-q", "status", "set", "--key", "usage:claude"])
+        self.assertIn("--provider", args)
+        self.assertNotIn("add", args)  # never a card
+        self.assertIn("5h=23@%d" % (self.now + 3600), args)
+        self.assertIn("7d=41@%d" % (self.now + 4 * 86400), args)
+        self.run_it(self.payload(23, 41), expect_calls=1, **on)  # right after: nothing
+        self.age_meter(20)
+        self.run_it(self.payload(23, 41), expect_calls=1, **on)  # unchanged: waits for the refresh
+        self.run_it(self.payload(24, 41), expect_calls=2, **on)  # changed, 15 s since: sent
+        self.age_meter(400)
+        self.run_it(self.payload(24, 41), expect_calls=3, **on)  # unchanged, 5 min since: sent
+
+    def test_off_and_no_numbers(self):
+        self.run_it(self.payload(23, 41), expect_calls=0, NEEDS_YOU_USAGE_METER="0")
+        self.run_it(self.payload(), expect_calls=0, NEEDS_YOU_USAGE_METER=None)
+
+    def test_account_label_and_card_together(self):
+        self.run_it(self.payload(90, 10), expect_calls=2, NEEDS_YOU_USAGE_METER=None,
+                    NEEDS_YOU_USAGE_ACCOUNT="team-2", NEEDS_YOU_USAGE_ALERT_PCT="80",
+                    NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT="0")
+        meter = [c for c in self.calls() if "status" in c][0]
+        self.assertIn("usage:claude:team-2", meter)
+        self.assertEqual(meter[meter.index("--account") + 1], "team-2")
+        self.assertTrue([c for c in self.calls() if "add" in c])  # the card still comes

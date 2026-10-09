@@ -52,14 +52,27 @@ struct CountPill: View {
         self.settings = model.settings
     }
 
+    private var usageHelp: String {
+        let rows = settings.usage.onPill ? model.usageRows : []
+        if rows.isEmpty { return "" }
+        return " · Usage: " + UsageMeters.summary(rows)
+    }
+
     var body: some View {
         let content = model.pillContent
         PillContentView(content: content, metrics: model.pillMetrics,
                         focused: model.isFocused, focusSetByLink: model.focusSetByLink)
             .animation(.easeInOut(duration: 0.15), value: model.hovering)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                // Usage meters (Settings → Usage): hairlines over the pill, never its count.
+                let bars = content.isDot ? [] : model.pillUsageBars
+                if !bars.isEmpty {
+                    PillUsageMeter(bars: bars, metrics: model.pillMetrics)
+                }
+            }
             .pillInteraction(model)
-            .help(content.help + (model.focusSummary.map { " · Focus: \($0)" } ?? "") + " · \(model.statusLine)")
+            .help(content.help + (model.focusSummary.map { " · Focus: \($0)" } ?? "") + usageHelp + " · \(model.statusLine)")
     }
 }
 

@@ -41,7 +41,7 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 |---|---|---|
 | `PermissionRequest` | `notify codex` | `needs-you add`: **Codex wants to run make**, **Codex wants to edit config.py** (`apply_patch`; "2 files" for more), **Codex needs permission for linear create_issue** (MCP) |
 | `PreToolUse`, matcher `request_user_input` | `notify codex` | `needs-you add`: **Codex asks “<question>”**, the questions and their choices in the body and as the item's `question` (Plan mode; this tool has no `PermissionRequest`) |
-| `Stop` | `notify codex` | resolves a question card first (outside Plan mode Codex refuses the question after `PreToolUse` ran), then `needs-you add`: **Codex finished** (the turn ended), or **Codex asks: <question>** when `last_assistant_message` ends on a question; the thread's `/rename` name (from `$CODEX_HOME/session_index.jsonl`) goes in the title. `NEEDS_YOU_TURN_TEXT=0`: the old **Codex is waiting for you**. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval and question cards. Also the usage-limit card, when it's on (below) |
+| `Stop` | `notify codex` | resolves a question card first (outside Plan mode Codex refuses the question after `PreToolUse` ran), then `needs-you add`: **Codex finished** (the turn ended), or **Codex asks: <question>** when `last_assistant_message` ends on a question; the thread's `/rename` name (from `$CODEX_HOME/session_index.jsonl`) goes in the title. `NEEDS_YOU_TURN_TEXT=0`: the old **Codex is waiting for you**. `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only approval and question cards. Also the usage meter status and the usage-limit card, when it's on (below) |
 | `UserPromptSubmit`, `PostToolUse`, `Interrupt` | `resolve codex` | `needs-you resolve`, only if this session posted something |
 | `SessionStart` (`clear`, `resume`, `compact`) | `start codex` | resolves the cards this Codex process posted before. Codex 0.159+ runs every session's hooks from one shared app-server daemon, so there it resolves only this session's card; after `/clear` the old session's card clears with its `SessionEnd`, which the daemon sends when it unloads the thread (about a minute later) |
 | `SessionEnd` | `end codex` | resolves the session's card |
@@ -54,6 +54,12 @@ Same switch as the Claude Code hooks: nothing is posted unless `NEEDS_YOU_AGENT_
 - Markers live in `~/.local/state/needs-you/claude-hooks/` (shared with the Claude hook), carrying the lease that the 5-minute `needs-you flush` uses to resolve the card of a Codex process that died. Cards also expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`).
 
 **Usage-limit card (optional).** With `NEEDS_YOU_USAGE_ALERT_PCT` set (the same settings as Claude's [`needs-you-usage`](../claude-code/README.md#usage-limit-card-optional)), each `Stop` reads the newest `token_count` event's `rate_limits` from the tail of the session file Codex names in `transcript_path` (`~/.codex/sessions/.../rollout-*.jsonl`; 256 KB, then up to 2 MB, never the whole file; only Codex's own `limit_id`), and posts one low `info` card, **Codex weekly limit 85% used: resets Thu 09:00**, keyed `agent:<host>:codex-usage[:<account>]:5h` or `:7d`. It expires at the reset, is re-posted only when the percentage moved 5 points, and is resolved once usage is back under the line or the window reset. Only the numbers are read: no credentials, no conversation. Codex writes them only for ChatGPT logins, and not in every session; with none in the tail, nothing changes. State is in `~/.local/state/needs-you/usage/codex.json`.
+
+**Usage meter.** On the same `Stop`, from the same numbers, the hook sends a quiet usage status
+(`needs-you status set --key usage:codex[:<account>] ...`, never a card) that the Mac app
+shows as Codex's session and weekly bars (Settings → Usage). On by default; it goes out when a
+number changed (at most every 15 s) and every 5 minutes otherwise, a window that has reset
+since Codex wrote it counts as 0 %, and `NEEDS_YOU_USAGE_METER=0` turns it off.
 
 Not covered: Codex's context usage (no `/compact` card), API errors (Codex has no `StopFailure` hook), and sessions running only in the Codex IDE extension or cloud.
 
@@ -71,6 +77,7 @@ All the [Claude Code hook settings](../claude-code/README.md#settings) apply (`N
 | `NEEDS_YOU_USAGE_ALERT_PCT` | unset (off) | The usage-limit card's 5-hour threshold in percent (shared with Claude's `needs-you-usage`) |
 | `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
 | `NEEDS_YOU_USAGE_ACCOUNT` | none | A label for a machine with more than one Codex login (e.g. per `CODEX_HOME`); in the key and the title |
+| `NEEDS_YOU_USAGE_METER` | on | `0`: don't send the usage meter status |
 | `CODEX_HOME` | `~/.codex` | Where the installer, `needs-you doctor` and `needs-you update` look |
 
 ## Check and test

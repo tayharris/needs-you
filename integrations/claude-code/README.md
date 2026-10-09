@@ -18,7 +18,7 @@ integrations/claude-code/
 ├── hooks.json            the hook config (user-level paths), for reference or hand-merging
 ├── needs-you-hook.sh     the hook itself: bash + python3, always exits 0
 ├── install-hooks.sh      merges hooks.json into a settings.json (python3, with a backup)
-├── needs-you-usage       optional status line helper: a card when the 5-hour or weekly limit runs high
+├── needs-you-usage       optional status line helper: the Mac's usage meter, and a card when a limit runs high
 └── skill/needs-you/SKILL.md
 ```
 
@@ -181,6 +181,18 @@ echo '{"session_id":"test-1"}' |
 
 If nothing shows up, see [troubleshooting](../../docs/guides/troubleshooting.md#claude-code-hooks).
 
+## Usage meter
+
+With `needs-you-usage` as your status line (installed as below), the Mac app shows Claude's
+session (5-hour) and weekly limits as two bars in the panel, and as a hairline meter on the
+pill (Settings → Usage). The helper sends both percentages and reset times to the hub as a
+quiet **usage status** (`needs-you status set --key usage:claude ...`; [API](../../docs/API.md#status-records-usage-meters)):
+never a card, never counted. It goes out when a number changed (at most every 15 s) and every
+5 minutes otherwise, detached, so the status line never waits; a status is never queued, so
+with no hub reachable nothing is sent. With `NEEDS_YOU_USAGE_ACCOUNT` set the key is
+`usage:claude:<account>` and the Mac shows a row per account. `NEEDS_YOU_USAGE_METER=0` turns
+the meter off. Codex gets the same meter from its Stop hook ([integrations/codex](../codex/README.md#what-gets-posted)).
+
 ## Usage-limit card (optional)
 
 `needs-you-usage` posts one low `info` card when your Claude subscription's 5-hour or weekly limit passes a threshold you set, for example **Claude weekly limit 85% used: resets Thu 09:00**. It is off until you set `NEEDS_YOU_USAGE_ALERT_PCT`.
@@ -207,7 +219,8 @@ Then in `~/.config/needs-you/env`:
 |---|---|---|
 | `NEEDS_YOU_USAGE_ALERT_PCT` | unset (off) | 5-hour threshold in percent |
 | `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
-| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label (letters, digits, `.` `_` `-`) for a machine with more than one Claude login, e.g. per `CLAUDE_CONFIG_DIR`; it goes in the key and the title |
+| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label (letters, digits, `.` `_` `-`) for a machine with more than one Claude login, e.g. per `CLAUDE_CONFIG_DIR`; it goes in the key and the title, and labels the meter. Never an email |
+| `NEEDS_YOU_USAGE_METER` | on | `0`: don't send the usage meter status |
 
 Codex gets the same card from these settings through its hooks (read from its session file; see [integrations/codex](../codex/README.md#what-gets-posted)).
 

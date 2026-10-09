@@ -38,6 +38,7 @@
         <li><a href="#conventions">Conventions</a></li>
         <li><a href="#the-item">The item</a></li>
         <li><a href="#endpoints">Endpoints</a></li>
+        <li><a href="#status-records-usage-meters">Status records (usage meters)</a></li>
         <li><a href="#invites">Invites</a></li>
         <li><a href="#tokens">Tokens</a></li>
         <li><a href="#peers">Peers</a></li>
@@ -71,8 +72,8 @@ Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Role</th><th>Can call</th></tr></thead>
 <tbody>
-<tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code></td></tr>
-<tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>GET /v1/stream</code></td></tr>
+<tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code></td></tr>
+<tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>GET /v1/stream</code>, <code>GET /v1/status</code></td></tr>
 <tr><td><code>owner</code></td><td>everything <code>reader</code> can, plus invites (<code>/v1/invites</code>), tokens (<code>/v1/tokens</code>) and peers (<code>/v1/peers</code>): list, create, revoke, remove and request updates (the Mac app)</td></tr>
 </tbody>
 </table></div>
@@ -111,6 +112,8 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB (8 MiB for <code>/v1/replicate</code>)</td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>The token already has 60 open items (the volume guard)</td></tr>
 <tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds)</td></tr>
+<tr><td>400</td><td><code>secret_in_text</code></td><td>A status label, detail or account looks like a token or key (<a href="#status-records-usage-meters">status records</a>)</td></tr>
+<tr><td>429</td><td><code>too_many_status</code>, <code>too_fast</code></td><td>A status write over the live-status limits, or a second write to one status key within 10 s (with <code>Retry-After</code>)</td></tr>
 <tr><td>500</td><td><code>internal</code></td><td>Bug; details are in the hub's log</td></tr>
 </tbody>
 </table></div></li>
@@ -487,6 +490,72 @@ data: {...item JSON...}</code></pre></div>
 <code>?after=&lt;id&gt;</code>) to resume; without it the stream starts at "now". The event id is a per-hub
 sequence number, so after failover to another hub, reconnect without <code>Last-Event-ID</code> and do a
 full poll. Expiry is not an event; clients compare <code>expires_at</code> with the clock themselves.</p>
+<h2 id="status-records-usage-meters">Status records (usage meters) <a class="anchor" href="#status-records-usage-meters" aria-label="Link to this section">#</a></h2>
+<p>A <strong>status</strong> is a small keyed record that is <em>not</em> an item (<a data-repo="/blob/main/docs/adr/0011-status-records.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0011-status-records.md">ADR 0011</a>):
+it never counts, never makes a card, never notifies, and never appears in <code>GET /v1/items</code>,
+<code>/v1/stream</code> or <code>/v1/items/answer</code>, so a client that predates statuses never sees one. Today
+the Mac app shows <code>usage</code> statuses as meters (session and weekly limits per provider and
+account); <code>progress</code> statuses are accepted and listed but not shown yet. Producers are hooks,
+status line helpers and pollers (<code>needs-you status set</code>), not agents.</p>
+<div class="code"><pre><code class="language-jsonc">{
+  "id": "st_3f0c9b1e2a7d4c58b6e1f0a9d2c4b7e1", // opaque, the same on every hub (derived from the token and key)
+  "key": "usage:claude",                    // the sender's key: the item key grammar, per token
+  "type": "usage",                          // usage | progress
+  "label": "Claude",                        // &lt;= 60 chars, one line, plain text ("" allowed for usage)
+  "state": null,                            // progress only: working | waiting | idle | done | failed
+  "progress": null,                         // progress only: 0-100, or null for "no percentage"
+  "detail": "",                             // &lt;= 120 chars, one line, plain text
+  "usage": {                                // usage only (null for progress)
+    "provider": "claude",                   // [a-z0-9-]{1,20}
+    "account": "",                          // a local label or hash, [A-Za-z0-9._-]{0,40}: never an email
+    "windows": [                            // 1-4 windows
+      {"name": "5h", "used_pct": 51, "resets_at": "2026-10-08T14:00:00.000Z"},
+      {"name": "7d", "used_pct": 41.5, "resets_at": null}
+    ]
+  },
+  "source": {"host": "devbox", "agent": "claude-code"},  // as on items
+  "created_at": "2026-10-08T09:00:00.000Z",
+  "updated_at": "2026-10-08T09:41:10.000Z",
+  "expires_at": "2026-10-14T09:00:00.000Z"
+}</code></pre></div>
+<p>Window <code>name</code> is <code>[a-z0-9-]{1,20}</code>; the producers send <code>5h</code> (the session window) and <code>7d</code>
+(the weekly one), and clients show other names as they are. <code>used_pct</code> is a number from 0 to
+100 (kept to one decimal). <code>resets_at</code> is a timestamp or <code>null</code>; a client shows a window whose
+<code>resets_at</code> has passed as reset (0 %), since the numbers are only as fresh as the last write.</p>
+<h3 id="put-v1statuskey-sender"><code>PUT /v1/status/&lt;key&gt;</code> (sender) <a class="anchor" href="#put-v1statuskey-sender" aria-label="Link to this section">#</a></h3>
+<p>Sets the status <code>&lt;key&gt;</code> of the calling token (a key is per token: another token's <code>PUT</code> to the
+same key is a different record). The body is the record above without <code>id</code>, <code>key</code> or the
+times, plus a required <code>expires_at</code>:</p>
+<div class="table-wrap"><table class="doc-table">
+<thead><tr><th>Field</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td><code>type</code></td><td><code>usage</code> or <code>progress</code> (required)</td></tr>
+<tr><td><code>label</code></td><td>string &lt;= 60, one line; required and non-empty for <code>progress</code></td></tr>
+<tr><td><code>state</code></td><td><code>progress</code>: one of <code>working</code>, <code>waiting</code>, <code>idle</code>, <code>done</code>, <code>failed</code> (default <code>working</code>); ignored for <code>usage</code></td></tr>
+<tr><td><code>progress</code></td><td><code>progress</code>: integer 0-100 or <code>null</code>; ignored for <code>usage</code></td></tr>
+<tr><td><code>detail</code></td><td>string &lt;= 120, one line, optional</td></tr>
+<tr><td><code>usage</code></td><td><code>usage</code>: required, as above; ignored for <code>progress</code></td></tr>
+<tr><td><code>source</code></td><td>as on items, optional</td></tr>
+<tr><td><code>expires_at</code></td><td>required, in the future: at most now + 1 h for <code>progress</code>, now + 8 days for <code>usage</code></td></tr>
+</tbody>
+</table></div>
+<p>Text fields refuse control, bidi and line-separator characters like item text, and
+token-shaped text (<code>400 secret_in_text</code>, with <code>field</code>). <code>@</code> in <code>account</code> is refused (no emails).</p>
+<p>Response <code>200</code> with the stored record. A write to an existing key replaces it entirely.</p>
+<p>Limits: at most 20 live (unexpired) statuses per token and 64 per hub (<code>429 too_many_status</code>),
+and one write per key every 10 s (<code>429 too_fast</code>, with <code>Retry-After</code> and <code>retry_after</code>).
+Statuses never count toward the item volume guard or the item post rate limit.</p>
+<h3 id="delete-v1statuskey-sender"><code>DELETE /v1/status/&lt;key&gt;</code> (sender) <a class="anchor" href="#delete-v1statuskey-sender" aria-label="Link to this section">#</a></h3>
+<p>Clears the calling token's status <code>&lt;key&gt;</code>: <code>200 {"ok": true, "cleared": true}</code>, or
+<code>"cleared": false</code> when there was none (or it had expired). A clear is a write (it sets
+<code>expires_at</code> to now and replicates); it is never refused by <code>too_fast</code>.</p>
+<h3 id="get-v1status-reader"><code>GET /v1/status</code> (reader) <a class="anchor" href="#get-v1status-reader" aria-label="Link to this section">#</a></h3>
+<div class="code"><pre><code class="language-json">{"statuses": [ ...status records, newest updated_at first... ], "server_time": "2026-10-08T09:41:12.000Z"}</code></pre></div>
+<p>Every unexpired status on this hub, except those of a revoked token. The response carries an
+<code>ETag</code>; a request with that value in <code>If-None-Match</code> gets <code>304</code> with no body while nothing
+changed. A hub that predates statuses answers <code>404</code>; clients treat that as "no statuses".</p>
+<p>Expiry is computed, never written, as for items. Housekeeping deletes a status an hour after
+its <code>expires_at</code>; nothing is kept for history.</p>
 <h2 id="invites">Invites <a class="anchor" href="#invites" aria-label="Link to this section">#</a></h2>
 <p>An invite is a link that sets up one or more machines. Redeeming it mints a **new token per
 machine**, so one link with <code>uses: 5</code> can set up five servers, each with its own revocable
@@ -738,6 +807,7 @@ purge runs on the pre-migration backups (<code>hub.db.bak-N</code>).</p></li>
 <li><p>Hard-deletes items (tombstones by then) that were resolved or dismissed more than
 <code>retention_days</code> (default 30) ago, and items whose <code>expires_at</code> passed more than
 <code>retention_days</code> ago. Open <code>needs</code> items are never purged.</p></li>
+<li><p>Deletes <a href="#status-records-usage-meters">status records</a> an hour after their <code>expires_at</code>.</p></li>
 <li><p>Deletes peer outbox rows older than 7 days (anti-entropy covers anything they held).</p></li>
 <li><p>Deletes expired invites, and revoked ones 24 h after their last change. Used-up invites
 are kept until they expire.</p></li>
@@ -777,10 +847,20 @@ answerable one that repeats a label (from an older hub). <code>answer</code>,
 receiver's answer when <code>content_updated_at</code> matches). A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
 offered labels, one entry per question, one label for a single choice. Otherwise it is
-dropped with its <code>answered_at</code> and <code>answered_by</code> (the item stays). Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
+dropped with its <code>answered_at</code> and <code>answered_by</code> (the item stays).</p>
+<p><strong>Status records</strong> travel in their own <code>statuses</code> array, in pushes and in change pages: the
+public status record plus <code>token_id</code> and <code>updated_by</code>. The receiver checks each as a <code>PUT</code> body
+(text, usage, no secrets; a past <code>expires_at</code> is fine, since a clear is an expiry, and up to a
+day past the future limits for clock skew) and that its <code>id</code> is the one derived from its
+<code>token_id</code> and <code>key</code>, then applies it by last writer wins on <code>(updated_at, updated_by)</code> like an
+item. One it can't read is listed in <code>skipped</code> with <code>"kind": "status"</code> and dropped (statuses
+are short-lived: no quarantine). A hub that already holds 256 live statuses skips new ones.
+Hubs that predate statuses ignore the array, so a mixed mesh keeps working and their own
+clients just see no meters. Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
-<div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ]}</code></pre></div>
+<div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ],
+ "statuses": [ ...status records... ]}</code></pre></div>
 <p>Response <code>{"ok": true, "applied": &lt;n&gt;, "hub_id": "hub-b", "skipped": [...]}</code>; <code>409 self</code> if
 <code>from_hub</code> is the receiving hub's own id (the sender then stops using that peer).</p>
 <p><strong>Unreadable items are skipped, not the batch.</strong> An item record the receiver can't read (a
@@ -803,7 +883,7 @@ doesn't parse; against them the pusher halves the batch (without backing off) un
 refused record is alone, then skips it if it is an item and holds it (as above) if it is a
 token or invite, and goes back to full batches. Any other failure (a timeout, <code>5xx</code>, <code>413</code>) is
 retried with backoff as before.</p>
-<p>Every accepted write (create, upsert, resolve, patch, token add/revoke, merge) inserts one row
+<p>Every accepted write (create, upsert, resolve, patch, token add/revoke, merge, status set/clear) inserts one row
 per peer into a durable <code>outbox</code> table in the same SQLite transaction as the write. A worker
 thread per peer sends batches of up to 200 records (fewer when the body would pass 4 MiB), always the record's <em>current</em> version, and
 deletes the rows only after a 2xx (rows older than 7 days are dropped; anti-entropy covers them). On failure it backs off exponentially (1 s doubling to
@@ -815,7 +895,7 @@ Outbox rows survive restarts. The admin tool writes to the same outbox, so
 <h3 id="pull-anti-entropy-get-v1replicatechangesafterseqlimitn">Pull (anti-entropy): <code>GET /v1/replicate/changes?after=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> <a class="anchor" href="#pull-anti-entropy-get-v1replicatechangesafterseqlimitn" aria-label="Link to this section">#</a></h3>
 <p>Every stored version gets a per-hub sequence number. The response is</p>
 <div class="code"><pre><code class="language-json">{"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
- "items": [ ... ], "tokens": [ ... ]}</code></pre></div>
+ "items": [ ... ], "tokens": [ ... ], "statuses": [ ... ]}</code></pre></div>
 <p>Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
 paging while <code>more</code> is true. An item record in a page that the puller can't read is skipped
 (logged, counted and quarantined, like a skipped push) and the cursor still moves past it; a

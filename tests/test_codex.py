@@ -69,6 +69,7 @@ class CodexHookBase(unittest.TestCase):
                "NEEDS_YOU_BIN": self.cli, "FAKE_CLI_LOG": self.log, "NEEDS_YOU_AGENT_ALERTS": "1",
                "NEEDS_YOU_HOOK_PLATFORM": "linux"}
         env.update(extra)
+        env = {k: v for k, v in env.items() if v is not None}
         payload = {"session_id": "019a-codex-sess", "cwd": self.cwd, "model": "gpt-5-codex",
                    "permission_mode": "default", "transcript_path": None}
         payload.update(data)
@@ -284,8 +285,8 @@ def token_count(primary, secondary, limit_id="codex", resets=(None, None)):
                                         "credits": None, "plan_type": "plus"}}}
 
 
-class CodexUsage(CodexHookBase):
-    """The usage-limit card on Codex's Stop, from `token_count.rate_limits` in its session file."""
+class RolloutCase(CodexHookBase):
+    """A Codex session file with `token_count.rate_limits` events, and Codex's Stop."""
 
     def setUp(self):
         super().setUp()
@@ -299,10 +300,15 @@ class CodexUsage(CodexHookBase):
                 fh.write(json.dumps(e) + "\n")
 
     def stop(self, **env):
+        env.setdefault("NEEDS_YOU_USAGE_METER", "0")  # the card tests; CodexMeter has the meter
         self.run_hook("notify", {"hook_event_name": "Stop", "transcript_path": self.rollout}, **env)
 
     def usage_calls(self):
         return [c for c in self.calls() if any("codex-usage" in a for a in c)]
+
+
+class CodexUsage(RolloutCase):
+    """The usage-limit card on Codex's Stop, from `token_count.rate_limits` in its session file."""
 
     def test_off_by_default(self):
         self.write_rollout(token_count(99.0, 99.0))
@@ -398,6 +404,40 @@ class CodexUsage(CodexHookBase):
                       agent=None, NEEDS_YOU_USAGE_ALERT_PCT="50")
         time.sleep(0.5)
         self.assertEqual(self.usage_calls(), [])
+
+
+class CodexMeter(RolloutCase):
+    """The usage status behind the Mac's meters, on by default on Codex's Stop."""
+
+    def meter_calls(self):
+        return [c for c in self.calls() if c[:3] == ["-q", "status", "set"]]
+
+    def test_on_by_default_throttled_and_never_a_card(self):
+        self.write_rollout(token_count(51.0, 41.0))
+        self.stop(NEEDS_YOU_USAGE_METER=None, NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertTrue(wait_until(lambda: self.meter_calls()), self.calls())
+        argv = self.meter_calls()[0]
+        self.assertEqual(opt(argv, "--key"), "usage:codex")
+        self.assertEqual(opt(argv, "--provider"), "codex")
+        wins = [argv[i + 1] for i, a in enumerate(argv) if a == "--window"]
+        self.assertEqual([w.split("@")[0] for w in wins], ["5h=51", "7d=41"])
+        self.assertEqual(self.usage_calls(), [])  # no threshold: no card
+        self.stop(NEEDS_YOU_USAGE_METER=None, NEEDS_YOU_AGENT_TURN_CARDS="0")
+        time.sleep(0.3)
+        self.assertEqual(len(self.meter_calls()), 1)  # throttled
+
+    def test_off_and_reset_windows(self):
+        self.write_rollout(token_count(51.0, 41.0))
+        self.stop(NEEDS_YOU_AGENT_TURN_CARDS="0")
+        time.sleep(0.3)
+        self.assertEqual(self.meter_calls(), [])
+        self.write_rollout(token_count(90.0, 41.0, resets=(int(time.time()) - 60, None)))
+        self.stop(NEEDS_YOU_USAGE_METER=None, NEEDS_YOU_USAGE_ACCOUNT="team-2", NEEDS_YOU_AGENT_TURN_CARDS="0")
+        self.assertTrue(wait_until(lambda: self.meter_calls()), self.calls())
+        argv = self.meter_calls()[0]
+        self.assertEqual(opt(argv, "--key"), "usage:codex:team-2")
+        self.assertEqual(opt(argv, "--account"), "team-2")
+        self.assertIn("5h=0", argv)  # reset since Codex wrote it
 
 
 class CodexHooksJson(unittest.TestCase):

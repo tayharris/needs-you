@@ -594,6 +594,68 @@ class PeerInvites(HubCase):
         self.assertError(call("DELETE", "/v1/peers/" + fake["hub_id"], Env.owner), 404, "not_found")
 
 
+# -- status records ------------------------------------------------------------
+
+def status_body(pct: int = 51, expires_in: float = 600) -> Dict[str, Any]:
+    now = time.time()
+    return {"type": "usage", "label": "Claude",
+            "usage": {"provider": "claude", "account": Env.run,
+                      "windows": [{"name": "5h", "used_pct": pct, "resets_at": fmt_ts(now + 1800)},
+                                  {"name": "7d", "used_pct": 12}]},
+            "expires_at": fmt_ts(now + expires_in)}
+
+
+class Statuses(HubCase):
+    """Status records (ADR 0011): keyed per token, expiring, never items, ETag on the list."""
+
+    def mine(self) -> List[Dict[str, Any]]:
+        status, page = call("GET", "/v1/status", Env.reader)
+        self.assertEqual(status, 200, page)
+        return [s for s in page["statuses"] if s["key"].startswith(Env.run)]
+
+    def test_set_list_clear(self):
+        k = key("usage")
+        sender = mint("sender")
+        status, rec = call("PUT", "/v1/status/" + k, sender, status_body())
+        self.assertEqual(status, 200, rec)
+        for f in ("id", "key", "type", "label", "usage", "source", "created_at", "updated_at", "expires_at"):
+            self.assertIn(f, rec)
+        self.assertEqual(rec["usage"]["windows"][0]["used_pct"], 51)
+        self.assertEqual([s["id"] for s in self.mine()], [rec["id"]])
+        _, items = call("GET", "/v1/items?status=open", Env.reader)
+        self.assertNotIn(k, [i["key"] for i in items["items"]])  # never an item
+        self.assertError(call("PUT", "/v1/status/" + k, sender, status_body(60)), 429, "too_fast")
+        self.assertEqual(call("DELETE", "/v1/status/" + k, sender), (200, {"ok": True, "cleared": True}))
+        self.assertEqual(self.mine(), [])
+        self.assertEqual(call("DELETE", "/v1/status/" + k, sender)[1]["cleared"], False)
+
+    def test_roles_and_validation(self):
+        k = key("v")
+        self.assertError(call("PUT", "/v1/status/" + k, Env.reader, status_body()), 403, "forbidden")
+        self.assertError(call("GET", "/v1/status", Env.sender), 403, "forbidden")
+        sender = mint("sender")
+        bad = status_body()
+        bad["usage"]["account"] = "me@example.com"
+        self.assertError(call("PUT", "/v1/status/" + k, sender, bad), 400, "invalid", "usage.account")
+        self.assertError(call("PUT", "/v1/status/" + k, sender, dict(status_body(), expires_at=None)),
+                         400, "invalid", "expires_at")
+        self.assertError(call("PUT", "/v1/status/" + k, sender, dict(status_body(), label="nyp_" + "s" * 20)),
+                         400, "secret_in_text", "label")
+
+    def test_etag(self):
+        req = urllib.request.Request(Env.url + "/v1/status", headers={"Authorization": "Bearer " + Env.reader})
+        with OPENER.open(req, timeout=10) as resp:
+            tag = resp.headers.get("ETag")
+        self.assertTrue(tag)
+        req.add_header("If-None-Match", tag)
+        try:
+            with OPENER.open(req, timeout=10) as resp:
+                code = resp.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        self.assertEqual(code, 304)
+
+
 # -- replication (needs the peer secret) -------------------------------------------
 
 class Replication(HubCase):
@@ -623,7 +685,7 @@ class Replication(HubCase):
     def test_changes_feed_shape_and_auth(self):
         status, page = call("GET", "/v1/replicate/changes?after=0&limit=5", Env.peer_secret)
         self.assertEqual(status, 200)
-        for k in ("hub_id", "epoch", "max_seq", "next_after", "more", "items", "tokens", "invites"):
+        for k in ("hub_id", "epoch", "max_seq", "next_after", "more", "items", "tokens", "invites", "statuses"):
             self.assertIn(k, page)
         self.assertNotIn("peer", [i["role"] for i in page["invites"]])
         self.assertError(call("GET", "/v1/replicate/changes?after=0", "wrong-secret-0123456789"), 401, "unauthorized")
@@ -716,6 +778,21 @@ class CrossHub(HubCase):
         self.assertTrue(wait_until(answered), "the answer didn't replicate back")
         call("POST", "/v1/items/resolve", Env.sender, {"key": k}, url=Env.url_b)
         self.assertTrue(wait_until(lambda: item(a["id"])[1]["status"] == "resolved"), "resolve didn't replicate")
+
+    def test_statuses_reach_the_peer(self):
+        k = key("status-cross")
+        sender = mint("sender")
+        self.assertTrue(wait_until(lambda: call("GET", "/v1/health", sender, url=Env.url_b)[1].get("token")),
+                        "tokens didn't replicate")
+        status, rec = call("PUT", "/v1/status/" + k, sender, status_body(33))
+        self.assertEqual(status, 200, rec)
+
+        def seen() -> bool:
+            s, page = call("GET", "/v1/status", Env.reader, url=Env.url_b)
+            return s == 200 and rec["id"] in [x["id"] for x in page["statuses"]]
+        self.assertTrue(wait_until(seen), "the status didn't replicate")
+        call("DELETE", "/v1/status/" + k, sender)
+        self.assertTrue(wait_until(lambda: not seen()), "the clear didn't replicate")
 
 
 if __name__ == "__main__":

@@ -8,9 +8,12 @@ public actor DemoFeed: ItemFeed {
     private var items: [String: Item] = [:]
     private var injected = 0
     private var serial = 0
+    /// Usage meters for the demo and the screenshots (statusFixture).
+    private var statuses: [StatusRecord]
 
-    public init(items: [Item]? = nil, now: Date = Date()) {
+    public init(items: [Item]? = nil, statuses: [StatusRecord]? = nil, now: Date = Date()) {
         for item in items ?? DemoFeed.fixture(now: now) { self.items[item.id] = item }
+        self.statuses = statuses ?? DemoFeed.statusFixture(now: now)
     }
 
     /// Load a JSON fixture (a bare array or `{ "items": [...] }`, the hub's shape).
@@ -236,6 +239,36 @@ public actor DemoFeed: ItemFeed {
                 source: ItemSource(host: "ci", agent: "github-actions"),
                 createdAt: ago(400), expiresAt: now.addingTimeInterval(86_400)
             ),
+        ]
+    }
+}
+
+// MARK: - Statuses
+
+extension DemoFeed: StatusFeed {
+    public func fetchStatuses(etag: String?) async throws -> StatusFetch {
+        .fresh(statuses, etag: nil)
+    }
+
+    /// Claude and Codex usage as the producers report it: Claude's session past the warning
+    /// line, Codex calm. Example hosts only.
+    public static func statusFixture(now: Date = Date()) -> [StatusRecord] {
+        let hours = { (h: Double) in now.addingTimeInterval(h * 3600) }
+        return [
+            StatusRecord(id: "st_demo_claude", key: "usage:claude", label: "Claude",
+                         usage: StatusUsage(provider: "claude", windows: [
+                            UsageWindow(name: "5h", usedPct: 86, resetsAt: hours(1.6)),
+                            UsageWindow(name: "7d", usedPct: 41, resetsAt: hours(78)),
+                         ]),
+                         source: ItemSource(host: "devbox", agent: "claude-code"),
+                         updatedAt: now.addingTimeInterval(-90), expiresAt: hours(78)),
+            StatusRecord(id: "st_demo_codex", key: "usage:codex", label: "Codex",
+                         usage: StatusUsage(provider: "codex", windows: [
+                            UsageWindow(name: "5h", usedPct: 23, resetsAt: hours(3.2)),
+                            UsageWindow(name: "7d", usedPct: 58, resetsAt: hours(120)),
+                         ]),
+                         source: ItemSource(host: "build-box", agent: "codex"),
+                         updatedAt: now.addingTimeInterval(-600), expiresAt: hours(120)),
         ]
     }
 }
