@@ -109,7 +109,9 @@ A question is what an agent asked the person and the choices it offered, shown r
 false}]}'` (1-4 items, at most 8 options each; docs/API.md), inline or from a file (@PATH).
 Add `"answerable": true` (and `"expires_at"`) when you wait for the answer with
 `needs-you answer-wait`: the person's Mac then shows the options as buttons, and their click
-is the answer (labels from the options only, never free text).
+is the answer (labels from the options). Add `"allow_other": true` to a question item only
+when the agent also takes the person's own words for it: the Mac then offers "Other…", and
+the answer printed carries `"text"` (one line, as typed) for that question.
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
@@ -1776,7 +1778,9 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool,
             status, body = got
             if status == 200 and isinstance(body.get("answers"), list):
                 if question_id is None or body.get("question_id") == question_id:
-                    print(json.dumps(body, sort_keys=True))
+                    # The person's typed words ride in here: JSON with ensure_ascii escapes
+                    # every control and non-ASCII character, and say_clean makes sure.
+                    say_clean(json.dumps(body, sort_keys=True, ensure_ascii=True))
                     return 0
                 last_note = "the answer under %r is to another question" % key
             if status == 409:

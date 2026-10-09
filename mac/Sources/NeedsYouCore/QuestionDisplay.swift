@@ -32,10 +32,13 @@ public enum QuestionDisplay {
 
     /// The line above a question: "Database · choose one". Without a header: "Choose any"
     /// for a single question, "Question 2 · choose one" among several. A question without
-    /// options is answered in the agent: "Database · answer in the agent".
-    public static func heading(_ item: ItemQuestionItem, index: Int, count: Int) -> String {
+    /// options is answered in the agent: "Database · answer in the agent", or, when the card
+    /// can take typed words for it (`answering` and `allowOther`), "Name · type an answer".
+    public static func heading(_ item: ItemQuestionItem, index: Int, count: Int, answering: Bool = false) -> String {
         let header = oneLine(item.header)
-        let hint = item.options.isEmpty ? "answer in the agent" : (item.multiSelect ? "choose any" : "choose one")
+        let hint = item.options.isEmpty
+            ? (answering && item.allowOther ? "type an answer" : "answer in the agent")
+            : (item.multiSelect ? "choose any" : "choose one")
         if !header.isEmpty { return "\(header) · \(hint)" }
         if count > 1 { return "Question \(index + 1) · \(hint)" }
         return hint.prefix(1).uppercased() + hint.dropFirst()

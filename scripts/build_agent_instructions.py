@@ -43,7 +43,9 @@ REWRITES = [
     # Answering from the card through the hooks is Claude Code's (opencode's plugin answers
     # its own question tool without the agent's doing).
     (" A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card "
-     "in Claude Code, so prefer it over asking in plain text when there are a few clear choices.", ""),
+     "in Claude Code, including \"Other\" (the person's own words, typed on the Mac, reach you as the "
+     "answer like a typed \"Other\" in the terminal), so prefer it over asking in plain text when there "
+     "are a few clear choices.", ""),
 ]
 
 

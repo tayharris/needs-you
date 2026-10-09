@@ -46,8 +46,9 @@ public actor DemoFeed: ItemFeed {
         guard answer.answers.count == q.items.count else { return .refused(code: "invalid") }
         for (a, qi) in zip(answer.answers, q.items) {
             let labels = Set(qi.options.map(\.label))
-            guard !a.selected.isEmpty, a.selected.allSatisfy(labels.contains),
-                  qi.multiSelect || a.selected.count == 1 else { return .refused(code: "invalid") }
+            let given = a.selected.count + (a.text == nil ? 0 : 1)
+            guard given > 0, a.selected.allSatisfy(labels.contains), qi.allowOther || a.text == nil,
+                  qi.multiSelect || given == 1 else { return .refused(code: "invalid") }
         }
         item.answer = answer.answers
         item.answeredAt = Date()
@@ -229,7 +230,7 @@ public actor DemoFeed: ItemFeed {
                     ItemQuestionItem(header: "Branch", text: "Which branch should the release come from?", options: [
                         ItemQuestionOption(label: "main", detail: "Everything merged today"),
                         ItemQuestionOption(label: "release/1.4", detail: "Only the fixes"),
-                    ]),
+                    ], allowOther: true),
                 ], answerable: true),
                 source: ItemSource(host: "devbox", agent: "opencode", project: "acme-api"),
                 createdAt: ago(2), contentUpdatedAtRaw: HubJSON.formatDate(ago(2))

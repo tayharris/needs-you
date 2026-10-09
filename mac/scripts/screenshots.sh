@@ -11,10 +11,11 @@
 #
 # Builds a throwaway copy and runs it three times with the snapshot tour (NEEDS_YOU_SNAPSHOT_DIR,
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
-# example items below (among them an agent's question: 6e-6g), and once with one agent card
-# (preview-agent.png). Demo mode also shows example usage meters (DemoFeed.statusFixture):
-# 15-usage-panel.png, 16-usage-pill.png and settings-usage*.png. Every PNG is drawn with
-# cacheDisplay, so no Screen Recording permission is needed. Isolated the way scripts/upgrade-test.sh is:
+# example items below (among them agents' questions: 6e-6l, 6k the answer window), and once
+# with one agent card (preview-agent.png). Demo mode also shows example usage meters
+# (DemoFeed.statusFixture): 15-usage-panel.png, 16-usage-pill.png and settings-usage*.png.
+# Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
+# Isolated the way scripts/upgrade-test.sh is:
 #
 #   - bundle id app.needsyou.mac.screenshots, no needsyou:// scheme, built into a temp dir
 #   - NEEDS_YOU_DEFAULTS_SUITE: a throwaway defaults suite, deleted afterwards
@@ -132,6 +133,20 @@ items = [
          content_updated_at=ago(2),
          links=[{"label": "Terminal", "url": "needsyou://terminal/focus?app=wezterm&pane=1"}],
          source={"host": "devbox", "agent": "opencode", "project": "acme-web"}),
+    # Claude Code waits for the card's answer (ADR 0009 B3) and takes typed words: "Other…" (6j-6l).
+    item(9, 1, key="claude-code:devbox:acme-db",
+         title="Claude asks \u201cWhat should the new accounts table be called?\u201d: acme-db",
+         body="**Table** \u00b7 choose one\nWhat should the new accounts table be called?\n"
+              "- accounts \u2014 Short, matches the model\n- user_accounts \u2014 Matches the old schema\n\n"
+              "Pick here or answer in Claude.",
+         question={"id": "claude-0123456789abcdef01234567", "answerable": True, "items": [
+             {"header": "Table", "text": "What should the new accounts table be called?", "multi_select": False,
+              "allow_other": True,
+              "options": [{"label": "accounts", "description": "Short, matches the model"},
+                          {"label": "user_accounts", "description": "Matches the old schema"}]}]},
+         content_updated_at=ago(1),
+         links=[{"label": "Terminal", "url": "needsyou://terminal/focus?app=wezterm&pane=2"}],
+         source={"host": "devbox", "agent": "claude-code", "project": "acme-db"}),
     item(6, 25, key="ci:nightly", kind="done", title="Nightly e2e: 214 passed, 0 failed",
          source={"host": "ci", "agent": "github-actions"},
          expires_at=(now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")),

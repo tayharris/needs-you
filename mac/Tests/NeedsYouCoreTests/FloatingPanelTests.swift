@@ -13,7 +13,28 @@ final class FloatingPanelTests: XCTestCase {
         ("testPanelNeverTakesFocus", testPanelNeverTakesFocus),
         ("testPanelJoinsAllSpacesAndFullScreen", testPanelJoinsAllSpacesAndFullScreen),
         ("testEdgeGlowNeverTakesFocusAndIsClickThrough", testEdgeGlowNeverTakesFocusAndIsClickThrough),
+        ("testAnswerWindowIsSeparateAndThePanelStillNeverTakesFocus",
+         testAnswerWindowIsSeparateAndThePanelStillNeverTakesFocus),
     ]
+
+    /// Typed answers ("Other…") go in their own window, opened by an explicit click: it may
+    /// become key, but it is an ordinary titled window, not the panel, and the panel's rule
+    /// doesn't change because the window exists.
+    func testAnswerWindowIsSeparateAndThePanelStillNeverTakesFocus() {
+        _ = NSApplication.shared
+        let answer = AnswerWindow()
+        XCTAssertTrue(answer.canBecomeKey)
+        XCTAssertFalse((answer as NSWindow) is FloatingPanel)
+        XCTAssertFalse(answer.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(answer.styleMask.contains(.titled))
+        XCTAssertTrue(answer.styleMask.contains(.closable))
+        XCTAssertFalse(answer.isReleasedWhenClosed)
+        let panel = FloatingPanel()
+        XCTAssertFalse(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        panel.makeKey()
+        XCTAssertFalse(panel.isKeyWindow)
+    }
 
     func testEdgeGlowNeverTakesFocusAndIsClickThrough() {
         _ = NSApplication.shared

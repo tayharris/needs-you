@@ -122,6 +122,36 @@ class AskMode(unittest.TestCase):
         self.assertEqual(self.waits(), [["answer-wait", "--key", opt(add, "--key"), "--timeout", "600"]])
         self.assertEqual(self.marker()["kind"], "permission")  # Notification permission_prompt keeps it
 
+    def test_other_is_offered_and_the_typed_words_are_claudes_answer(self):
+        # Claude's dialog always takes "Other" (the person's own words), so the card does too.
+        typed = json.dumps({"id": "01ITEM", "key": "k", "status": "open", "question_id": "{QID}",
+                            "answers": [{"selected": [], "text": "MySQL, the team knows it"},
+                                        {"selected": ["Export", "Auth"], "text": "SSO via sk-ant-not-a-key"}],
+                            "answered_at": "2026-10-08T10:00:00.000Z", "answered_by": "mac"})
+        out = self.ask(ans=typed)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"], {
+            "Which database should we use?": "MySQL, the team knows it",  # in place of a label
+            "Which features?": "Auth, Export, SSO via sk-ant-not-a-key"})  # labels, then the words, as typed
+        q = posted_item(self.adds()[-1])["question"]
+        self.assertEqual([it.get("allow_other") for it in q["items"]], [True, True])
+
+    def test_typed_words_that_dont_fit_answer_nothing(self):
+        def typed(*entries):
+            return json.dumps({"question_id": "{QID}", "answers": list(entries)})
+        ok = {"selected": ["Auth"]}
+        bad = [
+            typed({"selected": ["SQLite"], "text": "and MySQL"}, ok),   # a label and words for a single choice
+            typed({"selected": [], "text": "   "}, ok),                  # blank
+            typed({"selected": [], "text": "two\nlines"}, ok),
+            typed({"selected": [], "text": "a\u202eb"}, ok),
+            typed({"selected": [], "text": "x" * 1001}, ok),
+            typed({"selected": [], "text": 5}, ok),
+            typed({"selected": []}, ok),
+        ]
+        for a in bad:
+            with self.subTest(answer=a[:80]):
+                self.assertEqual(self.ask(ans=a), "")
+
     def test_each_question_gets_its_own_id(self):
         self.ask(ans=answer(["SQLite"], ["Auth"]))
         self.ask(ans=answer(["SQLite"], ["Auth"]))
@@ -387,6 +417,20 @@ class EndToEnd(HubTestCase):
         self.assertEqual((proc.returncode, err), (0, ""))
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"],
                          {"Which database should we use?": "Postgres", "Which features?": "Auth, Search"})
+
+    def test_typed_words_answer_claude(self):
+        proc = self.start_ask()
+        self.assertTrue(wait_until(self.waiting, timeout=15))
+        it = self.item()
+        self.assertTrue(all(q.get("allow_other") for q in it["question"]["items"]))
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % it["id"], self.reader, {
+            "question_id": it["question"]["id"], "content_updated_at": it["content_updated_at"],
+            "answers": [{"selected": [], "text": "DuckDB for now"}, {"selected": ["Auth"], "text": "Audit log"}]})
+        self.assertEqual(st, 200, body)
+        out, err = proc.communicate(timeout=30)
+        self.assertEqual((proc.returncode, err), (0, ""))
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"],
+                         {"Which database should we use?": "DuckDB for now", "Which features?": "Auth, Audit log"})
 
     def test_a_rate_limited_hub_never_fails_the_hook(self):
         # ADR 0010: past the post rate the CLI queues the card (exit 0) and the hook stays
