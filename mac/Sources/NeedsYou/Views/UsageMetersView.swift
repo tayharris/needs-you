@@ -50,7 +50,7 @@ enum PillMeterMetrics {
         ceil(("100%" as NSString).size(withAttributes: [.font: percentFont(size)]).width)
     }
 
-    static let percentSpacing: CGFloat = 3
+    static let percentSpacing: CGFloat = 4
     static let percentLeading: CGFloat = 5
 
     /// What `.percent` adds to the pill's width: a slot per meter, fixed.
@@ -187,15 +187,18 @@ struct PillUsagePercent: View {
     let size: CGFloat
 
     var body: some View {
+        // Side by side at their own widths, centred in a slot wide enough for "100% 100%":
+        // the pill keeps its width as the numbers change.
+        let n = CGFloat(bars.count)
         HStack(spacing: PillMeterMetrics.percentSpacing) {
             ForEach(bars) { bar in
                 Text(verbatim: bar.pctText)
                     .font(Font(PillMeterMetrics.percentFont(size)))
                     .foregroundStyle(bar.level == .normal ? Theme.text.opacity(0.75) : bar.level.color)
                     .lineLimit(1)
-                    .frame(width: PillMeterMetrics.percentSlot(size), alignment: .leading)
             }
         }
+        .frame(width: n * PillMeterMetrics.percentSlot(size) + max(0, n - 1) * PillMeterMetrics.percentSpacing)
         .padding(.leading, PillMeterMetrics.percentLeading)
         .fixedSize()
         .allowsHitTesting(false)
