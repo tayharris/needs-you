@@ -136,6 +136,21 @@ public enum AnswerPolicy {
         return .ok(text)
     }
 
+    /// The answer window's title: who asks, and on which machine ("Answer Claude on devbox ·
+    /// acme-web"). Each part is the sender's own text, cleaned to one short line.
+    public static func windowTitle(_ item: Item) -> String {
+        func part(_ s: String?) -> String? {
+            let c = OrcaWorktrees.clean(s ?? "", limit: 40)
+            return c.isEmpty ? nil : c
+        }
+        return "Answer \(part(item.source?.agent) ?? "the agent")"
+            + (part(item.source?.host).map { " on \($0)" } ?? "")
+            + (part(item.source?.project).map { " \u{00B7} \($0)" } ?? "")
+    }
+
+    /// Under the answer window's field, always: the words go to an agent, as typed.
+    public static let windowWarning = "Never type a password or token here: the agent gets these words as typed."
+
     /// The button that opens the answer window for a question: "Other…" next to options,
     /// "Answer…" for a question without them. nil when it takes no typed words.
     public static func otherTitle(_ q: ItemQuestionItem) -> String? {
