@@ -129,6 +129,9 @@
 #                             limit is this full (the same settings and card as
 #                             needs-you-usage for Claude), read from the newest
 #                             token_count rate_limits in the session file. Off unless set
+#   NEEDS_YOU_USAGE_METER     Codex: 0 = don't send the usage status behind the Mac's
+#                             meters (default: on Stop, `needs-you status set` with both
+#                             percentages and reset times, when they changed and every 5 min)
 #   NEEDS_YOU_BIN             path to the needs-you CLI
 #   NEEDS_YOU_HOOK_LOG        file to append debug lines to
 
@@ -290,7 +293,7 @@ for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK
            NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
            NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS NEEDS_YOU_ANSWER_TIMEOUT \
            NEEDS_YOU_USAGE_ALERT_PCT NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT NEEDS_YOU_USAGE_ACCOUNT \
-           NEEDS_YOU_TURN_TEXT; do
+           NEEDS_YOU_USAGE_METER NEEDS_YOU_TURN_TEXT; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -2192,6 +2195,49 @@ def context():
 # numbers are read; no credentials, no network but the CLI's post.
 USAGE_WINDOWS = (("primary", "5h", "5-hour", 5.0), ("secondary", "7d", "weekly", 24.0))
 USAGE_STEP = 5  # re-post only when the percentage moved this many points
+METER_MIN_SECONDS = 15  # the usage status (the Mac's meter): a change at most this often
+METER_REFRESH_SECONDS = 300  # and unchanged numbers this often
+
+
+def codex_meter(seen, account, now):
+    """The usage status behind the Mac's Codex meters (`needs-you status set`, never a card),
+    throttled by a small state file. A window that has reset since Codex wrote it shows 0."""
+    path = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                        "needs-you", "usage", "codex%s.meter.json" % ("-" + account if account else ""))
+    wins = []
+    for _, short, _, _ in USAGE_WINDOWS:
+        if short in seen:
+            w = seen[short]
+            live = w["resets_at"] > now
+            wins.append("%s=%d%s" % (short, w["pct"] if live or not w["resets_at"] else 0,
+                                     "@%d" % w["resets_at"] if live else ""))
+    if not wins:
+        return
+    sig = ",".join(wins)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            prior = json.load(fh)
+        age = now - float(prior.get("sent") or 0)
+    except Exception:
+        prior, age = {}, now
+    if age < METER_MIN_SECONDS or (prior.get("sig") == sig and age < METER_REFRESH_SECONDS):
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"sent": now, "sig": sig}, fh)
+    os.replace(tmp, path)
+    args = [os.environ["NY_CLI"], "-q", "status", "set", "--key", "usage:codex" + (":" + account if account else ""),
+            "--provider", "codex", "--label", "Codex", "--agent", AGENT_ID]
+    if account:
+        args += ["--account", account]
+    for w in wins:
+        args += ["--window", w]
+    try:
+        subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=15)
+    except Exception:
+        pass
 
 
 def codex_rate_limits(path):
@@ -2272,11 +2318,16 @@ def codex_usage():
         state = state if isinstance(state, dict) else {}
     except (OSError, ValueError):
         state = {}
-    if not five and not weekly and not state:
+    meter = (os.environ.get("NEEDS_YOU_USAGE_METER") or "").strip().lower() not in ("0", "off", "false", "no")
+    if not five and not weekly and not state and not meter:
         return 0
     rl = codex_rate_limits(field("transcript_path"))
     seen = usage_windows(rl) if rl else {}
     now = time.time()
+    if meter and seen:
+        codex_meter(seen, account, now)
+    if not five and not weekly and not state:
+        return 0
     changed = False
     for _, short, label, fallback_h in USAGE_WINDOWS:
         key = "agent:%s:codex-usage%s:%s" % (host, ":" + account if account else "", short)
@@ -2480,12 +2531,15 @@ case "$mode" in
     # as notificationType) and Kimi (Stop).
     ntype=$(json_str notification_type)
     [ -n "$ntype" ] || ntype=$(json_str notificationType)
-    # Codex's turn ended: the usage-limit card (off unless NEEDS_YOU_USAGE_ALERT_PCT or
-    # NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT is set; with neither, python starts only to clear a card
-    # it posted before). Before the turn card, which may be skipped below.
+    # Codex's turn ended: the usage meter status (on unless NEEDS_YOU_USAGE_METER=0) and the
+    # usage-limit card (off unless NEEDS_YOU_USAGE_ALERT_PCT or NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT
+    # is set; with neither and the meter off, python starts only to clear a card it posted
+    # before). Before the turn card, which may be skipped below.
     if [ "$agent" = codex ] && [ "$(json_str hook_event_name)" = Stop ]; then
       usage_glob=("${XDG_STATE_HOME:-$HOME/.local/state}"/needs-you/usage/codex*.json)
-      if [ -n "$NEEDS_YOU_USAGE_ALERT_PCT$NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT" ] || [ -f "${usage_glob[0]}" ]; then
+      case "${NEEDS_YOU_USAGE_METER:-1}" in 0|off|false|no|OFF|False|FALSE|NO) meter=0 ;; *) meter=1 ;; esac
+      if [ "$meter" = 1 ] || [ -n "$NEEDS_YOU_USAGE_ALERT_PCT$NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT" ] \
+          || [ -f "${usage_glob[0]}" ]; then
         run_py codex_usage >/dev/null
         log "codex usage $host -> $?"
       fi

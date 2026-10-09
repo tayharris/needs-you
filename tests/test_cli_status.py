@@ -1,11 +1,18 @@
 """`needs-you status set/clear` (ADR 0011): straight to the hub, never queued."""
 from __future__ import annotations
 
+import calendar
 import json
 import time
 
-from support import garbage_server, request
+import os
+import subprocess
+import sys
+
+from support import CLI, ROOT, garbage_server, request, wait_until
 from test_cli import CliTestCase
+
+USAGE = os.path.join(ROOT, "integrations", "claude-code", "needs-you-usage")
 
 
 class CliStatus(CliTestCase):
@@ -31,7 +38,7 @@ class CliStatus(CliTestCase):
             {"name": "7d", "used_pct": 41.5, "resets_at": None}])
         self.assertEqual(st["source"], {"host": "testbox", "agent": "claude-code"})
         # expiry defaults to the latest reset
-        exp = time.mktime(time.strptime(st["expires_at"][:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+        exp = calendar.timegm(time.strptime(st["expires_at"][:19], "%Y-%m-%dT%H:%M:%S"))
         self.assertAlmostEqual(exp, resets, delta=5)
         r = self.run_cli("status", "clear", "--key", "usage:claude", urls=[self.hub.url], token=self.sender)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -89,6 +96,24 @@ class CliStatus(CliTestCase):
                          "--window", "5h=5", urls=[self.hub.url], token=self.sender)
         self.assertEqual(r.returncode, 2)
         self.assertIn("email", r.stderr)
+
+
+    def test_the_claude_status_line_helper_reaches_the_hub(self):
+        now = int(time.time())
+        data = {"rate_limits": {"five_hour": {"used_percentage": 37.2, "resets_at": now + 3600},
+                                "seven_day": {"used_percentage": 12, "resets_at": now + 86400}}}
+        env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_BIN": CLI,
+               "NEEDS_YOU_URL": self.hub.url, "NEEDS_YOU_TOKEN": self.sender, "NEEDS_YOU_HOST": "testbox"}
+        r = subprocess.run([sys.executable, USAGE, "--print"], input=json.dumps(data), env=env,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "5h 37% · 7d 12%\n")
+        self.assertTrue(wait_until(lambda: self.statuses(), timeout=15))
+        (st,) = self.statuses()
+        self.assertEqual((st["key"], st["usage"]["provider"]), ("usage:claude", "claude"))
+        self.assertEqual([w["used_pct"] for w in st["usage"]["windows"]], [37, 12])
+        _, body = request("GET", self.hub.url + "/v1/items", self.reader)
+        self.assertEqual(body["items"], [])  # a meter, never a card
 
 
 if __name__ == "__main__":
