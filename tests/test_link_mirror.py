@@ -12,6 +12,8 @@ from support import ROOT, hubmod
 
 LINK_POLICY = os.path.join(ROOT, "mac", "Sources", "NeedsYouCore", "LinkPolicy.swift")
 CASES = os.path.join(ROOT, "tests", "fixtures", "link_cases.json")
+APP_ACTIVATION = os.path.join(ROOT, "mac", "Sources", "NeedsYouCore", "AppActivation.swift")
+HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
 
 
 def swift_array(name):
@@ -69,6 +71,28 @@ class LinkMirrorTests(unittest.TestCase):
 
     def test_app_actions_match(self):
         self.assertEqual(swift_array("appActionPaths"), list(self.hub.APP_LINK_PATHS))
+
+    def test_activate_allow_list_matches_the_hook(self):
+        """needsyou://app/activate: the hook writes only bundle ids the Mac app will bring
+        forward (AppActivation.allowedApps), under the same button names."""
+        with open(APP_ACTIVATION, encoding="utf-8") as fh:
+            src = fh.read()
+        m = re.search(r"static let allowedApps\s*:[^=]*=\s*\[(.*?)\n\s*\]", src, re.S)
+        self.assertTrue(m)
+        swift = dict(re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', m.group(1)))
+        with open(HOOK, encoding="utf-8") as fh:
+            hook_src = fh.read()
+        hook = {}
+        for name in ("TERMINAL_APPS", "EDITOR_APPS"):
+            m = re.search(r"^%s = \{(.*?)^\}" % name, hook_src, re.S | re.M)
+            self.assertTrue(m, name)
+            hook.update(re.findall(r'"([^"]+)":\s*"([^"]+)"', m.group(1)))
+        self.assertEqual(hook, swift)
+        self.assertGreater(len(swift), 10)
+        self.assertNotIn("app.needsyou.mac", swift)
+        for bid in swift:
+            self.assertRegex(bid, r"^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$")
+            self.assertTrue(self.hub.link_allowed("needsyou://app/activate?bundle=" + bid))
 
 
 if __name__ == "__main__":

@@ -750,57 +750,162 @@ def tmux_host():
     return ""
 
 
-def terminal_link():
-    """The Mac terminal tab this session runs in, or ""."""
+# needsyou://app/activate?bundle=<id> (docs/API.md): bring the app forward when the session's
+# app is known but no window jump exists for it. The Mac app opens only these bundle ids
+# (AppActivation.allowedApps; tests/test_link_mirror.py compares the two lists).
+TERMINAL_APPS = {
+    "com.apple.Terminal": "Terminal", "com.googlecode.iterm2": "iTerm2",
+    "com.github.wez.wezterm": "WezTerm", "com.mitchellh.ghostty": "Ghostty",
+    "net.kovidgoyal.kitty": "kitty", "org.alacritty": "Alacritty", "dev.warp.Warp-Stable": "Warp",
+    "co.zeit.hyper": "Hyper", "org.tabby": "Tabby",
+}
+EDITOR_APPS = {
+    "com.microsoft.VSCode": "VS Code", "com.microsoft.VSCodeInsiders": "VS Code Insiders",
+    "com.todesktop.230313mzl4w4u92": "Cursor", "com.exafunction.windsurf": "Windsurf",
+    "com.vscodium": "VSCodium", "dev.zed.Zed": "Zed",
+    "com.jetbrains.intellij": "IntelliJ IDEA", "com.jetbrains.intellij.ce": "IntelliJ IDEA CE",
+    "com.jetbrains.pycharm": "PyCharm", "com.jetbrains.pycharm.ce": "PyCharm CE",
+    "com.jetbrains.goland": "GoLand", "com.jetbrains.WebStorm": "WebStorm",
+    "com.jetbrains.CLion": "CLion", "com.jetbrains.rider": "Rider",
+    "com.jetbrains.rubymine": "RubyMine", "com.jetbrains.PhpStorm": "PhpStorm",
+    "com.google.android.studio": "Android Studio",
+}
+ACTIVATE_APPS = dict(TERMINAL_APPS, **EDITOR_APPS)
+# Editors whose folder link the allow-list takes; any other editor is brought forward instead.
+EDITOR_LINK_SCHEMES = {"com.microsoft.VSCode": "vscode", "com.todesktop.230313mzl4w4u92": "cursor"}
+CURSOR_BUNDLE = "com.todesktop.230313mzl4w4u92"
+KITTY_BUNDLE = "net.kovidgoyal.kitty"
+
+
+def activate_link(bundle):
+    """The "go there" link that brings an allow-listed app forward, or ""."""
+    name = ACTIVATE_APPS.get(bundle)
+    return "%s=needsyou://app/activate?bundle=%s" % (name, bundle) if name else ""
+
+
+def on_the_mac():
+    platform = os.environ.get("NEEDS_YOU_HOOK_PLATFORM") or sys.platform
+    return platform == "darwin" and not os.environ.get("SSH_CONNECTION")
+
+
+def ide_host(bundle):
+    """(name, scheme) of the editor the session runs in, or None. scheme is "vscode" or
+    "cursor" when that editor's folder link works, "" for one that is only brought forward."""
     env = os.environ
-    platform = env.get("NEEDS_YOU_HOOK_PLATFORM") or sys.platform
-    if env.get("SSH_CONNECTION") or platform != "darwin":
-        # Remote: only the Mac can name its tab (LC_NEEDS_YOU_TERM, forwarded by ssh).
-        raw = env.get("LC_NEEDS_YOU_TERM", "")
-        if not raw or len(raw) > 300:
-            return ""
-        try:
-            pairs = parse_qsl(raw, keep_blank_values=True, strict_parsing=True)
-        except ValueError:
-            return ""
-        params = dict(pairs)
-        return terminal_url(params) if len(params) == len(pairs) else ""
+    if AGENT == "cursor" or bundle == CURSOR_BUNDLE:
+        return ("Cursor", "cursor")
+    if bundle in EDITOR_APPS:
+        return (EDITOR_APPS[bundle], EDITOR_LINK_SCHEMES.get(bundle, ""))
+    if env.get("CURSOR_TRACE_ID"):
+        return ("Cursor", "cursor")
+    if env.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode" or env.get("TERM_PROGRAM") == "vscode":
+        return ("VS Code", "vscode")
+    return None
+
+
+def remote_terminal_url():
+    """Off the Mac: the Mac tab LC_NEEDS_YOU_TERM names (forwarded by ssh), or ""."""
+    raw = os.environ.get("LC_NEEDS_YOU_TERM", "")
+    if not raw or len(raw) > 300:
+        return ""
+    try:
+        pairs = parse_qsl(raw, keep_blank_values=True, strict_parsing=True)
+    except ValueError:
+        return ""
+    params = dict(pairs)
+    return terminal_url(params) if len(params) == len(pairs) else ""
+
+
+def local_terminal_link(bundle):
+    """On the Mac: (detected, link) for the terminal the session runs in, first match wins.
+    `detected` is True when a terminal was recognised even if its jump can't be built."""
+    env = os.environ
     term = env.get("TERM_PROGRAM", "")
-    if term == "vscode" or env.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode":
-        return ""  # the VS Code links cover it
-    pane = env.get("TMUX_PANE", "")
-    if env.get("TMUX") and re.fullmatch(r"%[0-9]{1,6}", pane):
-        params = {"app": "tmux", "pane": pane[1:]}
-        host = tmux_host()
-        if host:
-            params["host"] = host
-        return terminal_url(params)
-    if re.fullmatch(r"[0-9]{1,6}", env.get("WEZTERM_PANE", "")):
-        return terminal_url({"app": "wezterm", "pane": env["WEZTERM_PANE"]})
-    iterm = env.get("ITERM_SESSION_ID", "")
-    if iterm:
-        return terminal_url({"app": "iterm", "session": iterm.split(":", 1)[-1]})
-    if term == "Apple_Terminal":
-        return terminal_url({"app": "terminal", "tty": claude_tty()})
-    if term == "ghostty":
-        return terminal_url({"app": "ghostty"})
-    return ""
+    url = ""
+    if env.get("TMUX_PANE"):
+        pane = env["TMUX_PANE"]
+        if env.get("TMUX") and re.fullmatch(r"%[0-9]{1,6}", pane):
+            params = {"app": "tmux", "pane": pane[1:]}
+            host = tmux_host()
+            if host:
+                params["host"] = host
+            url = terminal_url(params)
+    elif env.get("WEZTERM_PANE"):
+        if re.fullmatch(r"[0-9]{1,6}", env["WEZTERM_PANE"]):
+            url = terminal_url({"app": "wezterm", "pane": env["WEZTERM_PANE"]})
+    elif env.get("ITERM_SESSION_ID"):
+        url = terminal_url({"app": "iterm", "session": env["ITERM_SESSION_ID"].split(":", 1)[-1]})
+    elif env.get("KITTY_WINDOW_ID"):
+        return True, activate_link(KITTY_BUNDLE)  # no window jump for kitty yet
+    elif term == "ghostty" or env.get("GHOSTTY_RESOURCES_DIR"):
+        url = terminal_url({"app": "ghostty"})
+    elif term == "Apple_Terminal":
+        url = terminal_url({"app": "terminal", "tty": claude_tty()})
+    elif bundle in TERMINAL_APPS:
+        return True, activate_link(bundle)  # any other known terminal: bring it forward
+    else:
+        return False, ""
+    return True, "Terminal=" + url if url else ""
+
+
+def detect_host():
+    """Where the session runs, detected once, first match wins: Orca, an editor, tmux,
+    WezTerm, iTerm2, kitty, Ghostty, Terminal, then any other allow-listed app named by
+    __CFBundleIdentifier. Returns (ide, go): `ide` is ide_host()'s value when the host is an
+    editor, else None; `go` is the card's one "go there" link ("Label=url") or ""."""
+    env = os.environ
+    mac = on_the_mac()
+    bundle = env.get("__CFBundleIdentifier", "") if mac else ""
+    if handle:
+        # The Mac app's Orca button runs the Orca switch (it validates both values again).
+        if not re.match(r"^term_[0-9a-f-]{8,64}$", handle):
+            return None, ""
+        url = "needsyou://orca/terminal?handle=" + handle
+        orca_env = env.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
+        if re.match(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$", orca_env):
+            url += "&environment=" + quote(orca_env, safe="")
+        return None, "Orca=" + url
+    ide = ide_host(bundle)
+    if ide:
+        # A VS Code-family editor gets its folder link (make_links); any other comes forward.
+        return ide, "" if ide[1] else activate_link(bundle)
+    if not mac:
+        # Remote: only the Mac can name its tab. The remote's own tmux or WezTerm panes
+        # aren't on the Mac, so they don't count as a host here.
+        url = remote_terminal_url()
+        return None, "Terminal=" + url if url else ""
+    detected, go = local_terminal_link(bundle)
+    if detected and not go and bundle in TERMINAL_APPS:
+        go = activate_link(bundle)  # a jump that can't be built (no tty): the app at least
+    return None, go
+
+
+EDITOR_FALLBACK = [[]]  # the editor links a go-there button replaced, for a hub that refuses it
+
+
+def editor_links(ide):
+    """The deepest editor links this machine can name, for `ide` (VS Code when None)."""
+    links = []
+    editor, scheme = ide if ide and ide[1] else ("VS Code", "vscode")
+    # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
+    if (AGENT == "claude" and os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"
+            and re.match(r"^[A-Za-z0-9-]{8,64}$", session)):
+        links.append("Claude=%s://anthropic.claude-code/open?session=%s" % (scheme, session))
+    if not cwd.startswith("/"):
+        return links
+    alias = os.environ.get("NEEDS_YOU_SSH_ALIAS", "")
+    if on_the_mac():
+        links.append("%s=%s://file%s" % (editor, scheme, quote(cwd)))  # this is the Mac: the path exists there
+    elif SAFE_NAME.match(alias):
+        links.append("%s=%s://vscode-remote/ssh-remote+%s%s" % (editor, scheme, alias, quote(cwd)))
+    return links
 
 
 def make_links():
-    links = []
-    orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
-    # The Mac app's Orca button runs the Orca switch (it validates both values again).
-    if handle and re.match(r"^term_[0-9a-f-]{8,64}$", handle):
-        url = "needsyou://orca/terminal?handle=" + handle
-        if re.match(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$", orca_env):
-            url += "&environment=" + quote(orca_env, safe="")
-        links.append("Orca=" + url)
-    elif not handle:
-        # Otherwise the Mac terminal tab (the app validates it again before it runs anything).
-        term = terminal_link()
-        if term:
-            links.append("Terminal=" + term)
+    """One primary "go there" button (detect_host), then a NEEDS_YOU_AGENT_LINK template's
+    link, or the editor links when the host is the editor or no button could be built."""
+    ide, go = detect_host()
+    links = [go] if go else []
     tmpl = os.environ.get("NEEDS_YOU_AGENT_LINK", "").strip()
     if tmpl.lower() == "none":
         return links
@@ -813,24 +918,16 @@ def make_links():
         if label and url and not (needs_handle and not handle):
             links.append("%s=%s" % (label, url))
         return links
-    # No template: the deepest editor links this machine can name. Orca is where the session
-    # lives, so it gets the Orca button only (an editor button beside it reads as the way back).
+    # Orca is where the session lives, so it gets the Orca button only (an editor button
+    # beside it reads as the way back).
     if handle:
         return links
-    # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
-    if (AGENT == "claude" and os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"
-            and re.match(r"^[A-Za-z0-9-]{8,64}$", session)):
-        links.append("Claude=vscode://anthropic.claude-code/open?session=" + session)
-    if not cwd.startswith("/"):
+    if go:
+        # A terminal (or an editor without a folder link) is the host: its button is the only
+        # one. A hub too old for that button gets the editor links instead (post()).
+        EDITOR_FALLBACK[0] = editor_links(ide)
         return links
-    platform = os.environ.get("NEEDS_YOU_HOOK_PLATFORM") or sys.platform
-    alias = os.environ.get("NEEDS_YOU_SSH_ALIAS", "")
-    editor, scheme = ("Cursor", "cursor") if AGENT == "cursor" else ("VS Code", "vscode")
-    if platform == "darwin" and not os.environ.get("SSH_CONNECTION"):
-        links.append("%s=%s://file%s" % (editor, scheme, quote(cwd)))  # this is the Mac: the path exists there
-    elif SAFE_NAME.match(alias):
-        links.append("%s=%s://vscode-remote/ssh-remote+%s%s" % (editor, scheme, alias, quote(cwd)))
-    return links
+    return editor_links(ide)
 
 
 def base_args(key, title, body, priority, event=""):
@@ -963,6 +1060,7 @@ def post(args, links, steps=None, asked=None, steps_body=None):
     # post again without them so the card still arrives.
     plain = [l for l in links if not l.partition("=")[2].lower().startswith("needsyou://")]
     if rc == 2 and len(plain) < len(links):
+        plain = plain or EDITOR_FALLBACK[0]
         rc = run(plain)
     # Still refused: likely a link outside the hub's allowed shapes (a custom
     # NEEDS_YOU_AGENT_LINK such as an extension's vscode:// handler, docs/API.md "Links").
