@@ -106,7 +106,7 @@ private struct AnswerSheet: View {
     let cancel: () -> Void
     @State private var text: String
     @State private var problem: String?
-    @FocusState private var focused: Bool
+    @SwiftUI.FocusState private var focused: Bool
 
     init(item: Item, question: Int, initial: String, sends: Bool, with: [String],
          submit: @escaping (String) -> String?, cancel: @escaping () -> Void) {
