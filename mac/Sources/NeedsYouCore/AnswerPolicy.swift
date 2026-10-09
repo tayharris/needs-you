@@ -190,8 +190,12 @@ public enum AnswerPolicy {
     /// The items whose picks or answer state (`stamps`, by item id) no longer apply: the item
     /// is gone, or a re-post changed it. Without this a "Sent to the agent" from an earlier
     /// question would keep a new one locked, and old picks could show on new options.
-    public static func staleAnswerIDs(stamps: [String: String], items: [String: Item]) -> Set<String> {
+    /// `kept`: the ids with picks, typed words or an answer state; one without a stamp counts
+    /// as stale too (nothing says which version of the question it was made for).
+    public static func staleAnswerIDs(stamps: [String: String], items: [String: Item],
+                                      kept: Set<String> = []) -> Set<String> {
         Set(stamps.filter { id, stamp in items[id].map { Self.stamp($0) != stamp } ?? true }.keys)
+            .union(kept.subtracting(stamps.keys))
     }
 
     /// The link that brings forward the agent's terminal (or Orca terminal), for "Answer in

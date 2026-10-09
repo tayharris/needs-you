@@ -579,7 +579,8 @@ final class AppModel: ObservableObject {
                 if ticks != stepTicks { stepTicks = ticks }
             }
             // Gone, or re-posted with a new question: the old picks and "Sent" don't apply.
-            let stale = AnswerPolicy.staleAnswerIDs(stamps: answerStamps, items: updated.items)
+            let stale = AnswerPolicy.staleAnswerIDs(stamps: answerStamps, items: updated.items,
+                                                    kept: Set(answerSelections.keys).union(answerStates.keys))
             if !stale.isEmpty {
                 for id in stale { answerStamps[id] = nil }
                 if answerSelections.keys.contains(where: stale.contains) {
@@ -1055,6 +1056,9 @@ final class AppModel: ObservableObject {
                 return "This question takes only its options."
             }
             answerSelections[itemID] = r.selection
+            // Stamped like a click, so a re-post that changes the question clears the words
+            // (staleAnswerIDs) instead of sending them as the answer to another question.
+            answerStamps[itemID] = AnswerPolicy.stamp(item)
             if case .failed = answerStates[itemID] { answerStates[itemID] = nil }
             if r.complete, let request = AnswerPolicy.request(item, r.selection) { sendAnswer(item, request) }
             return nil
@@ -1067,6 +1071,7 @@ final class AppModel: ObservableObject {
               answerStates[item.id] != .sending, answerStates[item.id] != .sent else { return }
         selection.setText(question, nil, multiSelect: q.items[question].multiSelect)
         answerSelections[item.id] = selection
+        answerStamps[item.id] = AnswerPolicy.stamp(item)
     }
 
     private func sendAnswer(_ item: Item, _ request: AnswerRequest) {

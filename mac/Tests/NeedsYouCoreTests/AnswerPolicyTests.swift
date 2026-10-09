@@ -196,6 +196,10 @@ final class AnswerPolicyTests: XCTestCase {
         reposted.question = ItemQuestion(id: "t2", items: [extras], answerable: true)
         reposted.contentUpdatedAtRaw = "2026-10-06T17:09:00.000Z"
         XCTAssertEqual(AnswerPolicy.staleAnswerIDs(stamps: stamps, items: ["01A": reposted]), ["01A", "gone"])
+        // Picks or typed words with no stamp: no way to tell which question they were for.
+        XCTAssertEqual(AnswerPolicy.staleAnswerIDs(stamps: [:], items: ["01A": answered], kept: ["01A"]), ["01A"])
+        XCTAssertEqual(AnswerPolicy.staleAnswerIDs(stamps: ["01A": AnswerPolicy.stamp(answered)],
+                                                   items: ["01A": answered], kept: ["01A"]), [])
         XCTAssertNotEqual(AnswerPolicy.stamp(asked), AnswerPolicy.stamp(reposted))
     }
 
