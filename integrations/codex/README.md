@@ -76,7 +76,7 @@ All the [Claude Code hook settings](../claude-code/README.md#settings) apply (`N
 | `NEEDS_YOU_AGENT_TURN_CARDS` | on | `0`: no card when a turn ends, only approval prompts |
 | `NEEDS_YOU_USAGE_ALERT_PCT` | unset (off) | The usage-limit card's 5-hour threshold in percent (shared with Claude's `needs-you-usage`) |
 | `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
-| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label for a machine with more than one Codex login (e.g. per `CODEX_HOME`); in the key and the title |
+| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label for a machine with more than one Codex login (e.g. per `CODEX_HOME`); in the key and the title. In an Orca terminal on an Orca-managed account (`CODEX_HOME` in Orca's `codex-accounts/<id>/home`) the label is `orca-<8 hex>` instead, as `needs-you orca usage` labels that account |
 | `NEEDS_YOU_USAGE_METER` | on | `0`: don't send the usage meter status |
 | `CODEX_HOME` | `~/.codex` | Where the installer, `needs-you doctor` and `needs-you update` look |
 
