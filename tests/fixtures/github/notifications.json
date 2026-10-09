@@ -40,5 +40,12 @@
   {"id": "1011", "unread": true, "reason": "review_requested", "updated_at": "2026-10-07T09:08:00Z",
    "subject": {"title": "Already reviewed", "type": "PullRequest",
                "url": "https://api.github.com/repos/acme/app/pulls/13"},
-   "repository": {"full_name": "acme/app", "html_url": "https://github.com/acme/app", "owner": {"login": "acme"}}}
+   "repository": {"full_name": "acme/app", "html_url": "https://github.com/acme/app", "owner": {"login": "acme"}}},
+  {"id": "1012", "unread": true, "reason": "security_alert", "updated_at": "2026-10-07T09:09:00Z",
+   "subject": {"title": "acme/app: 1 critical severity vulnerability", "type": "RepositoryDependabotAlertsThread",
+               "url": null},
+   "repository": {"full_name": "acme/app", "html_url": "https://github.com/acme/app", "owner": {"login": "acme"}}},
+  {"id": "1013", "unread": true, "reason": "security_alert", "updated_at": "2026-10-07T09:09:30Z",
+   "subject": {"title": "acme/web: security alerts", "type": "RepositoryDependabotAlertsThread", "url": null},
+   "repository": {"full_name": "acme/web", "html_url": "https://github.com/acme/web", "owner": {"login": "acme"}}}
 ]

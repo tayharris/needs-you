@@ -6,8 +6,6 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Added
 
-- **A card before a certificate, a domain or a key expires.** `needs-you-expiry` runs once a day on one machine and watches what you list in `~/.config/needs-you/expiry.conf`: the TLS certificate a host serves, a domain's registration (read from RDAP), or a date you know for an API key. A card appears 30 days out (low), turns normal at 7 days and urgent at 1 day or once expired, and clears itself when you renew or take the line out; the thresholds are yours to set. A certificate that doesn't verify gets an urgent "not trusted" card. A host or lookup that keeps failing is one low card per machine, never one per host. No token needed, nothing happens until the list exists ([guide](docs/guides/expiry.md)).
-
 ### Fixed
 
 - **A card's alert rules no longer hide each other.** Every rule made from a card's menu went to the top of the list, and the first match wins, so choosing **Always Interrupt** (or any rule for everything) after **Only When It Asks → Treat as Urgent** stopped questions being urgent while the menu still showed both. Card-made rules now go in by how specific they are: a session's above its agent's, an "Only When It…" rule above the same menu's rule for everything, the latest first among equals, all above the rules made in Settings. The menu's checkmarks and summary show only the rules that apply, in the order they do ([guide](docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).
