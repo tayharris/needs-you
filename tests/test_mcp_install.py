@@ -226,7 +226,9 @@ class InstallMcp(CliCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         text = self.text(".gemini/settings.json")
         self.assertNotIn("needs-you", text)
-        self.assertEqual(len(self.backups(".gemini/settings.json")), 3)  # install-mcp, then one per rewrite
+        # one per rewrite (both hold the person's theme); install-mcp's held only needs-you's
+        # hooks, so the uninstall deleted it
+        self.assertEqual(len(self.backups(".gemini/settings.json")), 2)
 
     def test_a_symlink_or_broken_config_skips_that_agent_only(self):
         real = self.write("dotfiles/settings.json", "{}")

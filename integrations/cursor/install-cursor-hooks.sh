@@ -223,6 +223,105 @@ if action == "install" and original_text is None:
 print("hooks.json: %s" % ("needs-you hooks installed" if action == "install" else "needs-you hooks removed"))
 PY
 
+# ---- backups (uninstall): delete the ones that hold only needs-you's part; any with the
+# person's own settings in them stay
+if [ "$ACTION" = "uninstall" ] && [ "$DRY_RUN" -eq 0 ]; then
+  python3 - "$HOOKS_FILE" <<'PY'
+import os, sys
+# needs-you-backups:begin (the same in cli/needs-you and each installer; tests/test_uninstall_backups.py checks)
+def only_needs_you(text):
+    """Would restoring this backup bring back nothing of the person's? True when all it holds
+    is needs-you's own part (hooks running needs-you-hook.sh, the needs-you MCP server, a
+    needs-you marked block) in an otherwise empty or defaults-only ({}, {"version": 1}) file."""
+    import json
+    marks = (("# needs-you (managed by install-", "# end needs-you"),
+             ("# >>> needs-you MCP server", "# <<< needs-you MCP server"),
+             ("<!-- needs-you:begin", "<!-- needs-you:end"))
+    out, end = [], None
+    for line in text.splitlines(True):
+        if end is None:
+            end = next((e for b, e in marks if line.startswith(b)), None)
+            if end is None:
+                out.append(line)
+        elif line.startswith(end):
+            end = None
+    if end is not None:
+        return False
+    rest = "".join(out)
+    if not rest.strip():
+        return True
+    try:
+        doc = json.loads(rest)
+    except ValueError:
+        return False
+    if not isinstance(doc, dict):
+        return False
+    doc = dict(doc)
+
+    def ours(h):
+        return isinstance(h, dict) and "needs-you-hook.sh" in str(h.get("command", ""))
+    hooks = doc.pop("hooks", {})
+    if not isinstance(hooks, dict):
+        return False
+    for groups in hooks.values():
+        if not isinstance(groups, list):
+            return False
+        for g in groups:  # a group of hooks, or one flat entry (Cursor)
+            if not (ours(g) or (isinstance(g, dict) and isinstance(g.get("hooks"), list) and g["hooks"]
+                                and all(ours(h) for h in g["hooks"]))):
+                return False
+    for key in ("mcpServers", "mcp"):
+        servers = doc.pop(key, {})
+        if not isinstance(servers, dict) or any(k != "needs-you" or "needs-you-mcp" not in json.dumps(v)
+                                                for k, v in servers.items()):
+            return False
+    return doc in ({}, {"version": 1})
+
+
+def ny_backups(path):
+    """The backups of this config file that hold only needs-you's part (only_needs_you): the
+    installers' <name>.bak-<date>-<time>[-<pid>][.<n>], regular files of this user's next to
+    the file (or the file its symlink points to). Uninstall deletes them; every backup with
+    anything of the person's in it stays."""
+    import os, re, stat
+    found = []
+    for p in sorted({os.path.abspath(path), os.path.realpath(path)}):
+        d, base = os.path.split(p)
+        pat = re.compile(re.escape(base) + r"\.bak-\d{8}-\d{6}(-\d+)?(\.\d+)?$")
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            b = os.path.join(d, n)
+            if not pat.match(n) or b in found:
+                continue
+            try:
+                fd = os.open(b, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+                with os.fdopen(fd, "rb") as fh:
+                    st = os.fstat(fh.fileno())
+                    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_size > 1 << 20:
+                        continue
+                    text = fh.read().decode("utf-8")
+            except (OSError, ValueError):
+                continue
+            if only_needs_you(text):
+                found.append(b)
+    return found
+# needs-you-backups:end
+
+gone = 0
+for b in ny_backups(sys.argv[1]):
+    try:
+        os.remove(b)
+        gone += 1
+    except OSError:
+        pass
+if gone:
+    print("backups:  deleted %d that held only needs-you's part" % gone)
+PY
+fi
+
 # ---- hook script
 if [ "$ACTION" = "install" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then

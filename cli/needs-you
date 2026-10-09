@@ -516,6 +516,110 @@ def _strip_kimi_block(path: str, dry_run: bool, say: Any) -> Optional[bool]:
     return True
 
 
+# needs-you-backups:begin (the same in cli/needs-you and each installer; tests/test_uninstall_backups.py checks)
+def only_needs_you(text):
+    """Would restoring this backup bring back nothing of the person's? True when all it holds
+    is needs-you's own part (hooks running needs-you-hook.sh, the needs-you MCP server, a
+    needs-you marked block) in an otherwise empty or defaults-only ({}, {"version": 1}) file."""
+    import json
+    marks = (("# needs-you (managed by install-", "# end needs-you"),
+             ("# >>> needs-you MCP server", "# <<< needs-you MCP server"),
+             ("<!-- needs-you:begin", "<!-- needs-you:end"))
+    out, end = [], None
+    for line in text.splitlines(True):
+        if end is None:
+            end = next((e for b, e in marks if line.startswith(b)), None)
+            if end is None:
+                out.append(line)
+        elif line.startswith(end):
+            end = None
+    if end is not None:
+        return False
+    rest = "".join(out)
+    if not rest.strip():
+        return True
+    try:
+        doc = json.loads(rest)
+    except ValueError:
+        return False
+    if not isinstance(doc, dict):
+        return False
+    doc = dict(doc)
+
+    def ours(h):
+        return isinstance(h, dict) and "needs-you-hook.sh" in str(h.get("command", ""))
+    hooks = doc.pop("hooks", {})
+    if not isinstance(hooks, dict):
+        return False
+    for groups in hooks.values():
+        if not isinstance(groups, list):
+            return False
+        for g in groups:  # a group of hooks, or one flat entry (Cursor)
+            if not (ours(g) or (isinstance(g, dict) and isinstance(g.get("hooks"), list) and g["hooks"]
+                                and all(ours(h) for h in g["hooks"]))):
+                return False
+    for key in ("mcpServers", "mcp"):
+        servers = doc.pop(key, {})
+        if not isinstance(servers, dict) or any(k != "needs-you" or "needs-you-mcp" not in json.dumps(v)
+                                                for k, v in servers.items()):
+            return False
+    return doc in ({}, {"version": 1})
+
+
+def ny_backups(path):
+    """The backups of this config file that hold only needs-you's part (only_needs_you): the
+    installers' <name>.bak-<date>-<time>[-<pid>][.<n>], regular files of this user's next to
+    the file (or the file its symlink points to). Uninstall deletes them; every backup with
+    anything of the person's in it stays."""
+    import os, re, stat
+    found = []
+    for p in sorted({os.path.abspath(path), os.path.realpath(path)}):
+        d, base = os.path.split(p)
+        pat = re.compile(re.escape(base) + r"\.bak-\d{8}-\d{6}(-\d+)?(\.\d+)?$")
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            b = os.path.join(d, n)
+            if not pat.match(n) or b in found:
+                continue
+            try:
+                fd = os.open(b, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+                with os.fdopen(fd, "rb") as fh:
+                    st = os.fstat(fh.fileno())
+                    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_size > 1 << 20:
+                        continue
+                    text = fh.read().decode("utf-8")
+            except (OSError, ValueError):
+                continue
+            if only_needs_you(text):
+                found.append(b)
+    return found
+# needs-you-backups:end
+
+
+def _tidy_backups(paths: Sequence[str], dry_run: bool, say: Any) -> None:
+    """Uninstall: delete the installers' backups of these config files that hold only
+    needs-you's part (ny_backups), so an agent's directory can go once it's empty."""
+    for path in paths:
+        if os.path.islink(os.path.dirname(path)):
+            continue  # never into a symlinked directory
+        gone = 0
+        for b in ny_backups(path):
+            if dry_run:
+                say("would delete %s (it holds only needs-you's part)" % _tilde(b))
+                continue
+            try:
+                os.remove(b)
+                gone += 1
+            except OSError:
+                pass
+        if gone:
+            say("deleted %d backup%s of %s that held only needs-you's part" % (gone, "" if gone == 1 else "s",
+                                                                              _tilde(path)))
+
+
 def _delete_created(path: str, dry_run: bool, say: Any) -> bool:
     """An agent config file left with nothing but defaults: delete it if a needs-you installer
     made it (update.json `created_files`), with no backup (nothing in it was anyone else's).
@@ -579,6 +683,7 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
         dirs.extend(os.path.dirname(p) for p in sorted(claude_projects()))
     seen, failed, removed = set(), False, 0
     forget: List[str] = []
+    backed_up: List[str] = []  # the config files whose needs-you-only backups go at the end
     user_dir = os.path.realpath(_home(".claude"))
     for d in dirs:
         real = os.path.realpath(d)
@@ -591,6 +696,7 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
                  % _tilde(d))
             failed = True
             continue
+        backed_up.extend(os.path.join(d, name) for name in SETTINGS_NAMES)
         for name in SETTINGS_NAMES:
             path = os.path.join(d, name)
             if not _references_hook(path):
@@ -616,6 +722,8 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
             continue
         d = home_fn()
         conf, hook = os.path.join(d, conf_name), os.path.join(d, "hooks", HOOK_FILE)
+        if not os.path.islink(conf):
+            backed_up.append(conf)
         if not os.path.lexists(conf) and not os.path.lexists(hook):
             continue
         links = [p for p in (conf, os.path.join(d, "hooks"), hook) if os.path.islink(p)]
@@ -680,6 +788,8 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
     # Aider: the marked block in ~/.aider.conf.yml, and its hook copy.
     if everything or "aider" in agents:
         conf, hook = aider_conf(), os.path.join(aider_home(), "hooks", HOOK_FILE)
+        if not os.path.islink(conf):
+            backed_up.append(conf)
         links = [x for x in (conf, os.path.dirname(hook), hook) if os.path.islink(x)]
         if links:
             warn("%s is a symlink; not touching the Aider setup (remove the needs-you lines by hand)"
@@ -699,6 +809,11 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
         n, bad = uninstall_extras(everything or "mcp" in agents, everything or "instructions" in agents, dry_run, say)
         removed += n if not dry_run else 0
         failed = failed or bad
+        extras = [mcp_config_path(a) for a in MCP_AGENTS if a != "claude" and (everything or "mcp" in agents)]
+        extras += [instructions_path(a) for a in INSTR_AGENTS if everything or "instructions" in agents]
+        backed_up.extend(p for p in extras if not os.path.islink(p))  # (`claude mcp` keeps its own file)
+    # (Claude Code's user settings may be a dotfile manager's symlink: its backups are by its target.)
+    _tidy_backups(list(dict.fromkeys(backed_up)), dry_run, say)
     if not dry_run:
         # The agents' directories an installer made and this emptied again (rmdir: only
         # empty ones, never through a symlink, never ~/Documents).
