@@ -250,9 +250,23 @@ def release_files(tmp):
     return None
 
 
+def gh_attests(gh):
+    """`gh attestation verify` came in gh 2.49 and --source-ref later: an older gh (Ubuntu
+    24.04 ships 2.45) can't check provenance whatever the release, so it counts as no gh."""
+    try:
+        r = subprocess.run([gh, "attestation", "verify", "--help"], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    text = r.stdout + r.stderr
+    return r.returncode == 0 and "--source-ref" in text and "--deny-self-hosted-runners" in text
+
+
 def provenance(gh, path, sha):
     if not gh:
         return "build provenance not checked (install gh to check it)"
+    if not gh_attests(gh):
+        return "build provenance not checked: this gh is too old (upgrade gh to check it)"
     r = subprocess.run([gh, "attestation", "verify", path, "--repo", REPO, "--signer-workflow", WORKFLOW,
                         "--source-ref", "refs/tags/v" + version, "--predicate-type", SLSA,
                         "--deny-self-hosted-runners", "--format", "json"],

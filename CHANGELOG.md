@@ -15,6 +15,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **Uninstall deletes the backups that hold only needs-you's part.** `needs-you uninstall-hooks` (which the invite installer's `--uninstall` runs) and each agent installer's own `--uninstall` delete the config backups the installers made (`<file>.bak-<time>`) when restoring one would bring back nothing but needs-you's entries (its hooks, its MCP server, its marked blocks) or an empty file, so a directory such as `~/.gemini` that needs-you made goes too once it's empty. A backup with any of your own settings in it stays. A config file left as `{}` or empty by an install before 0.3.1 still stays: nothing records whether needs-you made it.
 
+### Fixed
+
+- **`install-hub.sh` installs from a release with an old `gh`.** Like `needs-you update` in 0.3.1, the server installer treated a `gh` too old to verify build provenance (Ubuntu 24.04's gh 2.45) as a failed check and installed nothing. It now counts as no `gh`: the files are still checked against the release's `SHA256SUMS` and `release-manifest.json`, and it says provenance wasn't checked.
+
 ## [0.3.1] - 2026-10-09
 
 A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.
