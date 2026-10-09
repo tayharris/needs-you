@@ -649,8 +649,8 @@ private struct CardMenuItems: View {
             Divider()
             Section("Developer") {
                 Button("Copy Item JSON") { model.copy(CardCopy.itemJSON(item), from: item, what: "JSON") }
-                Button("Copy Key") { model.copy(item.key, from: item, what: "key") }
-                Button("Copy ID") { model.copy(item.id, from: item, what: "ID") }
+                Button("Copy Key") { model.copy(CardCopy.key(item), from: item, what: "key") }
+                Button("Copy ID") { model.copy(CardCopy.id(item), from: item, what: "ID") }
                 Button("Copy Debug Report") {
                     model.copy(CardCopy.debugReport(item, info: model.debugInfo(for: item)), from: item, what: "report")
                 }

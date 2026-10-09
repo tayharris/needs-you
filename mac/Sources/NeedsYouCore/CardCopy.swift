@@ -187,6 +187,13 @@ public enum CardCopy {
 
     // MARK: - Developer mode
 
+    /// "Copy Key": the item's key. A key may hold anything a sender put in it, so it's
+    /// masked like every other copy (`redactSecrets`).
+    public static func key(_ item: Item) -> String { redactSecrets(item.key) }
+
+    /// "Copy ID": the item's id, masked likewise (a replicated record's id came from a peer).
+    public static func id(_ item: Item) -> String { redactSecrets(item.id) }
+
     /// The whole item as pretty JSON: the hub's field names, sorted keys, ISO 8601 dates. The
     /// priority is the sender's, as the hub has it, not a bypass rule's.
     public static func itemJSON(_ item: Item) -> String {
@@ -240,7 +247,10 @@ public enum CardCopy {
             lines.append("- Delivery now: \(d.tier.title) (\(d.reason.rawValue))\(d.holdsForLater ? ", held for Later" : "")")
         }
         if let rule = info.rule {
-            lines.append("- Bypass rule: \(rule.match.title) \u{201C}\(rule.value)\u{201D} \u{2192} \(rule.action.title)")
+            // With its event, if any: "Treat as urgent" for every card and for questions only
+            // are different rules.
+            let when = rule.event.map { ", " + AgentEvent.title(of: $0).lowercased() } ?? ""
+            lines.append("- Bypass rule: \(rule.match.title) \u{201C}\(rule.value)\u{201D}\(when) \u{2192} \(rule.action.title)")
         } else {
             lines.append("- Bypass rule: none")
         }
