@@ -384,6 +384,9 @@ if [ "$GEN_SECRET" -eq 1 ]; then
 fi
 
 # 1. directories and code (upgrade in place)
+hub_version() { sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -n1 || true; }
+OLD_VERSION=$(hub_version "$PREFIX/hub/needs_you_hub.py")
+NEW_VERSION=$(hub_version "$SRC/hub/needs_you_hub.py")
 if [ "$MODE" = system ]; then
   if ! id "$SVC_USER" >/dev/null 2>&1; then
     useradd --system --home-dir "$STATE_DIR" --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
@@ -398,6 +401,13 @@ fi
 install -d -m 0755 "$PREFIX/hub" "$PREFIX/cli" "$PREFIX/integrations/claude-code/skill/needs-you"
 install -m 0644 "$SRC/hub/needs_you_hub.py" "$SRC/hub/needs_you_admin.py" "$SRC/hub/join-install.sh" "$PREFIX/hub/"
 install -m 0755 "$SRC/cli/needs-you" "$PREFIX/cli/needs-you"
+if [ -z "$OLD_VERSION" ]; then
+  echo "Installed the needs-you hub ${NEW_VERSION:-?}."
+elif [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+  echo "Reinstalled the needs-you hub $NEW_VERSION (the same version). Config and database kept."
+else
+  echo "Upgraded the needs-you hub from $OLD_VERSION to ${NEW_VERSION:-?}. Config and database kept (the hub backs the database up before it migrates it)."
+fi
 install -m 0644 "$SRC/integrations/claude-code/needs-you-hook.sh" "$SRC/integrations/claude-code/install-hooks.sh" \
   "$SRC/integrations/claude-code/hooks.json" "$PREFIX/integrations/claude-code/"
 install -m 0644 "$SRC/integrations/claude-code/skill/needs-you/SKILL.md" "$PREFIX/integrations/claude-code/skill/needs-you/"

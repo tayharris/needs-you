@@ -804,6 +804,7 @@ class InstallHubUser(unittest.TestCase):
             with open(unit) as fh:
                 self.assertIn("Restart=always", fh.read())
             self.assertTrue(os.access(os.path.join(home, ".local", "bin", "needs-you-admin"), os.X_OK))
+            self.assertIn("Installed the needs-you hub %s." % hubmod.VERSION, r.stdout)
 
             # a token in the DB before the upgrade
             admin = os.path.join(home, ".local", "bin", "needs-you-admin")
@@ -812,6 +813,12 @@ class InstallHubUser(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             db = cfg["db"]
             db_ino = os.stat(db).st_ino
+            # as if an older release were installed
+            installed = os.path.join(share, "hub", "needs_you_hub.py")
+            with open(installed) as fh:
+                old = re.sub(r'(?m)^VERSION = "[^"]*"', 'VERSION = "0.0.1"', fh.read())
+            with open(installed, "w") as fh:
+                fh.write(old)
 
             # re-run: upgrade in place, keep config + secret + DB, apply the flag passed, no new invite
             r = subprocess.run([BASH, script, "--user", "--no-start", "--public-url",
@@ -826,6 +833,11 @@ class InstallHubUser(unittest.TestCase):
             self.assertNotIn("needsyou://", r.stdout)
             self.assertNotIn(secret, r.stdout)
             self.assertEqual(os.stat(db).st_ino, db_ino)  # same database file
+            self.assertIn("Upgraded the needs-you hub from 0.0.1 to %s. Config and database kept (the hub backs "
+                          "the database up before it migrates it)." % hubmod.VERSION, r.stdout)
+            r = subprocess.run([BASH, script, "--user", "--no-start"], env=env, capture_output=True, text=True, timeout=120)
+            self.assertIn("Reinstalled the needs-you hub %s (the same version). Config and database kept." % hubmod.VERSION,
+                          r.stdout)
             r = subprocess.run([admin, "token", "list"], env=env, capture_output=True, text=True, timeout=60)
             self.assertIn("keep-me", r.stdout)
 

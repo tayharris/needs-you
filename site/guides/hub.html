@@ -301,7 +301,8 @@ token); a failover that waits on an unreachable (not refused) hub costs up to
 <div class="code" data-copy><pre><code class="language-bash">cd ~/needs-you &amp;&amp; git pull &amp;&amp; ./scripts/install-hub.sh --user     # or: sudo ./scripts/install-hub.sh</code></pre></div>
 <ul>
 <li><strong>Code</strong> in <code>~/.local/share/needs-you</code> (or <code>/opt/needs-you</code>) is replaced in place, and the
-service is restarted.</li>
+service is restarted. The installer says which version it replaced: "Upgraded the needs-you
+hub from 0.2.1 to 0.3.0", or "Reinstalled ... (the same version)".</li>
 <li><strong>Config</strong> (<code>hub.json</code>) is kept. Only the flags you pass on the re-run are applied to it; new
 config keys have defaults, so an old file keeps working unchanged.</li>
 <li><strong>Database:</strong> the schema is versioned (<code>PRAGMA user_version</code>). On start, a hub that finds an
