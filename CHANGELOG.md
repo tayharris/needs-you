@@ -4,12 +4,17 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-09
+
+A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.
+
 ### Added
 
 - **Help us test.** A [guide](docs/guides/help-us-test.md) and a section on needsyou.app listing which AI tools have been used for real, which only against a stub model and which never run, what to try with each and how to report it, with new issue templates for agent test reports and integration requests. For contributors, `scripts/check.sh` runs every check CI runs, and a new `lint` CI job catches real tailnet names and addresses and AI attribution lines in commits ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ### Fixed
 
+- **`needs-you update` accepts releases again on machines with `gh`.** Releases 0.2.0 to 0.3.0 were built on a self-hosted runner, which the build-provenance check refuses by design, so every update on a machine with a recent `gh` failed with "no valid build provenance". 0.3.1 is built on GitHub's runners again and verifies. A 0.3.0 CLI updates to it normally. Only a machine whose `gh` is too old to verify at all (below) needs one manual step: re-run your invite one-liner.
 - **`needs-you update` works with an old `gh`.** A `gh` too old to verify build provenance (Ubuntu 24.04's packaged gh 2.45 has no `gh attestation`) made every update fail with "no valid build provenance", automatic ones included. It's now treated like a machine without `gh`: the files are still checked against the GitHub release, and `needs-you update` and `needs-you doctor` say provenance wasn't checked and that upgrading `gh` turns it on ([release signing](docs/security/release-signing.md)).
 - **Uninstalling no longer leaves empty config files behind.** A file the installer created only to hold needs-you's part, such as `~/.codex/hooks.json`, Gemini's or Claude Code's `settings.json`, Cursor's `hooks.json`, Kimi Code's `config.toml`, or the shell profile it made for the `PATH` line (`~/.bashrc`, `~/.profile`), is deleted by `--uninstall` and `needs-you uninstall-hooks` once nothing else is in it; it used to stay as `{}` or an empty file. A file that was there before the install stays, even when it's empty. Only files created by this release's installers are recorded; one made by an earlier install stays as it is.
 - **An answer from the card no longer vanishes when the agent re-posts its question on another hub at the same moment.** With two hubs, an answer taken on one could lose to a re-post of the same question on the other before they synced: the answer disappeared everywhere and the card asked again. Hubs now keep an answer whenever the question and the sender are the same, and every hub ends up with it; a re-post that changes the question still clears it. A re-post that only rewords the title or body keeps the answer, on one hub or several ([API](docs/API.md#replication-between-hubs)). Upgrade every hub.

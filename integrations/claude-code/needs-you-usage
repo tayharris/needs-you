@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# needs-you-version: 0.3.0
+# needs-you-version: 0.3.1
 """needs-you-usage: Claude's usage meter on the Mac, and a card when a limit runs high.
 
 Claude Code's status line command gets the session as JSON on stdin, and for claude.ai

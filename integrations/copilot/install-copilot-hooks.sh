@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.3.0
+# needs-you-version: 0.3.1
 # install-copilot-hooks.sh: add the needs-you hooks to GitHub Copilot CLI.
 #
 #   ./install-copilot-hooks.sh                    ~/.copilot/hooks/ ($COPILOT_HOME/hooks/ if set)

@@ -1,4 +1,4 @@
-<!-- needs-you-version: 0.3.0 -->
+<!-- needs-you-version: 0.3.1 -->
 ## Telling the user (needs-you)
 
 When you stop because only the user can unblock something, post it with the

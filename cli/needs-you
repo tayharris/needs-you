@@ -139,7 +139,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
