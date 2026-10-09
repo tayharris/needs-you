@@ -12,8 +12,13 @@ struct UpdatesSettingsView: View {
             if let notice = updates.notice {
                 Section {
                     HStack(alignment: .top) {
-                        Image(systemName: "checkmark.seal").foregroundStyle(.green)
-                        Text(notice).fixedSize(horizontal: false, vertical: true)
+                        if notice.failed {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        } else {
+                            Image(systemName: "checkmark.seal").foregroundStyle(.green)
+                        }
+                        Text(notice.text).fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
                         Spacer()
                         Button("OK") { updates.dismissNotice() }
                     }

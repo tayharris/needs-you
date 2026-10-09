@@ -34,7 +34,7 @@ final class UpdateController: ObservableObject {
     /// Where the GitHub credential came from ("GitHub CLI (gh auth token)"), never the token.
     @Published private(set) var authSource: String = "not checked yet"
     /// After an update or a rollback: what happened, shown once in Settings → Updates.
-    @Published private(set) var notice: String?
+    @Published private(set) var notice: UpdateNotice?
 
     let current: SemVer?
     let build: String
@@ -204,7 +204,7 @@ final class UpdateController: ObservableObject {
             phase = .idle
             cleanUpdatesDirectory(keep: nil)
         }
-        decision = .skipped(v, "skipped")
+        decision = .skipped(v, "you chose Skip")
         lastResult = decision?.summary
     }
 
@@ -389,13 +389,14 @@ final class UpdateController: ObservableObject {
             staged = StagedApp(version: c.version, app: app)
             phase = .staged(c.version)
             lastResult = "\(c.version) is downloaded and verified. "
-                + (autoInstallAllowed ? "It installs when you've been away for 10 minutes, or when you quit." : "Click Restart to update.")
+                + (autoInstallAllowed ? "It installs when you've been away for 10 minutes, or when you quit; Restart to update installs it now."
+                                      : "Click Restart to update: the app quits and comes back on \(c.version) by itself.")
             log.info("staged \(c.version.description, privacy: .public)")
             if thenInstall { install() }
         } catch {
             phase = .idle
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            lastError = "Couldn't stage \(c.version): \(message)"
+            lastError = "Couldn't download \(c.version): \(message) Nothing was installed; the next check tries again."
             log.error("staging \(c.version.description, privacy: .public) failed: \(message, privacy: .public)")
             cleanUpdatesDirectory(keep: nil)
         }
@@ -517,8 +518,8 @@ final class UpdateController: ObservableObject {
             try? fm.removeItem(at: script)
             try fm.copyItem(at: bundled, to: script)
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
-            try (s.version.description + "\n").write(to: updatesDirectory.appendingPathComponent(UpdatePaths.attemptFile),
-                                                      atomically: true, encoding: .utf8)
+            try UpdateNotice.attempt(trying: s.version, from: current)
+                .write(to: updatesDirectory.appendingPathComponent(UpdatePaths.attemptFile), atomically: true, encoding: .utf8)
         } catch {
             lastError = "Couldn't prepare the installer: \(error.localizedDescription)"
             return false
@@ -555,13 +556,11 @@ final class UpdateController: ObservableObject {
         let attempt = updatesDirectory.appendingPathComponent(UpdatePaths.attemptFile)
         guard let raw = try? String(contentsOf: attempt, encoding: .utf8) else { return }
         try? fm.removeItem(at: attempt)
-        let tried = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let current, SemVer(tried) == current {
-            notice = "Updated to \(current). If macOS asks whether python3 may accept incoming connections, choose Allow, or other machines can't reach this Mac's hub."
-            log.info("updated to \(current.description, privacy: .public)")
-        } else if rolledBackVersion() == tried {
-            notice = "\(tried) didn't stay running, so the previous version was put back. \(tried) is skipped; see \(updatesDirectory.appendingPathComponent(UpdatePaths.installLog).path)."
-            log.error("update to \(tried, privacy: .public) was rolled back")
+        notice = UpdateNotice.afterInstall(attempt: raw, current: current, rolledBack: rolledBackVersion(),
+                                           log: updatesDirectory.appendingPathComponent(UpdatePaths.installLog).path)
+        if let notice {
+            if notice.failed { log.error("update was rolled back: \(notice.text, privacy: .public)") }
+            else { log.info("\(notice.text, privacy: .public)") }
         }
     }
 
