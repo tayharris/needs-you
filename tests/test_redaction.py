@@ -12,7 +12,7 @@ import re
 import time
 import unittest
 
-from support import ROOT
+from support import ROOT, hubmod
 
 BEGIN = "# --- needs-you redaction (begin) ---\n"
 END = "# --- needs-you redaction (end) ---\n"
@@ -29,10 +29,15 @@ def block(rel):
     return src[i:j + len(END)]
 
 
-def redact_fn():
+def redact_fn(rel=COPIES[0]):
     ns = {"re": re}
-    exec(compile(block(COPIES[0]), "redaction", "exec"), ns)
+    exec(compile(block(rel), "redaction", "exec"), ns)
     return ns["redact"]
+
+
+def fake(*parts):
+    """A made-up secret, built from pieces so no source line looks like a real key."""
+    return "".join(parts)
 
 
 class Mirror(unittest.TestCase):
@@ -87,6 +92,87 @@ class Catches(unittest.TestCase):
                    "ghp_abcdef", "eyJhbGciOiJIUzI1")
         self.check("Authorization: Bearer abcdefgh12345678", "abcdefgh12345678")
 
+    def test_pgp_private_key_block(self):
+        body = "\n".join(["", "lQOYBF" + "x" * 60, "y" * 64, "=AbCd", ""])
+        key = ("-----BEGIN PGP PRIVATE KEY BLOCK-----" + body
+               + "-----END PGP PRIVATE KEY BLOCK-----")
+        self.assertEqual(self.redact(key), "[redacted]")
+        self.assertEqual(self.redact("before\n" + key + "\nafter"), "before\n[redacted]\nafter")
+        # cut off before its end: everything after the header goes
+        self.assertEqual(self.redact("-----BEGIN PGP PRIVATE KEY BLOCK-----" + body), "[redacted]")
+        # the PEM kinds still go
+        self.assertEqual(self.redact("-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blbn\n"
+                                     "-----END OPENSSH PRIVATE KEY-----"), "[redacted]")
+        # a public key block is not a secret
+        pub = "-----BEGIN PGP PUBLIC KEY BLOCK-----"
+        self.check(pub, keep=(pub,))
+
+    def test_webhook_urls(self):
+        slack = fake("https://hooks.slack", ".com/services/T0FAKE000/B0FAKE000/", "fakeFAKEfake0000fake")
+        out = self.check("posting to %s failed" % slack, "fakeFAKE", "B0FAKE000",
+                         keep=("posting to https://hooks.slack.com/services/[redacted] failed",))
+        self.check(fake("https://hooks.slack", ".com/workflows/T0FAKE/A0FAKE/123/", "fakeFAKEfake"),
+                   "fakeFAKEfake")
+        disc = fake("https://discord", ".com/api/webhooks/123456789012345678/", "fake-FAKE_fake0token")
+        self.check("hook %s ok" % disc, "fake-FAKE", "123456789012345678",
+                   keep=("hook https://discord.com/api/webhooks/[redacted] ok",))
+        self.check(fake("https://discordapp", ".com/api/v10/webhooks/1234/", "fakefaketoken"),
+                   "fakefaketoken")
+        # Azure SAS and other signed URLs
+        sas = fake("https://acme.blob.core.windows.net/c/f.txt?sv=2022-11-02&se=2026-01-01&sp=r",
+                   "&sig=", "fAkEsIg%2Bfake%3D")
+        self.check(sas, "fAkEsIg", keep=("&sig=",))
+        self.check("X-Hub-Signature: sha256=0f0f", "0f0f", keep=("X-Hub-Signature: ",))
+        self.check("signature=fakesig1 Sig: fakesig2", "fakesig1", "fakesig2")
+        # the words in prose stay
+        prose = ("Check the signature on the release, then sign it; signatures matter. "
+                 "Design: a sig handler, sig_atomic_t, assign=3, config.signature_v2")
+        self.check(prose, keep=(prose,))
+
+    def test_vendor_prefixes(self):
+        cases = (
+            fake("AK", "IA", "FAKEFAKEFAKEFAKE"),
+            fake("AS", "IA", "FAKEFAKEFAKEFAKE"),
+            fake("sk", "_live_", "fakeFAKEfake0000"),
+            fake("rk", "_test_", "fakeFAKEfake0000"),
+            fake("np", "m_", "fake" * 9),
+            fake("hf", "_", "fake" * 9),
+            fake("glp", "tt-", "fake" * 5),
+            fake("xa", "pp-", "1-FAKE-1234-fake"),
+            fake("ya", "29.", "fake-FAKE_fake" * 2),
+        )
+        for secret in cases:
+            with self.subTest(secret[:6]):
+                self.assertEqual(self.redact("use %s now" % secret), "use [redacted] now")
+        # look-alikes that aren't keys stay
+        plain = "ASIAN market, sk_live_ alone, npm_config_cache, hf_hub, xapp-x, ya29.x, AKIA1"
+        self.check(plain, keep=(plain,))
+
+
+class HubSecrets(unittest.TestCase):
+    MINTS = ("mint_token", "mint_peer_secret", "mint_invite_code")
+
+    def test_every_secret_the_hub_mints_is_redacted_by_every_copy(self):
+        # Sender, reader and owner tokens all come from mint_token; peer secrets and invite
+        # codes have their own prefixes. Random values, so a pattern that only sometimes
+        # matches (and leaves the rest to the base64 catch-all) shows up.
+        for rel in COPIES:
+            redact = redact_fn(rel)
+            for name in self.MINTS:
+                mint = getattr(hubmod, name)
+                with self.subTest(rel=rel, mint=name):
+                    for _ in range(200):
+                        secret = mint()
+                        out = redact("key %s here" % secret)
+                        self.assertEqual(out, "key [redacted] here", secret)
+
+    def test_the_hub_log_redacts_them_too(self):
+        for name in self.MINTS:
+            for _ in range(50):
+                secret = getattr(hubmod, name)()
+                with self.subTest(mint=name):
+                    self.assertNotIn(secret.split("_", 1)[1], hubmod.redact_log("GET /?x=%s" % secret))
+
 
 class Callers(unittest.TestCase):
     def test_github_titles_are_redacted(self):
@@ -107,7 +193,10 @@ class Callers(unittest.TestCase):
 class LinearTime(unittest.TestCase):
     CHUNKS = ("a_", "a=", "x:", "//user", "a://", "a://b:", "a://b:c/", "://x@", "a-", "--a-", "--token-",
               "token_", "x_password_", "password ", 'password="', "-password-", "a-password ", "token%3",
-              "eyJ-", "eyJa.", "sk-", "ny_-", "-----BEGIN RSA PRIVATE KEY-----", "@", ":@", "a:b@")
+              "eyJ-", "eyJa.", "sk-", "ny_-", "-----BEGIN RSA PRIVATE KEY-----", "@", ":@", "a:b@",
+              "nyp_", "-----BEGIN PGP PRIVATE KEY BLOCK-----", "-----BEGIN A ", "hooks.slack.com/services/",
+              "discord.com/api/webhooks/", "discordapp.com/api/v1/", "sig=", "&sig", "signature:",
+              "AKIA", "ASIA", "sk_live_", "rk_test_", "npm_", "hf_", "glptt-", "xapp-", "ya29.")
 
     def test_100_kb_of_crafted_text(self):
         redact = redact_fn()

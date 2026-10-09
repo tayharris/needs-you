@@ -156,8 +156,12 @@ TOOLS: List[Dict[str, Any]] = [
 # starts on a literal and never backtracks over a run it has to give back.
 REDACTED = "[redacted]"
 _SECRET_RAW = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
-                         r"|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}|nyi?_[A-Za-z0-9_-]{8,}"
-                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,})")
+                         r"|xox[abpr]-[\w-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|ny[ip]?_[A-Za-z0-9_-]{8,}"
+                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}"
+                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,})")
+# A webhook URL whose path is its secret: the host and the path's start stay.
+_WEBHOOK = re.compile(r"(hooks\.slack\.com/(?:services|workflows|triggers)/"
+                      r"|discord(?:app)?\.com/api/(?:v\d+/)?webhooks/)[\w/-]+")
 # A JWT: the whole run is taken greedily, then checked (a failed match never rescans the run).
 _JWT_RUN = re.compile(r"\beyJ[\w.-]+")
 _JWT = re.compile(r"eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*")
@@ -165,12 +169,13 @@ _JWT = re.compile(r"eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*")
 # Only the keyword is matched, never the name's prefix (PGPASSWORD, X_API_KEY, client_secret).
 # Keywords other than "password" start a word or follow _ or - (DB_PASS, not bypass).
 _SECRET_KV = re.compile(r"(?i)(password|(?<![a-z0-9])(?:passwd|pwd|pw|pass(?:phrase)?|token|secret"
-                        r"|(?:api|access|secret|private)[_-]?key|auth|credentials?))"
+                        r"|(?:api|access|secret|private)[_-]?key|auth|credentials?|sig(?:nature)?))"
                         r"([\"']?\s*(?:=>|[:=]|%3[ad])\s*)(\"[^\"]*\"|'[^']*'|\S+)")
 # A command line's --password VALUE (with a space): _flag() checks the keyword ends a --flag.
 _SECRET_FLAG = re.compile(r"(?i)(?<=-)(password|passwd|token|secret|api-key)([ \t]+)(?!-)(\S+)")
 _SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
-_PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
+_PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*?"
+                  r"(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|\Z)", re.S)
 _LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
 _LONG_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
 _SPACES = re.compile(r"(\s+)")
@@ -221,6 +226,7 @@ def redact(text):
     text = _PEM.sub(REDACTED, text)
     if "://" in text:
         text = "".join(_url_creds(w) if "://" in w else w for w in _SPACES.split(text))
+    text = _WEBHOOK.sub(lambda m: m.group(1) + REDACTED, text)
     text = _SECRET_RAW.sub(REDACTED, text)
     text = _JWT_RUN.sub(_jwt, text)
     text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
