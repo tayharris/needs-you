@@ -20,10 +20,10 @@ final class Phase3Controller: ObservableObject {
     let summary = MorningSummary()
 
     private enum Key {
-        static let followSchedule = "followSchedule"
-        static let morningSummary = "morningSummary"
-        static let useStream = "useStream"
-        static let lastSummary = "lastMorningSummary"
+        static let followSchedule = AppPrefKey.followSchedule.rawValue
+        static let morningSummary = AppPrefKey.morningSummary.rawValue
+        static let useStream = AppPrefKey.useStream.rawValue
+        static let lastSummary = AppPrefKey.lastMorningSummary.rawValue
     }
 
     @Published var followSchedule: Bool {
@@ -151,6 +151,7 @@ final class Phase3Controller: ObservableObject {
     var streamSection: AnyView { AnyView(Phase3StreamSection(phase3: self)) }
 }
 
+// settings-section: schedule
 private struct Phase3ScheduleSection: View {
     @ObservedObject var phase3: Phase3Controller
 
@@ -166,6 +167,7 @@ private struct Phase3ScheduleSection: View {
     }
 }
 
+// settings-section: liveUpdates
 private struct Phase3StreamSection: View {
     @ObservedObject var phase3: Phase3Controller
 
