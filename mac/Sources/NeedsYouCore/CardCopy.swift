@@ -187,8 +187,11 @@ public enum CardCopy {
 
     // MARK: - Developer mode
 
-    /// The whole item as pretty JSON: the hub's field names, sorted keys, ISO 8601 dates.
+    /// The whole item as pretty JSON: the hub's field names, sorted keys, ISO 8601 dates. The
+    /// priority is the sender's, as the hub has it, not a bypass rule's.
     public static func itemJSON(_ item: Item) -> String {
+        var item = item
+        item.priority = item.senderPriority ?? item.priority
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .custom { date, encoder in
@@ -278,7 +281,7 @@ public enum CardCopy {
         flag("title", item.title)
         if let body = item.body, !body.isEmpty { flag("body", body) }
         flag("context", item.context.rawValue)
-        flag("priority", item.priority.rawValue)
+        flag("priority", (item.senderPriority ?? item.priority).rawValue)
         if item.kind != .needs { flag("kind", item.kind.rawValue) }
         for link in item.links { flag("link", linkArgument(link)) }
         if !item.steps.isEmpty { flag("steps-json", compactJSON(item.steps)) }
@@ -290,6 +293,7 @@ public enum CardCopy {
             if let agent = source.agent, !agent.isEmpty { flag("agent", agent) }
             if let project = source.project, !project.isEmpty { flag("project", project) }
             if let host = source.host, !host.isEmpty { flag("host", host) }
+            if let event = source.event, !event.isEmpty { flag("event", event) }
         }
         return args.joined(separator: " ")
     }

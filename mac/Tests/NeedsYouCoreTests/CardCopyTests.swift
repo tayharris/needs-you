@@ -31,15 +31,17 @@ final class CardCopyTests: XCTestCase {
         ("testShellSafeValue", testShellSafeValue),
         ("testLinkArgumentSplitsLikeTheCLI", testLinkArgumentSplitsLikeTheCLI),
         ("testSecretsAreRedacted", testSecretsAreRedacted),
+        ("testAddCommandCarriesTheEvent", testAddCommandCarriesTheEvent),
+        ("testCopiesUseTheSenderPriority", testCopiesUseTheSenderPriority),
     ]
 
     private let created = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func item(body: String? = nil, links: [ItemLink] = [], steps: [ItemStep] = [],
-                      question: ItemQuestion? = nil, kind: ItemKind = .needs) -> Item {
+                      question: ItemQuestion? = nil, kind: ItemKind = .needs, event: String? = nil) -> Item {
         Item(id: "itm_1", key: "work:ACME-123:redo-blocked", kind: kind, priority: .urgent,
              title: "Redo blocked on ACME-123", body: body, links: links, steps: steps, question: question,
-             source: ItemSource(host: "devbox", agent: "orca:redo-fixer", project: "acme-api"),
+             source: ItemSource(host: "devbox", agent: "orca:redo-fixer", project: "acme-api", event: event),
              createdAt: created)
     }
 
@@ -239,6 +241,30 @@ final class CardCopyTests: XCTestCase {
         // A plain card: no kind, links, steps or question flags.
         XCTAssertFalse(CardCopy.addCommand(item()).contains("--kind"))
         XCTAssertFalse(CardCopy.addCommand(item()).contains("--body"))
+    }
+
+    func testAddCommandCarriesTheEvent() {
+        let command = CardCopy.addCommand(item(event: "question"))
+        XCTAssertTrue(command.hasSuffix(" --host=devbox --event=question"), command)
+        XCTAssertFalse(CardCopy.addCommand(item()).contains("--event"), "no event, no flag")
+    }
+
+    /// A bypass rule's "Treat as low" changes `priority` in the app; the copies repost or show
+    /// what the sender sent.
+    func testCopiesUseTheSenderPriority() throws {
+        let rules = RuleBook([BypassRule(match: .keyPrefix, value: "work:", action: .low)!])
+        let card = rules.applied(to: item())
+        XCTAssertEqual(card.priority, .low, "the rule applied")
+        XCTAssertEqual(card.senderPriority, .urgent)
+        let command = CardCopy.addCommand(card)
+        XCTAssertTrue(command.contains(" --priority=urgent "), command)
+        XCTAssertFalse(command.contains("--priority=low"), command)
+        let json = CardCopy.itemJSON(card)
+        XCTAssertTrue(json.contains("\"priority\" : \"urgent\""), json)
+        let decoded = try HubJSON.makeDecoder().decode(Item.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.priority, .urgent)
+        // Without a rule, the item's own priority.
+        XCTAssertTrue(CardCopy.itemJSON(item()).contains("\"priority\" : \"urgent\""))
     }
 
     /// Runs `command` (a `needs-you add` line) with `printf` in its place under `shell`,

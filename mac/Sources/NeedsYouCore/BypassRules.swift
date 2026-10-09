@@ -219,10 +219,46 @@ public struct RuleBook: Equatable, Sendable {
         return out
     }
 
-    /// A copy with `rule` first (a rule made from a card wins over the rest); unchanged when
-    /// the book is full.
+    /// A copy with `rule` added where it applies (a rule made from a card wins over the rest);
+    /// unchanged when the book is full. Card-made rules (session and agent matches) rank by
+    /// how specific they are: one session's event rule, that session's any-event rule, an
+    /// agent's event rule, the agent's any-event rule. `rule` goes just below the last rule
+    /// that outranks it and could match the same items, so above everything else: the latest
+    /// first among equals, and above Settings' key and host rules. Without this, "Always
+    /// Interrupt" chosen after "Only When It Asks → Treat as Urgent" would shadow it.
     public func inserting(_ rule: BypassRule) -> RuleBook {
-        isFull ? self : RuleBook([rule] + rules)
+        guard !isFull else { return self }
+        guard let rank = Self.cardRank(rule) else { return RuleBook([rule] + rules) }
+        let above = rules.lastIndex { other in
+            guard let otherRank = Self.cardRank(other), otherRank < rank else { return false }
+            return Self.mayOverlap(other, rule)
+        }
+        var out = rules
+        out.insert(rule, at: above.map { $0 + 1 } ?? 0)
+        return RuleBook(out)
+    }
+
+    /// Lower is more specific; nil for matches the card menu doesn't make.
+    static func cardRank(_ rule: BypassRule) -> Int? {
+        switch rule.match {
+        case .session: return rule.event == nil ? 1 : 0
+        case .agentPrefix: return rule.event == nil ? 3 : 2
+        case .keyPrefix, .host: return nil
+        }
+    }
+
+    /// Whether two card-made rules could match one item (ignoring events): a session and an
+    /// agent always could; two sessions when they're the same; two agent prefixes when one
+    /// starts with the other.
+    static func mayOverlap(_ a: BypassRule, _ b: BypassRule) -> Bool {
+        guard a.match == b.match else { return true }
+        switch a.match {
+        case .session: return a.value == b.value
+        case .agentPrefix:
+            let x = a.value.lowercased(), y = b.value.lowercased()
+            return x.hasPrefix(y) || y.hasPrefix(x)
+        case .keyPrefix, .host: return true
+        }
     }
 
     /// A copy without the rules `drop` picks.
