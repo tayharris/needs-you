@@ -29,6 +29,7 @@ final class CardCopyTests: XCTestCase {
         ("testAddCommandRoundTripsThroughAShell", testAddCommandRoundTripsThroughAShell),
         ("testHostileValuesStayInert", testHostileValuesStayInert),
         ("testShellSafeValue", testShellSafeValue),
+        ("testLinkArgumentSplitsLikeTheCLI", testLinkArgumentSplitsLikeTheCLI),
         ("testSecretsAreRedacted", testSecretsAreRedacted),
     ]
 
@@ -227,7 +228,7 @@ final class CardCopyTests: XCTestCase {
             "--priority=urgent",
             "--kind=info",
             "--link=PR-1=https://x.example/1",
-            "--link='https://y.example/?a=b'",
+            "--link='Link=https://y.example/?a=b'",
             "--steps-json='[{\"done\":false,\"text\":\"Do it\"}]'",
             "--question-json='{\"answerable\":true,\"items\":[{\"allow_other\":false,\"header\":\"\",\"multi_select\":false,"
                 + "\"options\":[{\"description\":\"\",\"label\":\"A\"}],\"text\":\"Which?\"}]}'",
@@ -315,6 +316,37 @@ final class CardCopyTests: XCTestCase {
             }
         }
         try? FileManager.default.removeItem(at: marker)
+    }
+
+    /// cli/needs-you `parse_link`: split at the first "="; bare URL (label "Link") when
+    /// there's no "=", the left side has "://", or it's blank.
+    private func parseLink(_ raw: String) -> ItemLink {
+        guard let eq = raw.firstIndex(of: "=") else { return ItemLink(label: "Link", url: raw.trimmingCharacters(in: .whitespaces)) }
+        let label = String(raw[..<eq]), url = String(raw[raw.index(after: eq)...])
+        if label.contains("://") || label.trimmingCharacters(in: .whitespaces).isEmpty {
+            return ItemLink(label: "Link", url: raw.trimmingCharacters(in: .whitespaces))
+        }
+        return ItemLink(label: label.trimmingCharacters(in: .whitespaces), url: url.trimmingCharacters(in: .whitespaces))
+    }
+
+    func testLinkArgumentSplitsLikeTheCLI() {
+        let cases: [(ItemLink, ItemLink)] = [
+            // Empty label, URL with "=" and no "://": the CLI would have split it wrongly.
+            (ItemLink(label: "", url: "slack:open?team=T1&id=C2"), ItemLink(label: "Link", url: "slack:open?team=T1&id=C2")),
+            (ItemLink(label: "  ", url: "msteams:l/chat?users=a=b"), ItemLink(label: "Link", url: "msteams:l/chat?users=a=b")),
+            // A label with "=".
+            (ItemLink(label: "a=b", url: "https://x.example/?q=1"), ItemLink(label: "a-b", url: "https://x.example/?q=1")),
+            // A label with "://".
+            (ItemLink(label: "https://evil.example", url: "https://x.example/?q=1"), ItemLink(label: "Link", url: "https://x.example/?q=1")),
+            // A label with hidden characters.
+            (ItemLink(label: "P\u{202E}R\u{200B}", url: "linear:issue?id=1"), ItemLink(label: "PR", url: "linear:issue?id=1")),
+            (ItemLink(label: "PR", url: "https://github.com/acme/api/pull/1"), ItemLink(label: "PR", url: "https://github.com/acme/api/pull/1")),
+        ]
+        for (link, expected) in cases {
+            let argument = CardCopy.linkArgument(link)
+            XCTAssertEqual(parseLink(argument), expected, argument)
+            XCTAssertTrue(argument.hasPrefix(expected.label + "="), argument)
+        }
     }
 
     func testShellSafeValue() {

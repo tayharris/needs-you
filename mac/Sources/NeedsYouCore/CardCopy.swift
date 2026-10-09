@@ -316,11 +316,15 @@ public enum CardCopy {
         return String(out)
     }
 
-    /// The CLI's `LABEL=URL` (it splits at the first "="): an "=" in the label becomes "-",
-    /// and a label it would misread (empty, or holding "://") gives the bare URL.
-    static func linkArgument(_ link: ItemLink) -> String {
-        let label = link.label.replacingOccurrences(of: "=", with: "-").trimmingCharacters(in: .whitespaces)
-        if label.isEmpty || label.contains("://") { return link.url }
+    /// The CLI's `LABEL=URL`. `parse_link` splits at the first "=" and reads the whole
+    /// argument as a bare URL when the left side is empty or holds "://", so the label is
+    /// always given and never holds "=": "=" becomes "-", control and format characters
+    /// are dropped, and a label left empty or holding "://" is "Link" (the CLI's own name
+    /// for a bare URL). The first "=" is then always the separator, whatever the URL holds.
+    public static func linkArgument(_ link: ItemLink) -> String {
+        var label = String(String.UnicodeScalarView(link.label.unicodeScalars.filter { !isHiddenOrControl($0) }))
+        label = label.replacingOccurrences(of: "=", with: "-").trimmingCharacters(in: .whitespaces)
+        if label.isEmpty || label.contains("://") { label = "Link" }
         return label + "=" + link.url
     }
 
