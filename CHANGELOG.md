@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Copy from a card on the Mac.** A card's text can't be selected (the panel never takes the keyboard), so commands, paths and ids in it, such as Orca's `orca terminal switch --terminal …`, now show as copy chips under the text: one click copies the whole command. Every card's **…** menu has **Copy Title and Text**, **Copy Link URLs** and **Copy Command** ([guide](docs/guides/mac-app.md#using-it)).
+- **Developer mode** (Settings → Advanced, off by default) for bug reports and contributing: each card shows its key, and its **…** menu copies the item JSON, its key and id, a Markdown debug report, and a `needs-you add` command that posts the same card again. Nothing copied includes a token ([guide](docs/guides/mac-app.md#developer-mode)).
+
 ## [0.3.1] - 2026-10-09
 
 A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.
