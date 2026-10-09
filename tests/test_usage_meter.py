@@ -7,6 +7,7 @@ touches the real ~/.claude or ~/.config.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -201,6 +202,26 @@ class MeterStatus(UsageCase):
     def test_off_and_no_numbers(self):
         self.run_it(self.payload(23, 41), expect_calls=0, NEEDS_YOU_USAGE_METER="0")
         self.run_it(self.payload(), expect_calls=0, NEEDS_YOU_USAGE_METER=None)
+
+    def test_an_orca_managed_account_gets_orcas_label(self):
+        # Orca's WSL Claude accounts run with CLAUDE_CONFIG_DIR = .../claude-accounts/<id>/auth:
+        # labelled as `needs-you orca usage` labels that account, over NEEDS_YOU_USAGE_ACCOUNT.
+        # Only the path is used: nothing in it is read.
+        aid = "3f0c9b1e-2a7d-4c58-b6e1-f0a9d2c4b7e1"
+        label = "orca-" + hashlib.sha256(aid.encode("utf-8")).hexdigest()[:8]
+        conf = os.path.join(self.home, ".local", "share", "orca", "claude-accounts", aid, "auth")
+        self.run_it(self.payload(23, 41), expect_calls=1, NEEDS_YOU_USAGE_METER=None,
+                    NEEDS_YOU_USAGE_ACCOUNT="work-1", CLAUDE_CONFIG_DIR=conf)
+        args = self.calls()[0]
+        self.assertEqual(args[args.index("--key") + 1], "usage:claude:" + label)
+        self.assertEqual(args[args.index("--account") + 1], label)
+        self.assertTrue(os.path.exists(self.meter_state(label)))
+        self.assertFalse(os.path.exists(conf))
+        # Any other CLAUDE_CONFIG_DIR: the configured label, as before.
+        self.run_it(self.payload(23, 41), expect_calls=2, NEEDS_YOU_USAGE_METER=None,
+                    NEEDS_YOU_USAGE_ACCOUNT="work-1", CLAUDE_CONFIG_DIR=os.path.join(self.home, ".claude"))
+        args = self.calls()[1]
+        self.assertEqual(args[args.index("--key") + 1], "usage:claude:work-1")
 
     def test_account_label_and_card_together(self):
         self.run_it(self.payload(90, 10), expect_calls=2, NEEDS_YOU_USAGE_METER=None,

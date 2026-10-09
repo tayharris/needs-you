@@ -2388,8 +2388,28 @@ def usage_pct(name):
     return v if 0 < v <= 100 else 0.0
 
 
+def orca_managed_account(env, provider):
+    """The usage label of the Orca-managed account this process runs under, or "": "orca-" +
+    the first 8 hex of sha256(its Orca account id), as `needs-you orca usage` labels it. Read
+    from the path Orca puts in its terminals' environment, never from a file: CODEX_HOME =
+    <Orca data>/codex-accounts/<id>/home, CLAUDE_CONFIG_DIR = .../claude-accounts/<id>/auth
+    (WSL only: on the host Orca copies the chosen Claude login into ~/.claude instead).
+    Byte-identical in cli/needs-you, needs-you-usage and needs-you-hook.sh (a test checks)."""
+    var, parent, leaf = {"claude": ("CLAUDE_CONFIG_DIR", "claude-accounts", "auth"),
+                         "codex": ("CODEX_HOME", "codex-accounts", "home")}[provider]
+    parts = (env.get(var) or "").strip().replace("\\", "/").rstrip("/").split("/")
+    if len(parts) < 4 or parts[-1] != leaf or parts[-3] != parent:
+        return ""
+    aid = parts[-2]
+    if aid in (".", "..") or not re.match(r"^[A-Za-z0-9._-]{1,200}$", aid):
+        return ""
+    return "orca-" + hashlib.sha256(aid.encode("utf-8")).hexdigest()[:8]
+
+
 def codex_usage():
-    account = os.environ.get("NEEDS_YOU_USAGE_ACCOUNT") or ""
+    # In an Orca terminal on a managed account (its own CODEX_HOME): the label `needs-you orca
+    # usage` gives that account, so the Mac shows it once.
+    account = orca_managed_account(os.environ, "codex") or os.environ.get("NEEDS_YOU_USAGE_ACCOUNT") or ""
     if not re.match(r"^[A-Za-z0-9._-]{0,40}$", account):
         account = ""
     path = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),

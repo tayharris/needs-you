@@ -219,7 +219,7 @@ Then in `~/.config/needs-you/env`:
 |---|---|---|
 | `NEEDS_YOU_USAGE_ALERT_PCT` | unset (off) | 5-hour threshold in percent |
 | `NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT` | the 5-hour value | Weekly threshold; `0` turns the weekly card off |
-| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label (letters, digits, `.` `_` `-`) for a machine with more than one Claude login, e.g. per `CLAUDE_CONFIG_DIR`; it goes in the key and the title, and labels the meter. Never an email |
+| `NEEDS_YOU_USAGE_ACCOUNT` | none | A label (letters, digits, `.` `_` `-`) for a machine with more than one Claude login, e.g. per `CLAUDE_CONFIG_DIR`; it goes in the key and the title, and labels the meter. Never an email. In an Orca terminal on an Orca WSL account (its own `CLAUDE_CONFIG_DIR` in Orca's `claude-accounts/<id>/auth`) the label is `orca-<8 hex>` instead, as `needs-you orca usage` labels that account |
 | `NEEDS_YOU_USAGE_METER` | on | `0`: don't send the usage meter status |
 
 Codex gets the same card from these settings through its hooks (read from its session file; see [integrations/codex](../codex/README.md#what-gets-posted)).
