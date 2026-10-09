@@ -112,7 +112,16 @@ Each for **30 min**, **1 hr**, **2 hr** or **until tomorrow** (7:00). A moon on 
 
 Two guards: an urgent item breaks through a focus unless you turn off **Settings → Alerts → Urgent items break through Focus** (for a presentation), and a sender that would interrupt more than 6 times in an hour is held to ambient for the rest of it (the open panel says so).
 
-**Settings → Alerts → Delivery** sets the tier for normal, low, done/info and other-context items, and shows a table of what each focus does. **Bypass rules** (same tab) override everything, top to bottom, first match wins: match a **key prefix** (`agent:`, `work:gh:deploy:`), a sender **agent** prefix (`orca:`, `claude-code`) or a **host** (`devbox`), and choose **Always interrupt**, **Never interrupt** (ambient at most) or **Always later**. A hidden panel stays hidden; bypass never means taking focus.
+**Settings → Alerts → Delivery** sets the tier for normal, low, done/info and other-context items, and shows a table of what each focus does. **Bypass rules** (same tab) override everything, top to bottom, first match wins: match a **key prefix** (`agent:`, `work:gh:deploy:`), one agent **session** (its key, `agent:<host>:<session>`; the session's context card too), a sender **agent** prefix (`orca:`, `claude-code`) or a **host** (`devbox`), and choose:
+
+- **Treat as urgent**: the card is red, sorts first, counts as urgent on the pill and arrives as an urgent item does (it breaks through a snooze, and through Focus unless you turned that off). **Treat as low** is the opposite.
+- **Always interrupt**, **Never interrupt** (ambient at most) or **Always later**.
+
+A rule can also be narrowed to one **event**, what the sender says happened (`source.event`, set by the agent hooks for every agent they serve): **asks** a question, **needs approval** (a command, an edit, a plan), **finishes** its turn, **fails** (an error, a rate limit, a sign-in), or its **context** is nearly full. One click adds **Agent questions are urgent** or **Agent failures are urgent** (key prefix `agent:` with that event), or **Agents always interrupt**.
+
+From a card: an agent card's **…** menu has **Alerts for This Session** and **Alerts for All <agent> Sessions** (for example *claude-code*), each with **Treat as Urgent**, **Always Interrupt**, **Never Interrupt** and **Always Later**, the same under **Only When It Asks / Needs Approval / Finishes / Fails**, and **Remove Rules**. A checkmark shows the rule in force; choosing it again removes it. Rules made there go to the top of the list, so they win over the rest, and show up in Settings. So "tell me loudly when *this* session stops or asks, and nothing else" is: **Alerts for This Session → Treat as Urgent** on its card, plus **Never Interrupt** (or **Always Later**) under **Alerts for All claude-code Sessions** on any card.
+
+A hidden panel stays hidden; no rule ever takes focus.
 
 ### Drive it from Shortcuts or a script
 
@@ -174,7 +183,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
 | Urgent items break through Focus | Alerts → Delivery | On, Off |
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
-| Bypass rules | Alerts → **Bypass rules** | None; up to 50 |
+| Bypass rules | Alerts → **Bypass rules**, or an agent card's **…** menu | None; up to 50 |
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 

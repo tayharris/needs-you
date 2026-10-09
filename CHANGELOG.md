@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Alert rules per agent session, and per kind of event.** An agent card's **…** menu on the Mac has **Alerts for This Session** and **Alerts for All <agent> Sessions**: treat it as urgent, always interrupt, never interrupt or always later, for everything it posts or only when it asks, needs approval, finishes or fails. **Treat as urgent** makes the card red, sorts it first and delivers it as an urgent item; **Treat as low** does the opposite. Settings → Alerts → Bypass rules gets the same: a session match, an event for any rule, and one-click **Agent questions are urgent** and **Agent failures are urgent** ([Mac app guide](docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).
+- **`source.event`**: senders may say what happened (`question`, `approval`, `finished`, `failed`, `context`) with `needs-you add --event`, the MCP server's `event` or the API ([API](docs/API.md#post-v1items-sender)). The agent hooks set it on every card, for every agent they serve, and `needs-you run` on its failure and done cards. Older hubs drop it; upgrade the hubs and run `needs-you update` on sender machines for rules that match events.
+
 ## [0.3.1] - 2026-10-09
 
 A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.
