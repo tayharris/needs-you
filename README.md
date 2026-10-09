@@ -44,6 +44,7 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 | Any MCP agent | The agent calls `needs_you_add` itself; for agents with MCP but no shell | `--mcp claude,codex,gemini,opencode,copilot,cursor` | [MCP server](docs/guides/mcp.md) |
 | Orca | Automations post blockers and run summaries; agent cards get a **Terminal** button | `--orca` | [Orca](docs/guides/orca.md) |
 | GitHub | Review requests, deploy approvals, failed CI, your PRs ready to merge or blocked, and an FYI when one merges | a poller on one machine | [GitHub](docs/guides/github.md) |
+| Linear | An issue assigned to you, a new comment, a mention or a status change; one card per issue, cleared when you read it in Linear | a poller on one machine, with a personal API key | [Linear](docs/guides/linear.md) |
 | CI, cron, scripts | A job fails, or a long one finishes (`needs-you run`) | the CLI | [Add a sender](docs/guides/add-a-sender.md#cron-systemd-ci) |
 
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
@@ -119,7 +120,7 @@ Next:
 - [Quickstart](docs/guides/quickstart.md): the whole setup, step by step.
 - [Claude Code alerts everywhere](docs/guides/claude-code-everywhere.md): one copy-paste path to "my Claude sessions alert my Mac", on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca.
 - [Tailscale](docs/guides/tailscale.md): connecting servers to the Mac.
-- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md) and [GitHub](docs/guides/github.md) integrations.
+- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md), [GitHub](docs/guides/github.md) and [Linear](docs/guides/linear.md) integrations.
 - [AGENT-GUIDE.md](docs/AGENT-GUIDE.md): the rules agents follow when they post.
 
 To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
@@ -179,6 +180,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Tailscale](docs/guides/tailscale.md) | Putting the Mac and servers on one tailnet, checking reachability |
 | [Orca](docs/guides/orca.md) | Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example |
 | [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, from one poller |
+| [Linear](docs/guides/linear.md) | Assignments, comments, mentions and status changes from your Linear inbox, from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
 | [Keeping up to date](docs/guides/updates.md) | The Mac app updating itself, `needs-you update` on senders, `scripts/rollout.sh` |
@@ -209,7 +211,7 @@ needs-you/
 ├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
 ├── integrations/   claude-code/ (the shared hook, skill), codex/, gemini/, opencode/, copilot/, kimi/, grok/,
-│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), github/ (poller), ci/ (Actions, cron, systemd)
+│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), github/ and linear/ (pollers), ci/ (Actions, cron, systemd)
 ├── deploy/         systemd units and an example hub config
 └── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, roadmap/, adr/
 ```
