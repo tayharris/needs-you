@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- **Usage on the pill, also when nothing is waiting, in the style you pick.** The idle "Nothing needs you" pill, which shows most of the day, had no usage meters at all; now it carries them too. The default style is **Bars**: two 3-point bars on a faint track under the count (session above weekly), clearly readable at 31 % and 10 %; the pill grows a few points taller while two show and never covers the count. **Settings → Usage → On the pill** switches to **Thin bars** (0.4.0's lines along the bottom edge; the pill keeps its size) or **Percentages** (`31% 10%` after the count, in a fixed-width slot so the pill doesn't resize as they change), with a preview of both pills. While the idle pill shows meters it rests at 60 % opacity instead of 35 %, so they can be read ([guide](docs/guides/mac-app.md#usage-meters)).
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.
