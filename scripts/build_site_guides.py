@@ -54,6 +54,8 @@ CURATED = [
      "The three parts and their names: the Needs You app shows alerts, a hub stores them (built into the app, or on a server), senders post them. Plus roles, invites and the Settings page for each."),
     (START, "docs/guides/mac-app.md", "mac-app", "Mac app",
      "Installing and using NeedsYou.app: the pill, the cards, Settings."),
+    (START, "docs/guides/help-us-test.md", "help-us-test", "Help us test",
+     "Which AI tools have been run for real and which only against a stub or from their docs, what to try, and how to report back."),
     (AGENTS, "docs/guides/claude-code.md", "claude-code", "Claude Code",
      "Claude Code hooks for \"agent is waiting\" cards, and the skill: what gets installed and what each hook posts."),
     (AGENTS, "docs/guides/claude-code-everywhere.md", "claude-code-everywhere", "Claude Code everywhere",
