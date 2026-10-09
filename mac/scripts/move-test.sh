@@ -113,7 +113,11 @@ launch_moving() {   # $1 = app to launch with the test move trigger
 check_moved() {   # $1 = where it came from (a label)
   [[ -d "$APP" ]] && pass "$1: copied to the test Applications folder" || fail "$1: no copy at $APP"
   codesign --verify --deep --strict "$APP" 2>/dev/null && pass "$1: the copy's signature verifies" || fail "$1: the copy's signature doesn't verify"
-  [[ -z "$(ls -A "$DEST" | grep -v '^NeedsYou.app$' || true)" ]] && pass "$1: no staging leftovers" || fail "$1: leftovers in $DEST: $(ls -A "$DEST")"
+  local left=() f
+  for f in "$DEST"/* "$DEST"/.[!.]* "$DEST"/..?*; do
+    [[ -e "$f" && "$f" != "$APP" ]] && left+=("${f##*/}")
+  done
+  [[ ${#left[@]} -eq 0 ]] && pass "$1: no staging leftovers" || fail "$1: leftovers in $DEST: ${left[*]}"
   [[ "$(defaults read "$SUITE" userName 2>/dev/null)" == move-tester ]] && pass "$1: prefs kept" || fail "$1: prefs lost"
   [[ "$(defaults read "$SUITE" someFutureKey 2>/dev/null)" == keep-me ]] && pass "$1: unknown pref kept" || fail "$1: unknown pref lost"
   [[ -n "$OWNER" && "$(cat "$SUPPORT/owner.token" 2>/dev/null)" == "$OWNER" ]] && pass "$1: owner.token unchanged" || fail "$1: owner.token changed"
