@@ -120,6 +120,29 @@ MAX_QUESTION_OPTIONS = 8
 MAX_OPTION_LABEL = 80
 MAX_OPTION_DESCRIPTION = 200
 MAX_SOURCE_FIELD = 100
+# Status records (ADR 0011, docs/API.md "Status records"): quiet, keyed, expiring, never items.
+STATUS_TYPES = ("usage", "progress")
+STATUS_STATES = ("working", "waiting", "idle", "done", "failed")
+MAX_STATUS_LABEL = 60
+MAX_STATUS_DETAIL = 120
+MAX_STATUS_WINDOWS = 4
+STATUS_NAME_RE = re.compile(r"^[a-z0-9-]{1,20}\Z")  # usage.provider and windows[].name
+STATUS_ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._-]{0,40}\Z")
+STATUS_PROGRESS_MAX_MS = 3600 * 1000  # a progress status expires within the hour
+STATUS_USAGE_MAX_MS = 8 * 24 * 3600 * 1000  # a usage status within 8 days (a weekly window)
+STATUS_SKEW_MS = 24 * 3600 * 1000  # replicated records may run this far past those limits
+STATUS_MAX_PER_TOKEN = 20
+STATUS_MAX_PER_HUB = 64
+STATUS_MAX_REPLICATED = 4 * STATUS_MAX_PER_HUB  # live replicated records past this are skipped
+STATUS_MIN_INTERVAL_MS = 10 * 1000  # one write per key this often
+STATUS_KEEP_MS = 3600 * 1000  # housekeeping deletes a status this long after it expired
+# Token-shaped text in a status (400 secret_in_text): needs-you tokens, peer secrets and invite
+# codes, common vendor keys, JWTs, long hex, and (looks_secret) long mixed-case runs with digits.
+STATUS_SECRET_RE = re.compile(r"(?:\bny[ip]?_[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}"
+                              r"|sk-[A-Za-z0-9_-]{16,}|xox[abpr]-[\w-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}"
+                              r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}"
+                              r"|\b[0-9A-Fa-f]{32,}\b)")
+_KEY_RUN_RE = re.compile(r"[A-Za-z0-9+/_=-]{32,}")
 # GET /v1/items/answer holds a request at most this long while there is no answer.
 ANSWER_WAIT_MAX_SECONDS = 25.0
 MAX_REQUEST_BYTES = 64 * 1024
@@ -768,6 +791,133 @@ def _refuse_line_separators(out: Dict[str, Any]) -> None:
         check("source." + name, v)
 
 
+def looks_secret(text: str) -> bool:
+    """True for text that carries something token-shaped (see STATUS_SECRET_RE). A long run of
+    key characters counts when it mixes upper and lower case with digits, as random keys do;
+    "nightly-import-of-the-acme-data" does not."""
+    if STATUS_SECRET_RE.search(text):
+        return True
+    for m in _KEY_RUN_RE.finditer(text):
+        run = m.group(0)
+        if (sum(c.isdigit() for c in run) >= 4 and sum(c.isupper() for c in run) >= 2
+                and sum(c.islower() for c in run) >= 2):
+            return True
+    return False
+
+
+def status_id(token_id: str, key: str) -> str:
+    """A status's id: the same on every hub for one token's key."""
+    return "st_" + hashlib.sha256(("%s\n%s" % (token_id, key)).encode("utf-8")).hexdigest()[:32]
+
+
+def validate_status_key(raw: str) -> str:
+    key = raw.strip()
+    if not key or len(key) > MAX_KEY or not KEY_RE.match(key):
+        raise _invalid("key", "a status key is 1-%d letters, digits and . _ : - / @ # + =" % MAX_KEY)
+    return key
+
+
+def _status_text(data: Dict[str, Any], name: str, max_len: int, path: Optional[str] = None) -> str:
+    path = path or name
+    v = _str_field(data, name, max_len, path=path) or ""
+    if _LINE_SEP_RE.search(v):
+        raise _invalid(path, "%s contains a line break (U+2028/U+2029)" % path)
+    if looks_secret(v):
+        raise ApiError(400, "secret_in_text", "%s looks like it contains a token or key; statuses "
+                       "never carry secrets" % path, path)
+    return v
+
+
+def validate_usage(usage: Any) -> Dict[str, Any]:
+    if not isinstance(usage, dict):
+        raise _invalid("usage", "a usage status needs usage: {provider, account, windows}")
+    provider = usage.get("provider")
+    if not isinstance(provider, str) or not STATUS_NAME_RE.match(provider):
+        raise _invalid("usage.provider", "usage.provider is 1-20 of a-z, 0-9 and -")
+    account = usage.get("account")
+    account = "" if account is None else account
+    if not isinstance(account, str):
+        raise _invalid("usage.account", "usage.account must be a string")
+    if "@" in account:
+        raise _invalid("usage.account", "usage.account must not be an email: use a local label or a hash")
+    if not STATUS_ACCOUNT_RE.match(account):
+        raise _invalid("usage.account", "usage.account is at most 40 of letters, digits and . _ -")
+    if looks_secret(account):
+        raise ApiError(400, "secret_in_text", "usage.account looks like a token or key", "usage.account")
+    windows = usage.get("windows")
+    if not isinstance(windows, list) or not 1 <= len(windows) <= MAX_STATUS_WINDOWS:
+        raise _invalid("usage.windows", "usage.windows is a list of 1-%d windows" % MAX_STATUS_WINDOWS)
+    out = []
+    for i, w in enumerate(windows):
+        path = "usage.windows[%d]" % i
+        if not isinstance(w, dict):
+            raise _invalid(path, "%s must be an object" % path)
+        name = w.get("name")
+        if not isinstance(name, str) or not STATUS_NAME_RE.match(name):
+            raise _invalid(path + ".name", "%s.name is 1-20 of a-z, 0-9 and -" % path)
+        pct = w.get("used_pct")
+        if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+            raise _invalid(path + ".used_pct", "%s.used_pct is a number from 0 to 100" % path)
+        pct = round(float(pct), 1)
+        resets = None
+        if w.get("resets_at") is not None:
+            try:
+                resets = parse_ts(w["resets_at"])
+            except ValueError:
+                raise _invalid(path + ".resets_at", "%s.resets_at must be a timestamp" % path)
+        out.append({"name": name, "used_pct": int(pct) if pct == int(pct) else pct, "resets_at": resets})
+    if len({w["name"] for w in out}) != len(out):
+        raise _invalid("usage.windows", "usage.windows names must be distinct")
+    return {"provider": provider, "account": account, "windows": out}
+
+
+def validate_status_body(data: Any) -> Dict[str, Any]:
+    """A status body's fields, all but the expiry rule (PUT and replication share this)."""
+    if not isinstance(data, dict):
+        raise ApiError(400, "invalid", "body must be a JSON object")
+    typ = data.get("type")
+    if not isinstance(typ, str) or typ not in STATUS_TYPES:
+        raise _invalid("type", "type must be one of %s" % ", ".join(STATUS_TYPES))
+    out: Dict[str, Any] = {"type": typ, "state": None, "progress": None, "usage": None}
+    out["label"] = _status_text(data, "label", MAX_STATUS_LABEL)
+    out["detail"] = _status_text(data, "detail", MAX_STATUS_DETAIL)
+    src = validate_source(data.get("source"))
+    for name, v in src.items():
+        if _LINE_SEP_RE.search(v):
+            raise _invalid("source." + name, "source.%s contains a line break (U+2028/U+2029)" % name)
+    out["source"] = src
+    if typ == "progress":
+        if not out["label"]:
+            raise _invalid("label", "a progress status needs a label")
+        out["state"] = _enum_field(data, "state", STATUS_STATES, "working")
+        prog = data.get("progress")
+        if prog is not None:
+            if isinstance(prog, bool) or not isinstance(prog, int) or not 0 <= prog <= 100:
+                raise _invalid("progress", "progress is an integer from 0 to 100, or null")
+        out["progress"] = prog
+    else:
+        out["usage"] = validate_usage(data.get("usage"))
+    if data.get("expires_at") is None:
+        raise _invalid("expires_at", "expires_at is required")
+    try:
+        out["expires_at"] = parse_ts(data["expires_at"])
+    except ValueError:
+        raise _invalid("expires_at", "expires_at must be a timestamp")
+    return out
+
+
+def validate_status_input(data: Any, now_ms: int) -> Dict[str, Any]:
+    """A PUT /v1/status/<key> body: the fields, with expires_at in the future and in range."""
+    out = validate_status_body(data)
+    limit = STATUS_PROGRESS_MAX_MS if out["type"] == "progress" else STATUS_USAGE_MAX_MS
+    if out["expires_at"] <= now_ms:
+        raise _invalid("expires_at", "expires_at must be in the future")
+    if out["expires_at"] > now_ms + limit:
+        raise _invalid("expires_at", "a %s status expires within %s" % (
+            out["type"], "1 hour" if out["type"] == "progress" else "8 days"))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -1085,6 +1235,31 @@ CREATE TABLE IF NOT EXISTS peer_links (
 ALTER TABLE items ADD COLUMN purged_at INTEGER;
 CREATE INDEX IF NOT EXISTS items_purged ON items(purged_at, status, updated_at);
 """,
+    # 11: status records (ADR 0011): one row per (token, key), id derived from both so every
+    #     hub names it the same. JSON in usage and source. Replicated, LWW like items.
+    """
+CREATE TABLE IF NOT EXISTS status (
+  id TEXT PRIMARY KEY,
+  token_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  type TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  state TEXT,
+  progress INTEGER,
+  detail TEXT NOT NULL DEFAULT '',
+  usage TEXT,
+  source TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  seq INTEGER NOT NULL,
+  local_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS status_seq ON status(seq);
+CREATE INDEX IF NOT EXISTS status_expires ON status(expires_at);
+CREATE INDEX IF NOT EXISTS status_token ON status(token_id, expires_at);
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
@@ -1095,6 +1270,8 @@ ITEM_COLS = ("id", "key", "context", "kind", "priority", "title", "body", "links
              "token_id", "origin_hub", "updated_by", "superseded_by", "seq", "local_at", "purged_at")
 TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked_at",
               "updated_by", "seq")
+STATUS_COLS = ("id", "token_id", "key", "type", "label", "state", "progress", "detail", "usage", "source",
+               "created_at", "updated_at", "expires_at", "updated_by", "seq", "local_at")
 INVITE_COLS = ("id", "name", "role", "hash", "uses", "used", "created_at", "expires_at",
                "revoked_at", "created_by", "updated_at", "updated_by", "seq")
 
@@ -1729,9 +1906,16 @@ class Store:
 
     def changes_all(self, after: int, limit: int) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]],
                                                            List[Dict[str, Any]], int, bool]:
+        items, toks, invs, _sts, next_after, more = self.changes_with_status(after, limit)
+        return items, toks, invs, next_after, more
+
+    def changes_with_status(self, after: int, limit: int) -> Tuple[
+            List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], int, bool]:
+        """Every record stored after `after` in seq order (items, tokens, invites, statuses)."""
         with self.lock:
             rows = []
-            for kind, table in (("item", "items"), ("token", "tokens"), ("invite", "invites")):
+            for kind, table in (("item", "items"), ("token", "tokens"), ("invite", "invites"),
+                                ("status", "status")):
                 # Peer invites name this hub and stay on it (ADR 0012); an older peer would
                 # also hold replication on their unknown role.
                 local = " AND role != 'peer'" if kind == "invite" else ""
@@ -1743,7 +1927,107 @@ class Store:
         merged = merged[:limit]
         next_after = merged[-1][1]["seq"] if merged else after
         return ([r for k, r in merged if k == "item"], [r for k, r in merged if k == "token"],
-                [r for k, r in merged if k == "invite"], next_after, more)
+                [r for k, r in merged if k == "invite"], [r for k, r in merged if k == "status"],
+                next_after, more)
+
+    # -- statuses (ADR 0011) ---------------------------------------------
+
+    def _write_status(self, rec: Dict[str, Any]) -> None:
+        rec = dict(rec)
+        rec["seq"] = self.next_seq()
+        rec["local_at"] = self.now_ms()
+        self.conn.execute("INSERT OR REPLACE INTO status(%s) VALUES(%s)"
+                          % (",".join(STATUS_COLS), ",".join("?" for _ in STATUS_COLS)),
+                          tuple(rec.get(c) for c in STATUS_COLS))
+
+    def get_status(self, sid: str) -> Optional[Dict[str, Any]]:
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM status WHERE id = ?", (sid,)).fetchone()
+        return dict(row) if row else None
+
+    def put_status(self, token_id: str, key: str, fields: Dict[str, Any]) -> Dict[str, Any]:
+        """Set one token's status `key` (validated fields). Raises 429 too_fast / too_many_status."""
+        sid = status_id(token_id, key)
+        with self.tx() as c:
+            now = self.now_ms()
+            row = c.execute("SELECT * FROM status WHERE id = ?", (sid,)).fetchone()
+            live = row is not None and row["expires_at"] > now
+            if live and now - row["local_at"] < STATUS_MIN_INTERVAL_MS:
+                wait = max(1, -(-(STATUS_MIN_INTERVAL_MS - (now - row["local_at"])) // 1000))
+                raise ApiError(429, "too_fast", "one write per status key every %d s"
+                               % (STATUS_MIN_INTERVAL_MS // 1000), headers={"Retry-After": str(wait)})
+            mine = int(c.execute("SELECT COUNT(*) FROM status WHERE token_id = ? AND expires_at > ? AND id != ?",
+                                 (token_id, now, sid)).fetchone()[0])
+            if mine >= STATUS_MAX_PER_TOKEN:
+                raise ApiError(429, "too_many_status", "this token already has %d live statuses; clear one "
+                               "or let it expire" % STATUS_MAX_PER_TOKEN)
+            total = int(c.execute("SELECT COUNT(*) FROM status WHERE expires_at > ? AND id != ?",
+                                  (now, sid)).fetchone()[0])
+            if total >= STATUS_MAX_PER_HUB:
+                raise ApiError(429, "too_many_status", "this hub already has %d live statuses"
+                               % STATUS_MAX_PER_HUB)
+            usage = fields.get("usage")
+            rec = {"id": sid, "token_id": token_id, "key": key, "type": fields["type"],
+                   "label": fields.get("label") or "", "state": fields.get("state"),
+                   "progress": fields.get("progress"), "detail": fields.get("detail") or "",
+                   "usage": json.dumps(usage) if usage is not None else None,
+                   "source": json.dumps(fields.get("source") or {}),
+                   "created_at": row["created_at"] if live else now,
+                   "updated_at": self.bump(row["updated_at"] if row else None),
+                   "expires_at": fields["expires_at"], "updated_by": self.hub_id}
+            self._write_status(rec)
+            self.enqueue("status", sid)
+        return self.get_status(sid) or rec
+
+    def clear_status(self, token_id: str, key: str) -> bool:
+        """End one token's status `key` now (a write: it replicates). False if none was live."""
+        sid = status_id(token_id, key)
+        with self.tx() as c:
+            now = self.now_ms()
+            row = c.execute("SELECT * FROM status WHERE id = ?", (sid,)).fetchone()
+            if row is None or row["expires_at"] <= now:
+                return False
+            rec = dict(row)
+            rec["updated_at"] = self.bump(row["updated_at"])
+            rec["expires_at"] = min(now, rec["updated_at"])
+            rec["updated_by"] = self.hub_id
+            self._write_status(rec)
+            self.enqueue("status", sid)
+        return True
+
+    def list_statuses(self) -> List[Dict[str, Any]]:
+        """Unexpired statuses, newest first, without those of a revoked token."""
+        with self.lock:
+            return [dict(r) for r in self.conn.execute(
+                "SELECT s.* FROM status s LEFT JOIN tokens t ON t.id = s.token_id "
+                "WHERE s.expires_at > ? AND t.revoked_at IS NULL ORDER BY s.updated_at DESC, s.id",
+                (self.now_ms(),))]
+
+    def apply_status(self, rec: Any) -> bool:
+        """Apply a replicated status (LWW on updated_at, updated_by). Raises ApiError/ValueError
+        for one this hub can't read (the caller skips it)."""
+        rec = normalise_status_record(rec, self.now_ms())
+        with self.tx() as c:
+            row = c.execute("SELECT * FROM status WHERE id = ?", (rec["id"],)).fetchone()
+            if row is not None and not self.newer(rec["updated_at"], rec["updated_by"],
+                                                  row["updated_at"], row["updated_by"]):
+                return False
+            now = self.now_ms()
+            if rec["expires_at"] > now and (row is None or row["expires_at"] <= now):
+                live = int(c.execute("SELECT COUNT(*) FROM status WHERE expires_at > ?", (now,)).fetchone()[0])
+                if live >= STATUS_MAX_REPLICATED:
+                    raise _invalid("statuses", "this hub already holds %d live statuses" % live)
+            self._write_status(rec)
+        return True
+
+    def status_records_for(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out = []
+        with self.lock:
+            for i in sorted({r["record_id"] for r in rows if r["kind"] == "status"}):
+                row = self.conn.execute("SELECT * FROM status WHERE id = ?", (i,)).fetchone()
+                if row:  # deleted by housekeeping: not sent
+                    out.append(dict(row))
+        return out
 
     # -- invites ---------------------------------------------------------
 
@@ -2014,7 +2298,7 @@ class Store:
         """Hard-delete what nobody needs: closed/expired items past retention, stale peer
         outbox rows, expired invites, and revoked invites past their grace period."""
         now = self.now_ms()
-        out = {"items": 0, "outbox": 0, "invites": 0, "texts": 0}
+        out = {"items": 0, "outbox": 0, "invites": 0, "texts": 0, "statuses": 0}
         with self.tx() as c:
             if self.text_retention_ms > 0:
                 # Tombstones: a closed (or expired) item's text goes; id, key, status and times
@@ -2037,6 +2321,8 @@ class Store:
                 out["items"] = c.execute(
                     "DELETE FROM items WHERE (status != 'open' AND (updated_at < ? OR local_at < ?)) OR "
                     "(expires_at IS NOT NULL AND expires_at < ?)", (cutoff, cutoff, cutoff)).rowcount
+            out["statuses"] = c.execute("DELETE FROM status WHERE expires_at < ?",
+                                        (now - STATUS_KEEP_MS,)).rowcount
             out["outbox"] = c.execute("DELETE FROM outbox WHERE created_at < ?",
                                       (now - OUTBOX_MAX_AGE_MS,)).rowcount
             dead = []
@@ -2435,6 +2721,16 @@ class Store:
         read raises Unreadable, so replication fails closed and retries rather than letting
         the hubs disagree about who may do what. Anything else (a locked database) raises
         too, so the batch is retried."""
+        if kind == "status":
+            try:
+                return self.apply_status(rec), None
+            except ApiError as e:
+                reason = e.message
+            except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
+                reason = "%s: %s" % (type(e).__name__, e)
+            rid = rec.get("id") if isinstance(rec, dict) else None
+            return False, {"kind": kind, "id": safe_text(rid, 100) if isinstance(rid, str) else None,
+                           "reason": safe_text(reason, 200)}
         if kind != "item":
             check_security_record(kind, rec)
             return (self.apply_token if kind == "token" else self.apply_invite)(rec), None
@@ -2820,6 +3116,55 @@ def item_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def status_public(rec: Dict[str, Any]) -> Dict[str, Any]:
+    usage = _json_val(rec.get("usage"), None)
+    if isinstance(usage, dict):
+        usage = dict(usage, windows=[dict(w, resets_at=fmt_ts(w.get("resets_at")))
+                                     for w in usage.get("windows") or []])
+    return {"id": rec["id"], "key": rec["key"], "type": rec["type"], "label": rec["label"] or "",
+            "state": rec.get("state"), "progress": rec.get("progress"), "detail": rec.get("detail") or "",
+            "usage": usage, "source": _json_val(rec.get("source"), {}),
+            "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"]),
+            "expires_at": fmt_ts(rec["expires_at"])}
+
+
+def status_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
+    """A status for replication: the public record plus its token and the hub that wrote it."""
+    out = status_public(rec)
+    out["token_id"] = rec["token_id"]
+    out["updated_by"] = rec.get("updated_by") or ""
+    return out
+
+
+def normalise_status_record(rec: Any, now_ms: int) -> Dict[str, Any]:
+    """A replicated status as a row. Checked as a PUT body is (text, usage, secrets), except
+    that a past expires_at is fine (a clear) and the future limits allow some clock skew."""
+    if not isinstance(rec, dict) or not utf8_ok(rec):
+        raise ValueError("a status record must be a JSON object of text")
+    fields = validate_status_body(rec)
+    limit = STATUS_PROGRESS_MAX_MS if fields["type"] == "progress" else STATUS_USAGE_MAX_MS
+    if fields["expires_at"] > now_ms + limit + STATUS_SKEW_MS:
+        raise _invalid("expires_at", "expires_at is too far ahead")
+    token_id, key = rec.get("token_id"), rec.get("key")
+    if not isinstance(token_id, str) or not token_id or len(token_id) > 100:
+        raise _invalid("token_id", "token_id is required")
+    if not isinstance(key, str):
+        raise _invalid("key", "key is required")
+    key = validate_status_key(key)
+    if rec.get("id") != status_id(token_id, key):
+        raise _invalid("id", "id doesn't match token_id and key")
+    by = rec.get("updated_by")
+    if not isinstance(by, str) or len(by) > 64:
+        raise _invalid("updated_by", "updated_by must be a hub id")
+    created, updated = parse_ts(rec.get("created_at")), parse_ts(rec.get("updated_at"))
+    usage = fields["usage"]
+    return {"id": rec["id"], "token_id": token_id, "key": key, "type": fields["type"],
+            "label": fields["label"], "state": fields["state"], "progress": fields["progress"],
+            "detail": fields["detail"], "usage": json.dumps(usage) if usage is not None else None,
+            "source": json.dumps(fields["source"]), "created_at": created, "updated_at": updated,
+            "expires_at": fields["expires_at"], "updated_by": by}
+
+
 def token_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
     return {"id": rec["id"], "name": rec["name"], "role": rec["role"], "hash": rec["hash"],
             "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"]),
@@ -2948,7 +3293,8 @@ class PeerWorker(threading.Thread):
         while True:
             items, toks, invs = self.hub.store.records_for(rows)
             payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
-                       "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs]}
+                       "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs],
+                       "statuses": [status_wire(r) for r in self.hub.store.status_records_for(rows)]}
             # The peer refuses bodies over MAX_REPLICATE_BYTES (413), and would refuse the same
             # rows on every retry: send fewer rows instead. One record is far below the limit.
             if len(rows) == 1 or len(json.dumps(payload)) <= PUSH_MAX_BYTES:
@@ -3033,8 +3379,10 @@ class PeerWorker(threading.Thread):
                         continue
                 changed = False
                 skipped: List[Dict[str, Any]] = []
-                for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
-                    for rec in resp.get(key) or []:
+                for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items"),
+                                  ("status", "statuses")):
+                    recs = resp.get(key) or []
+                    for rec in recs if isinstance(recs, list) else []:
                         did, skip = self.hub.store.apply_record(kind, rec)
                         changed = changed or (did and kind == "item")
                         if skip is not None:
@@ -3248,6 +3596,11 @@ class Handler(BaseHTTPRequestHandler):
                 item_id = urllib.parse.unquote(path[len("/v1/items/"):])
                 if "/" not in item_id and item_id:
                     return self._patch(item_id) if method == "PATCH" else self._get_one(item_id)
+            if path == "/v1/status" and method in ("GET", "HEAD"):
+                return self._list_status()
+            if path.startswith("/v1/status/") and method in ("PUT", "DELETE"):
+                key = urllib.parse.unquote(path[len("/v1/status/"):])
+                return self._put_status(key) if method == "PUT" else self._clear_status(key)
             if path == "/v1/stream" and method == "GET":
                 return self._stream(query)
             if path == "/v1/replicate" and method == "POST":
@@ -3552,6 +3905,35 @@ class Handler(BaseHTTPRequestHandler):
         out["changed"] = changed
         self._send(201 if created else 200, out)
 
+    def _put_status(self, raw_key: str) -> None:
+        tok = self._auth("sender")
+        key = validate_status_key(raw_key)
+        st = self.hub.store
+        fields = validate_status_input(self._body(), st.now_ms())
+        rec = st.put_status(tok["id"], key, fields)
+        self.hub.notify()
+        self._send(200, status_public(rec))
+
+    def _clear_status(self, raw_key: str) -> None:
+        tok = self._auth("sender")
+        cleared = self.hub.store.clear_status(tok["id"], validate_status_key(raw_key))
+        if cleared:
+            self.hub.notify()
+        self._send(200, {"ok": True, "cleared": cleared})
+
+    def _list_status(self) -> None:
+        self._auth("reader")
+        st = self.hub.store
+        statuses = [status_public(r) for r in st.list_statuses()]
+        tag = '"%s"' % hashlib.sha256(json.dumps(statuses, sort_keys=True).encode("utf-8")).hexdigest()[:32]
+        if (self.headers.get("If-None-Match") or "").strip() == tag:
+            self.send_response(304)
+            self.send_header("ETag", tag)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        self._send(200, {"statuses": statuses, "server_time": fmt_ts(st.now_ms())}, {"ETag": tag})
+
     def _resolve(self) -> None:
         self._auth("sender")
         data = self._body()
@@ -3769,7 +4151,11 @@ class Handler(BaseHTTPRequestHandler):
             if kind != "item":
                 for rec in recs:  # before applying anything: fail closed, the pusher retries
                     check_security_record(kind, rec)
-        for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items")):
+        statuses = data.get("statuses") or []
+        if not isinstance(statuses, list):
+            raise ApiError(400, "invalid", "statuses must be an array", "statuses")
+        for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items"),
+                          ("status", "statuses")):
             for rec in data.get(key) or []:
                 changed, skip = self.hub.store.apply_record(kind, rec)
                 applied += 1 if changed else 0
@@ -3793,12 +4179,13 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             raise ApiError(400, "invalid", "after/limit must be integers")
         st = self.hub.store
-        items, toks, invs, next_after, more = st.changes_all(after, limit)
+        items, toks, invs, sts, next_after, more = st.changes_with_status(after, limit)
         self._send(200, {"hub_id": self.hub.hub_id, "epoch": st.epoch(), "max_seq": st.max_seq(),
                          "next_after": next_after, "more": more,
                          "items": [item_wire(r) for r in items],
                          "tokens": [token_wire(r) for r in toks],
-                         "invites": [invite_wire(r) for r in invs]})
+                         "invites": [invite_wire(r) for r in invs],
+                         "statuses": [status_wire(r) for r in sts]})
 
 
 def connection_limit(cfg: Dict[str, Any]) -> int:
