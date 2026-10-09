@@ -16,7 +16,7 @@ updates the same card):
     needs-you add --key "work:<TICKET>:<reason>" --context work --priority normal \
       --title "<TICKET>: <what the user has to do or decide, max 100 chars>" \
       --body "$body" \
-      --link "Terminal=$term_link" \
+      --link "Orca=$term_link" \
       --link "Jira=https://<site>.atlassian.net/browse/<TICKET>" \
       --link "PR=https://github.com/<owner>/<repo>/pull/<number>" \
       --link "Branch=https://github.com/<owner>/<repo>/tree/<branch>" \
@@ -43,7 +43,7 @@ Rules:
   reporting drops off even if a resolve is missed or the run crashes.
 - Leave out any link you don't have (no PR yet: no PR link). Outside an Orca
   terminal (`$ORCA_TERMINAL_HANDLE` empty), pass only the sentences as --body
-  and leave out the Terminal link.
+  and leave out the Orca link.
 - If this run fails in a way you can't recover from, post
   `--key "work:<automation-name>:failed"`; resolve it on the next good run.
 - Never include secrets, credentials, customer data or code.

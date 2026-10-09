@@ -34,7 +34,7 @@ Orca worktree: `/home/me/orca/workspaces/my-repo/ACME-123`
 Jump to its terminal: `orca terminal switch --terminal term_6f1c...`
 ```
 
-Run that command in a terminal on the Mac where the Orca app is open. Orca gives every agent terminal `$ORCA_TERMINAL_HANDLE` (`term_<uuid>`) and `$ORCA_WORKTREE_ID` (`<repoId>::<path>`); the block below reads both. On a paired Orca server, the Mac's Orca finds the terminal only with `--environment <name>`; set `NEEDS_YOU_ORCA_ENVIRONMENT='<name>'` in `~/.config/needs-you/env` on that server (the name `orca environment list` shows on the Mac) and the block adds it. Items also carry a **Terminal** link, `needsyou://orca/terminal?handle=<handle>[&environment=<name>]`: in the Mac app it's a button that runs that same `orca terminal switch` and brings Orca forward. The app validates the handle and the name and never runs anything else from an item. The body line stays for anyone without the app. If a later Orca adds a real deep link, it goes in a `--link "Orca=orca://..."`.
+Run that command in a terminal on the Mac where the Orca app is open. Orca gives every agent terminal `$ORCA_TERMINAL_HANDLE` (`term_<uuid>`) and `$ORCA_WORKTREE_ID` (`<repoId>::<path>`); the block below reads both. On a paired Orca server, the Mac's Orca finds the terminal only with `--environment <name>`; set `NEEDS_YOU_ORCA_ENVIRONMENT='<name>'` in `~/.config/needs-you/env` on that server (the name `orca environment list` shows on the Mac) and the block adds it. Items also carry an **Orca** link, `needsyou://orca/terminal?handle=<handle>[&environment=<name>]`: in the Mac app it's a button that runs that same `orca terminal switch` and brings Orca forward. The app validates the handle and the name and never runs anything else from an item. The body line stays for anyone without the app. If a later Orca adds a real deep link, it goes in a `--link "Orca=orca://..."`.
 
 ## Prompt block
 
@@ -71,7 +71,7 @@ updates the same card):
     needs-you add --key "work:<TICKET>:<reason>" --context work --priority normal \
       --title "<TICKET>: <what the user has to do or decide, max 100 chars>" \
       --body "$body" \
-      --link "Terminal=$term_link" \
+      --link "Orca=$term_link" \
       --link "Jira=https://<site>.atlassian.net/browse/<TICKET>" \
       --link "PR=https://github.com/<owner>/<repo>/pull/<number>" \
       --link "Branch=https://github.com/<owner>/<repo>/tree/<branch>" \
@@ -98,7 +98,7 @@ Rules:
   reporting drops off even if a resolve is missed or the run crashes.
 - Leave out any link you don't have (no PR yet: no PR link). Outside an Orca
   terminal (`$ORCA_TERMINAL_HANDLE` empty), pass only the sentences as --body
-  and leave out the Terminal link.
+  and leave out the Orca link.
 - If this run fails in a way you can't recover from, post
   `--key "work:<automation-name>:failed"`; resolve it on the next good run.
 - Never include secrets, credentials, customer data or code.

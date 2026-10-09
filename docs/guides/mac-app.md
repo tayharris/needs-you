@@ -198,7 +198,7 @@ The repeat reminder plays urgent's arrival again every few minutes while an urge
 
 ## Terminal button
 
-Agent cards from the Claude Code hook (and Orca) carry a **Terminal** button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done.
+Agent cards from the Claude Code hook (and Orca) carry a **Terminal** button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done. The button is named for where it goes, whatever the sender labelled it: **Orca**, **WezTerm**, **tmux**, **iTerm2**, **Terminal** or **Ghostty**. A session in Orca gets only the Orca button, no editor button beside it.
 
 | Link | What the app does |
 |---|---|

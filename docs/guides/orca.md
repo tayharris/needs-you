@@ -34,14 +34,14 @@ Check from an Orca terminal on each server: `command -v needs-you` (if it's miss
 
 With the hooks installed, nothing else is needed. Cards are keyed `agent:<host>:<terminal handle>`, so agents on different servers never collide.
 
-Each card has a **Terminal** button that takes you to the agent's Orca terminal ([below](#the-terminal-button)), and the body names the worktree and the command that does the same by hand:
+Each card has an **Orca** button that takes you to the agent's Orca terminal ([below](#the-orca-button)), and the body names the worktree and the command that does the same by hand:
 
 ```text
 Orca worktree: `/home/me/orca/workspaces/my-repo/ACME-123`
 Jump to its terminal: `orca terminal switch --environment 'My Devbox' --terminal term_6f1c...`
 ```
 
-On a paired Orca server, the Mac's Orca only finds the terminal with `--environment <name>`, and the server can't know the name the Mac gave it. The **Terminal** button copes (without a name, it tries each paired environment in turn), but the command in the body needs it. Tell the server once (the name is the one `orca environment list` shows on the Mac):
+On a paired Orca server, the Mac's Orca only finds the terminal with `--environment <name>`, and the server can't know the name the Mac gave it. The **Orca** button copes (without a name, it tries each paired environment in turn), but the command in the body needs it. Tell the server once (the name is the one `orca environment list` shows on the Mac):
 
 ```bash
 echo "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'" >> ~/.config/needs-you/env
@@ -49,7 +49,7 @@ echo "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'" >> ~/.config/needs-you/env
 
 Agents on the Mac's own Orca need nothing; the command has no `--environment`.
 
-## The Terminal button
+## The Orca button
 
 Orca has no deep link to a terminal or a worktree (1.4.220 opens only `orca://skills/share/<id>`, which imports a skill), so needs-you uses a link of its own that the Mac app handles:
 
@@ -57,7 +57,7 @@ Orca has no deep link to a terminal or a worktree (1.4.220 opens only `orca://sk
 needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]
 ```
 
-The hook adds it to every card from an Orca terminal, and the automation block adds it as the first link (`--link "Terminal=..."`), so the menu bar and the hotkey open it too. Clicking it in the Mac app:
+The hook adds it to every card from an Orca terminal, and the automation block adds it as the first link (`--link "Orca=..."`), so the menu bar and the hotkey open it too. Clicking it in the Mac app:
 
 1. checks the link: `handle` is `term_` plus 8–64 lowercase hex digits or `-`, `environment` (optional) is letters, digits, spaces, `.`, `_`, `-`, at most 64, and nothing else is in the query. Anything else does nothing. The hub refuses other `needsyou://` links at post time ([API.md](../API.md)).
 2. runs `orca terminal switch --terminal <handle> --json [--environment <name>]` as an argument list, no shell, from a fixed path (`/usr/local/bin/orca`, `/opt/homebrew/bin/orca` or the CLI inside `/Applications/Orca.app`), with a 5-second timeout. A sender can make the app switch Orca tabs and nothing more.
@@ -133,14 +133,14 @@ body=$(printf '%s\n\nOrca worktree: `%s`\nJump to its terminal: `%s`' \
 needs-you add --key "work:ACME-123:push-decision" --context work --priority normal --expires-in 3 \
   --title "ACME-123: choose how to unblock the push" \
   --body "$body" \
-  --link "Terminal=$term_link" \
+  --link "Orca=$term_link" \
   --link "Jira=https://acme.atlassian.net/browse/ACME-123" \
   --link "PR=https://github.com/acme/app/pull/2137" \
   --agent "orca:redo-fixer" --project app
 orca worktree set --worktree active --workspace-status in-review --comment "Blocked: push decision (see needs-you)"
 ```
 
-The run ends. A card **ACME-123: choose how to unblock the push** is on the Mac, with **Terminal**, **Jira** and **PR** buttons.
+The run ends. A card **ACME-123: choose how to unblock the push** is on the Mac, with **Orca**, **Jira** and **PR** buttons.
 
 **10:20, the person.** They click **Jira** and answer the comment: "merge the migration first". They don't resolve anything; the card stays until the agent has acted on the answer.
 
@@ -155,7 +155,7 @@ The card disappears from every Mac reading the hub; the `done` note shows as an 
 
 **If nobody had answered by 11:00,** the run would see the same blocker and post the same `add` again: still one card, its expiry pushed to 14:00. If the fixer stopped running altogether, the card would expire three hours after its last post instead of sitting there for days.
 
-**The same hand-off in one live session.** An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click **Terminal**, Orca switches to the agent's terminal, you type the answer, and the agent runs the `resolve` before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal ([one card for one wait](claude-code.md#one-card-for-one-wait)). Once the agent resolves its item, an idle session gets the hooks' card again.
+**The same hand-off in one live session.** An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click **Orca**, Orca switches to the agent's terminal, you type the answer, and the agent runs the `resolve` before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal ([one card for one wait](claude-code.md#one-card-for-one-wait)). Once the agent resolves its item, an idle session gets the hooks' card again.
 
 ## What's running: `needs-you orca`
 
@@ -180,4 +180,4 @@ needs-you resolve --key "work:orca-test:hello"
 
 Then run one automation by hand (`orca automations run ...`) and watch for its card.
 
-`needs-you doctor` prints an `orca` INFO line in an Orca terminal or wherever `orca` is on `PATH` (whether the terminal handle, worktree id and `NEEDS_YOU_ORCA_ENVIRONMENT` are set). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when `orca` is on `PATH` and you didn't pass `--orca`, that the flag exists.
+`needs-you doctor` prints an `orca` INFO line in an Orca terminal or wherever `orca` is on `PATH` (whether the terminal handle, worktree id and `NEEDS_YOU_ORCA_ENVIRONMENT` are set). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards an Orca button; it's only a tip, never a warning. The invite installer likewise says once, when `orca` is on `PATH` and you didn't pass `--orca`, that the flag exists.
