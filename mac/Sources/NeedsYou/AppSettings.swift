@@ -13,6 +13,9 @@ import NeedsYouCore
 ///   NEEDS_YOU_EXPAND=1               start expanded (never takes focus)
 ///   NEEDS_YOU_SNAPSHOT_DIR=dir       debug: write PNGs of the panel's states and some Settings
 ///                                    pages (no global shortcut is registered)
+///   NEEDS_YOU_SNAPSHOT_TOUR=formats  debug: instead, every demo card on its own, in each card
+///                                    text mode, then after NEEDS_YOU_DEMO_REPOST=path.json's
+///                                    re-posts (mac/scripts/format-fixtures.py writes both)
 ///   NEEDS_YOU_LAUNCH_SNAPSHOT_DIR=dir debug: PNGs of the panel just after launch and after
 ///                                    the launch open closes (no global shortcut either)
 ///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
@@ -141,6 +144,17 @@ final class AppSettings: ObservableObject {
     nonisolated static var snapshotDirectory: URL? {
         guard let dir = ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_DIR"], !dir.isEmpty else { return nil }
         return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+    }
+
+    /// NEEDS_YOU_SNAPSHOT_TOUR=formats: the card-by-card format tour instead of the usual one.
+    nonisolated static var formatTour: Bool {
+        ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_TOUR"] == "formats"
+    }
+
+    /// NEEDS_YOU_DEMO_REPOST: the format tour's re-posts (hub list shape).
+    nonisolated static var demoRepostURL: URL? {
+        guard let path = ProcessInfo.processInfo.environment["NEEDS_YOU_DEMO_REPOST"], !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
     }
 
     /// NEEDS_YOU_LAUNCH_SNAPSHOT_DIR: launch-test.sh's PNGs of the launch open.

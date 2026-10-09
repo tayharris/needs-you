@@ -34,15 +34,11 @@ struct CardView: View {
 
                 let mode = model.settings.ui.cardBodies
                 let expanded = model.expandedCards.contains(item.id)
-                // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body).
+                // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body),
+                // and what's left ("Answer in Claude.", the folder and session) comes after the question.
                 let body = QuestionDisplay.body(item)
-                if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
-                    Text(LimitedMarkdown.render(body))
-                        .font(Theme.body(model.bodyFont))
-                        .foregroundStyle(Theme.text.opacity(0.85))
-                        .tint(Theme.accent)
-                        .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
-                        .fixedSize(horizontal: false, vertical: true)
+                if item.question == nil, let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                    CardBodyText(text: body, mode: mode, expanded: expanded, model: model)
                 }
 
                 if !item.steps.isEmpty {
@@ -78,6 +74,9 @@ struct CardView: View {
                         }
                         .buttonStyle(.plain)
                         .help("Show the question and its choices")
+                    }
+                    if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                        CardBodyText(text: body, mode: mode, expanded: expanded, model: model)
                     }
                 }
 
@@ -122,6 +121,23 @@ struct CardView: View {
                 .animation(.easeOut(duration: 0.6), value: model.highlightedItem)
         )
         .id(item.id)
+    }
+}
+
+/// The card's body text (limited markdown), cut to the card text mode's lines.
+private struct CardBodyText: View {
+    let text: String
+    let mode: CardBodyMode
+    let expanded: Bool
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        Text(LimitedMarkdown.render(text))
+            .font(Theme.body(model.bodyFont))
+            .foregroundStyle(Theme.text.opacity(0.85))
+            .tint(Theme.accent)
+            .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -186,8 +202,9 @@ struct StepList: View {
 
     var body: some View {
         let font = model.bodyFont
+        let steps = StepsPolicy.visible(item)
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(StepsPolicy.visible(item).enumerated()), id: \.offset) { index, step in
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                 let ticked = model.stepTicks.isTicked(item, index)
                 let toggles = model.stepTicks.canToggle(item, index)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -201,9 +218,13 @@ struct StepList: View {
                     .disabled(!toggles)
                     .help(toggles ? (ticked ? "Untick (only on this Mac)" : "Tick off (only on this Mac)") : "Marked done by the sender")
 
-                    Text(StepsPolicy.number(index))
-                        .font(Theme.body(font).monospacedDigit())
-                        .foregroundStyle(Theme.muted)
+                    // As wide as the last number, so "10." doesn't push its text past the others.
+                    ZStack(alignment: .trailing) {
+                        Text(StepsPolicy.number(steps.count - 1)).hidden()
+                        Text(StepsPolicy.number(index))
+                    }
+                    .font(Theme.body(font).monospacedDigit())
+                    .foregroundStyle(Theme.muted)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(LimitedMarkdown.render(step.text))

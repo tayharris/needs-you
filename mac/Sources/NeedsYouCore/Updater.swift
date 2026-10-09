@@ -328,13 +328,14 @@ public enum UpdateDecision: Equatable, Sendable {
     public var summary: String {
         switch self {
         case .upToDate: return "Up to date."
-        case .skipped(let v, let why): return "\(v) is available (\(why))."
-        case .blocked(let v, let why): return "\(v.map { "\($0): " } ?? "")\(why)"
+        case .skipped(let v, let why): return "\(v) is skipped: \(why). A later release will be offered."
+        case .blocked(let v, let why):
+            return "\(v.map { "\($0)" } ?? "The latest release") won't be installed. \(why) This Mac stays on its version."
         case .wait(let c, let until):
             let f = DateFormatter()
             f.dateStyle = .none
             f.timeStyle = .short
-            return "\(c.version) is available; it installs after \(f.string(from: until)) (soak time)."
+            return "\(c.version) is out. This Mac installs it after \(f.string(from: until)) (Wait after a release); Download and install now doesn't wait."
         case .ready(let c): return "\(c.version) is ready to install."
         }
     }
@@ -351,8 +352,8 @@ public enum UpdateGate {
         guard v > current else { return .upToDate }
         if release.draft { return .blocked(v, "It's still a draft.") }
         if release.prerelease, policy.channel != .prerelease { return .upToDate }
-        if policy.skipped.contains(v.description) { return .skipped(v, "skipped") }
-        if let rb = policy.rolledBack, SemVer(rb) == v { return .skipped(v, "rolled back on this Mac") }
+        if policy.skipped.contains(v.description) { return .skipped(v, "you chose Skip") }
+        if let rb = policy.rolledBack, SemVer(rb) == v { return .skipped(v, "it was rolled back on this Mac") }
         if release.asset(named: ReleaseManifest.fileName) == nil {
             return .blocked(v, "The release has no \(ReleaseManifest.fileName), so it wasn't built by the release workflow after the tests passed.")
         }
@@ -662,6 +663,42 @@ public struct UpdateSource: Equatable, Sendable {
         let built = (try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any])?["built_at"] as? String
         let assets = files.keys.sorted().map { ReleaseAsset(name: $0, size: files[$0] ?? 0) }
         return ReleaseInfo(tagName: "v\(v)", publishedAt: built.flatMap(HubJSON.parseDate) ?? now, assets: assets)
+    }
+}
+
+/// What Settings → Updates says once an install has relaunched the app (or put the old one
+/// back). The attempt file holds the version tried and, from apps after 0.3.x, the version it
+/// replaced on the next line.
+public struct UpdateNotice: Equatable, Sendable {
+    public var text: String
+    /// The update didn't land: shown as a warning, not a success.
+    public var failed: Bool
+
+    public init(text: String, failed: Bool) {
+        self.text = text
+        self.failed = failed
+    }
+
+    /// What the updater writes to `UpdatePaths.attemptFile` before it starts install.sh.
+    public static func attempt(trying: SemVer, from: SemVer?) -> String {
+        "\(trying)\n" + (from.map { "\($0)\n" } ?? "")
+    }
+
+    /// nil when the attempt neither landed nor was rolled back (nothing to say).
+    public static func afterInstall(attempt: String, current: SemVer?, rolledBack: String?, log: String) -> UpdateNotice? {
+        let lines = attempt.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let tried = lines.first, !tried.isEmpty else { return nil }
+        let from = lines.dropFirst().first.flatMap { SemVer($0) }
+        if let current, SemVer(tried) == current {
+            return UpdateNotice(text: (from.map { "Updated from \($0) to \(current)." } ?? "Updated to \(current).")
+                + " If macOS asks whether python3 may accept incoming connections, choose Allow, or other machines can't reach this Mac's hub.",
+                failed: false)
+        }
+        if rolledBack == tried {
+            return UpdateNotice(text: "The update to \(tried) didn't stay running, so \(from.map { "\($0)" } ?? "the previous version") was put back. "
+                + "\(tried) won't be offered again; a later release will be. What happened is in \(log).", failed: true)
+        }
+        return nil
     }
 }
 

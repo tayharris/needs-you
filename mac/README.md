@@ -173,7 +173,7 @@ The reasons behind the panel's behaviour (the founding decisions are [ADR 0007](
 - **Idle is faint but findable.** "Nothing needs <you>" at about 35% opacity, so it can always be dragged or hidden. An early 28×10 pt sliver at 10% was too easy to lose.
 - **Arrivals spring out long enough to read.** The preview holds 14 s (an early 4 s was too fast), pointing at it holds it, urgent items pulse twice, and with Reduce Motion it fades instead.
 - **A way back.** An agent app has no Dock icon, so snoozing and hiding need the global shortcut and the menu bar icon to bring it back. Urgent items break through a snooze by default, as one pulse.
-- **Cards** carry limited markdown (bold, italic, code, lists, links; no HTML, no remote images) and link buttons that open through `NSWorkspace` only for allowed schemes, because agents write these links.
+- **Cards** carry limited markdown (bold, italic, code, strikethrough, `- ` lists, headings as bold lines, links; no HTML, tables, quotes or remote images) and link buttons that open through `NSWorkspace` only for allowed schemes, because agents write these links.
 - **Look.** A HUD-style `NSVisualEffectView`, 14 pt corners and a hairline border; SF Pro Text with SF Mono for keys and hashes; priority colours urgent = red 400, normal = amber 300, low = slate 400, and the glow and ring take the highest open priority's colour. No sound.
 - **Work and personal.** A schedule (weekdays 7:00–18:00 work by default) picks the context; the other side's count shows faintly (`3 · 1`), so nothing is fully hidden. On weekdays at 7:30 the panel opens once with the open work items, oldest first, or on the first wake after 7:30.
 

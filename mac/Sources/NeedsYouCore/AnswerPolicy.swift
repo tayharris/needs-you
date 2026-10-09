@@ -111,6 +111,20 @@ public enum AnswerPolicy {
         }
     }
 
+    /// What picks and an answer state were made for: the item's content as the person saw
+    /// it. A re-post that changes the question moves `content_updated_at` (and the hub then
+    /// refuses an answer to the old one, `question_changed`), so this changes with it.
+    public static func stamp(_ item: Item) -> String {
+        "\(item.id)\u{1F}\(item.contentUpdatedAtRaw ?? "")"
+    }
+
+    /// The items whose picks or answer state (`stamps`, by item id) no longer apply: the item
+    /// is gone, or a re-post changed it. Without this a "Sent to the agent" from an earlier
+    /// question would keep a new one locked, and old picks could show on new options.
+    public static func staleAnswerIDs(stamps: [String: String], items: [String: Item]) -> Set<String> {
+        Set(stamps.filter { id, stamp in items[id].map { Self.stamp($0) != stamp } ?? true }.keys)
+    }
+
     /// The link that brings forward the agent's terminal (or Orca terminal), for "Answer in
     /// the terminal". nil when the card has none.
     public static func terminalLink(_ item: Item) -> ItemLink? {

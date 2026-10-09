@@ -20,6 +20,7 @@ final class AnswerPolicyTests: XCTestCase {
         ("testTexts", testTexts),
         ("testTerminalLink", testTerminalLink),
         ("testHubOutcomes", testHubOutcomes),
+        ("testRepostMakesPicksAndStateStale", testRepostMakesPicksAndStateStale),
     ]
     static var asyncTests = [
         ("testDemoFeedAnswers", testDemoFeedAnswers),
@@ -178,6 +179,23 @@ final class AnswerPolicyTests: XCTestCase {
             do { _ = try HubClient.answerOutcome(status: status, body: Data()) } catch { threw = true }
             XCTAssertTrue(threw, "\(status)")
         }
+    }
+
+    /// A re-post that changes the question (so its content_updated_at) leaves the person's
+    /// picks and a "Sent to the agent" from the old question behind: they're stale, or the new
+    /// question could never be answered from the card. The answer coming back doesn't.
+    func testRepostMakesPicksAndStateStale() {
+        let q = ItemQuestion(id: "t", items: [db], answerable: true)
+        let asked = item(q)
+        let stamps = ["01A": AnswerPolicy.stamp(asked), "gone": "x"]
+        var answered = asked
+        answered.answer = [ItemAnswer(selected: ["SQLite"])]
+        XCTAssertEqual(AnswerPolicy.staleAnswerIDs(stamps: stamps, items: ["01A": answered]), ["gone"])
+        var reposted = asked
+        reposted.question = ItemQuestion(id: "t2", items: [extras], answerable: true)
+        reposted.contentUpdatedAtRaw = "2026-10-06T17:09:00.000Z"
+        XCTAssertEqual(AnswerPolicy.staleAnswerIDs(stamps: stamps, items: ["01A": reposted]), ["01A", "gone"])
+        XCTAssertNotEqual(AnswerPolicy.stamp(asked), AnswerPolicy.stamp(reposted))
     }
 
     func testDemoFeedAnswers() async throws {

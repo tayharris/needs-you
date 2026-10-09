@@ -235,8 +235,10 @@ token.
 2. **Resolve what you posted** (below).
 3. **The title is the action:** what the person has to do or decide, first, in 100
    characters or fewer. "ACME-123: approve the prod deploy", not "Deploy status". The body
-   (2,000 characters, Markdown, no HTML or images) gives the options and where the question
-   already lives. Several actions in order go in `steps`.
+   (2,000 characters) gives the options and where the question already lives. The card renders
+   `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, `[links](https://...)` with an allowed
+   scheme, `- ` lists and line breaks; a `#` heading shows as a bold line. Tables, block quotes,
+   HTML and images show as plain text. Several actions in order go in `steps`.
 4. **Link to where they act**, as deep as the tool allows, and put that link **first** (the
    menu bar and the hotkey open a card's first link). At most 6 links. Allowed schemes:
    `https`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. `vscode://`

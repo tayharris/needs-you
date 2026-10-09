@@ -243,8 +243,10 @@ the project's docs give you.</p></li>
 <li><p><strong>Resolve what you posted</strong> (below).</p></li>
 <li><p><strong>The title is the action:</strong> what the person has to do or decide, first, in 100
 characters or fewer. "ACME-123: approve the prod deploy", not "Deploy status". The body
-(2,000 characters, Markdown, no HTML or images) gives the options and where the question
-already lives. Several actions in order go in <code>steps</code>.</p></li>
+(2,000 characters) gives the options and where the question already lives. The card renders
+<code>**bold**</code>, <code>*italic*</code>, <code>`code`</code>, <code>~~strike~~</code>, <code>[links](https://...)</code> with an allowed
+scheme, <code>- </code> lists and line breaks; a <code>#</code> heading shows as a bold line. Tables, block quotes,
+HTML and images show as plain text. Several actions in order go in <code>steps</code>.</p></li>
 <li><p><strong>Link to where they act</strong>, as deep as the tool allows, and put that link <strong>first</strong> (the
 menu bar and the hotkey open a card's first link). At most 6 links. Allowed schemes:
 <code>https</code>, <code>slack</code>, <code>vscode</code>, <code>cursor</code>, <code>figma</code>, <code>msteams</code>, <code>discord</code>, <code>linear</code>. <code>vscode://</code>

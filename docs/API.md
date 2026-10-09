@@ -158,11 +158,11 @@ Create an item, or update the open item with the same `key`.
 |---|---|---|---|
 | `key` | string | ≤ 200 chars, only `A-Z a-z 0-9 . _ : - / @ # + =`; `""` is a 400 (leave it out, or send `null`, for no key) | the new item's id (so no dedupe) |
 | `title` | string | required, 1–100 chars after trimming, no control characters (see below) | |
-| `body` | string | ≤ 2,000 chars, markdown; newlines (`\n`, `\r`) and tabs allowed | empty |
+| `body` | string | ≤ 2,000 chars, markdown (the Mac renders bold, italic, code, strikethrough, links, `- ` lists and `#` headings as bold lines; the rest as plain text); newlines (`\n`, `\r`) and tabs allowed | empty |
 | `context` | string | `work` or `personal` (case-insensitive) | `work` |
 | `kind` | string | `needs`, `done` or `info` (case-insensitive) | `needs` |
 | `priority` | string | `urgent`, `normal` or `low` (case-insensitive) | `normal` |
-| `links` | array | ≤ 6 of `{"label": ≤ 80 chars, "url": ≤ 2,000 chars}` | `[]` |
+| `links` | array | ≤ 6 of `{"label": 1–80 chars, "url": ≤ 2,000 chars}` | `[]` |
 | `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
 | `question` | object | what an agent asked, see below | `null` |
 | `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |

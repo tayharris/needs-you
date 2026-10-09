@@ -319,7 +319,8 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
 ```
 
 - **Code** in `~/.local/share/needs-you` (or `/opt/needs-you`) is replaced in place, and the
-  service is restarted.
+  service is restarted. The installer says which version it replaced: "Upgraded the needs-you
+  hub from 0.2.1 to 0.3.0", or "Reinstalled ... (the same version)".
 - **Config** (`hub.json`) is kept. Only the flags you pass on the re-run are applied to it; new
   config keys have defaults, so an old file keeps working unchanged.
 - **Database:** the schema is versioned (`PRAGMA user_version`). On start, a hub that finds an

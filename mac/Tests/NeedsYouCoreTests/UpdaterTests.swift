@@ -37,6 +37,8 @@ final class UpdaterTests: XCTestCase {
         ("testPrefs", testPrefs),
         ("testManifestSignature", testManifestSignature),
         ("testSignerAndLinks", testSignerAndLinks),
+        ("testSummariesSayWhatHappensNext", testSummariesSayWhatHappensNext),
+        ("testNoticeAfterInstall", testNoticeAfterInstall),
     ]
 
     func testManifestSignature() {
@@ -283,9 +285,43 @@ final class UpdaterTests: XCTestCase {
         isBlocked(decide(release(draft: true), policy: UpdatePolicy(channel: .prerelease)), "draft")
     }
 
+    /// Settings → Updates says what will happen and what the person can do.
+    func testSummariesSayWhatHappensNext() {
+        let v = SemVer(0, 2, 0)
+        XCTAssertEqual(UpdateDecision.skipped(v, "you chose Skip").summary,
+                       "0.2.0 is skipped: you chose Skip. A later release will be offered.")
+        XCTAssertEqual(UpdateDecision.blocked(v, "It's still a draft.").summary,
+                       "0.2.0 won't be installed. It's still a draft. This Mac stays on its version.")
+        XCTAssertEqual(UpdateDecision.blocked(nil, "The release tag x isn't X.Y.Z.").summary,
+                       "The latest release won't be installed. The release tag x isn't X.Y.Z. This Mac stays on its version.")
+        guard case .ready(let c) = decide() else { return XCTFail() }
+        let wait = UpdateDecision.wait(c, until: Date(timeIntervalSince1970: 0)).summary
+        XCTAssertTrue(wait.hasPrefix("0.2.0 is out. This Mac installs it after "), wait)
+        XCTAssertTrue(wait.hasSuffix(" (Wait after a release); Download and install now doesn't wait."), wait)
+        XCTAssertEqual(UpdateDecision.ready(c).summary, "0.2.0 is ready to install.")
+    }
+
+    /// The line Settings shows after an install relaunched the app: from what to what, or
+    /// that it was put back and what happens next.
+    func testNoticeAfterInstall() {
+        let log = "/tmp/install.log"
+        let done = UpdateNotice.afterInstall(attempt: "0.2.0\n0.1.9\n", current: SemVer(0, 2, 0), rolledBack: nil, log: log)
+        XCTAssertEqual(done?.failed, false)
+        XCTAssertTrue(done?.text.hasPrefix("Updated from 0.1.9 to 0.2.0. If macOS asks whether python3") == true, done?.text ?? "")
+        // An attempt file from an older app has only the version tried.
+        let old = UpdateNotice.afterInstall(attempt: "0.2.0\n", current: SemVer(0, 2, 0), rolledBack: nil, log: log)
+        XCTAssertTrue(old?.text.hasPrefix("Updated to 0.2.0. ") == true, old?.text ?? "")
+        let back = UpdateNotice.afterInstall(attempt: "0.2.0\n0.1.9", current: SemVer(0, 1, 9), rolledBack: "0.2.0", log: log)
+        XCTAssertEqual(back, UpdateNotice(text: "The update to 0.2.0 didn't stay running, so 0.1.9 was put back. 0.2.0 won't be offered again; a later release will be. What happened is in /tmp/install.log.", failed: true))
+        let backOld = UpdateNotice.afterInstall(attempt: "0.2.0", current: SemVer(0, 1, 9), rolledBack: "0.2.0", log: log)
+        XCTAssertTrue(backOld?.text.hasPrefix("The update to 0.2.0 didn't stay running, so the previous version was put back.") == true)
+        XCTAssertNil(UpdateNotice.afterInstall(attempt: "0.2.0", current: SemVer(0, 1, 9), rolledBack: nil, log: log))
+        XCTAssertEqual(UpdateNotice.attempt(trying: SemVer(0, 2, 0), from: SemVer(0, 1, 9)), "0.2.0\n0.1.9\n")
+    }
+
     func testSkippedAndRolledBack() {
-        XCTAssertEqual(decide(policy: UpdatePolicy(skipped: ["0.2.0"])), .skipped(SemVer(0, 2, 0), "skipped"))
-        XCTAssertEqual(decide(policy: UpdatePolicy(rolledBack: "0.2.0")), .skipped(SemVer(0, 2, 0), "rolled back on this Mac"))
+        XCTAssertEqual(decide(policy: UpdatePolicy(skipped: ["0.2.0"])), .skipped(SemVer(0, 2, 0), "you chose Skip"))
+        XCTAssertEqual(decide(policy: UpdatePolicy(rolledBack: "0.2.0")), .skipped(SemVer(0, 2, 0), "it was rolled back on this Mac"))
         // Skipping 0.2.0 doesn't skip 0.2.1.
         if case .ready = decide(policy: UpdatePolicy(skipped: ["0.1.9"], rolledBack: "0.1.5")) {} else { XCTFail() }
     }

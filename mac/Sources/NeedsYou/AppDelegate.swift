@@ -106,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Focus rule: nothing here opens a window or activates the app. With no hub set
         // up, the pill shows a "set up" state; clicking it is what opens Settings.
         if let dir = AppSettings.snapshotDirectory {
-            runSnapshotTour(into: dir)
+            if AppSettings.formatTour { runFormatTour(into: dir) } else { runSnapshotTour(into: dir) }
         }
         openPanelIfLaunchedByPerson()
     }
@@ -287,6 +287,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.ui.theme = theme
                 await settingsWindow.writeSnapshot(of: .appearance, showcase: showcase, shots: 2,
                                                    into: dir, name: "settings-appearance-\(theme.rawValue)")
+            }
+            settings.ui = savedUI
+            NSLog("NeedsYou: snapshots written to \(dir.path)")
+        }
+    }
+
+    /// Debug aid (NEEDS_YOU_SNAPSHOT_TOUR=formats, mac/scripts/screenshots.sh): every demo
+    /// card (tests/format_cases.py, through a hub) on its own, in each card text mode, and
+    /// its arrival preview; then picks and answers on the answerable questions, a ticked
+    /// step, and the cards again after NEEDS_YOU_DEMO_REPOST's re-posts under their keys.
+    /// Files are named after the item's key: `fmt:05-body-max` draws `05-body-max-full.png`.
+    private func runFormatTour(into dir: URL) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let savedUI = settings.ui
+        func name(_ item: Item) -> String {
+            String(item.key.split(separator: ":").last ?? Substring(item.id))
+        }
+        func items() -> [Item] { model.store.items.values.sorted { $0.key < $1.key } }
+        func card(_ item: Item, _ suffix: String) async {
+            guard let current = model.store.items[item.id] else { return }
+            await CardSnapshot.write(current, model: model, to: dir.appendingPathComponent("\(name(item))-\(suffix).png"))
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            let before = items()
+            for mode in CardBodyMode.allCases {
+                settings.ui.cardBodies = mode
+                for item in before { await card(item, mode.rawValue) }
+            }
+            settings.ui.cardBodies = .full
+            for item in before where item.kind == .needs {
+                // The pill, not the open panel (the morning summary may have opened it).
+                model.collapse()
+                if item.context != model.context { model.setContext(item.context) }
+                model.previewItem = item
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                panel.writeSnapshot(to: dir.appendingPathComponent("\(name(item))-arrival.png"))
+            }
+            model.previewItem = nil
+            model.setContext(.work)
+
+            // What the person does before the senders re-post: picks, answers, a tick.
+            for item in before {
+                guard let q = item.question, q.answerable else { continue }
+                if AnswerPolicy.sendsOnClick(q) {
+                    model.pickOption(item, question: 0, label: q.items[0].options[0].label)
+                } else {
+                    for (i, qi) in q.items.enumerated() {
+                        model.pickOption(item, question: i, label: qi.options[0].label)
+                        if qi.multiSelect, qi.options.count > 1 { model.pickOption(item, question: i, label: qi.options[1].label) }
+                    }
+                    await card(item, "picked")
+                    model.sendPickedAnswer(item)
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await card(item, "answered")
+            }
+            if let steps = before.first(where: { $0.steps.count > 2 }) { model.toggleStep(steps, 2) }
+
+            if let url = AppSettings.demoRepostURL, let reposts = try? DemoFeed.loadFixture(at: url) {
+                await model.applyDemoRepost(reposts)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                let old = Dictionary(uniqueKeysWithValues: before.map { ($0.id, $0) })
+                for item in reposts where old[item.id].map({ $0.updatedAt != item.updatedAt }) ?? true {
+                    await card(item, "reposted")
+                }
             }
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")

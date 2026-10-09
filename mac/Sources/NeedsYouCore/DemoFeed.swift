@@ -84,6 +84,15 @@ public actor DemoFeed: ItemFeed {
         return item
     }
 
+    /// Simulate senders re-posting (the format tour's NEEDS_YOU_DEMO_REPOST): each item
+    /// replaces the one with its id, or is added, as written now, so the next poll gets it.
+    public func upsert(_ updates: [Item], now: Date = Date()) {
+        for var item in updates {
+            item.updatedAt = max(item.updatedAt, now)
+            items[item.id] = item
+        }
+    }
+
     /// Simulate a sender resolving an item.
     public func resolve(key: String) {
         for (id, item) in items where item.key == key && item.status == .open {

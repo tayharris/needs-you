@@ -343,6 +343,65 @@ class Update(UpdateCase):
         self.assertEqual(json.loads(r.stdout)["changes"], [])
 
 
+class Messages(UpdateCase):
+    """What a person reads from `needs-you update`: which version to which, what happened,
+    and what to do next when it didn't all work."""
+
+    def test_update_says_from_what_to_what_and_how_to_undo(self):
+        h = self.hub()
+        self.install(".claude/skills/needs-you/SKILL.md")
+        files = dict(current_files())
+        r = self.run_cli("update", "--check", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("The hub at %s serves %s; this CLI is 0.0.1. Would update:" % (h.url, h.version), r.stdout)
+        self.assertNotIn("-> ?", r.stdout)                       # the hub's version when a file has none
+        self.assertIn("would update SKILL.md (0.0.1 -> %s)" % h.version, r.stdout)
+        self.assertIn("Nothing changed (--check). Run `needs-you update` to install it.", r.stdout)
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Updating to %s from %s (this CLI is 0.0.1):" % (h.version, h.url), r.stdout)
+        self.assertIn("Updated 2 files to %s. If something misbehaves, `needs-you update --rollback` "
+                      "puts the previous files back." % h.version, r.stdout)
+        self.assertEqual(files["needs-you"], read(self.cli))
+
+    def test_partial_failure_says_where_the_machine_stands(self):
+        h = self.hub(bad=("needs-you",))
+        self.install(".claude/skills/needs-you/SKILL.md")
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("couldn't update needs-you: ", r.stderr)
+        self.assertIn("Updated 1 of 2 files to %s; needs-you wasn't. Run `needs-you update` again later, or "
+                      "`needs-you update --rollback` to put the 1 updated file back." % h.version, r.stderr)
+
+    def test_refusal_says_nothing_changed(self):
+        h = self.hub()
+        h.bad_shape = True
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("update refused: the hub's manifest has no valid checksum for needs-you. Nothing changed.", r.stderr)
+        self.assertEqual(read(self.cli), self.old_cli)
+
+    def test_unreachable_hub_says_nothing_changed(self):
+        dead = "http://127.0.0.1:%d" % free_port()
+        r = self.run_cli("update", urls=[dead])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no update: couldn't reach the update hub %s (" % dead, r.stderr)
+        self.assertIn("Nothing changed. Try again once it's up (`needs-you health` checks it).", r.stderr)
+
+    def test_newer_than_the_hub_is_one_line(self):
+        files = current_files()
+        files["needs-you"] = self.old_cli
+        h = self.hub(files=files, version="0.0.1")
+        with open(self.cli, "wb") as fh:
+            fh.write(read(CLI))
+        r = self.run_cli("update", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip().splitlines(), [
+            "needs-you update: this CLI (%s) is newer than the hub's 0.0.1: not downgrading, nothing changed "
+            "(--allow-downgrade installs the hub's files anyway)"
+            % re.search(rb'^VERSION = "([^"]+)"', read(CLI), re.M).group(1).decode()])
+
+
 class ProjectHooks(UpdateCase):
     """Hooks installed with install-hooks.sh --project: recorded, and updated by an update
     run inside the project (and only there)."""
