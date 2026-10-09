@@ -167,6 +167,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && $0.question?.items.first?.allowOther == true }
     }
 
+    /// The tour's pill meter look: large unless it says otherwise (the default).
+    private static func meters(_ model: AppModel, _ style: PillMeterStyle, _ arrangement: PillMeterArrangement = .stacked,
+                               size: PillMeterSize = .large, numbers: Bool = false) {
+        model.settings.usage.pillStyle = style
+        model.settings.usage.pillArrangement = arrangement
+        model.settings.usage.pillSize = size
+        model.settings.usage.pillNumbers = numbers
+    }
+
     private func runSnapshotTour(into dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let savedUI = settings.ui
@@ -291,34 +300,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.scrollTarget = nil
             }),
             // The pill's meter styles (Settings → Usage → On the pill) at an everyday 31 % / 10 %:
-            // the waiting pill, then the idle one (nothing waiting).
+            // the waiting pill, then the idle one (nothing waiting). 16 is the default look.
             ("16-usage-pill", { model in
                 model.collapse()
                 Task { await model.applyDemoStatuses(DemoFeed.quietUsageFixture()) }
             }),
-            ("16b-usage-pill-thin", { $0.settings.usage.pillStyle = .thin }),
-            ("16c-usage-pill-percent", { $0.settings.usage.pillStyle = .percent }),
+            ("16b-usage-pill-thin", { Self.meters($0, .thin, size: .medium) }),
+            ("16c-usage-pill-percent", { Self.meters($0, .percent, size: .medium) }),
+            ("16i-usage-pill-rings-inside", { Self.meters($0, .rings) }),
+            ("16j-usage-pill-rings-side", { Self.meters($0, .rings, .row) }),
+            ("16k-usage-pill-bars-row", { Self.meters($0, .bars, .row) }),
+            ("16l-usage-pill-bars-medium", { Self.meters($0, .bars, size: .medium) }),
+            ("16m-usage-pill-bars-small", { Self.meters($0, .bars, size: .small) }),
+            ("16n-usage-pill-bars-numbers", { Self.meters($0, .bars, numbers: true) }),
+            ("16o-usage-pill-rings-numbers", { Self.meters($0, .rings, .row, numbers: true) }),
             ("16d-usage-pill-warning", { model in
-                model.settings.usage.pillStyle = .bars
+                Self.meters(model, .bars)
                 Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
             }),
+            ("16p-usage-pill-rings-warning", { Self.meters($0, .rings, .row) }),
             ("16e-usage-idle", { model in
+                Self.meters(model, .bars)
                 Task {
                     await model.applyDemoStatuses(DemoFeed.quietUsageFixture())
                     await model.applyDemoOpenSet([])
                 }
             }),
-            ("16f-usage-idle-thin", { $0.settings.usage.pillStyle = .thin }),
-            ("16g-usage-idle-percent", { $0.settings.usage.pillStyle = .percent }),
+            ("16f-usage-idle-thin", { Self.meters($0, .thin, size: .medium) }),
+            ("16g-usage-idle-percent", { Self.meters($0, .percent, size: .medium) }),
+            ("16q-usage-idle-rings", { Self.meters($0, .rings, .row) }),
+            ("16r-usage-idle-bars-row", { Self.meters($0, .bars, .row) }),
             ("16h-usage-off", { model in
-                model.settings.usage.pillStyle = .bars
+                Self.meters(model, .bars)
                 model.settings.usage.onPill = false
             }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
-        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3), (.usage, 1)]
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3), (.usage, 2)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
