@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings: Appearance holds only the look, and all of it.** A few settings were on the wrong side. The open panel's dragged height (**Dragged height**, with **Automatic**) moved from Panel to **Appearance → Panel and cards**, next to Cards before scrolling, and the urgent **Edge glow** moved from Alerts to **Appearance → Alert style**. Whether the usage meters show (in the panel, on the pill), which providers and windows, and hiding a bar under a percentage moved to **Panel → Usage meters**; **Appearance → Usage meters** keeps how they look (warning colour, the pill's meter style), and how to start sending them is under **Integrations → Usage meters**. No value or default changed, and old links to a page still open it ([guide](docs/guides/mac-app.md#settings)).
+
 ## [0.5.0] - 2026-10-09
 
 A pre-release: choose how the pill's usage meters look (Bars, Thin bars, Rings or Percentages, in three sizes) and see them on the idle pill too, one Appearance section in Settings, new opt-in cards from Linear, Jira, GitHub Projects statuses, Dependabot alerts and certificate, domain and key expiry, and one "go there" button per agent card. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** before relying on the new bring-forward button (an older hub refuses its link and the card falls back to the editor button), then run `needs-you update` on sender machines for the new hooks.
