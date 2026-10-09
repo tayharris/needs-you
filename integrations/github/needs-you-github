@@ -14,6 +14,9 @@ that has `gh` logged in. Each run:
      --expires-in keeps moving) and resolves it once the condition clears.
   4. When one of your PRs leaves the open list, one GraphQL lookup says whether it
      merged; if so, one `done` card "Merged owner/repo#N: title" (24 h FYI, never counted).
+  5. Opt-in: one GraphQL query for the Projects Status of the open issues and PRs assigned
+     to you (a card when it moves to a status you name), and, for repos with an unread
+     `security_alert` notification, their open Dependabot alerts at the severities you name.
 
 It shells out to `gh api`, so auth is your gh login; it never reads or prints the token.
 Everything it reads from GitHub is untrusted: only titles (cleaned and truncated) and
@@ -28,6 +31,14 @@ Config (environment, else ~/.config/needs-you/env; all optional):
   NEEDS_YOU_GITHUB_INTERVAL  minutes between runs (default 5); cards expire after 3x this
   NEEDS_YOU_GITHUB_PR_DAYS   only your PRs updated in the last N days (default 14)
   NEEDS_YOU_GITHUB_MAX_CARDS at most this many cards open at once (default 20; urgent first)
+  NEEDS_YOU_GITHUB_PROJECT_STATUSES  Projects statuses that make a card, with a priority:
+                             "Blocked=urgent,In Review=normal" (default: none, off). Needs
+                             gh's read:project scope (gh auth refresh -s read:project)
+  NEEDS_YOU_GITHUB_PROJECT_FIELD     the single-select field to watch (default Status)
+  NEEDS_YOU_GITHUB_SECURITY  1: cards for open Dependabot alerts (default off). Needs
+                             gh's security_events scope (gh auth refresh -s security_events)
+  NEEDS_YOU_GITHUB_SECURITY_SEVERITIES  comma list (default critical; e.g. critical,high)
+  NEEDS_YOU_GITHUB_SECURITY_PRIORITY    priority of those cards (default low)
   NEEDS_YOU_GITHUB_GH        path to gh (default: gh on PATH)
   NEEDS_YOU_BIN              path to the needs-you CLI (default: on PATH, else ~/.local/bin)
 
@@ -58,6 +69,10 @@ TITLE_MAX = 100
 SUBJECT_MAX = 70
 KEY_SAFE = re.compile(r"[^A-Za-z0-9._:/@#+=-]")
 FAILING_CHECK = ("FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED", "ERROR")
+PRIORITIES = ("urgent", "normal", "low")
+SEVERITIES = ("critical", "high", "medium", "low")
+SECURITY_REPOS = 10      # repos whose Dependabot alerts are read per run; the rest wait
+SCOPE_RETRY_S = 60 * 60  # after gh says a scope is missing, ask again only this often
 
 GRAPHQL = """
 query($mine: String!, $review: String!) {
@@ -79,6 +94,22 @@ query($mine: String!, $review: String!) {
 MINE_Q = "is:pr is:open author:@me archived:false updated:>=%s"
 REPO_PART = re.compile(r"^[A-Za-z0-9_.-]+$")
 REVIEW_Q = "is:pr is:open review-requested:@me archived:false"
+
+PROJECTS_GRAPHQL = """
+query($q: String!, $field: String!) {
+  assigned: search(query: $q, type: ISSUE, first: 50) {
+    nodes {
+      ... on Issue { number title url repository { nameWithOwner }
+        projectItems(first: 10) { nodes { project { id title url }
+          fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } }
+      ... on PullRequest { number title url repository { nameWithOwner }
+        projectItems(first: 10) { nodes { project { id title url }
+          fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } }
+    }
+  }
+}
+"""
+ASSIGNED_Q = "assignee:@me is:open archived:false"
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +194,19 @@ class Config:
             self.max_cards = max(1, int(get("NEEDS_YOU_GITHUB_MAX_CARDS", "20")))
         except ValueError:
             self.max_cards = 20
+        # Projects statuses: "Blocked=urgent,In Review" -> {"blocked": ("Blocked", "urgent"), ...}
+        self.project_statuses: Dict[str, Tuple[str, str]] = {}
+        for pair in _csv(get("NEEDS_YOU_GITHUB_PROJECT_STATUSES")):
+            name, _, prio = pair.rpartition("=") if "=" in pair else (pair, "", "normal")
+            name, prio = " ".join(name.split()), prio.strip().lower()
+            if name:
+                self.project_statuses[name.lower()] = (name, prio if prio in PRIORITIES else "normal")
+        self.project_field = " ".join(get("NEEDS_YOU_GITHUB_PROJECT_FIELD", "Status").split()) or "Status"
+        self.security = get("NEEDS_YOU_GITHUB_SECURITY").strip().lower() in ("1", "true", "yes", "on")
+        sev = [s.lower() for s in _csv(get("NEEDS_YOU_GITHUB_SECURITY_SEVERITIES", "critical"))]
+        self.security_severities = [s for s in SEVERITIES if s in sev] or ["critical"]
+        prio = get("NEEDS_YOU_GITHUB_SECURITY_PRIORITY", "low").strip().lower()
+        self.security_priority = prio if prio in PRIORITIES else "low"
         self.gh = get("NEEDS_YOU_GITHUB_GH") or shutil.which("gh") or ""
         local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
         self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
@@ -410,6 +454,57 @@ def fetch_pr_states(cfg: Config, refs: List[str]) -> Dict[str, Optional[Dict[str
     return out
 
 
+class ScopeMissing(GhError):
+    """gh's login lacks an OAuth scope this (opt-in) feature needs."""
+
+    def __init__(self, scope: str) -> None:
+        super().__init__("gh needs the %s scope (gh auth refresh -s %s)" % (scope, scope))
+        self.scope = scope
+
+
+def fetch_projects(cfg: Config) -> List[Dict[str, Any]]:
+    """One GraphQL call: the open issues and PRs assigned to you, with each project item's
+    value of cfg.project_field. Raises ScopeMissing when gh lacks read:project."""
+    r = gh(cfg, ["api", "graphql", "-f", "query=" + PROJECTS_GRAPHQL, "-f", "q=" + ASSIGNED_Q,
+                 "-f", "field=" + cfg.project_field])
+    try:
+        parsed = json.loads(r.stdout or "{}")
+    except ValueError:
+        parsed = {}
+    errs = parsed.get("errors") if isinstance(parsed, dict) else None
+    if (any(isinstance(e, dict) and e.get("type") == "INSUFFICIENT_SCOPES" for e in errs or [])
+            or (r.returncode != 0 and "read:project" in (r.stderr or ""))):
+        raise ScopeMissing("read:project")
+    if r.returncode != 0:
+        raise gh_error(r)
+    try:
+        nodes = parsed["data"]["assigned"]["nodes"]
+    except (KeyError, TypeError):
+        raise GhError("unexpected GraphQL response (projects)")
+    return [n for n in nodes or [] if isinstance(n, dict) and isinstance(n.get("number"), int)]
+
+
+def fetch_alerts(cfg: Config, repo: str) -> List[Dict[str, Any]]:
+    """The repo's open Dependabot alerts at the configured severities. [] when the repo has
+    Dependabot alerts off (404). Raises ScopeMissing on 403 (gh lacks security_events)."""
+    r = gh(cfg, ["api", "/repos/%s/dependabot/alerts?state=open&per_page=30&severity=%s"
+                 % (repo, ",".join(cfg.security_severities))])
+    if r.returncode != 0:
+        err = r.stderr or ""
+        if "HTTP 404" in err or ("HTTP 403" in err and "disabled" in err.lower()):
+            return []  # Dependabot alerts are off for this repo
+        if "HTTP 403" in err or "security_events" in err:
+            raise ScopeMissing("security_events")
+        raise gh_error(r)
+    try:
+        alerts = json.loads(r.stdout or "[]")
+    except ValueError:
+        raise GhError("gh returned Dependabot alerts that aren't JSON")
+    if not isinstance(alerts, list):
+        raise GhError("unexpected Dependabot alerts shape")
+    return [a for a in alerts if isinstance(a, dict) and isinstance(a.get("number"), int)]
+
+
 # ---------------------------------------------------------------------------
 # Notifications -> thread records (only the fields we use, already cleaned)
 # ---------------------------------------------------------------------------
@@ -451,7 +546,7 @@ def _title(prefix: str, subject: str) -> str:
 
 def card(cfg: Config, repo: str, key_rest: str, title: str, priority: str, src: str,
          links: List[Tuple[str, str]], steps: Optional[List[Dict[str, Any]]] = None,
-         body: str = "") -> Dict[str, Any]:
+         body: str = "", event: str = "") -> Dict[str, Any]:
     ctx = cfg.context(repo)
     c: Dict[str, Any] = {"key": KEY_SAFE.sub("-", "%s:gh:%s" % (ctx, key_rest))[:200], "title": title[:TITLE_MAX],
                          "priority": priority, "context": ctx, "project": repo, "src": src,
@@ -460,6 +555,8 @@ def card(cfg: Config, repo: str, key_rest: str, title: str, priority: str, src: 
         c["steps"] = steps
     if body:
         c["body"] = body
+    if event:
+        c["event"] = event
     return c
 
 
@@ -584,6 +681,83 @@ def pr_cards(cfg: Config, prs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # Posting through the CLI
 # ---------------------------------------------------------------------------
 
+_PROJECT_URL = re.compile(r"^https://github\.com/(?:orgs|users)/([A-Za-z0-9_.-]+)/projects/(\d+)$")
+
+
+def project_cards(cfg: Config, state: Dict[str, Any], nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A card for each project item (an open issue or PR assigned to you, in one project) whose
+    status *moved* to one in NEEDS_YOU_GITHUB_PROJECT_STATUSES; it stays while the status holds.
+    state["projects"] remembers each item's last status ("s") and whether it has a card ("on").
+    The first run only records (installing never posts a burst); after that an item seen for
+    the first time (newly assigned) in a watched status counts as a move. Items that left the
+    list (closed, unassigned, removed from the project) are forgotten, so their cards resolve."""
+    first = not isinstance(state.get("projects"), dict)
+    tracked = {} if first else {k: v for k, v in state["projects"].items() if isinstance(v, dict)}
+    seen: Dict[str, Dict[str, Any]] = {}
+    out: List[Dict[str, Any]] = []
+    for n in nodes:
+        repo = str((n.get("repository") or {}).get("nameWithOwner") or "")
+        owner, _, name = repo.partition("/")
+        if not (REPO_PART.match(owner) and REPO_PART.match(name)) or not cfg.watched(repo):
+            continue
+        ref = "%s#%d" % (repo, n["number"])
+        for it in ((n.get("projectItems") or {}).get("nodes") or []):
+            if not isinstance(it, dict) or not isinstance(it.get("project"), dict):
+                continue
+            proj = it["project"]
+            purl = https(proj.get("url"))
+            m = _PROJECT_URL.match(purl)
+            pid = "%s/%s" % (m.group(1), m.group(2)) if m else safe_text(proj.get("id"), 40)
+            if not pid:
+                continue
+            k = "%s:project:%s" % (ref, pid)
+            status = safe_text((it.get("fieldValueByName") or {}).get("name"), 60)
+            prev = tracked.get(k)
+            watched = cfg.project_statuses.get(status.lower())
+            on = bool(watched) and not first and (prev is None or prev.get("s") != status or bool(prev.get("on")))
+            seen[k] = {"s": status, "on": on}
+            if not on:
+                continue
+            label, prio = watched  # type: ignore[misc]
+            url = https(n.get("url")) or "https://github.com/%s/issues/%d" % (repo, n["number"])
+            ptitle = safe_text(proj.get("title"), 40) or "a project"
+            links = [("Open", url)] + ([("Project", purl)] if purl else [])
+            out.append(card(cfg, repo, k, _title("%s is %s in %s" % (ref, safe_text(label, 30), ptitle), n.get("title")),
+                            prio, "project", links, event="status"))
+    state["projects"] = seen
+    return out
+
+
+def security_cards(cfg: Config, repo: str, alerts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    page = "https://github.com/%s/security/dependabot" % repo
+    for a in alerts:
+        if str(a.get("state") or "open") != "open":
+            continue
+        adv = a.get("security_advisory") if isinstance(a.get("security_advisory"), dict) else {}
+        vuln = a.get("security_vulnerability") if isinstance(a.get("security_vulnerability"), dict) else {}
+        sev = str(vuln.get("severity") or adv.get("severity") or "").lower()
+        if sev not in cfg.security_severities:
+            continue
+        pkg = safe_text(((vuln.get("package") or {}).get("name")
+                         or ((a.get("dependency") or {}).get("package") or {}).get("name")), 40)
+        prefix = "%s security alert in %s%s" % (sev.capitalize(), repo, ": " + pkg if pkg else "")
+        url = https(a.get("html_url")) or "%s/%d" % (page, a["number"])
+        out.append(card(cfg, repo, "%s:security:%d" % (repo, a["number"]), _title(prefix, adv.get("summary")),
+                        cfg.security_priority, "security", [("Alert", url), ("Dependabot", page)],
+                        event="security"))
+    return out
+
+
+def scope_card(cfg: Config, scope: str, what: str) -> Dict[str, Any]:
+    key = "%s:gh:%s:scope:%s" % (cfg.default_context, KEY_SAFE.sub("-", cfg.host), scope.replace(":", "-"))
+    return {"key": key, "title": "GitHub %s cards on %s need gh's %s scope" % (what, cfg.host, scope),
+            "priority": "low", "context": cfg.default_context, "project": "github", "src": "health", "links": [],
+            "body": "`needs-you-github` on `%s` can't read %s: `gh` lacks the `%s` scope. Run "
+                    "`gh auth refresh -s %s` there, or turn the setting off. It asks GitHub again "
+                    "once an hour." % (cfg.host, what, scope, scope)}
+
+
 def track_mine(cfg: Config, tracked: Dict[str, Any], prs: List[Dict[str, Any]], now: float) -> Set[str]:
     """Remember each of your open PRs (title, URL, when last seen open). Returns the refs
     that were tracked but aren't in this run's open list: the ones to look up."""
@@ -642,6 +816,8 @@ def check_merged(cfg: Config, state: Dict[str, Any], prs: List[Dict[str, Any]], 
 
 def card_hash(c: Dict[str, Any]) -> str:
     keep = {k: c.get(k) for k in ("title", "priority", "context", "links", "steps", "body", "project")}
+    if c.get("event"):
+        keep["event"] = c["event"]
     return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
@@ -656,6 +832,8 @@ def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
         argv.append("--steps-json=" + json.dumps(c["steps"]))
     if c.get("body"):
         argv.append("--body=" + c["body"])
+    if c.get("event"):
+        argv.append("--event=" + c["event"])
     return _cli(argv)
 
 
@@ -737,11 +915,61 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
     if failed & {"notif", "pr"}:
         failed.add("both")  # cards that need both lists (review filter, CI dedupe)
 
+    # 2b. Opt-in extras. A missing gh scope is said once (stderr and one low card) and asked
+    # again only hourly; it never counts as the poller failing.
+    scopes: Dict[str, Any] = state.get("scopes") if isinstance(state.get("scopes"), dict) else {}
+
+    def scoped(scope: str, src: str, fn: Any) -> Any:
+        if now - float(scopes.get(scope) or 0) < SCOPE_RETRY_S:
+            failed.add(src)
+            return None
+        try:
+            res = fn()
+            scopes.pop(scope, None)
+            return res
+        except ScopeMissing as e:
+            if scope not in scopes:
+                warn(str(e))
+            scopes[scope] = now
+        except GhError as e:
+            if str(e) not in errors:
+                errors.append(str(e))
+        failed.add(src)
+        return None
+
+    extra: List[Dict[str, Any]] = []
+    if cfg.project_statuses:
+        nodes = scoped("read:project", "project", lambda: fetch_projects(cfg))
+        if nodes is not None:
+            extra += project_cards(cfg, state, nodes)
+            if verbose:
+                warn("projects: %d open issues and PRs assigned to you" % len(nodes))
+    else:
+        state.pop("projects", None)
+        scopes.pop("read:project", None)
+    if cfg.security and "notif" in failed:
+        failed.add("security")
+    elif cfg.security:
+        repos = sorted({t["repo"] for t in threads if t.get("reason") == "security_alert" and cfg.watched(t["repo"])})
+        if repos:
+            def alerts() -> List[Dict[str, Any]]:
+                found: List[Dict[str, Any]] = []
+                for repo in repos[:SECURITY_REPOS]:
+                    found += security_cards(cfg, repo, fetch_alerts(cfg, repo))
+                return found
+            sec = scoped("security_events", "security", alerts)
+            extra += sec or []
+            if verbose and sec is not None:
+                warn("security: %d repos with alerts, %d cards" % (len(repos), len(sec)))
+    else:
+        scopes.pop("security_events", None)
+    state["scopes"] = scopes
+
     my_heads = {(str((p.get("repository") or {}).get("nameWithOwner") or "").lower(), str(p.get("headRefName") or ""))
                 for p in prs}
     posted: Dict[str, Any] = state.get("posted") if isinstance(state.get("posted"), dict) else {}
     cards = (notification_cards(cfg, threads, review_set, my_heads) if "notif" not in failed else []) \
-        + (pr_cards(cfg, prs) if "pr" not in failed else [])
+        + (pr_cards(cfg, prs) if "pr" not in failed else []) + extra
     # Urgent first, then what's already on the panel, so the cap never churns cards.
     rank = {"urgent": 0, "normal": 1, "low": 2}
     cards = sorted((c for c in cards if c["src"] not in failed),
@@ -768,6 +996,10 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
                 "context": cfg.default_context, "project": "github", "src": "health", "links": [],
                 "body": "`needs-you-github` on `%s` can't read GitHub through `gh` (the error is in its log). "
                         "Run `gh auth status` there." % cfg.host}
+    for scope, what in (("read:project", "Projects"), ("security_events", "Dependabot")):
+        if scope in scopes:
+            c = scope_card(cfg, scope, what)
+            desired[c["key"]] = c
 
     # 4. Post new/changed/renewed, resolve cleared.
     if not dry_run and not cfg.cli:
