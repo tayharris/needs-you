@@ -8,7 +8,7 @@ import Foundation
 @testable import NeedsYouCore
 
 /// The collapsed pill's usage meters (Settings → Usage → On the pill): the style pref, and
-/// where bars, hairlines and percentages go at every pill size.
+/// where bars, thin bars and percentages go at every pill size.
 final class PillMeterLayoutTests: XCTestCase {
     static var allTests = [
         ("testStylePrefDefaultsPersistsAndFallsBack", testStylePrefDefaultsPersistsAndFallsBack),
@@ -16,7 +16,7 @@ final class PillMeterLayoutTests: XCTestCase {
         ("testBarsSitBelowTheCount", testBarsSitBelowTheCount),
         ("testBarsAreVisible", testBarsAreVisible),
         ("testBarsScaleWithEveryPillSize", testBarsScaleWithEveryPillSize),
-        ("testHairlineAndPercentKeepTheSize", testHairlineAndPercentKeepTheSize),
+        ("testThinAndPercentKeepTheSize", testThinAndPercentKeepTheSize),
         ("testIdleAlphaFloor", testIdleAlphaFloor),
     ]
 
@@ -27,9 +27,9 @@ final class PillMeterLayoutTests: XCTestCase {
         let store = TestDefaults.make(suite)
         defer { TestDefaults.clear(suite) }
         let fresh = UsagePrefs.load(from: store)
-        XCTAssertEqual(fresh.pillStyle, .bars, "bars are the default: the hairlines were too faint to see")
-        XCTAssertEqual(PillMeterStyle.allCases, [.bars, .hairline, .percent])
-        XCTAssertEqual(PillMeterStyle.allCases.map(\.title), ["Bars", "Hairlines", "Percentages"])
+        XCTAssertEqual(fresh.pillStyle, .bars, "bars are the default: thin lines were too easy to miss")
+        XCTAssertEqual(PillMeterStyle.allCases, [.bars, .thin, .percent])
+        XCTAssertEqual(PillMeterStyle.allCases.map(\.title), ["Bars", "Thin bars", "Percentages"])
 
         for style in PillMeterStyle.allCases {
             var p = fresh
@@ -84,9 +84,11 @@ final class PillMeterLayoutTests: XCTestCase {
         XCTAssertTrue(l.fillOpacity >= 0.8)
         XCTAssertTrue(l.trackOpacity > 0.12, "a track behind the fill, so 31 % reads as a third")
         XCTAssertTrue(l.trackOpacity < l.fillOpacity)
-        let hairline = PillMeterLayout.make(.hairline, count: 2, height: 22, font: 12)
-        XCTAssertEqual(hairline.barHeight, 1)
-        XCTAssertEqual(hairline.fillOpacity, 0.45, "the 0.3.2 look, unchanged")
+        let thin = PillMeterLayout.make(.thin, count: 2, height: 22, font: 12)
+        XCTAssertEqual(thin.barHeight, 1.5, "the 0.4.0 look, unchanged")
+        XCTAssertEqual(PillMeterLayout.make(.thin, count: 2, height: 26, font: 14).barHeight, 2)
+        XCTAssertEqual(thin.fillOpacity, 0.85)
+        XCTAssertEqual(thin.trackOpacity, 0.28)
     }
 
     func testBarsScaleWithEveryPillSize() {
@@ -113,16 +115,16 @@ final class PillMeterLayoutTests: XCTestCase {
         }
     }
 
-    func testHairlineAndPercentKeepTheSize() {
-        for style in [PillMeterStyle.hairline, .percent] {
+    func testThinAndPercentKeepTheSize() {
+        for style in [PillMeterStyle.thin, .percent] {
             let l = PillMeterLayout.make(style, count: 2, height: medium.height, font: medium.font)
             XCTAssertEqual(l.height, medium.height)
             XCTAssertEqual(l.contentHeight, medium.height)
         }
-        let hairline = PillMeterLayout.make(.hairline, count: 2, height: 22, font: 12)
-        XCTAssertTrue(hairline.showsBars)
-        XCTAssertFalse(hairline.showsPercent)
-        XCTAssertEqual(hairline.bottomInset, 2)
+        let thin = PillMeterLayout.make(.thin, count: 2, height: 22, font: 12)
+        XCTAssertTrue(thin.showsBars)
+        XCTAssertFalse(thin.showsPercent)
+        XCTAssertEqual(thin.bottomInset, 1)
         let percent = PillMeterLayout.make(.percent, count: 2, height: 22, font: 12)
         XCTAssertFalse(percent.showsBars)
         XCTAssertTrue(percent.showsPercent)

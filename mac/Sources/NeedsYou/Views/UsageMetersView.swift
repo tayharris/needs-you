@@ -3,7 +3,7 @@ import NeedsYouCore
 import SwiftUI
 
 // Usage meters (UsageMeters in NeedsYouCore, Settings → Usage): a section at the top of the
-// open panel, and on the collapsed pill (waiting and idle) bars, hairlines or percentages
+// open panel, and on the collapsed pill (waiting and idle) bars, thin bars or percentages
 // (PillMeterStyle, PillMeterLayout). Plain read-only drawing: no buttons, links or anything
 // focusable, and nothing here counts, animates or announces.
 
@@ -158,8 +158,8 @@ struct UsageTrack: View {
     }
 }
 
-/// The pill's meters as bars or hairlines (PillMeterLayout): one per window, session above
-/// weekly, between the rounded ends. Bars sit in their own band under the count; hairlines
+/// The pill's meters as bars or thin bars (PillMeterLayout): one per window, session above
+/// weekly, between the rounded ends. Bars sit in their own band under the count; thin bars
 /// are drawn over the pill's bottom edge.
 struct PillUsageMeter: View {
     let bars: [UsageBar]
@@ -203,7 +203,7 @@ struct PillUsagePercent: View {
 }
 
 /// A collapsed pill's content with its meters: the count (or idle line) centred in its band,
-/// bars below it, hairlines over the bottom edge, or percentages after it.
+/// bars below it, thin bars over the bottom edge, or percentages after it.
 struct PillWithMeters<Content: View>: View {
     let bars: [UsageBar]
     let layout: PillMeterLayout
@@ -230,7 +230,7 @@ struct PillWithMeters<Content: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
-            if layout.style == .hairline && layout.showsBars {
+            if layout.style == .thin && layout.showsBars {
                 PillUsageMeter(bars: bars, layout: layout, cornerRadius: cornerRadius)
             }
         }

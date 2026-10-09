@@ -22,9 +22,9 @@ public enum PillMeterStyle: String, CaseIterable, Sendable {
     /// Two 3 pt bars on a faint track under the count, readable at a glance. The pill grows a
     /// few points taller while two of them show (PillMeterLayout); the default.
     case bars
-    /// Two 1 pt lines along the bottom edge, over the pill (the 0.3.2 look): the pill's size
-    /// never changes.
-    case hairline
+    /// Two thin lines on their track along the bottom edge, over the pill (the 0.4.0 look):
+    /// the pill's size never changes.
+    case thin
     /// The percentages in small type after the count ("31% 10%"), in a fixed-width slot so
     /// the pill doesn't resize as they change.
     case percent
@@ -32,7 +32,7 @@ public enum PillMeterStyle: String, CaseIterable, Sendable {
     public var title: String {
         switch self {
         case .bars: return "Bars"
-        case .hairline: return "Hairlines"
+        case .thin: return "Thin bars"
         case .percent: return "Percentages"
         }
     }

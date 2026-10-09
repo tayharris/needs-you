@@ -296,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 Task { await model.applyDemoStatuses(DemoFeed.quietUsageFixture()) }
             }),
-            ("16b-usage-pill-hairline", { $0.settings.usage.pillStyle = .hairline }),
+            ("16b-usage-pill-thin", { $0.settings.usage.pillStyle = .thin }),
             ("16c-usage-pill-percent", { $0.settings.usage.pillStyle = .percent }),
             ("16d-usage-pill-warning", { model in
                 model.settings.usage.pillStyle = .bars
@@ -308,7 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await model.applyDemoOpenSet([])
                 }
             }),
-            ("16f-usage-idle-hairline", { $0.settings.usage.pillStyle = .hairline }),
+            ("16f-usage-idle-thin", { $0.settings.usage.pillStyle = .thin }),
             ("16g-usage-idle-percent", { $0.settings.usage.pillStyle = .percent }),
             ("16h-usage-off", { model in
                 model.settings.usage.pillStyle = .bars

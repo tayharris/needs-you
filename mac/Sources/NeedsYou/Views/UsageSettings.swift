@@ -36,7 +36,7 @@ struct UsageSettingsSection: View {
             Picker(selection: $settings.usage.pillStyle) {
                 ForEach(PillMeterStyle.allCases, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("On the pill", "Bars under the count (the pill grows a little taller for two), thin hairlines along its edge, or the percentages after the count.")
+                LabelWithDetail("On the pill", "Bars under the count (the pill grows a little taller for two), thin bars along its bottom edge (the pill keeps its size), or the percentages after the count.")
             }
             .disabled(!settings.usage.onPill)
         } header: {

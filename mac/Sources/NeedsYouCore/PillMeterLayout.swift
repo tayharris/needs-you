@@ -23,10 +23,11 @@ public struct PillMeterLayout: Equatable, Sendable {
     public var showsBars: Bool { count > 0 && style != .percent }
     public var showsPercent: Bool { count > 0 && style == .percent }
 
-    /// The track behind the fill (the unfilled part), so 0-100 % reads at a glance.
-    public var trackOpacity: Double { style == .bars ? 0.22 : 0.12 }
+    /// The track behind the fill (the unfilled part), so 0-100 % reads at a glance. Thin
+    /// bars need a stronger one to show at all.
+    public var trackOpacity: Double { style == .bars ? 0.22 : 0.28 }
     /// A bar below the warning line: bright enough to read on a dimmed pill.
-    public var fillOpacity: Double { style == .bars ? 0.85 : 0.45 }
+    public var fillOpacity: Double { 0.85 }
 
     /// `height` and `font` are the pill's own (PillMetrics, or the idle pill's), so the bars
     /// scale with Settings → Panel → Size and Pill size. Sizes are rounded to half points.
@@ -38,11 +39,12 @@ public struct PillMeterLayout: Equatable, Sendable {
         switch style {
         case .percent:
             return l
-        case .hairline:
-            // Over the pill, 2 pt above the bottom edge: under the digits at every size.
-            l.barHeight = 1
+        case .thin:
+            // Over the pill, 1 pt above the bottom edge: under the digits at every size.
+            // 1.5 pt lines, 2 pt on a pill 24 pt or taller (0.4.0).
+            l.barHeight = height >= 24 ? 2 : 1.5
             l.barGap = 1
-            l.bottomInset = 2
+            l.bottomInset = 1
             return l
         case .bars:
             let u = font / 12
