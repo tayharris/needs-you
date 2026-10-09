@@ -3,7 +3,10 @@ import Foundation
 // Status records (docs/API.md "Status records", ADR 0011): small keyed records apart from
 // items. The app shows `usage` ones as meters (UsageMeters); they never count, animate,
 // notify or make a card. Decoding is lenient like items: unknown fields are ignored, a
-// newer `type` is kept (and ignored by the UI), a malformed `usage` is nil.
+// newer `type` is kept (and ignored by the UI), a malformed `usage` is nil. It is also bounded
+// as the hub bounds them (a hub or peer that doesn't can't blow up the panel): at most
+// `maxRecords` records and 4 windows with distinct names, every string one clean line
+// (no control, bidi or zero-width characters) of the hub's length.
 
 public struct UsageWindow: Decodable, Equatable, Sendable {
     /// `5h` (the session window) or `7d` (the weekly one) from today's producers.
@@ -26,7 +29,7 @@ public struct UsageWindow: Decodable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        name = try c.decode(String.self, forKey: .name)
+        name = OrcaWorktrees.clean(try c.decode(String.self, forKey: .name), limit: 20)
         let pct = try c.decode(Double.self, forKey: .usedPct)
         usedPct = pct.isFinite ? min(100, max(0, pct)) : 0
         resetsAt = (try? c.decodeIfPresent(Date.self, forKey: .resetsAt)) ?? nil
@@ -49,14 +52,16 @@ public struct StatusUsage: Decodable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        provider = try c.decode(String.self, forKey: .provider)
-        account = (try? c.decodeIfPresent(String.self, forKey: .account)) ?? ""
+        provider = OrcaWorktrees.clean(try c.decode(String.self, forKey: .provider), limit: 20)
+        account = OrcaWorktrees.clean((try? c.decodeIfPresent(String.self, forKey: .account)) ?? "", limit: 40)
         // A malformed window is dropped, not the whole record.
         struct Lenient: Decodable {
             let window: UsageWindow?
             init(from decoder: Decoder) throws { window = try? UsageWindow(from: decoder) }
         }
-        windows = ((try? c.decodeIfPresent([Lenient].self, forKey: .windows)) ?? nil)?.compactMap(\.window) ?? []
+        var seen = Set<String>()
+        windows = Array((((try? c.decodeIfPresent([Lenient].self, forKey: .windows)) ?? nil)?.compactMap(\.window) ?? [])
+            .filter { seen.insert($0.name).inserted }.prefix(4))
     }
 }
 
@@ -94,10 +99,10 @@ public struct StatusRecord: Decodable, Equatable, Sendable, Identifiable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
-        key = (try? c.decodeIfPresent(String.self, forKey: .key)) ?? id
-        type = ((try? c.decodeIfPresent(String.self, forKey: .type)) ?? nil)?.lowercased() ?? ""
-        label = (try? c.decodeIfPresent(String.self, forKey: .label)) ?? ""
-        detail = (try? c.decodeIfPresent(String.self, forKey: .detail)) ?? ""
+        key = OrcaWorktrees.clean((try? c.decodeIfPresent(String.self, forKey: .key)) ?? id, limit: 200)
+        type = OrcaWorktrees.clean(((try? c.decodeIfPresent(String.self, forKey: .type)) ?? nil)?.lowercased() ?? "", limit: 20)
+        label = OrcaWorktrees.clean((try? c.decodeIfPresent(String.self, forKey: .label)) ?? "", limit: 60)
+        detail = OrcaWorktrees.clean((try? c.decodeIfPresent(String.self, forKey: .detail)) ?? "", limit: 120)
         usage = (try? c.decodeIfPresent(StatusUsage.self, forKey: .usage)) ?? nil
         source = (try? c.decodeIfPresent(ItemSource.self, forKey: .source)) ?? nil
         updatedAt = ((try? c.decodeIfPresent(Date.self, forKey: .updatedAt)) ?? nil) ?? .distantPast
@@ -109,6 +114,9 @@ public struct StatusRecord: Decodable, Equatable, Sendable, Identifiable {
         return false
     }
 
+    /// The most records one answer is read for (the hub keeps 64 of its own; newest first).
+    public static let maxRecords = 64
+
     /// `GET /v1/status`: `{"statuses": [...]}`. A record that doesn't decode is skipped.
     public static func decodeList(_ data: Data) throws -> [StatusRecord] {
         struct Lenient: Decodable {
@@ -116,7 +124,8 @@ public struct StatusRecord: Decodable, Equatable, Sendable, Identifiable {
             init(from decoder: Decoder) throws { record = try? StatusRecord(from: decoder) }
         }
         struct Wrapped: Decodable { let statuses: [Lenient] }
-        return try HubJSON.makeDecoder().decode(Wrapped.self, from: data).statuses.compactMap(\.record)
+        return Array(try HubJSON.makeDecoder().decode(Wrapped.self, from: data).statuses.compactMap(\.record)
+            .prefix(maxRecords))
     }
 }
 

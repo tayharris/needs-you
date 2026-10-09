@@ -75,6 +75,7 @@ private struct UsageBarRow: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(verbatim: bar.title)
+                .lineLimit(1)
                 .frame(width: 50, alignment: .leading)
                 .foregroundStyle(Theme.muted)
             UsageTrack(pct: bar.pct, color: bar.level.color, height: 4)
