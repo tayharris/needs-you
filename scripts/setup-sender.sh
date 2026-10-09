@@ -47,6 +47,7 @@ CONTEXT_ALERT=""
 SSH_ALIAS=""
 AGENT_LINK=""
 ORCA_ENV=""
+ORCA_USAGE=""
 AUTO_UPDATE=""          # "" = 1 unless the env file already has a value; "1" | "0"
 
 usage() {
@@ -89,6 +90,8 @@ integrations/claude-code/README.md):
   --ssh-alias NAME       This host's alias in the Mac's ~/.ssh/config: Remote-SSH links.
   --agent-link 'L=URL'   One link template instead of the automatic editor links ('none' = off).
   --orca-environment N   On a paired Orca server: its name in the Mac's Orca.
+  --orca-usage           Usage meters for every Orca-managed Claude/Codex account here,
+                         sent by the flush (NEEDS_YOU_ORCA_USAGE=1; needs-you orca usage).
 
 Mode:
   --non-interactive      Never prompt. Needs --url and a token (flag, stdin or
@@ -139,6 +142,7 @@ while [ $# -gt 0 ]; do
     --agent-link=*) AGENT_LINK=${1#*=}; shift ;;
     --orca-environment) [ $# -ge 2 ] || die "--orca-environment needs a value"; ORCA_ENV=$2; shift 2 ;;
     --orca-environment=*) ORCA_ENV=${1#*=}; shift ;;
+    --orca-usage) ORCA_USAGE=1; shift ;;
     --non-interactive|--yes|-y) NON_INTERACTIVE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" 2 ;;
@@ -394,6 +398,7 @@ add_setting NEEDS_YOU_CONTEXT_ALERT_PCT "$CONTEXT_ALERT"
 add_setting NEEDS_YOU_SSH_ALIAS "$SSH_ALIAS"
 add_setting NEEDS_YOU_AGENT_LINK "$AGENT_LINK"
 add_setting NEEDS_YOU_ORCA_ENVIRONMENT "$ORCA_ENV"
+add_setting NEEDS_YOU_ORCA_USAGE "$ORCA_USAGE"
 # Daily updates: on by default; a value already in the file is kept unless a flag says otherwise.
 if [ -z "$AUTO_UPDATE" ] && ! { [ -f "$ENV_FILE" ] &&
      grep -Eq '^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_AUTO_UPDATE=' "$ENV_FILE"; }; then

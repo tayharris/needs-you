@@ -306,7 +306,7 @@ class InstallScript(HubTestCase):
             fh.write("alias ll='ls -l'\n")
         flags = ["--yes", "--host", "box2", "--claude-hooks", "user", "--alerts", "--context-alert", "70",
                  "--ssh-alias", "devbox", "--agent-link", "'VS Code=vscode://file{cwd}'",
-                 "--orca-environment", "'My Devbox'"]
+                 "--orca-environment", "'My Devbox'", "--orca-usage"]
         r = self.install(inv, *flags, SHELL="/bin/zsh", STUB_UNAME="Linux")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         env = self.envfile()
@@ -315,6 +315,7 @@ class InstallScript(HubTestCase):
         self.assertEqual(env["NEEDS_YOU_SSH_ALIAS"], "devbox")
         self.assertEqual(env["NEEDS_YOU_AGENT_LINK"], "'VS Code=vscode://file{cwd}'")
         self.assertEqual(env["NEEDS_YOU_ORCA_ENVIRONMENT"], "'My Devbox'")
+        self.assertEqual(env["NEEDS_YOU_ORCA_USAGE"], "1")
         self.assertIn("Alerts are on for every Claude Code session here", r.stdout)
         self.assertNotIn(env["NEEDS_YOU_TOKEN"], r.stdout + r.stderr)
         with open(zshrc) as fh:
