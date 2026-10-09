@@ -81,6 +81,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - **The CLI shows control characters from a hub, a release or an item instead of obeying them** in `update`, `health`, `doctor`, `orca` and the other commands' output (`update --check` printed the hub's version raw).
 - **`needs-you-admin` doesn't echo a secret.** `token revoke`, `invite revoke` and `peer remove` given a token, invite code or peer secret instead of a name used to print it back in the error.
 - **The hub warns when `peer_secret_file` can be read by other users** (anyone who reads it can replicate as a peer): `chmod 600` it.
+- **Move to Applications moves only the app that's running.** It checked that the copy had a valid signature, which any re-signed bundle has; the copy must now carry the running app's code directory hash, so a bundle swapped on disk while Needs You ran from Downloads can't be moved, lose its quarantine and be opened.
+- **The always-on hub command is built from a checked link.** The server runs it with `sudo`; Settings now builds it only from a join link of the hub's shape (`…/join/nyi_…`), quoted, and shows no command for anything else.
 
 ## [0.2.1] - 2026-10-08
 
