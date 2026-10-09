@@ -216,6 +216,18 @@ Grok-specific causes:
 - A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.
 - Too many cards: narrow it with `NEEDS_YOU_LINEAR_TEAMS`, `NEEDS_YOU_LINEAR_CATEGORIES` or `Backlog=off` in `NEEDS_YOU_LINEAR_STATUSES` ([integrations/linear](../../integrations/linear/README.md#config)).
 
+## Jira poller
+
+- `needs-you-jira -v` prints how many issues changed and are open, how many requests it made, and any error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Jira alerts stopped on <host>".
+- **Nothing at all, no error:** `NEEDS_YOU_JIRA_SITE` isn't set where the poller runs (cron reads `~/.config/needs-you/env`, not your shell profile). The first run never posts: it only records your open issues.
+- **"can be read or written by others: chmod 600":** the token file is group- or world-readable, so the poller refuses it. `chmod 600 ~/.config/needs-you/jira-token` (it must also be owned by the user cron runs as).
+- **"401 Unauthorized":** Cloud: the email in `NEEDS_YOU_JIRA_EMAIL` and the API token don't match, or the token was revoked. Data Center: the personal access token expired. Put a new one in the token file.
+- **"Jira redirected":** the site URL is wrong (`http` vs `https`, a missing context path), or your Jira sends API calls to a browser login. The poller never follows a redirect, so the token isn't sent anywhere else.
+- **"must be an https:// URL":** `NEEDS_YOU_JIRA_SITE` must start with `https://`. A Data Center site on plain `http` isn't supported.
+- **"NEEDS_YOU_JIRA_JQL_EXTRA …":** your extra JQL has unbalanced quotes or parentheses, `ORDER BY`, or a line break; the poller does nothing until it's fixed. A JQL error from Jira itself ("HTTP 400 … ") quotes Jira's message.
+- **A card that doesn't clear:** it clears when the issue is Done, no longer yours, when you comment or move it yourself, after 24 hours with nothing new, or 15 minutes after the poller stops.
+- **Too many cards:** narrow it with `NEEDS_YOU_JIRA_PROJECTS`, `NEEDS_YOU_JIRA_STATUSES` (`Backlog=off`), `NEEDS_YOU_JIRA_EVENTS` or `NEEDS_YOU_JIRA_JQL_EXTRA` ([integrations/jira](../../integrations/jira/README.md#config)).
+
 ## Orca automations
 
 - `needs-you` must be on the `PATH` that Orca's agent terminals get. From an Orca terminal: `command -v needs-you`.

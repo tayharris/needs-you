@@ -46,6 +46,7 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 | GitHub | Review requests, deploy approvals, failed CI, your PRs ready to merge or blocked, and an FYI when one merges | a poller on one machine | [GitHub](docs/guides/github.md) |
 | Expiry dates | A TLS certificate, a domain or an API key expires within 30 days (louder as it nears) | a daily poller on one machine | [Expiry](docs/guides/expiry.md) |
 | Linear | An issue assigned to you, a new comment, a mention or a status change; one card per issue, cleared when you read it in Linear | a poller on one machine, with a personal API key | [Linear](docs/guides/linear.md) |
+| Jira (Cloud, Data Center) | An issue assigned to you changes status, gets a comment or a mention, or is assigned to you | a poller on one machine | [Jira](docs/guides/jira.md) |
 | CI, cron, scripts | A job fails, or a long one finishes (`needs-you run`) | the CLI | [Add a sender](docs/guides/add-a-sender.md#cron-systemd-ci) |
 
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
@@ -182,6 +183,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Orca](docs/guides/orca.md) | Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example |
 | [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, from one poller |
 | [Linear](docs/guides/linear.md) | Assignments, comments, mentions and status changes from your Linear inbox, from one poller |
+| [Jira](docs/guides/jira.md) | Status changes, comments, mentions and assignments on your Jira issues (Cloud or Data Center), from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
 | [Keeping up to date](docs/guides/updates.md) | The Mac app updating itself, `needs-you update` on senders, `scripts/rollout.sh` |
@@ -212,7 +214,7 @@ needs-you/
 ├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
 ├── integrations/   claude-code/ (the shared hook, skill), codex/, gemini/, opencode/, copilot/, kimi/, grok/,
-│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), github/ and linear/ (pollers), ci/ (Actions, cron, systemd)
+│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), github/, linear/, jira/ and expiry/ (pollers), ci/ (Actions, cron, systemd)
 ├── deploy/         systemd units and an example hub config
 └── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, roadmap/, adr/
 ```

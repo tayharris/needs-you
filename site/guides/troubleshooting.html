@@ -51,6 +51,7 @@
         <li><a href="#github-poller">GitHub poller</a></li>
         <li><a href="#expiry-poller">Expiry poller</a></li>
         <li><a href="#linear-poller">Linear poller</a></li>
+        <li><a href="#jira-poller">Jira poller</a></li>
         <li><a href="#orca-automations">Orca automations</a></li>
       </ul>
     </nav>
@@ -235,6 +236,18 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li>It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Linear alerts stopped on &lt;host&gt;".</li>
 <li>A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.</li>
 <li>Too many cards: narrow it with <code>NEEDS_YOU_LINEAR_TEAMS</code>, <code>NEEDS_YOU_LINEAR_CATEGORIES</code> or <code>Backlog=off</code> in <code>NEEDS_YOU_LINEAR_STATUSES</code> (<a data-repo="/blob/main/integrations/linear/README.md#config" href="https://github.com/tayharris/needs-you/blob/main/integrations/linear/README.md#config">integrations/linear</a>).</li>
+</ul>
+<h2 id="jira-poller">Jira poller <a class="anchor" href="#jira-poller" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><code>needs-you-jira -v</code> prints how many issues changed and are open, how many requests it made, and any error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Jira alerts stopped on &lt;host&gt;".</li>
+<li><strong>Nothing at all, no error:</strong> <code>NEEDS_YOU_JIRA_SITE</code> isn't set where the poller runs (cron reads <code>~/.config/needs-you/env</code>, not your shell profile). The first run never posts: it only records your open issues.</li>
+<li><strong>"can be read or written by others: chmod 600":</strong> the token file is group- or world-readable, so the poller refuses it. <code>chmod 600 ~/.config/needs-you/jira-token</code> (it must also be owned by the user cron runs as).</li>
+<li><strong>"401 Unauthorized":</strong> Cloud: the email in <code>NEEDS_YOU_JIRA_EMAIL</code> and the API token don't match, or the token was revoked. Data Center: the personal access token expired. Put a new one in the token file.</li>
+<li><strong>"Jira redirected":</strong> the site URL is wrong (<code>http</code> vs <code>https</code>, a missing context path), or your Jira sends API calls to a browser login. The poller never follows a redirect, so the token isn't sent anywhere else.</li>
+<li><strong>"must be an https:// URL":</strong> <code>NEEDS_YOU_JIRA_SITE</code> must start with <code>https://</code>. A Data Center site on plain <code>http</code> isn't supported.</li>
+<li><strong>"NEEDS_YOU_JIRA_JQL_EXTRA …":</strong> your extra JQL has unbalanced quotes or parentheses, <code>ORDER BY</code>, or a line break; the poller does nothing until it's fixed. A JQL error from Jira itself ("HTTP 400 … ") quotes Jira's message.</li>
+<li><strong>A card that doesn't clear:</strong> it clears when the issue is Done, no longer yours, when you comment or move it yourself, after 24 hours with nothing new, or 15 minutes after the poller stops.</li>
+<li><strong>Too many cards:</strong> narrow it with <code>NEEDS_YOU_JIRA_PROJECTS</code>, <code>NEEDS_YOU_JIRA_STATUSES</code> (<code>Backlog=off</code>), <code>NEEDS_YOU_JIRA_EVENTS</code> or <code>NEEDS_YOU_JIRA_JQL_EXTRA</code> (<a data-repo="/blob/main/integrations/jira/README.md#config" href="https://github.com/tayharris/needs-you/blob/main/integrations/jira/README.md#config">integrations/jira</a>).</li>
 </ul>
 <h2 id="orca-automations">Orca automations <a class="anchor" href="#orca-automations" aria-label="Link to this section">#</a></h2>
 <ul>
