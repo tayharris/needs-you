@@ -99,10 +99,13 @@ final class AppModel: ObservableObject {
     /// Steps ticked on this Mac (local only, never sent to the hub; kept while the item is).
     @Published private(set) var stepTicks = StepTicks()
     /// Options clicked on an answerable question's card (multi-select or several questions),
-    /// before Send. Local; dropped once the answer is sent or the item leaves.
+    /// before Send. Local; dropped once the answer is sent, the item leaves or a re-post
+    /// changes it.
     @Published private(set) var answerSelections: [String: AnswerSelection] = [:]
     /// Where each card's answer stands (sending, sent, failed and why).
     @Published private(set) var answerStates: [String: AnswerState] = [:]
+    /// The item each selection and state was made for (AnswerPolicy.stamp).
+    private var answerStamps: [String: String] = [:]
     /// The card the open panel scrolls to (ExpandFocus); the list clears it once scrolled.
     @Published var scrollTarget: String?
     /// The card drawn highlighted for a moment after the panel opened at it.
@@ -499,6 +502,13 @@ final class AppModel: ObservableObject {
         onFeedRestart?()
     }
 
+    /// The format tour: senders re-posting these items under their keys (demo mode only).
+    func applyDemoRepost(_ items: [Item]) async {
+        guard let demoFeed else { return }
+        await demoFeed.upsert(items)
+        pollNow()
+    }
+
     private func startInjector(_ demo: DemoFeed) {
         let interval = settings.demoInjectInterval
         guard interval > 0 else { return }
@@ -565,12 +575,16 @@ final class AppModel: ObservableObject {
                 ticks.retain(itemIDs: Set(updated.items.keys))
                 if ticks != stepTicks { stepTicks = ticks }
             }
-            let ids = Set(updated.items.keys)
-            if answerSelections.keys.contains(where: { !ids.contains($0) }) {
-                answerSelections = answerSelections.filter { ids.contains($0.key) }
-            }
-            if answerStates.keys.contains(where: { !ids.contains($0) }) {
-                answerStates = answerStates.filter { ids.contains($0.key) }
+            // Gone, or re-posted with a new question: the old picks and "Sent" don't apply.
+            let stale = AnswerPolicy.staleAnswerIDs(stamps: answerStamps, items: updated.items)
+            if !stale.isEmpty {
+                for id in stale { answerStamps[id] = nil }
+                if answerSelections.keys.contains(where: stale.contains) {
+                    answerSelections = answerSelections.filter { !stale.contains($0.key) }
+                }
+                if answerStates.keys.contains(where: stale.contains) {
+                    answerStates = answerStates.filter { !stale.contains($0.key) }
+                }
             }
             lastCheck = Date()
             lastError = nil
@@ -966,6 +980,7 @@ final class AppModel: ObservableObject {
         var selection = answerSelections[item.id] ?? AnswerSelection()
         selection.toggle(question, label, multiSelect: q.items[question].multiSelect)
         answerSelections[item.id] = selection
+        answerStamps[item.id] = AnswerPolicy.stamp(item)
         if case .failed = answerStates[item.id] { answerStates[item.id] = nil }
     }
 
@@ -979,6 +994,7 @@ final class AppModel: ObservableObject {
     private func sendAnswer(_ item: Item, _ request: AnswerRequest) {
         guard let feed else { return }
         answerStates[item.id] = .sending
+        answerStamps[item.id] = AnswerPolicy.stamp(item)
         let id = item.id
         let generation = feedGeneration
         Task {
