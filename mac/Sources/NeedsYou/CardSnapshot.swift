@@ -3,14 +3,18 @@ import NeedsYouCore
 import SwiftUI
 
 /// Debug aid for the format tour (NEEDS_YOU_SNAPSHOT_TOUR=formats, mac/scripts/screenshots.sh):
-/// one card drawn on its own at the open panel's card width and at its whole height, so a
-/// card taller than the list is seen in full. Like the Settings snapshots, the window is
+/// one card (or Recent row) drawn on its own at the open panel's card width and at its whole
+/// height, so a card taller than the list is seen in full. Like the Settings snapshots, the window is
 /// borderless, transparent and ignores the mouse: never key, and the app never activates.
 @MainActor
 enum CardSnapshot {
     static func write(_ item: Item, model: AppModel, to url: URL) async {
         let m = model.metrics
-        let view = CardView(item: item, model: model)
+        // done and info items are rows under Recent, not cards.
+        let card = Group {
+            if item.kind == .needs { CardView(item: item, model: model) } else { RecentRow(item: item, model: model) }
+        }
+        let view = card
             .frame(width: m.expandedWidth - 2 * m.listPadding)
             .fixedSize(horizontal: false, vertical: true)
             .padding(m.listPadding)

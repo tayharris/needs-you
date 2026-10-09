@@ -186,8 +186,9 @@ struct StepList: View {
 
     var body: some View {
         let font = model.bodyFont
+        let steps = StepsPolicy.visible(item)
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(StepsPolicy.visible(item).enumerated()), id: \.offset) { index, step in
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                 let ticked = model.stepTicks.isTicked(item, index)
                 let toggles = model.stepTicks.canToggle(item, index)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -201,9 +202,13 @@ struct StepList: View {
                     .disabled(!toggles)
                     .help(toggles ? (ticked ? "Untick (only on this Mac)" : "Tick off (only on this Mac)") : "Marked done by the sender")
 
-                    Text(StepsPolicy.number(index))
-                        .font(Theme.body(font).monospacedDigit())
-                        .foregroundStyle(Theme.muted)
+                    // As wide as the last number, so "10." doesn't push its text past the others.
+                    ZStack(alignment: .trailing) {
+                        Text(StepsPolicy.number(steps.count - 1)).hidden()
+                        Text(StepsPolicy.number(index))
+                    }
+                    .font(Theme.body(font).monospacedDigit())
+                    .foregroundStyle(Theme.muted)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(LimitedMarkdown.render(step.text))

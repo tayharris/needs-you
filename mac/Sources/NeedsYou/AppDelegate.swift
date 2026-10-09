@@ -318,11 +318,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             settings.ui.cardBodies = .full
             for item in before where item.kind == .needs {
+                // The pill, not the open panel (the morning summary may have opened it).
+                model.collapse()
+                if item.context != model.context { model.setContext(item.context) }
                 model.previewItem = item
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 panel.writeSnapshot(to: dir.appendingPathComponent("\(name(item))-arrival.png"))
             }
             model.previewItem = nil
+            model.setContext(.work)
 
             // What the person does before the senders re-post: picks, answers, a tick.
             for item in before {
