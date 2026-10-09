@@ -205,9 +205,9 @@ struct IdlePill: View {
         // (PillMeterLayout.idleAlpha).
         let layout = model.idleMeterLayout
         PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
-                       cornerRadius: model.hovering ? 11 : 9, percentSize: model.metrics.idleFont - 1,
-                       percentTrailing: 8) {
-            line(trailing: layout.showsPercent ? 0 : 8)
+                       cornerRadius: model.hovering ? 11 : 9, numberBase: model.metrics.idleFont - 1,
+                       trailing: 8) {
+            line(trailing: layout.showsTrailing ? 0 : 8)
         }
         .animation(.easeInOut(duration: 0.15), value: model.hovering)
         .pillInteraction(model)

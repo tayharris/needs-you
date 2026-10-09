@@ -3,8 +3,8 @@ import NeedsYouCore
 import SwiftUI
 
 // Usage meters (UsageMeters in NeedsYouCore, Settings → Usage): a section at the top of the
-// open panel, and on the collapsed pill (waiting and idle) bars, thin bars or percentages
-// (PillMeterStyle, PillMeterLayout). Plain read-only drawing: no buttons, links or anything
+// open panel, and on the collapsed pill (waiting and idle) bars, thin bars, rings or
+// percentages, in the chosen arrangement and size (PillMeterAppearance, PillMeterLayout). Plain read-only drawing: no buttons, links or anything
 // focusable, and nothing here counts, animates or announces.
 
 extension AppModel {
@@ -24,23 +24,25 @@ extension AppModel {
         return rows.isEmpty ? "" : " · Usage: " + UsageMeters.summary(rows)
     }
 
-    /// Where the waiting pill's meters go; none on the "Minimal dot".
+    /// Where the waiting pill's meters go. None with "Minimal dot", at rest or on hover, so
+    /// the dot never changes height when the pointer comes near.
     func waitingMeterLayout(_ content: PillContent) -> PillMeterLayout {
         let m = pillMetrics
-        return PillMeterLayout.make(settings.usage.pillStyle, count: content.isDot ? 0 : pillUsageBars.count,
+        let none = content.isDot || settings.ui.pillDetail == .dot
+        return PillMeterLayout.make(settings.usage.pillAppearance, count: none ? 0 : pillUsageBars.count,
                                     height: m.height, font: m.font)
     }
 
     /// Where the idle pill's meters go (it's taller on hover).
     var idleMeterLayout: PillMeterLayout {
         let m = metrics
-        return PillMeterLayout.make(settings.usage.pillStyle, count: pillUsageBars.count,
+        return PillMeterLayout.make(settings.usage.pillAppearance, count: pillUsageBars.count,
                                     height: hovering ? m.idleHoverHeight : m.idleHeight, font: m.idleFont)
     }
 }
 
 enum PillMeterMetrics {
-    /// The percentages' type: the pill's small size, digits monospaced.
+    /// The percentages' type, digits monospaced.
     static func percentFont(_ size: CGFloat) -> NSFont {
         NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
     }
@@ -53,15 +55,18 @@ enum PillMeterMetrics {
     static let percentSpacing: CGFloat = 4
     static let percentLeading: CGFloat = 5
 
-    /// What `.percent` adds to the pill's width: a slot per meter, fixed.
-    static func percentWidth(_ layout: PillMeterLayout, size: CGFloat) -> CGFloat {
+    /// What the percentages add to the pill's width: a slot per meter, fixed. `base` is the
+    /// pill's small type size (PillMeterLayout.numberSize).
+    static func percentWidth(_ layout: PillMeterLayout, base: CGFloat) -> CGFloat {
         guard layout.showsPercent else { return 0 }
         let n = CGFloat(layout.count)
-        return percentLeading + n * percentSlot(size) + (n - 1) * percentSpacing
+        return percentLeading + n * percentSlot(layout.numberSize(base)) + (n - 1) * percentSpacing
     }
 
-    /// Bars run between the rounded ends.
-    static func barInset(cornerRadius: CGFloat) -> CGFloat { max(6, (cornerRadius * 0.6).rounded()) }
+    /// Everything after the count: the rings, then the percentages.
+    static func trailingWidth(_ layout: PillMeterLayout, base: CGFloat) -> CGFloat {
+        layout.ringsWidth + percentWidth(layout, base: base)
+    }
 }
 
 extension UsageLevel {
@@ -158,29 +163,68 @@ struct UsageTrack: View {
     }
 }
 
-/// The pill's meters as bars or thin bars (PillMeterLayout): one per window, session above
-/// weekly, between the rounded ends, in their own band under the count.
-struct PillUsageMeter: View {
+/// A pill meter's colour: quiet until the warning line (the text colour, strong enough to
+/// read on a dimmed pill), then amber and red; the track is the text colour, faint.
+private func pillMeterColor(_ bar: UsageBar, _ layout: PillMeterLayout) -> Color {
+    bar.level == .normal ? Theme.text.opacity(layout.fillOpacity) : bar.level.color
+}
+
+/// Bars and thin bars (PillMeterLayout.barRects): one per window, session first,
+/// stacked or side by side, in their own band under the count and between the rounded
+/// ends. Drawn over the whole pill, so the rectangles are the layout's own.
+struct PillUsageBand: View {
     let bars: [UsageBar]
     let layout: PillMeterLayout
     let cornerRadius: CGFloat
 
     var body: some View {
-        VStack(spacing: layout.barGap) {
-            ForEach(bars) { bar in
-                UsageTrack(pct: bar.pct,
-                           color: bar.level == .normal ? Theme.text.opacity(layout.fillOpacity) : bar.level.color,
-                           height: layout.barHeight, trackOpacity: layout.trackOpacity)
+        Canvas { context, size in
+            let track = Theme.text.opacity(layout.trackOpacity)
+            func fill(_ r: CGRect, _ color: Color) {
+                let radius = min(r.height, r.width) / 2
+                context.fill(Path(roundedRect: r, cornerRadius: radius), with: .color(color))
+            }
+            for (bar, rect) in zip(bars, layout.barRects(width: size.width, cornerRadius: cornerRadius)) {
+                fill(rect, track)
+                let f = min(1, max(0, bar.pct / 100))
+                if f > 0 {
+                    // At least a dot, so 1 % shows.
+                    let w = min(rect.width, max(rect.height, rect.width * f))
+                    fill(CGRect(x: rect.minX, y: rect.minY, width: w, height: rect.height), pillMeterColor(bar, layout))
+                }
             }
         }
-        .padding(.horizontal, layout.style == .bars ? PillMeterMetrics.barInset(cornerRadius: cornerRadius)
-                                                   : max(8, cornerRadius))
-        .padding(.bottom, layout.bottomInset)
         .allowsHitTesting(false)
     }
 }
 
-/// `.percent`: "31% 10%" in small type after the count, each in a fixed slot.
+/// Rings after the count (PillMeterLayout.ringRects): filled clockwise from the top on a
+/// faint full-circle track; side by side, or session outside and weekly inside.
+struct PillUsageRings: View {
+    let bars: [UsageBar]
+    let layout: PillMeterLayout
+
+    var body: some View {
+        Canvas { context, _ in
+            let s = layout.ringStroke
+            for (bar, rect) in zip(bars, layout.ringRects) {
+                let r = rect.insetBy(dx: s / 2, dy: s / 2)
+                context.stroke(Path(ellipseIn: r), with: .color(Theme.text.opacity(layout.trackOpacity)), lineWidth: s)
+                let f = min(1, max(0, bar.pct / 100))
+                guard f > 0 else { continue }
+                var arc = Path()
+                arc.addArc(center: CGPoint(x: r.midX, y: r.midY), radius: r.width / 2,
+                           startAngle: .degrees(-90), endAngle: .degrees(-90 + 360 * f), clockwise: false)
+                context.stroke(arc, with: .color(pillMeterColor(bar, layout)),
+                               style: StrokeStyle(lineWidth: s, lineCap: f >= 1 ? .butt : .round))
+            }
+        }
+        .frame(width: layout.ringsWidth, height: layout.height)
+        .allowsHitTesting(false)
+    }
+}
+
+/// The percentages after the count (or the rings): "31% 10%", each in a fixed slot.
 struct PillUsagePercent: View {
     let bars: [UsageBar]
     let size: CGFloat
@@ -204,30 +248,36 @@ struct PillUsagePercent: View {
     }
 }
 
-/// A collapsed pill's content with its meters: the count (or idle line) centred in its band,
-/// bars or thin bars below it, or percentages after it.
+/// A collapsed pill's content with its meters (PillMeterLayout): the count (or idle line)
+/// centred in its band at the top, bars below it, or rings and percentages after it.
 struct PillWithMeters<Content: View>: View {
     let bars: [UsageBar]
     let layout: PillMeterLayout
     let cornerRadius: CGFloat
-    let percentSize: CGFloat
-    /// Room after the percentages, for a pill whose content brings its own padding.
-    var percentTrailing: CGFloat = 0
+    /// The pill's small type size; the percentages are drawn at `layout.numberSize(numberBase)`.
+    let numberBase: CGFloat
+    /// Room after the rings or percentages, for a pill whose content brings its own padding.
+    var trailing: CGFloat = 0
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
             HStack(spacing: 0) {
                 content()
+                if layout.showsRings {
+                    PillUsageRings(bars: bars, layout: layout)
+                }
                 if layout.showsPercent {
-                    PillUsagePercent(bars: bars, size: percentSize).padding(.trailing, percentTrailing)
+                    PillUsagePercent(bars: bars, size: layout.numberSize(numberBase))
+                }
+                if layout.showsTrailing && trailing > 0 {
+                    Color.clear.frame(width: trailing, height: 1)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: layout.contentHeight)
             if layout.showsBars {
-                Spacer(minLength: 0)
-                PillUsageMeter(bars: bars, layout: layout, cornerRadius: cornerRadius)
+                PillUsageBand(bars: bars, layout: layout, cornerRadius: cornerRadius)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

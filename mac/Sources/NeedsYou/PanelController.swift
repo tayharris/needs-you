@@ -306,9 +306,11 @@ final class PanelController {
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
                 + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot
                 + (model.focusSetByLink ? m.idleFont + 4 : 0)
-            // Usage meters (PillMeterLayout): a second bar makes it a little taller, percentages wider.
+            // Usage meters (PillMeterLayout): bars make it a little taller, rings and
+            // percentages wider.
             let meters = model.idleMeterLayout
-            return CGSize(width: m.idleWidth(textWidth: width + PillMeterMetrics.percentWidth(meters, size: m.idleFont - 1)),
+            let idleWidth = m.idleWidth(textWidth: width + PillMeterMetrics.trailingWidth(meters, base: m.idleFont - 1))
+            return CGSize(width: max(idleWidth, meters.minWidth(cornerRadius: model.hovering ? 11 : 9)),
                           height: meters.height)
         case .waiting:
             // Settings → Panel → Collapsed pill (PillContent; the defaults are the original size).
