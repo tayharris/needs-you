@@ -4,6 +4,15 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Pill and panel shape.** **Settings → Appearance → Pill → Shape**: Rounded (the original), Square (nearly square corners) or Capsule (fully round ends on the pill and the new-item preview, the roundest corners on the open panel). One choice shapes the pill, the preview and the open panel together, and the priority ring, the arrival glow and the ripple follow it; the menu bar icon doesn't change ([guide](docs/guides/mac-app.md#make-it-yours)).
+- **Card density.** **Settings → Appearance → Panel and cards → Density**: Comfortable (the original) or Compact, with less padding and smaller gaps between and inside cards so more fit; the type stays the same.
+
+### Changed
+
+- **Pill size now sizes the idle pill too.** **Appearance → Pill → Pill size** (Small, Medium, Large) used to change only the pill with a count; it now scales the "Nothing needs you" pill the same way, so the pill's height, text and usage meters grow or shrink together whether anything is waiting or not. Medium, the default, is unchanged.
+
 ## [0.5.0] - 2026-10-09
 
 A pre-release: choose how the pill's usage meters look (Bars, Thin bars, Rings or Percentages, in three sizes) and see them on the idle pill too, one Appearance section in Settings, new opt-in cards from Linear, Jira, GitHub Projects statuses, Dependabot alerts and certificate, domain and key expiry, and one "go there" button per agent card. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** before relying on the new bring-forward button (an older hub refuses its link and the card falls back to the editor button), then run `needs-you update` on sender machines for the new hooks.
