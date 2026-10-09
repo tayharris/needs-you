@@ -165,7 +165,10 @@ class SettingsPathTests(unittest.TestCase):
                 return "%r is not a page under %s (%s)" % (rest[0], first, ", ".join(self.by_group[first]))
             rest = rest[1:]
         for seg in rest:
-            if starts_with_one_of(seg, self.strings) is None:
+            # A path is cut at a comma, so "Expiring certificates" stands for the app's
+            # "Expiring certificates, domains and keys".
+            if starts_with_one_of(seg, self.strings) is None and \
+                    not any(s.startswith(seg + ",") for s in self.strings):
                 return "%r isn't shown anywhere in the app's Settings (no such string in mac/Sources)" % seg
         return None
 
