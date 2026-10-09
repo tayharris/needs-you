@@ -121,7 +121,7 @@ class OrcaSnippetTests(unittest.TestCase):
         self.assertEqual(self.term_link, "needsyou://orca/terminal?handle=term_abc&environment=My%20Devbox")
 
     def test_block_posts_the_terminal_link(self):
-        self.assertIn('--link "Terminal=$term_link"', installer_snippet())
+        self.assertIn('--link "Orca=$term_link"', installer_snippet())
 
 
 class HookOrcaBodyTests(unittest.TestCase):
@@ -181,9 +181,9 @@ class HookOrcaBodyTests(unittest.TestCase):
         h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
         argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="Work Sandbox")
         self.assertEqual(self.links(argv),
-                         ["Terminal=needsyou://orca/terminal?handle=%s&environment=Work%%20Sandbox" % h])
+                         ["Orca=needsyou://orca/terminal?handle=%s&environment=Work%%20Sandbox" % h])
         argv = self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_ORCA_ENVIRONMENT="-bad;env")
-        self.assertEqual(self.links(argv), ["Terminal=needsyou://orca/terminal?handle=" + h])
+        self.assertEqual(self.links(argv), ["Orca=needsyou://orca/terminal?handle=" + h])
 
     def test_no_terminal_link_for_an_odd_handle(self):
         self.assertEqual(self.links(self.notify(ORCA_TERMINAL_HANDLE="term_ABC;x")), [])
@@ -191,7 +191,7 @@ class HookOrcaBodyTests(unittest.TestCase):
     def test_retries_without_the_link_on_an_old_hub(self):
         h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
         with open(self.cli, "w") as fh:
-            fh.write(FAKE_CLI + "sys.exit(2 if any(a.startswith('Terminal=') for a in sys.argv) else 0)\n")
+            fh.write(FAKE_CLI + "sys.exit(2 if any(a.startswith('Orca=') for a in sys.argv) else 0)\n")
         self.notify(ORCA_TERMINAL_HANDLE=h, NEEDS_YOU_AGENT_LINK="VS Code=vscode://file{cwd}")
         with open(self.log) as fh:
             calls = [json.loads(l) for l in fh]

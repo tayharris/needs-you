@@ -87,7 +87,8 @@
 #                             editor links. Orca has no terminal or worktree
 #                             deep link (1.4.220 opens only
 #                             orca://skills/share/<id>), so Orca sessions get
-#                             a needsyou://orca/terminal link and an
+#                             an Orca link (needsyou://orca/terminal), no
+#                             editor links unless this template asks, and an
 #                             `orca terminal switch` command in the body.
 #   LC_NEEDS_YOU_TERM         on an SSH host: which Mac terminal tab holds the
 #                             connection, as the link's query (for example
@@ -789,12 +790,12 @@ def terminal_link():
 def make_links():
     links = []
     orca_env = os.environ.get("NEEDS_YOU_ORCA_ENVIRONMENT", "")
-    # The Mac app's Terminal button runs the Orca switch (it validates both values again).
+    # The Mac app's Orca button runs the Orca switch (it validates both values again).
     if handle and re.match(r"^term_[0-9a-f-]{8,64}$", handle):
         url = "needsyou://orca/terminal?handle=" + handle
         if re.match(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$", orca_env):
             url += "&environment=" + quote(orca_env, safe="")
-        links.append("Terminal=" + url)
+        links.append("Orca=" + url)
     elif not handle:
         # Otherwise the Mac terminal tab (the app validates it again before it runs anything).
         term = terminal_link()
@@ -812,7 +813,10 @@ def make_links():
         if label and url and not (needs_handle and not handle):
             links.append("%s=%s" % (label, url))
         return links
-    # No template: the deepest editor links this machine can name.
+    # No template: the deepest editor links this machine can name. Orca is where the session
+    # lives, so it gets the Orca button only (an editor button beside it reads as the way back).
+    if handle:
+        return links
     # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
     if (AGENT == "claude" and os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"
             and re.match(r"^[A-Za-z0-9-]{8,64}$", session)):

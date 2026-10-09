@@ -781,7 +781,7 @@ class TerminalLinkTests(HookHarness):
     def test_orca_wins(self):
         h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
         self.assertEqual(self.mac(WEZTERM_PANE="12", ORCA_TERMINAL_HANDLE=h),
-                         ["Terminal=needsyou://orca/terminal?handle=" + h])
+                         ["Orca=needsyou://orca/terminal?handle=" + h])
 
     def test_old_hub_retry_drops_every_app_link(self):
         with open(self.cli, "w") as fh:

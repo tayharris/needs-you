@@ -10,7 +10,7 @@ Confidence marks: **[high]** checked against a primary source or on this machine
 
 ### What exists
 
-- **Agent cards from Orca terminals.** The shared hook switches itself on when `$ORCA_TERMINAL_HANDLE` is set, keys cards `agent:<host>:<handle>`, and adds the worktree (`$ORCA_WORKTREE_ID`), a `needsyou://orca/terminal?handle=…[&environment=…]` **Terminal** link and an `orca terminal switch` command to the body (`integrations/claude-code/needs-you-hook.sh`, `docs/guides/orca.md`). [high]
+- **Agent cards from Orca terminals.** The shared hook switches itself on when `$ORCA_TERMINAL_HANDLE` is set, keys cards `agent:<host>:<handle>`, and adds the worktree (`$ORCA_WORKTREE_ID`), a `needsyou://orca/terminal?handle=…[&environment=…]` **Orca** link and an `orca terminal switch` command to the body (`integrations/claude-code/needs-you-hook.sh`, `docs/guides/orca.md`). [high]
 - **OrcaJump in the Mac app.** `mac/Sources/NeedsYou/OrcaJumpRunner.swift` and `NeedsYouCore/TerminalJump.swift` run `orca terminal switch --terminal <handle> --json [--environment <name>]` from a fixed path, no shell, 5 s timeout; with no environment named it tries each paired one from `orca environment list` (at most 8). The link grammar is mirrored in `LinkPolicy.swift` and the hub. [high]
 - **Automations.** `integrations/orca/snippet.md` is the prompt block (installed by `--orca` to `~/.config/needs-you/orca-snippet.md`, kept current by `needs-you update`); `integrations/orca/README.md` has per-automation recipes. [high]
 - **Several servers.** One invite with N uses gives each Orca server its own token; `NEEDS_YOU_ORCA_ENVIRONMENT` names the server as the Mac's Orca knows it. [high]
@@ -38,7 +38,7 @@ A card-per-status design (posting `info` per worktree) is not recommended: it tu
 
 ### (b) Suggest Orca when the person runs many worktrees
 
-- **Doctor INFO line** (cheap, no wire change): when `orca` is not on `PATH` and `git worktree list` in the current repo shows 3 or more worktrees, or the hook's state dir shows 3+ live agent sessions on this host, add `orca: INFO 5 worktrees with agents here; Orca can run and switch between them, and needs-you cards then get a Terminal button`. Never a WARN; never posted. Touches `cli/needs-you` (`Doctor.orca`) and `tests/test_doctor.py`.
+- **Doctor INFO line** (cheap, no wire change): when `orca` is not on `PATH` and `git worktree list` in the current repo shows 3 or more worktrees, or the hook's state dir shows 3+ live agent sessions on this host, add `orca: INFO 5 worktrees with agents here; Orca can run and switch between them, and needs-you cards then get an Orca button`. Never a WARN; never posted. Touches `cli/needs-you` (`Doctor.orca`) and `tests/test_doctor.py`.
 - **Invite agent prompt / join page**: one optional sentence: "If this machine runs several agents in worktrees, Orca gives each card a jump-to-terminal button; add `--orca` if it's installed." Agent-facing copy, so it changes with the join page and `docs/AGENT-GUIDE.md` together.
 - **Installer**: when `orca` is on `PATH` and `--orca` wasn't passed, print one INFO line suggesting it. Already half there (the installer knows the flag).
 

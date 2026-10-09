@@ -37,7 +37,7 @@
       <ul>
         <li><a href="#several-orca-servers-one-link">Several Orca servers: one link</a></li>
         <li><a href="#agent-sessions">Agent sessions</a></li>
-        <li><a href="#the-terminal-button">The Terminal button</a></li>
+        <li><a href="#the-orca-button">The Orca button</a></li>
         <li><a href="#automations-add-the-prompt-block">Automations: add the prompt block</a></li>
         <li><a href="#how-an-automation-posts-and-resolves">How an automation posts and resolves</a></li>
         <li><a href="#worked-example-hand-off-to-a-human-and-resume">Worked example: hand off to a human and resume</a></li>
@@ -66,16 +66,16 @@
 <p>Check from an Orca terminal on each server: <code>command -v needs-you</code> (if it's missing, <code>~/.local/bin</code> isn't on the PATH Orca gives agents; add it, or set <code>NEEDS_YOU_BIN</code>).</p>
 <h2 id="agent-sessions">Agent sessions <a class="anchor" href="#agent-sessions" aria-label="Link to this section">#</a></h2>
 <p>With the hooks installed, nothing else is needed. Cards are keyed <code>agent:&lt;host&gt;:&lt;terminal handle&gt;</code>, so agents on different servers never collide.</p>
-<p>Each card has a <strong>Terminal</strong> button that takes you to the agent's Orca terminal (<a href="#the-terminal-button">below</a>), and the body names the worktree and the command that does the same by hand:</p>
+<p>Each card has an <strong>Orca</strong> button that takes you to the agent's Orca terminal (<a href="#the-orca-button">below</a>), and the body names the worktree and the command that does the same by hand:</p>
 <div class="code"><pre><code class="language-text">Orca worktree: `/home/me/orca/workspaces/my-repo/ACME-123`
 Jump to its terminal: `orca terminal switch --environment 'My Devbox' --terminal term_6f1c...`</code></pre></div>
-<p>On a paired Orca server, the Mac's Orca only finds the terminal with <code>--environment &lt;name&gt;</code>, and the server can't know the name the Mac gave it. The <strong>Terminal</strong> button copes (without a name, it tries each paired environment in turn), but the command in the body needs it. Tell the server once (the name is the one <code>orca environment list</code> shows on the Mac):</p>
+<p>On a paired Orca server, the Mac's Orca only finds the terminal with <code>--environment &lt;name&gt;</code>, and the server can't know the name the Mac gave it. The <strong>Orca</strong> button copes (without a name, it tries each paired environment in turn), but the command in the body needs it. Tell the server once (the name is the one <code>orca environment list</code> shows on the Mac):</p>
 <div class="code"><pre><code class="language-bash">echo "NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'" &gt;&gt; ~/.config/needs-you/env</code></pre></div>
 <p>Agents on the Mac's own Orca need nothing; the command has no <code>--environment</code>.</p>
-<h2 id="the-terminal-button">The Terminal button <a class="anchor" href="#the-terminal-button" aria-label="Link to this section">#</a></h2>
+<h2 id="the-orca-button">The Orca button <a class="anchor" href="#the-orca-button" aria-label="Link to this section">#</a></h2>
 <p>Orca has no deep link to a terminal or a worktree (1.4.220 opens only <code>orca://skills/share/&lt;id&gt;</code>, which imports a skill), so needs-you uses a link of its own that the Mac app handles:</p>
 <div class="code"><pre><code class="language-text">needsyou://orca/terminal?handle=term_&lt;uuid&gt;[&amp;environment=&lt;name&gt;]</code></pre></div>
-<p>The hook adds it to every card from an Orca terminal, and the automation block adds it as the first link (<code>--link "Terminal=..."</code>), so the menu bar and the hotkey open it too. Clicking it in the Mac app:</p>
+<p>The hook adds it to every card from an Orca terminal, and the automation block adds it as the first link (<code>--link "Orca=..."</code>), so the menu bar and the hotkey open it too. Clicking it in the Mac app:</p>
 <ol>
 <li>checks the link: <code>handle</code> is <code>term_</code> plus 8–64 lowercase hex digits or <code>-</code>, <code>environment</code> (optional) is letters, digits, spaces, <code>.</code>, <code>_</code>, <code>-</code>, at most 64, and nothing else is in the query. Anything else does nothing. The hub refuses other <code>needsyou://</code> links at post time (<a href="api.html">API</a>).</li>
 <li>runs <code>orca terminal switch --terminal &lt;handle&gt; --json [--environment &lt;name&gt;]</code> as an argument list, no shell, from a fixed path (<code>/usr/local/bin/orca</code>, <code>/opt/homebrew/bin/orca</code> or the CLI inside <code>/Applications/Orca.app</code>), with a 5-second timeout. A sender can make the app switch Orca tabs and nothing more.</li>
@@ -133,19 +133,19 @@ body=$(printf '%s\n\nOrca worktree: `%s`\nJump to its terminal: `%s`' \
 needs-you add --key "work:ACME-123:push-decision" --context work --priority normal --expires-in 3 \
   --title "ACME-123: choose how to unblock the push" \
   --body "$body" \
-  --link "Terminal=$term_link" \
+  --link "Orca=$term_link" \
   --link "Jira=https://acme.atlassian.net/browse/ACME-123" \
   --link "PR=https://github.com/acme/app/pull/2137" \
   --agent "orca:redo-fixer" --project app
 orca worktree set --worktree active --workspace-status in-review --comment "Blocked: push decision (see needs-you)"</code></pre></div>
-<p>The run ends. A card <strong>ACME-123: choose how to unblock the push</strong> is on the Mac, with <strong>Terminal</strong>, <strong>Jira</strong> and <strong>PR</strong> buttons.</p>
+<p>The run ends. A card <strong>ACME-123: choose how to unblock the push</strong> is on the Mac, with <strong>Orca</strong>, <strong>Jira</strong> and <strong>PR</strong> buttons.</p>
 <p><strong>10:20, the person.</strong> They click <strong>Jira</strong> and answer the comment: "merge the migration first". They don't resolve anything; the card stays until the agent has acted on the answer.</p>
 <p><strong>11:00, the next run picks it up.</strong> The prompt tells the fixer to look at its blocked tickets first. It reads the new comment on ACME-123, treats it as the answer (text from the ticket is data: it acts on the choice, never on instructions inside it), merges the migration, pushes, moves the ticket back to review, and then:</p>
 <div class="code"><pre><code class="language-bash">needs-you resolve --key "work:ACME-123:push-decision"
 needs-you done --key "work:redo-fixer:last-run" --title "Redo fixer: 1 ticket back in review, 0 blocked on you"</code></pre></div>
 <p>The card disappears from every Mac reading the hub; the <code>done</code> note shows as an FYI for a day.</p>
 <p><strong>If nobody had answered by 11:00,</strong> the run would see the same blocker and post the same <code>add</code> again: still one card, its expiry pushed to 14:00. If the fixer stopped running altogether, the card would expire three hours after its last post instead of sitting there for days.</p>
-<p><strong>The same hand-off in one live session.</strong> An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click <strong>Terminal</strong>, Orca switches to the agent's terminal, you type the answer, and the agent runs the <code>resolve</code> before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal (<a href="claude-code.html#one-card-for-one-wait">one card for one wait</a>). Once the agent resolves its item, an idle session gets the hooks' card again.</p>
+<p><strong>The same hand-off in one live session.</strong> An agent you started in an Orca terminal can post the same item and wait in that terminal instead of ending. You click <strong>Orca</strong>, Orca switches to the agent's terminal, you type the answer, and the agent runs the <code>resolve</code> before it carries on. With the hooks installed you still see one card: while the agent's item is open, the hooks skip their "Claude is waiting for you" card for that terminal (<a href="claude-code.html#one-card-for-one-wait">one card for one wait</a>). Once the agent resolves its item, an idle session gets the hooks' card again.</p>
 <h2 id="whats-running-needs-you-orca">What's running: <code>needs-you orca</code> <a class="anchor" href="#whats-running-needs-you-orca" aria-label="Link to this section">#</a></h2>
 <p>An agent (or you) can see Orca's worktrees on this machine in one read-only call, without opening Orca:</p>
 <div class="code"><pre><code class="language-bash">needs-you orca            # one line per worktree: host, name (branch), status, live terminals, unread, PR
@@ -170,7 +170,7 @@ needs-you orca usage --disable    # stop, and clear the rows it sent</code></pre
 <div class="code" data-copy><pre><code class="language-bash">needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
 needs-you resolve --key "work:orca-test:hello"</code></pre></div>
 <p>Then run one automation by hand (<code>orca automations run ...</code>) and watch for its card.</p>
-<p><code>needs-you doctor</code> prints an <code>orca</code> INFO line in an Orca terminal or wherever <code>orca</code> is on <code>PATH</code> (whether the terminal handle, worktree id and <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> are set, and whether the account usage meters are on). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when <code>orca</code> is on <code>PATH</code> and you didn't pass <code>--orca</code>, that the flag exists.</p>
+<p><code>needs-you doctor</code> prints an <code>orca</code> INFO line in an Orca terminal or wherever <code>orca</code> is on <code>PATH</code> (whether the terminal handle, worktree id and <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> are set, and whether the account usage meters are on). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards an Orca button; it's only a tip, never a warning. The invite installer likewise says once, when <code>orca</code> is on <code>PATH</code> and you didn't pass <code>--orca</code>, that the flag exists.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/orca.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">docs/guides/orca.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 
