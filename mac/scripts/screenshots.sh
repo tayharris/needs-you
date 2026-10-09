@@ -178,7 +178,7 @@ defaults write "$SUITE" expandedListHeight -float 840
 defaults write "$SUITE" collapseOnClickOutside -bool false
 
 mkdir -p "$OUT"
-WAIT=120   # half-seconds a tour may take
+WAIT=240   # half-seconds a tour may take
 run() {   # run <fixture> <snapshot dir> [extra env...]
   local fixture="$1" dir="$2"
   shift 2

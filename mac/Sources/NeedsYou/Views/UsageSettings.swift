@@ -30,7 +30,7 @@ struct UsageSettingsSection: View {
                 LabelWithDetail("Show in the panel", "A USAGE section at the top of the open panel: a bar per window, with the percentage used and when it resets.")
             }
             Toggle(isOn: $settings.usage.onPill) {
-                LabelWithDetail("Show on the pill", "Two hairlines along the collapsed pill's bottom edge: the fullest session and weekly window. The count stays as it is.")
+                LabelWithDetail("Show on the pill", "Two thin bars along the collapsed pill's bottom edge: the fullest session and weekly window. Hover the pill for the numbers.")
             }
         } header: {
             Text("Meters")

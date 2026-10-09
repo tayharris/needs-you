@@ -97,11 +97,12 @@ struct UsageTrack: View {
     let pct: Double
     let color: Color
     var height: CGFloat = 4
+    var trackOpacity: Double = 0.12
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Capsule().fill(Theme.text.opacity(0.12))
+                Capsule().fill(Theme.text.opacity(trackOpacity))
                 Capsule().fill(color)
                     .frame(width: max(pct > 0 ? height : 0, proxy.size.width * min(1, max(0, pct / 100))))
             }
@@ -117,16 +118,18 @@ struct PillUsageMeter: View {
     let metrics: PillMetrics
 
     var body: some View {
-        // At most 2 pt above the bottom edge plus two 1 pt lines: below the digits, which
-        // sit centred in the pill (PillMetrics.height).
+        // 1 pt above the bottom edge plus two lines (1.5 pt, 2 pt on a pill 24 pt or taller):
+        // below the digits, which sit centred in the pill (PillMetrics.height). The empty
+        // track shows too, so a low percentage still reads as a meter, not as nothing.
+        let line: CGFloat = metrics.height >= 24 ? 2 : 1.5
         VStack(spacing: 1) {
             ForEach(bars) { bar in
-                UsageTrack(pct: bar.pct, color: bar.level == .normal ? Theme.text.opacity(0.45) : bar.level.color,
-                           height: 1)
+                UsageTrack(pct: bar.pct, color: bar.level == .normal ? Theme.text.opacity(0.85) : bar.level.color,
+                           height: line, trackOpacity: 0.28)
             }
         }
         .padding(.horizontal, max(8, metrics.cornerRadius))
-        .padding(.bottom, 2)
+        .padding(.bottom, 1)
         .allowsHitTesting(false)
     }
 }

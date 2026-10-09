@@ -17,6 +17,7 @@ A pre-release: copy commands and text from a card, per-session alert rules (make
 
 ### Changed
 
+- **The pill's usage meters are readable.** The session and weekly meters along the collapsed pill's bottom edge were 1 pt lines at low contrast, easy to miss at a low percentage. They're now thicker, brighter and show their empty track, so 10% reads as a meter. Hover the pill for the numbers.
 - **Orca cards have an Orca button.** The way back to an agent's Orca terminal was labelled **Terminal**, next to a VS Code button the hook added on every Mac. The hook now labels it **Orca** and adds no editor button when Orca is where the session runs, and the Mac app names every jump button for where it goes (Orca, iTerm2, tmux, WezTerm, Ghostty), whatever an older hook called it ([Orca guide](docs/guides/orca.md#the-orca-button)).
 
 ## [0.3.2] - 2026-10-09
