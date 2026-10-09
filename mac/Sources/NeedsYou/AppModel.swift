@@ -220,6 +220,24 @@ final class AppModel: ObservableObject {
         NSApplication.shared.publisher(for: \.effectiveAppearance)
             .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
             .store(in: &appearanceObservers)
+        // A rule's "Treat as urgent"/"Treat as low" recolours and re-sorts the cards at once.
+        settings.$bypassRules
+            .removeDuplicates()
+            .sink { [weak self] rules in Task { @MainActor in self?.applyRules(rules) } }
+            .store(in: &appearanceObservers)
+    }
+
+    /// Puts the bypass rules' priority (RuleBook.effectivePriority) on every stored item.
+    private func applyRules(_ rules: RuleBook) {
+        var next = store
+        if next.applyRules(rules) { store = next }
+    }
+
+    /// The card menu's "Alerts for This Session" edits (AlertRuleMenu). Saved like a change in
+    /// Settings → Alerts; the observer above re-applies them to the cards.
+    func setBypassRules(_ rules: RuleBook) {
+        guard rules != settings.bypassRules else { return }
+        settings.bypassRules = rules
     }
 
     /// Recomputes the palette from the settings and macOS's appearance.
@@ -577,7 +595,9 @@ final class AppModel: ObservableObject {
             guard generation == feedGeneration else { return }
             var updated = store
             // By id, last-writer-wins on updated_at; a hub switch forces a full snapshot.
-            let result = updated.merge(page.items, isFullSnapshot: page.isFullSnapshot, now: Date())
+            // With the bypass rules' priority on each item, as the store keeps them (applyRules).
+            let rules = settings.bypassRules
+            let result = updated.merge(page.items.map { rules.applied(to: $0) }, isFullSnapshot: page.isFullSnapshot, now: Date())
             activeHub = page.source
             pollCursor = page.cursor
             pollNext = page.next
@@ -1143,7 +1163,7 @@ final class AppModel: ObservableObject {
                     store.forgetClose(id: item.id)
                     return
                 }
-                store.restore(removed)
+                store.restore(settings.bypassRules.applied(to: removed))
                 lastError = "Couldn't update item"
             }
         }

@@ -547,6 +547,7 @@ struct CardActions: View {
                 let count = model.itemsFromSameHost(as: item).count
                 Menu {
                     Button("Dismiss All from \(host) (\(count))") { model.dismissAll(fromHostOf: item) }
+                    AlertRulesMenu(item: item, model: model)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: model.metrics.actionFont, weight: .semibold))
