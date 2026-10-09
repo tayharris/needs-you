@@ -67,10 +67,21 @@ gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/content
 <div class="code"><pre><code class="language-bash">NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's cards are work or personal
 NEEDS_YOU_GITHUB_EXCLUDE=acme/huge-monorepo            # owners or repos to ignore
 NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want); -merged: no "Merged" FYIs</code></pre></div>
+<h3 id="projects-statuses-and-dependabot-alerts-opt-in">Projects statuses and Dependabot alerts (opt-in) <a class="anchor" href="#projects-statuses-and-dependabot-alerts-opt-in" aria-label="Link to this section">#</a></h3>
+<p>Two more kinds of card are off until you turn them on:</p>
+<div class="code" data-copy><pre><code class="language-bash">NEEDS_YOU_GITHUB_PROJECT_STATUSES=Blocked=urgent,In Review=normal   # a card when an issue or PR assigned to you moves to one of these
+NEEDS_YOU_GITHUB_SECURITY=1                                          # a card per open critical Dependabot alert (low priority)
+NEEDS_YOU_GITHUB_SECURITY_SEVERITIES=critical,high                   # optional: high too</code></pre></div>
+<ul>
+<li><strong>Projects:</strong> when an open issue or PR assigned to you moves to a status you named in a GitHub project (for example <strong>Blocked</strong>), you get "acme/app#30 is Blocked in Roadmap: <em>title</em>" at the priority you gave it. It clears when the status moves on, the issue closes or you're unassigned. The first run only notes where everything is, so turning it on doesn't post what was already blocked. It needs one more <code>gh</code> scope: <code>gh auth refresh -s read:project</code>. If your projects call the field something other than <code>Status</code>, set <code>NEEDS_YOU_GITHUB_PROJECT_FIELD</code>.</li>
+<li><strong>Dependabot:</strong> when GitHub sends you a security alert notification, the poller reads that repo's open Dependabot alerts and posts one low card per critical alert: "Critical security alert in acme/app: lodash: <em>summary</em>", linking the alert. It clears when the alert is fixed or dismissed, or you read the notification. It needs <code>gh auth refresh -s security_events</code>.</li>
+</ul>
+<p>If the scope is missing, the poller says so once, with one low card ("GitHub Projects cards on devbox need gh's read:project scope"), and everything else keeps working. These cards say what happened in <code>source.event</code> (<code>status</code>, <code>security</code>), so a Mac alert rule can single them out; they need the <code>needs-you</code> CLI 0.4.0 or later (<code>needs-you update</code>).</p>
 <p>The full list of cards, keys and settings is in <a data-repo="/blob/main/integrations/github/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/github/README.md">integrations/github/README.md</a>. If you have many open PRs, <code>NEEDS_YOU_GITHUB_PR_DAYS</code> (default 14) skips the ones nobody has touched lately, and at most 20 cards are open at once (<code>NEEDS_YOU_GITHUB_MAX_CARDS</code>).</p>
 <h2 id="when-it-doesnt-post">When it doesn't post <a class="anchor" href="#when-it-doesnt-post" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>Run <code>needs-you-github -v</code>. It says how many notifications and PRs it saw and any <code>gh</code> error. It always exits 0, so cron won't tell you.</li>
+<li>A "need gh's ... scope" card: run the <code>gh auth refresh -s ...</code> command it names. The poller checks again within the hour, and the card goes.</li>
 <li><code>gh</code> errors (logged out, token expired): fix with <code>gh auth login</code>. After 3 failed runs in a row it posts one low card, "GitHub alerts stopped on devbox", which clears on the next good run.</li>
 <li>Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see <a href="troubleshooting.html#a-sender-cant-reach-the-hub">troubleshooting</a>.</li>
 <li>To start over, delete <code>~/.local/state/needs-you/github.json</code>. Cards it posted expire within 15 minutes on their own.</li>
