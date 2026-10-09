@@ -334,6 +334,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Self.meters(model, .bars)
                 model.settings.usage.onPill = false
             }),
+            // The open panel's ORCA section (Settings → Panel → Orca), unfolded, with nothing
+            // waiting so it's in view: DemoFeed.orcaFixture, as a snapshot run never reads Orca.
+            ("17-orca-panel", { model in
+                model.settings.usage.onPill = true
+                model.settings.showOrcaWorktrees = true
+                model.showOrca = true
+                model.expand()
+                model.refreshOrca(force: true)
+                model.scrollTarget = nil
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
