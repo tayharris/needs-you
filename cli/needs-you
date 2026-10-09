@@ -5,8 +5,8 @@
                 [--body TEXT | --body-file PATH|-] [--link "Label=https://..."]...
                 [--step "Text" | --step "Text=https://..."]... [--steps-json JSON|@PATH]
                 [--question-json JSON|@PATH]
-                [--agent NAME] [--project NAME] [--host NAME] [--kind needs|done|info]
-                [--expires-in HOURS]
+                [--agent NAME] [--project NAME] [--host NAME] [--event SLUG]
+                [--kind needs|done|info] [--expires-in HOURS]
   needs-you done  --key KEY --title TITLE [...]     same as add --kind done (expires in 24 h)
   needs-you info  --key KEY --title TITLE [...]     same as add --kind info (expires in 24 h)
   needs-you resolve (--key KEY | --id ID)
@@ -112,6 +112,10 @@ Add `"answerable": true` (and `"expires_at"`) when you wait for the answer with
 is the answer (labels from the options). Add `"allow_other": true` to a question item only
 when the agent also takes the person's own words for it: the Mac then offers "Other…", and
 the answer printed carries `"text"` (one line, as typed) for that question.
+
+`--event` says what happened (source.event, a slug like `question`, `approval`, `finished`,
+`failed` or `context`; docs/API.md), so the person's alert rules on the Mac can treat "the
+agent asked me something" differently from "it finished". Hubs that predate it drop it.
 
 Exit codes: 0 sent or queued; 2 the hub rejected the request (bad input, bad token,
 volume guard) or usage error; 1 `health` found no healthy hub, or `doctor` found a FAIL.
@@ -1837,6 +1841,17 @@ def hours_arg(raw: str) -> float:
     return h
 
 
+EVENT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
+
+
+def event_arg(raw: str) -> str:
+    """--event: source.event, a short slug (question, approval, finished, failed, context)."""
+    v = raw.strip().lower()
+    if not EVENT_RE.match(v):
+        raise argparse.ArgumentTypeError("not an event slug (a-z first, then a-z 0-9 _ -, at most 32): %r" % raw)
+    return v
+
+
 def parse_link(raw: str) -> Dict[str, str]:
     """'Label=URL'. A bare URL (or one whose only '=' is in its query) gets the label 'Link'."""
     label, sep, url = raw.partition("=")
@@ -2036,6 +2051,8 @@ def build_item(args: argparse.Namespace, cfg: Config, kind: str) -> Dict[str, An
         source["agent"] = args.agent
     if args.project:
         source["project"] = args.project
+    if getattr(args, "event", None):
+        source["event"] = args.event
     item["source"] = source
     if args.expires_in is not None:
         exp = time.time() + args.expires_in * 3600
@@ -2086,6 +2103,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
         sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")
         sp.add_argument("--project", help="source project")
         sp.add_argument("--host", help="source host (default: this machine's hostname)")
+        sp.add_argument("--event", type=event_arg, metavar="SLUG",
+                        help="what happened: question, approval, finished, failed, context (or your own slug)")
         sp.add_argument("--expires-in", type=hours_arg, metavar="HOURS",
                         help="expiry (done/info default to 24 h on the hub)")
         if name == "add":
@@ -2534,7 +2553,8 @@ def _report_run(cfg: Config, args: argparse.Namespace, key: str, context: str, n
         if args.done_after >= 0 and elapsed >= args.done_after:
             title = args.done_title or "%s finished on %s" % (name, cfg.host)
             item = {"key": key, "kind": "done", "context": context, "priority": "low",
-                    "title": title[:100], "body": "Took %s." % _duration(elapsed), "source": source}
+                    "title": title[:100], "body": "Took %s." % _duration(elapsed),
+                    "source": dict(source, event="finished")}
             if args.link:
                 item["links"] = args.link
             deliver(cfg, "POST", "/v1/items", item, True, False)
@@ -2548,7 +2568,7 @@ def _report_run(cfg: Config, args: argparse.Namespace, key: str, context: str, n
     if lines:
         body += "\n\nLast lines of stderr:\n```\n%s\n```" % "\n".join(lines)
     item = {"key": key, "kind": "needs", "context": context, "priority": args.priority,
-            "title": title[:100], "body": body[:2000], "source": source}
+            "title": title[:100], "body": body[:2000], "source": dict(source, event="failed")}
     if args.link:
         item["links"] = args.link
     if args.expires_in is not None:

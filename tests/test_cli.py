@@ -71,6 +71,23 @@ class Outbox(CliTestCase):
         self.assertEqual(items["run"]["kind"], "done")
         self.assertIsNotNone(items["run"]["expires_at"])
 
+    def test_event_reaches_the_hub_and_a_bad_one_is_a_usage_error(self):
+        hub = self.make_hub("hub-a")
+        sender, reader = self.tokens(hub)
+        r = self.run_cli("add", "--key", "agent:devbox:s1", "--title", "Claude asks", "--agent", "claude-code",
+                         "--event", "Question", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        items = {i["key"]: i for i in self.items(hub, reader)}
+        self.assertEqual(items["agent:devbox:s1"]["source"],
+                         {"host": "testbox", "agent": "claude-code", "event": "question"})
+        r = self.run_cli("done", "--key", "d", "--title", "t", "--event", "finished", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual({i["key"]: i for i in self.items(hub, reader)}["d"]["source"]["event"], "finished")
+        r = self.run_cli("add", "--key", "x", "--title", "t", "--event", "two words", urls=[hub.url], token=sender)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("event", r.stderr)
+        self.assertEqual(self.queued(), [])
+
     def test_post_is_add(self):
         r = self.run_cli("post", "--key", "work:x:y", "--title", "Decide", urls=[self.dead])
         self.assertEqual(r.returncode, 0, r.stderr)

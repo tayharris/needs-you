@@ -14,7 +14,7 @@ downloads it from the hub's `/dl/needs_you_mcp.py` (sha256-checked), installs it
 
 | Tool | Arguments | Runs |
 |---|---|---|
-| `needs_you_add` | `key`, `title` (required); `body`, `kind` (`needs`/`done`/`info`), `priority`, `context`, `links` (`[{label, url}]`, at most 6), `steps` (`[{text, link?, done?}]`, at most 10), `project`, `expires_in_hours` | `needs-you --json add` |
+| `needs_you_add` | `key`, `title` (required); `body`, `kind` (`needs`/`done`/`info`), `priority`, `context`, `links` (`[{label, url}]`, at most 6), `steps` (`[{text, link?, done?}]`, at most 10), `project`, `event` (`question`, `approval`, `finished`, `failed`, `context`), `expires_in_hours` | `needs-you --json add` |
 | `needs_you_resolve` | `key` | `needs-you --json resolve --key` |
 | `needs_you_doctor` | none | `needs-you doctor --json` |
 

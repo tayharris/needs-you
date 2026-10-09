@@ -140,7 +140,7 @@ Clients must likewise ignore unknown response fields.</p></li>
   "answer": null,                            // the person's answer to `question`: [{"selected": ["Postgres"]}], or null
   "answered_at": null,                       // when it was answered
   "answered_by": null,                       // the name of the token that answered (a person's Mac)
-  "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
+  "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"}, // optional "event" too (below)
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
   "updated_at": "2026-10-06T18:04:05.456Z",  // moves on EVERY write (re-post, resolve, patch)
@@ -195,12 +195,29 @@ all absent from hubs up to 0.1.2; <code>hub_id</code>, <code>name</code>, <code>
 <tr><td><code>links</code></td><td>array</td><td>≤ 6 of <code>{"label": 1–80 chars, "url": ≤ 2,000 chars}</code></td><td><code>[]</code></td></tr>
 <tr><td><code>steps</code></td><td>array</td><td>≤ 10 of <code>{"text", "link", "done"}</code>, see below</td><td><code>[]</code></td></tr>
 <tr><td><code>question</code></td><td>object</td><td>what an agent asked, see below</td><td><code>null</code></td></tr>
-<tr><td><code>source</code></td><td>object</td><td>optional <code>host</code>, <code>agent</code>, <code>project</code>, each ≤ 100 chars</td><td><code>{}</code></td></tr>
+<tr><td><code>source</code></td><td>object</td><td>optional <code>host</code>, <code>agent</code>, <code>project</code>, each ≤ 100 chars, and <code>event</code> (below)</td><td><code>{}</code></td></tr>
 <tr><td><code>expires_at</code></td><td>timestamp</td><td>any accepted timestamp</td><td><code>done</code>/<code>info</code>: now + 24 h (the hub's <code>default_expiry_hours</code>, see <a href="hub.html">Server hubs</a>); <code>needs</code>: none</td></tr>
 <tr><td><code>status</code></td><td></td><td><strong>rejected</strong> whenever the key is present, even <code>"status": null</code> (use resolve or PATCH)</td><td></td></tr>
 </tbody>
 </table></div>
 <p>An optional field sent as <code>null</code> counts as left out (it gets its default).</p>
+<p><code>source.event</code> is optional: what happened, as a short slug, so a person's alert rules can treat
+"the agent asked me something" differently from "the agent finished". It matches
+<code>^[a-z][a-z0-9_-]{0,31}$</code> after trimming and lowercasing (anything else is <code>400 invalid</code> with
+<code>field</code> <code>source.event</code>). These values have a meaning; others are allowed and shown as sent:</p>
+<div class="table-wrap"><table class="doc-table">
+<thead><tr><th><code>event</code></th><th>The sender is telling the person</th></tr></thead>
+<tbody>
+<tr><td><code>question</code></td><td>The agent asked them something and waits for the answer</td></tr>
+<tr><td><code>approval</code></td><td>The agent wants permission (to run a command, edit a file, fetch a URL) or approval of a plan</td></tr>
+<tr><td><code>finished</code></td><td>The agent's turn ended and it waits for the next message</td></tr>
+<tr><td><code>failed</code></td><td>The turn errored, hit a rate limit, or needs a sign-in</td></tr>
+<tr><td><code>context</code></td><td>The agent's context window is nearly full</td></tr>
+</tbody>
+</table></div>
+<p>The hub stores it with the rest of <code>source</code> and never acts on it. Unknown <code>source</code> keys are
+dropped, so hubs that predate <code>event</code> drop it and it is safe to send to any hub. A replicated
+record with an <code>event</code> this hub would refuse keeps the item and drops the event.</p>
 <p>Link URLs must use one of these schemes (case-insensitive): <code>https</code>, <code>slack</code>,
 <code>vscode</code>, <code>cursor</code>, <code>figma</code>, <code>msteams</code>, <code>discord</code>, <code>linear</code>. Anything else, including <code>http</code>, <code>jira</code>,
 <code>file</code>, <code>javascript</code> and <code>orca</code>, is a 400. Text strings are trimmed.</p>

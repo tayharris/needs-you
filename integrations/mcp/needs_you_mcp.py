@@ -121,6 +121,10 @@ TOOLS: List[Dict[str, Any]] = [
                               "link": _LINK_SCHEMA,
                               "done": {"type": "boolean", "description": "Already done (shows ticked)"}}}},
                 "project": {"type": "string", "maxLength": 100, "description": "The project, e.g. a repo name"},
+                "event": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                          "description": "What happened, so the user's alert rules can tell: question (you "
+                                         "asked them something), approval (you need permission), finished, "
+                                         "failed, context (context window nearly full)"},
                 "expires_in_hours": {"type": "number", "exclusiveMinimum": 0,
                                      "description": "Close it by itself after this long (scheduled senders: "
                                                     "about twice the interval)"},
@@ -356,6 +360,11 @@ def tool_add(arguments: Dict[str, Any], agent: str) -> Dict[str, Any]:
     project = _text(arguments, "project")
     if project is not None:
         args.append("--project=" + project)
+    event = _text(arguments, "event")
+    if event is not None:
+        if not re.match(r"^[a-z][a-z0-9_-]{0,31}\Z", event.strip().lower()):
+            raise ToolError("event must be a short slug such as question, approval, finished, failed or context")
+        args.append("--event=" + event.strip().lower())
     args.append("--agent=" + agent)
     hours = arguments.get("expires_in_hours")
     if hours is not None:

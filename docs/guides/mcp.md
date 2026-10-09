@@ -63,7 +63,7 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
 
 ## What the agent sees
 
-- `needs_you_add`: `key` and `title` are required; `body`, `kind` (`needs`, `done` or `info`), `priority`, `context`, `links`, `steps`, `project` and `expires_in_hours` are optional. Each item's agent is `mcp:<client name>`.
+- `needs_you_add`: `key` and `title` are required; `body`, `kind` (`needs`, `done` or `info`), `priority`, `context`, `links`, `steps`, `project`, `event` (what happened: `question`, `approval`, `finished`, `failed` or `context`) and `expires_in_hours` are optional. Each item's agent is `mcp:<client name>`.
 - If no hub answers, the result says the item was queued (`"queued": true`): the CLI sends it later, and the agent shouldn't retry. A refusal (a bad link, a title over 100 characters) comes back as a tool error with the hub's message.
 - There's no tool to list the agent's open cards. A sender can post and resolve but can't read your inbox, and that stays so; the agent keeps track of the keys it posted.
 - Nothing token-shaped ever appears in a result.
