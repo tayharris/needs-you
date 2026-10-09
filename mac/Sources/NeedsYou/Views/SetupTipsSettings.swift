@@ -1,6 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: setupTips
 /// Settings → Panel → Setup tips: the local cards about what isn't set up yet
 /// (SetupChecklist), and bringing back dismissed ones.
 struct SetupTipsSettingsSection: View {
@@ -27,6 +28,8 @@ struct SetupTipsSettingsSection: View {
         }
     }
 }
+
+// settings-section-end
 
 extension SettingsTab {
     /// Where a setup card's Open Settings goes: the one place that maps Core's pages to tabs.

@@ -74,6 +74,7 @@ final class AlwaysOnHubController: ObservableObject {
     }
 }
 
+// settings-section: alwaysOnHubs
 struct AlwaysOnHubSection: View {
     @StateObject private var controller: AlwaysOnHubController
     let reach: LocalHubReach

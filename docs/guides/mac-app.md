@@ -58,7 +58,7 @@ The open panel shows one context at a time; the tab in its header switches (here
 <img src="../../site/img/panel-personal.png" width="376" alt="The open panel on the Personal tab with one low-priority card: Renew example.org, it expires in 9 days, with a Registrar link.">
 
 - **Click** the pill to expand the cards. A click anywhere else closes it, as do **Escape**, the chevron, a double-click on the header bar and the shortcut. To keep it up while you read a card next to the page its link opened, turn off **Settings → Panel → Open panel → Collapse when clicking elsewhere**. If the glass is hard to read over bright windows, raise **Settings → Appearance → Panel and cards → Background darkness**.
-- Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or **Settings → Panel → Open panel → Automatic**, to go back to fitting the cards.
+- Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or **Settings → Appearance → Panel and cards → Dragged height → Automatic**, to go back to fitting the cards.
 - On a card: **Done** (resolve), **Dismiss**, or snooze just that card. Links open in the browser or in their app (`orca:`, `slack:`, `vscode:`, `linear:`, ...). An agent's card has one "go there" button, named for where it goes (**iTerm2**, **tmux**, **Orca**, **VS Code**, **kitty**, ...): it brings forward the terminal or app the session runs in and marks the card done ([Terminal button](#terminal-button)).
 - A card with **steps** shows them as a numbered checklist at your card text size, each step's link as a button. Tick steps off as you go (the ticks stay on this Mac; steps the agent already marked done are ticked for you); once every step is ticked the card offers **All steps done: mark Done**. With **Card text** set to First lines or Title only, the card shows "3 steps" until you click it. Choices an older agent hook posted as steps still show this way.
 - An agent's **question** card shows each question under its header ("Database · choose one", or "choose any" when it takes several) and the choices it offered as rows, each with its description below the label. There are no tick boxes. When the agent waits for an answer from the card (Claude Code and opencode do, and any script that posts an answerable question), the choices are buttons: for a single question with one choice, a click sends that answer at once; with several questions or a "choose any" question, click your choices and then **Send**. When the agent also takes your own words (Claude Code's and opencode's "Other"), the question has an **Other…** row below its choices (**Answer…** when it has no choices): clicking it opens a small **answer window** with the question and a text field. Type, then **Send** (Return) or **Cancel** (Escape); the window closes and the app you were in comes back. With other questions on the card still unanswered, the button says **Use**: your words wait on the card as the chosen row (click it to change them, × to take them back) until you press the card's **Send**. Your words go to the agent as typed: one line, up to 1,000 characters. Only an owner token may send typed words (the app has one for its own hub; a Mac connected to a server hub with a reader link can pick choices but not type: it shows no **Other…**, and if a hub refuses typed words the card says to pick a choice instead). **Answer in the terminal** brings the agent's terminal forward instead. The card then says **Sent to the agent**, then **Answered: …**, or why it wasn't taken (another click got there first, the question changed, the agent stopped waiting). Clicking a choice never makes the app active or takes the keyboard from what you're typing in; only **Other…** does, since you type in its window. Otherwise answer in the agent (the Terminal button). With **Card text** set to First lines or Title only, the card says "Asks: Which database should we use? · 3 choices" until you click it, and the arrival preview shows the question and its first choices.
@@ -90,7 +90,7 @@ When the Orca CLI is installed (`/usr/local/bin/orca`, `/opt/homebrew/bin/orca` 
 
 When an agent's hooks report usage limits (Claude Code through its status line helper, `needs-you-usage`; Codex through its hook; every account Orca manages through [`needs-you orca usage`](orca.md#usage-meters-for-every-orca-account)), the open panel starts with a **USAGE** section: a row per provider and account, with a bar for the 5-hour **Session** window and one for the **Weekly** window, the percentage used and when it resets (`resets 14:00`, `resets Tue 09:00`). A window whose reset time has passed shows 0 % until the next report. Bars stay plain until the warning line (80 % by default), then turn amber, and red at 100 %. The collapsed pill carries the same thing, the fullest session and weekly window, both while items wait and on the idle "Nothing needs you" pill; hover the pill for the numbers. When several machines report the same account, the newest report wins.
 
-**Settings → Appearance → Usage meters** picks how the pill draws them, with a live preview of the waiting pill at a few percentages and of the idle pill:
+**Settings → Appearance → Usage meters** picks how they look: the warning colour, and how the pill draws them, with a live preview of the waiting pill at a few percentages and of the idle pill:
 
 | Setting | Choices |
 |---|---|
@@ -101,7 +101,7 @@ When an agent's hooks report usage limits (Claude Code through its status line h
 
 Meters stay plain until the warning line, then amber, red at 100 %, on an empty track you can see in light and dark themes. The Minimal dot pill shows no meters. The idle pill rests faint (35 % opacity); while it shows meters it rests at 60 %, so they can be read. A style chosen in an earlier build keeps its size (medium), so thin bars stay as they were.
 
-Meters are quiet: they never count as waiting, animate, notify or make a card, and they are plain text with nothing to click. The numbers are what the agent hands its own hooks; nothing reads a login, token or cookie, and accounts are labelled by a local name (`NEEDS_YOU_USAGE_ACCOUNT`) or, for Orca's accounts, `orca-` and a short hash of Orca's account id, never an email. **Settings → Appearance → Usage meters** turns the panel section and the pill's meters on or off, picks the pill's style (with a preview of both pills), picks the providers, session, weekly or both, hides a bar under a percentage (default: always shown) and sets the warning colour's percentage. A hub that predates usage meters simply shows none.
+Meters are quiet: they never count as waiting, animate, notify or make a card, and they are plain text with nothing to click. The numbers are what the agent hands its own hooks; nothing reads a login, token or cookie, and accounts are labelled by a local name (`NEEDS_YOU_USAGE_ACCOUNT`) or, for Orca's accounts, `orca-` and a short hash of Orca's account id, never an email. **Settings → Panel → Usage meters** turns the panel section and the pill's meters on or off, picks the providers, session, weekly or both, and hides a bar under a percentage (default: always shown); **Settings → Appearance → Usage meters** sets the warning colour's percentage and the pill's style (with a preview of both pills). **Settings → Integrations → Usage meters** says how to start sending the numbers. A hub that predates usage meters simply shows none.
 
 ## Focus: heads-down, except what you choose
 
@@ -180,6 +180,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | How much of each card's text shows | Appearance → Panel and cards → **Card text** | Full, First lines (3), Title only (click **Show details**) |
 | Links on one short row | Appearance → Panel and cards → **Compact links** | Off, On (3 links, `+N` shows the rest) |
 | Cards before the list scrolls | Appearance → Panel and cards → **Cards before scrolling** | As many as fit, 2, 3, 5, 8 |
+| The open panel's list height | Appearance → Panel and cards → **Dragged height** (drag the panel's edge) | None (Cards before scrolling decides), or the height you dragged; **Automatic** clears it |
 | How dark the layer behind the glass is | Appearance → Panel and cards → **Background darkness** | 30% (default), None, 15%, 45%, 60%, 75% |
 | How see-through the collapsed pill and the open panel are | Appearance → Panel and cards → **Opacity**: Collapsed pill, Collapsed pill pointer over it, Open panel (also previews), Open panel pointer over it | 100% to 30% (defaults 85%, 100%, 100%, 100%) |
 | How loud urgent items look | Appearance → Alert style → **Urgent items** | Normal, Off, Subtle, Bright (urgent never goes below Subtle) |
@@ -188,7 +189,8 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | How normal and low items arrive | Appearance → Alert style → **Normal and low items arrive with** | Glow pulse, Bounce, Shake, Slide in, Ripple, None |
 | How many times the arrival plays | Appearance → Alert style → **Plays** | Automatic (urgent twice, others once, one more at Bright), Once, Twice, 3, 5 times (Slide in plays once) |
 | How fast it plays | Appearance → Alert style → **Speed** | Normal, Slow, Fast |
-| Usage meters | Appearance → **Usage meters** | See [Usage meters](#usage-meters) |
+| A red glow around the work screen's edge when an urgent item arrives | Appearance → Alert style → **Edge glow** | Off, Urgent arrivals |
+| How the usage meters look | Appearance → **Usage meters** | Warning colour, and the pill's meter style, size, layout and percentages: see [Usage meters](#usage-meters) |
 
 **Panel and Alerts** (what shows, where, and what may interrupt you):
 
@@ -196,7 +198,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 |---|---|---|
 | Open the panel once when you start the app yourself (never at login or after an update) | Panel → Open panel → **Open the panel when Needs You starts** | On, Off |
 | Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | On, Off |
-| The open panel's list height | Panel → Open panel → **List height** (drag the panel's edge) | Automatic, or the height you dragged |
+| Usage meters in the panel and on the pill, which providers and windows, and hiding a bar under a percentage | Panel → **Usage meters** | On, On, every provider, both windows, always show |
 | Cards about what isn't set up yet ([Setup tips](#setup-tips)) | Panel → Setup tips → **Show setup tips** | On, Off |
 | The global shortcut | Panel → Keyboard | Control-Option-Space (⌃⌥Space), or record your own (it must use Control, Option or Command) |
 | How long a new item's preview stays out (also the "3 waited" Later peek) | Alerts → New items → **Show new items for** | 14 s, 5 s, 10 s, 20 s, 30 s, Until I click or point at it (pointing at it always holds it) |
@@ -206,9 +208,8 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
 | Bypass rules | Alerts → **Bypass rules**, or an agent card's **…** menu | None; up to 50 |
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
-| Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 
-The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Appearance → Alert style → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back.
+The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Appearance → Alert style → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back (not the edge glow or the usage meters).
 
 ### Themes
 
@@ -254,7 +255,7 @@ If a CLI switch fails (the pane is gone), the command goes on the clipboard. Log
 
 ## Settings
 
-Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a sidebar of short pages, like System Settings. Every setting is in the tables under **Make it yours** above; the pages:
+Right-click the pill (or the menu bar icon) → **Settings…**. Settings is a sidebar of short pages, like System Settings. Every setting is in the tables under **Make it yours** above. The rule: anything that only changes how something looks is under **Appearance**, and nothing else is; what shows, where and when is on the other pages. The pages:
 
 <img src="../../site/img/settings-inbox.png" width="380" alt="Settings, Built-in hub: How it works in three lines, then Run hub on this Mac, on and Running."> <img src="../../site/img/settings-connect.png" width="380" alt="Settings, Connect a machine: the New invite form, with what the machine is, its name, uses, expiry and Create invite.">
 
@@ -270,15 +271,15 @@ Under **Appearance** (how things look, nothing else):
 
 - **Theme:** the theme and the accent colour, with a sample ([Themes](#themes)).
 - **Pill:** the collapsed pill's size, what it says, how it splits the count, and the `2 new` badge, with sample pills.
-- **Panel and cards:** the overall size, card text size, how much card text shows, compact links, cards before scrolling, background darkness and opacity, with a sample card.
-- **Alert style:** how loud a new item looks (glow and ring) and its arrival animation, with **Preview on the pill**.
-- **Usage meters:** the usage meters in the panel and on the pill and the pill's meter style, which providers, session, weekly or both, hide under a percentage, and the warning colour ([Usage meters](#usage-meters)). Before any numbers arrive it shows example meters and how to start sending them.
+- **Panel and cards:** the overall size, card text size, how much card text shows, compact links, cards before scrolling and the dragged height, background darkness and opacity, with a sample card.
+- **Alert style:** how loud a new item looks (glow and ring), its arrival animation, with **Preview on the pill**, and the edge glow for urgent arrivals.
+- **Usage meters:** how the meters look: the warning colour and the pill's meter style, size, layout and percentages ([Usage meters](#usage-meters)). Before any numbers arrive it shows example meters.
 
 Under **Needs You**:
 
-- **Panel:** whether the floating panel and menu bar icon show, snap to corners, opening at launch and closing on a click elsewhere, the list height, setup tips, Orca worktrees, the keyboard shortcut.
-- **Alerts:** how long new items stay out and the urgent reminder, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
-- **Integrations:** **Cards from your tools** (below) and **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
+- **Panel:** whether the floating panel and menu bar icon show, snap to corners, opening at launch and closing on a click elsewhere, which usage meters show and where, setup tips, Orca worktrees, the keyboard shortcut.
+- **Alerts:** how long new items stay out and the urgent reminder, delivery and focus, snooze and hidden-panel rules, bypass rules, which display new items spring out on, the work / personal schedule.
+- **Integrations:** **Cards from your tools** (below), **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)), live updates from the hub, and how to start sending usage meters.
 - **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; **Developer mode**, below; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
 
 ### Cards from your tools

@@ -2,6 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: toolCards
 /// Settings → Integrations → Cards from your tools: one row per poller in
 /// IntegrationCatalog, each with one level of detail under it (what it needs, its settings,
 /// the commands with Copy, and the agent prompt). Nothing here runs a command or holds a

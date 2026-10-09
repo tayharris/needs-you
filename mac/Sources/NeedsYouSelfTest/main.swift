@@ -61,6 +61,7 @@ let entries =
     + testEntries(PillNewCountTests.self, PillNewCountTests.allTests)
     + testEntries(PanelBehaviorTests.self, PanelBehaviorTests.allTests)
     + testEntries(SettingsPagesTests.self, SettingsPagesTests.allTests)
+    + testEntries(SettingsLayoutTests.self, SettingsLayoutTests.allTests)
     + testEntries(StatusRecordTests.self, StatusRecordTests.allTests, async: StatusRecordTests.asyncTests)
     + testEntries(UsageMetersTests.self, UsageMetersTests.allTests)
     + testEntries(PillMeterLayoutTests.self, PillMeterLayoutTests.allTests)

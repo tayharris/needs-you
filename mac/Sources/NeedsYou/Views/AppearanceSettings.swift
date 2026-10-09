@@ -2,6 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: theme
 /// Settings → Appearance → Theme: the theme (PanelTheme) and an accent colour, with a live sample.
 /// Lives in the Settings window only; the panel never takes focus.
 struct AppearanceSettingsSection: View {
