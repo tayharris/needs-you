@@ -82,9 +82,9 @@ final class UpdaterTests: XCTestCase {
     }
 
     func testPrefs() throws {
-        let suite = "ny-updateprefs-\(UUID().uuidString)"
-        let d = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { d.removePersistentDomain(forName: suite) }
+        let suite = TestDefaults.suiteName(Self.self)
+        let d = TestDefaults.make(suite)
+        defer { TestDefaults.clear(suite) }
         let fresh = UpdatePrefs.load(from: d)
         XCTAssertEqual(fresh, UpdatePrefs())
         XCTAssertTrue(fresh.checkAutomatically)

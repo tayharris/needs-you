@@ -26,13 +26,12 @@ final class PanelThemeTests: XCTestCase {
     private var store: UserDefaults!
 
     override func setUp() {
-        suite = "needsyou-theme-test-\(UUID().uuidString)"
-        store = UserDefaults(suiteName: suite)
+        suite = TestDefaults.suiteName(Self.self)
+        store = TestDefaults.make(suite)
     }
 
     override func tearDown() {
-        store.removePersistentDomain(forName: suite)
-        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(suite).plist")
+        TestDefaults.clear(suite)
     }
 
     /// Every palette a user can end up with: each theme in dark and light macOS.

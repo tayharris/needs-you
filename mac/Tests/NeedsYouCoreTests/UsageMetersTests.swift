@@ -311,12 +311,9 @@ final class UsageMetersTests: XCTestCase {
     }
 
     func testPrefsDefaultsRoundTripAndFallback() {
-        let suite = "needsyou-usageprefs-test-\(UUID().uuidString)"
-        let store = UserDefaults(suiteName: suite)!
-        defer {
-            store.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(suite).plist")
-        }
+        let suite = TestDefaults.suiteName(Self.self)
+        let store = TestDefaults.make(suite)
+        defer { TestDefaults.clear(suite) }
         // The owner's defaults: panel and pill on, every provider, both windows, always shown.
         let fresh = UsagePrefs.load(from: store)
         XCTAssertEqual(fresh, UsagePrefs())
