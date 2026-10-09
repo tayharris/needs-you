@@ -93,6 +93,17 @@ public actor DemoFeed: ItemFeed {
         }
     }
 
+    /// The open set becomes exactly `open` (the format tour's header counts): every other
+    /// open item is resolved, these are upserted.
+    public func replaceOpen(with open: [Item], now: Date = Date()) {
+        let keep = Set(open.map(\.id))
+        for (id, item) in items where item.status == .open && !keep.contains(id) {
+            items[id]?.status = .resolved
+            items[id]?.updatedAt = max(item.updatedAt, now)
+        }
+        upsert(open, now: now)
+    }
+
     /// Simulate a sender resolving an item.
     public func resolve(key: String) {
         for (id, item) in items where item.key == key && item.status == .open {
