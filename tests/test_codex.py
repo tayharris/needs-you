@@ -457,6 +457,21 @@ class CodexMeter(RolloutCase):
         self.assertIn("5h=0", argv)  # reset since Codex wrote it
 
 
+    def test_an_orca_managed_account_gets_orcas_label(self):
+        # In an Orca terminal on a managed account CODEX_HOME is <Orca data>/codex-accounts/<id>/home:
+        # labelled as `needs-you orca usage` labels that account, so the Mac shows it once.
+        aid = "7e2d4f10-9a3b-4d6e-8c21-5b0a1f2e3d4c"
+        label = "orca-" + hashlib.sha256(aid.encode("utf-8")).hexdigest()[:8]
+        self.write_rollout(token_count(51.0, 41.0))
+        self.stop(NEEDS_YOU_USAGE_METER=None, NEEDS_YOU_USAGE_ACCOUNT="team-2", NEEDS_YOU_AGENT_TURN_CARDS="0",
+                  CODEX_HOME=os.path.join(self.home, ".config", "Orca", "codex-accounts", aid, "home"))
+        self.assertTrue(wait_until(lambda: self.meter_calls()), self.calls())
+        argv = self.meter_calls()[0]
+        self.assertEqual(opt(argv, "--key"), "usage:codex:" + label)
+        self.assertEqual(opt(argv, "--account"), label)
+        self.assertTrue(os.path.exists(os.path.join(self.usage_state, "codex-%s.meter.json" % label)))
+
+
 class CodexHooksJson(unittest.TestCase):
     def test_registers_the_events(self):
         with open(CODEX_HOOKS_JSON) as fh:
