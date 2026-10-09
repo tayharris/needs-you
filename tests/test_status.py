@@ -186,6 +186,23 @@ class StatusApi(HubTestCase):
         self.assertEqual(self.clear("usage:claude")[1]["cleared"], True)  # a clear is never too fast
         self.assertEqual(self.put("usage:claude", usage_body())[0], 200)  # nor a set after a clear
 
+    def test_writes_per_token_are_rate_limited(self):
+        """A set after a clear is never too fast, and every new key is a new row, so without a
+        per-token limit a sender could write (and every peer store) statuses without end. Sets
+        and clears have their own limit (post_rate_limit a minute), apart from posts."""
+        limit = int(self.hub.cfg["post_rate_limit"])
+        codes = []
+        for i in range(limit + 10):
+            codes.append(self.put("loop", usage_body())[0])
+            codes.append(self.clear("loop")[0])
+        self.assertIn(429, codes)
+        self.assertLessEqual(codes.count(200), limit)
+        status, body = self.put("loop-%d" % len(codes), usage_body())
+        self.assertEqual((status, body["error"]), (429, "rate_limited"))
+        self.assertGreaterEqual(body["retry_after"], 1)
+        self.assertEqual(request("POST", self.base + "/v1/items", self.sender,
+                                 {"key": "k", "title": "still posts"})[0], 201)  # items aren't held
+
     def test_live_status_limits(self):
         for i in range(hubmod.STATUS_MAX_PER_TOKEN):
             self.assertEqual(self.put("s%d" % i, usage_body())[0], 200)
