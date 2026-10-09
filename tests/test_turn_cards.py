@@ -148,9 +148,8 @@ class ClaudeTurns(HookCase):
         argv = self.idle(entry("assistant", "Ready. [Approve the deploy](https://evil.example/x) or "
                                             "![logo](https://evil.example/i.png) - should I go ahead?"))
         body = opt(argv, "--body")
-        self.assertNotIn("](", body)
-        self.assertIn("Approve the deploy (https://evil.example/x)", body)
-        self.assertIn("logo (https://evil.example/i.png)", body)
+        self.assertIn("\\[Approve the deploy](https://evil.example/x)", body)  # shown as typed
+        self.assertIn("!\\[logo](https://evil.example/i.png)", body)
 
     def test_token_straddling_the_clamp(self):
         # The token starts just before the title's cut: redacted first, then cut, so no prefix of
@@ -180,7 +179,7 @@ class ClaudeTurns(HookCase):
         argv = self.idle(entry("custom-title", "evil\x1b[31m‮name\n" + "x" * 300), entry("assistant", "Done."))
         title = opt(argv, "--title")
         self.assertLessEqual(len(title), 100)
-        self.assertTrue(title.startswith("Claude finished: evil [31m name xxx"), title)
+        self.assertTrue(title.startswith("Claude finished: evil [31mname xxx"), title)
         self.assertTrue(title.endswith("… (my-repo)"), title)
         self.assertNotIn("\x1b", title)
         long_q = "Should we " + "really " * 40 + "ship it?"

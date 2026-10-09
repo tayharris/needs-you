@@ -539,10 +539,24 @@ event = field("hook_event_name")
 ntype = field("notification_type") or field("notificationType")  # Grok: camelCase only
 cwd = field("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
-# Text the hub refuses (control and bidi characters, a source field over 100 characters)
-# would lose the card: a folder name can hold anything.
-_UNPRINTABLE_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
-project = _UNPRINTABLE_RE.sub("", os.path.basename(project_dir.rstrip("/")))[:100].strip() or "claude"
+# Characters no card shows: invisible ones (zero-width, joiners, bidi controls, variation
+# selectors, fillers, tags: they hide text, reorder it, or split a secret redaction then misses)
+# are removed; control characters (C0 but tab and newline, DEL, C1, line and paragraph
+# separators: the hub refuses them, a terminal obeys them) become spaces. Every piece of agent
+# or folder text goes through clean() first, before redact().
+_INVISIBLE = re.compile("[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f"
+                        "\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb"
+                        "\U0001d173-\U0001d17a\U000e0000-\U000e0fff]")
+_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def clean(text):
+    return _CONTROL.sub(" ", _INVISIBLE.sub("", text))
+
+
+# A folder name can hold anything; text the hub refuses (a source field over 100 characters)
+# would lose the card.
+project = " ".join(clean(os.path.basename(project_dir.rstrip("/"))).split())[:100].strip() or "claude"
 session = field("session_id")
 handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
 # <repoId>::<path>; the path is the readable part.
@@ -631,7 +645,7 @@ def where_lines():
     """Where the session runs, so a card from a tmux pane on a VM says which one."""
     home = os.path.expanduser("~")
     short_cwd = "~" + cwd[len(home):] if cwd.startswith(home + "/") or cwd == home else cwd
-    short_cwd = _UNPRINTABLE_RE.sub("", short_cwd.replace("\t", " "))
+    short_cwd = clean(short_cwd).replace("\t", " ").replace("\n", " ")
     lines, where = [], []
     pane = os.environ.get("TMUX_PANE", "")
     tmux_target = ""
@@ -850,6 +864,41 @@ def cli_env():
     return env
 
 
+# The card renders its body, step text and question text as inline Markdown (CommonMark), where
+# a link shows only its label. Every link starts at an unescaped "[" and needs a "](" (inline)
+# or a "]:" (a reference definition) in the same text, so in text that has either, every "["
+# is escaped, with any backslashes before it doubled: no nesting, escape or invisible
+# character can leave or reassemble a link, and the URL stays readable. Text without them
+# can't hold a link and is left as it is.
+_MD_LINKISH = re.compile(r"\][(:]")
+
+
+def md_inert(text, limit):
+    if not isinstance(text, str) or not _MD_LINKISH.search(text):
+        return text
+    return clamp(re.sub(r"(\\*)\[", lambda m: m.group(1) * 2 + "\\[", text), limit)
+
+
+def inert_arg(a):
+    """One argument of `needs-you add`, with its Markdown fields made link-free (md_inert)."""
+    try:
+        if a.startswith("--body="):
+            return "--body=" + md_inert(a[len("--body="):], MAX_BODY)
+        if a.startswith("--steps-json="):
+            steps = json.loads(a[len("--steps-json="):])
+            for st in steps:
+                st["text"] = md_inert(st.get("text"), MAX_STEP)
+            return "--steps-json=" + json.dumps(steps, ensure_ascii=False)
+        if a.startswith("--question-json="):
+            q = json.loads(a[len("--question-json="):])
+            for it in q.get("items") or []:
+                it["text"] = md_inert(it.get("text"), MAX_QUESTION_TEXT)
+            return "--question-json=" + json.dumps(q, ensure_ascii=False)
+    except (ValueError, AttributeError, TypeError):
+        pass
+    return a
+
+
 def post(args, links, steps=None, asked=None, steps_body=None):
     """Post the card. With `asked` (a question card): with its `question` field, and if the
     CLI or hub refuses that (an older one), again with the choices as steps and `steps_body`."""
@@ -867,7 +916,7 @@ def post(args, links, steps=None, asked=None, steps_body=None):
 
     def run(ls):
         try:
-            return subprocess.run(args + [a for l in ls for a in ("--link", l)],
+            return subprocess.run([inert_arg(a) for a in args] + [a for l in ls for a in ("--link", l)],
                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                   stderr=subprocess.DEVNULL, timeout=15, env=cli_env()).returncode
         except Exception:
@@ -940,8 +989,6 @@ QUESTION_BUDGET = 1200  # of the body, for the question text: the "where" lines 
 # The hub's limits for the `question` field (docs/API.md)
 MAX_QUESTIONS, MAX_OPTIONS = 4, 8
 MAX_QUESTION_HEADER, MAX_QUESTION_TEXT, MAX_OPTION_LABEL = 30, 500, 80
-_BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f­؜᠎​-‏ -‮"
-                        "⁠-⁩﻿]")
 # --- needs-you redaction (begin) ---
 # Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
 # block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
@@ -1042,24 +1089,18 @@ def one_line(value, limit):
     """Agent text for a title or a step: one line, cleaned, redacted, clamped."""
     if not isinstance(value, str):
         return ""
-    return clamp(" ".join(redact(_BAD_CHARS.sub(" ", value)).split()), limit)
-
-
-# [label](url) and ![alt](url): agent text is data (prompt injection can write it), so a link in
-# it shows its URL instead of a label over it.
-_MD_LINK = re.compile(r"!?\[([^\[\]\n]*)\]\(\s*<?([^()\s<>]*)>?(?:\s+\"[^\"]*\")?\s*\)")
+    return clamp(" ".join(redact(clean(value)).split()), limit)
 
 
 def text_block(value, limit, max_lines=8):
     """Agent text for the body: up to max_lines non-blank lines, cleaned, redacted, clamped.
-    Markdown headings become bold lines, code fences go (the card renders inline markdown
-    only) and links show their URL."""
+    Markdown headings become bold lines and code fences go (the card renders inline markdown
+    only; links are defused when the card is posted, md_inert)."""
     if not isinstance(value, str):
         return ""
     lines, more = [], False
-    for raw in redact(value.replace("\r\n", "\n").replace("\t", "    ")).split("\n"):
-        line = _MD_LINK.sub(lambda m: "%s (%s)" % (m.group(1), m.group(2)) if m.group(1) else m.group(2),
-                            " ".join(_BAD_CHARS.sub(" ", raw).split()))
+    for raw in redact(clean(value.replace("\r\n", "\n").replace("\t", "    "))).split("\n"):
+        line = " ".join(raw.split())
         if not line or re.match(r"^(```|~~~)", line):
             continue
         if len(lines) == max_lines:
@@ -1170,7 +1211,7 @@ def shown_whole(value, limit, block=False):
     if block:
         # The card drops fence lines and renders inline markdown, where a link shows only its
         # text: either would show the person something other than what the agent asked.
-        if re.search(r"(?m)^\s*(```|~~~)", value) or "](" in value:
+        if re.search(r"(?m)^\s*(```|~~~)", value) or _MD_LINKISH.search(clean(value)):
             return False
         return text_block(value, limit) == text_block(value, 1 << 30, 1 << 30)
     return one_line(value, limit) == one_line(value, 1 << 30)
@@ -1351,7 +1392,7 @@ def _clean_name(value, limit=60):
     token-shaped (a name with a secret in it isn't worth showing in part)."""
     if not isinstance(value, str):
         return ""
-    name = " ".join(_BAD_CHARS.sub(" ", value).split())
+    name = " ".join(clean(value).split())
     if not name or redact(name) != name:
         return ""
     return clamp(name, limit)
