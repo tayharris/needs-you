@@ -179,3 +179,46 @@ public enum PeerState: Equatable, Sendable {
         return false
     }
 }
+
+/// The command a server runs to join this Mac's hub with a peer invite (the hub's
+/// PEER_JOIN_COMMAND): the installer of a release from GitHub, the join link on its stdin.
+/// It runs as root, so it's built only from checked parts: a join URL of the hub's shape,
+/// single-quoted as the hub's _sh_quote does, and an X.Y.Z version.
+public enum PeerJoinCommand {
+    /// http(s)://host[:port][/prefix]/join/nyi_<code>, nothing else (no quote, space, `$`).
+    static let joinURLPattern = #"^https?://(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]+)*/join/nyi_[A-Za-z0-9_-]{16,64}\z"#
+    static let versionPattern = #"^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}\z"#
+
+    public static func isJoinURL(_ value: String) -> Bool {
+        value.range(of: joinURLPattern, options: .regularExpression) != nil
+    }
+
+    /// One shell word, as the hub's _sh_quote: '…', with each ' written as '"'"'.
+    public static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+    }
+
+    /// The command for `joinURL` and release `version`, or nil when either isn't of its shape.
+    public static func command(joinURL: String, version: String,
+                               repository: String = UpdateSource.defaultRepository) -> String? {
+        guard isJoinURL(joinURL), version.range(of: versionPattern, options: .regularExpression) != nil else {
+            return nil
+        }
+        return "(curl -fsSL https://github.com/\(repository)/releases/download/v\(version)/install-hub.sh && echo "
+            + shellQuote(joinURL) + ") | sudo bash -s -- --join -"
+    }
+
+    /// What Settings shows: the hub's install_command when it is exactly the command built
+    /// here for its join URL and the version it names, else the one built with the app's
+    /// version; nil when the join URL isn't a join URL (nothing to run).
+    public static func resolve(joinURL: String, hubCommand: String?, appVersion: String?) -> String? {
+        guard isJoinURL(joinURL) else { return nil }
+        if let hubCommand,
+           let r = hubCommand.range(of: #"/releases/download/v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}/"#,
+                                    options: .regularExpression) {
+            let version = String(hubCommand[r].dropFirst("/releases/download/v".count).dropLast())
+            if command(joinURL: joinURL, version: version) == hubCommand { return hubCommand }
+        }
+        return appVersion.flatMap { command(joinURL: joinURL, version: $0) }
+    }
+}
