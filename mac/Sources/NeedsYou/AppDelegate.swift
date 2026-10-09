@@ -256,11 +256,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
             }),
+            // Usage meters (DemoFeed.statusFixture): the panel's section and the pill's hairlines.
+            ("15-usage-panel", { model in
+                model.previewItem = nil
+                model.expand()
+                model.scrollTarget = nil
+            }),
+            ("16-usage-pill", { $0.collapse() }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
-        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3)]
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3), (.usage, 1)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {

@@ -339,6 +339,9 @@ struct SettingsView: View {
             BypassRulesSection(settings: settings)
             WorkScreenSection(settings: settings)
             extra[.alerts]
+        case .usage:
+            UsageSettingsSection(model: model, settings: settings)
+            extra[.usage]
         case .integrations:
             terminalJumpSection
             extra[.integrations]

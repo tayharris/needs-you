@@ -84,6 +84,12 @@ Setup tips stay on this Mac: they're never sent to a hub, never count in the pil
 
 When the Orca CLI is installed (`/usr/local/bin/orca`, `/opt/homebrew/bin/orca` or inside `/Applications/Orca.app`), the open panel ends with a folded **ORCA** section, for example `ORCA · 2 active of 7`. Click it for a row per worktree (at most 8, those with live terminals first, then unread, then the most recent): its name, workspace status, live terminals, and the paired environment it's on. The app reads them with `orca worktree ps --json` on this Mac and through each paired environment (`orca environment list`, at most 8), off to the side and at most every 45 seconds while the panel is open. Rows are plain text: no links, no buttons, nothing counted, announced or sent to a hub, and a terminal's preview or a worktree's comment is never shown. **Settings → Panel → Orca** turns the section off.
 
+### Usage meters
+
+When an agent's hooks report usage limits (Claude Code through its status line helper, `needs-you-usage`; Codex through its hook), the open panel starts with a **USAGE** section: a row per provider and account, with a bar for the 5-hour **Session** window and one for the **Weekly** window, the percentage used and when it resets (`resets 14:00`, `resets Tue 09:00`). A window whose reset time has passed shows 0 % until the next report. Bars stay plain until the warning line (80 % by default), then turn amber, and red at 100 %. The collapsed pill carries the same thing as two hairlines along its bottom edge (the fullest session and weekly window); hover the pill for the numbers. When several machines report the same account, the newest report wins.
+
+Meters are quiet: they never count as waiting, animate, notify or make a card, and they are plain text with nothing to click. The numbers are what the agent hands its own hooks; nothing reads a login, token or cookie, and accounts are labelled by a local name (`NEEDS_YOU_USAGE_ACCOUNT`), never an email. **Settings → Usage** turns the panel section and the pill's hairlines on or off, picks the providers, session, weekly or both, hides a bar under a percentage (default: always shown) and sets the warning colour's percentage. A hub that predates usage meters simply shows none.
+
 ## Focus: heads-down, except what you choose
 
 Every new item arrives one of three ways:
@@ -234,6 +240,7 @@ Under **Needs You**:
 - **Panel:** look, the floating panel and menu bar icon, snap to corners, the keyboard shortcut.
 - **Appearance:** the theme and the accent colour, with a sample ([Themes](#themes)).
 - **Alerts:** how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
+- **Usage:** the usage meters in the panel and on the pill, which providers, session, weekly or both, hide under a percentage, and the warning colour ([Usage meters](#usage-meters)).
 - **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
 - **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
 

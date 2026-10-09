@@ -202,7 +202,13 @@ struct CardList: View {
         // Setup tips (SetupChecklist) sit in the priority groups after the hub's cards;
         // they aren't in the store, so they're never counted or PATCHed.
         let setup = model.setupCards.map { $0.item }
+        let usage = model.settings.usage.inPanel ? model.usageRows : []
         VStack(alignment: .leading, spacing: model.metrics.cardSpacing) {
+            if !usage.isEmpty {
+                // Usage meters (status records): read-only, never counted.
+                UsageSection(rows: usage, metrics: model.metrics, bodyFont: model.bodyFont)
+                    .help("Usage limits as the agents' hooks last reported them (Settings → Usage)")
+            }
             ForEach(model.quietedSenders, id: \.self) { sender in
                 // NoisySenderGuard: a looping sender can't keep interrupting.
                 Label("Quieted \(sender): over \(NoisySenderGuard.defaultThreshold) alerts this hour", systemImage: "speaker.slash")

@@ -67,6 +67,11 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Settings → Usage: the usage meters in the panel and on the pill (UsagePrefs).
+    @Published var usage: UsagePrefs {
+        didSet { if usage != oldValue { usage.save(to: defaults, previous: oldValue) } }
+    }
+
     /// Settings → Alerts → Delivery: the tier per priority and kind with no focus, and
     /// whether urgent breaks through a focus (DeliveryDefaults keys).
     @Published var delivery: DeliveryDefaults {
@@ -250,6 +255,7 @@ final class AppSettings: ObservableObject {
         openPanelAtLaunch = defaults.bool(forKey: Key.openPanelAtLaunch)
         ui = UIPrefs.load(from: defaults)
         delivery = DeliveryDefaults.load(from: defaults)
+        usage = UsagePrefs.load(from: defaults)
         bypassRules = RuleBook.decode(defaults.data(forKey: RuleBook.defaultsKey))
         focus = FocusState.load(from: defaults)
         allowFocusLinks = defaults.bool(forKey: Key.allowFocusLinks)

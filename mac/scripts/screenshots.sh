@@ -6,8 +6,9 @@
 # Builds a throwaway copy and runs it three times with the snapshot tour (NEEDS_YOU_SNAPSHOT_DIR,
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
 # example items below (among them an agent's question: 6e-6g), and once with one agent card
-# (preview-agent.png). Every PNG is drawn with cacheDisplay, so no Screen Recording
-# permission is needed. Isolated the way scripts/upgrade-test.sh is:
+# (preview-agent.png). Demo mode also shows example usage meters (DemoFeed.statusFixture):
+# 15-usage-panel.png, 16-usage-pill.png and settings-usage*.png. Every PNG is drawn with
+# cacheDisplay, so no Screen Recording permission is needed. Isolated the way scripts/upgrade-test.sh is:
 #
 #   - bundle id app.needsyou.mac.screenshots, no needsyou:// scheme, built into a temp dir
 #   - NEEDS_YOU_DEFAULTS_SUITE: a throwaway defaults suite, deleted afterwards
