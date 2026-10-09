@@ -306,7 +306,10 @@ final class PanelController {
             let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
                 + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot
                 + (model.focusSetByLink ? m.idleFont + 4 : 0)
-            return CGSize(width: m.idleWidth(textWidth: width), height: model.hovering ? m.idleHoverHeight : m.idleHeight)
+            // Usage meters (PillMeterLayout): a second bar makes it a little taller, percentages wider.
+            let meters = model.idleMeterLayout
+            return CGSize(width: m.idleWidth(textWidth: width + PillMeterMetrics.percentWidth(meters, size: m.idleFont - 1)),
+                          height: meters.height)
         case .waiting:
             // Settings → Panel → Collapsed pill (PillContent; the defaults are the original size).
             return model.waitingPillSize
@@ -364,7 +367,10 @@ final class PanelController {
 
     private func alpha(for display: PanelDisplay) -> CGFloat {
         switch display {
-        case .idle: return model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)  // faint but findable; "set up" a little more
+        case .idle:
+            // Faint but findable; "set up" a little more, and readable while it shows usage meters.
+            let base = model.hovering ? 0.7 : (model.isConfigured ? 0.35 : 0.5)
+            return CGFloat(PillMeterLayout.idleAlpha(base, showsMeters: model.idleMeterLayout.count > 0))
         case .waiting:
             let ui = model.settings.ui
             return CGFloat(PanelOpacity.alpha(rest: ui.pillOpacity, hover: ui.pillHoverOpacity, hovering: model.hovering))
