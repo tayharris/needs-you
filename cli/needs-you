@@ -148,7 +148,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -5912,9 +5912,14 @@ def orca_summary(environments: List[str], all_envs: bool, include_archived: bool
 #
 # The account with no managed id (Orca's "system default") is the one the local producers
 # (needs-you-usage, the Codex hook) see, so it goes under their key and account
-# (usage:<provider>[:NEEDS_YOU_USAGE_ACCOUNT]): one record, one row on the Mac. While a local
-# producer has sent within ORCA_USAGE_LOCAL_LIVE it is left to that producer (its numbers are
-# fresher), and this command never clears that key.
+# (usage:<provider>[:NEEDS_YOU_USAGE_ACCOUNT]): one record, one row on the Mac. So does the
+# active managed Claude account on the host: Orca copies its login into ~/.claude, where every
+# Claude Code on the machine (in Orca's terminals or not) uses it, and nothing in a terminal's
+# environment says which account that is. A managed Codex account has its own CODEX_HOME in
+# Orca's terminals, and a WSL Claude one its own CLAUDE_CONFIG_DIR: the producers there label
+# it as this command does (orca_managed_account). While a local producer has sent a key within
+# ORCA_USAGE_LOCAL_LIVE it is left to that producer (its numbers are fresher), and this
+# command never clears the default key.
 
 ORCA_USAGE_PROVIDERS = (("claude", "Claude", "inactiveClaudeAccounts"), ("codex", "Codex", "inactiveCodexAccounts"))
 ORCA_USAGE_WINDOWS = (("session", "5h"), ("weekly", "7d"))
@@ -5943,6 +5948,24 @@ def orca_bin(cfg: Config) -> Optional[str]:
 
 def orca_account_label(account_id: str) -> str:
     return "orca-" + hashlib.sha256(account_id.encode("utf-8")).hexdigest()[:8]
+
+
+def orca_managed_account(env, provider):
+    """The usage label of the Orca-managed account this process runs under, or "": "orca-" +
+    the first 8 hex of sha256(its Orca account id), as `needs-you orca usage` labels it. Read
+    from the path Orca puts in its terminals' environment, never from a file: CODEX_HOME =
+    <Orca data>/codex-accounts/<id>/home, CLAUDE_CONFIG_DIR = .../claude-accounts/<id>/auth
+    (WSL only: on the host Orca copies the chosen Claude login into ~/.claude instead).
+    Byte-identical in cli/needs-you, needs-you-usage and needs-you-hook.sh (a test checks)."""
+    var, parent, leaf = {"claude": ("CLAUDE_CONFIG_DIR", "claude-accounts", "auth"),
+                         "codex": ("CODEX_HOME", "codex-accounts", "home")}[provider]
+    parts = (env.get(var) or "").strip().replace("\\", "/").rstrip("/").split("/")
+    if len(parts) < 4 or parts[-1] != leaf or parts[-3] != parent:
+        return ""
+    aid = parts[-2]
+    if aid in (".", "..") or not re.match(r"^[A-Za-z0-9._-]{1,200}$", aid):
+        return ""
+    return "orca-" + hashlib.sha256(aid.encode("utf-8")).hexdigest()[:8]
 
 
 def _orca_number(v: Any) -> Optional[float]:
@@ -5999,6 +6022,10 @@ def _orca_active_id(block: Dict[str, Any], target: Any) -> Optional[str]:
     return active if isinstance(active, str) and active else None
 
 
+def _orca_host_target(target: Any) -> bool:
+    return not (isinstance(target, dict) and target.get("runtime") == "wsl")
+
+
 def _local_meter_live(provider: str, account: str, now: float) -> bool:
     """Has needs-you-usage or the Codex hook sent this provider's meter lately?"""
     path = os.path.join(state_dir(), "usage", "%s%s.meter.json" % (provider, "-" + account if account else ""))
@@ -6022,6 +6049,8 @@ def orca_usage_plan(result: Dict[str, Any], cfg: Config, now: float) -> Dict[str
     for provider, title, inactive_field in ORCA_USAGE_PROVIDERS:
         block = result.get(provider) if isinstance(result.get(provider), dict) else {}
         active = _orca_active_id(block, rl.get(provider + "Target"))
+        # The host's active managed Claude login lives in ~/.claude: the local producers' account.
+        in_home = provider == "claude" and _orca_host_target(rl.get(provider + "Target"))
         entries: List[Tuple[Optional[str], Any]] = [(active, rl.get(provider))]
         inactive = rl.get(inactive_field)
         for a in inactive if isinstance(inactive, list) else []:
@@ -6029,7 +6058,7 @@ def orca_usage_plan(result: Dict[str, Any], cfg: Config, now: float) -> Dict[str
             if isinstance(aid, str) and aid and len(aid) <= 200 and aid not in [e[0] for e in entries]:
                 entries.append((aid, a.get("rateLimits")))
         for aid, snap in entries:
-            if aid is None:  # the system default: the local producers' account
+            if aid is None or (in_home and aid == active):  # the local producers' account
                 if snap is None:
                     continue
                 account = local
@@ -6041,6 +6070,9 @@ def orca_usage_plan(result: Dict[str, Any], cfg: Config, now: float) -> Dict[str
                 account = orca_account_label(aid)
                 key = "usage:%s:%s" % (provider, account)
                 present.append(key)
+                if _local_meter_live(provider, account, now):  # in an Orca terminal (CODEX_HOME)
+                    skipped.append((key, "a local producer reports it"))
+                    continue
             wins, why = orca_snapshot(snap, now)
             if not wins:
                 skipped.append((key, why))

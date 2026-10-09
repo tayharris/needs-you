@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# needs-you-version: 0.3.1
+# needs-you-version: 0.3.2
 """needs-you-usage: Claude's usage meter on the Mac, and a card when a limit runs high.
 
 Claude Code's status line command gets the session as JSON on stdin, and for claude.ai
@@ -28,7 +28,10 @@ Config, in the environment or ~/.config/needs-you/env:
   NEEDS_YOU_USAGE_ALERT_PCT         5-hour threshold in percent; unset or 0: off
   NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT  weekly threshold (default: the 5-hour one; 0: off)
   NEEDS_YOU_USAGE_ACCOUNT           a label for this account (letters, digits, . _ -), for
-                                    machines with more than one Claude login; never an email
+                                    machines with more than one Claude login; never an email.
+                                    An Orca-managed account with its own CLAUDE_CONFIG_DIR
+                                    (Orca's WSL accounts) is labelled as `needs-you orca usage`
+                                    labels it instead (orca-<8 hex>)
   NEEDS_YOU_USAGE_METER             0: don't send the meter status (default: on)
   NEEDS_YOU_AGENT_CONTEXT           work | personal (default: the CLI's)
   NEEDS_YOU_BIN                     path to the needs-you CLI
@@ -38,6 +41,7 @@ status) and never waits on the hub: the post runs detached.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -167,7 +171,29 @@ def windows(data: dict) -> Dict[str, dict]:
     return out
 
 
+def orca_managed_account(env, provider):
+    """The usage label of the Orca-managed account this process runs under, or "": "orca-" +
+    the first 8 hex of sha256(its Orca account id), as `needs-you orca usage` labels it. Read
+    from the path Orca puts in its terminals' environment, never from a file: CODEX_HOME =
+    <Orca data>/codex-accounts/<id>/home, CLAUDE_CONFIG_DIR = .../claude-accounts/<id>/auth
+    (WSL only: on the host Orca copies the chosen Claude login into ~/.claude instead).
+    Byte-identical in cli/needs-you, needs-you-usage and needs-you-hook.sh (a test checks)."""
+    var, parent, leaf = {"claude": ("CLAUDE_CONFIG_DIR", "claude-accounts", "auth"),
+                         "codex": ("CODEX_HOME", "codex-accounts", "home")}[provider]
+    parts = (env.get(var) or "").strip().replace("\\", "/").rstrip("/").split("/")
+    if len(parts) < 4 or parts[-1] != leaf or parts[-3] != parent:
+        return ""
+    aid = parts[-2]
+    if aid in (".", "..") or not re.match(r"^[A-Za-z0-9._-]{1,200}$", aid):
+        return ""
+    return "orca-" + hashlib.sha256(aid.encode("utf-8")).hexdigest()[:8]
+
+
 def account_of(settings: Dict[str, str]) -> str:
+    """An Orca-managed account's label in its Orca terminal, else NEEDS_YOU_USAGE_ACCOUNT."""
+    managed = orca_managed_account(os.environ, "claude")
+    if managed:
+        return managed
     account = settings.get("NEEDS_YOU_USAGE_ACCOUNT") or ""
     return account if re.match(r"^[A-Za-z0-9._-]{0,40}$", account) else ""
 

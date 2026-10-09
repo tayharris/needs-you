@@ -158,13 +158,15 @@ class OrcaUsage(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.calls(), [["account", "list", "--json"]])
         got = self.by_key()
-        self.assertEqual(sorted(got), sorted(["usage:claude:" + label(A), "usage:claude:" + label(B),
+        # A is active on the host: Orca copied its login into ~/.claude, where needs-you-usage
+        # sees it, so it goes under the local producers' key (one row for it, not two).
+        self.assertEqual(sorted(got), sorted(["usage:claude", "usage:claude:" + label(B),
                                               "usage:codex", "usage:codex:" + label(D)]))
-        a = got["usage:claude:" + label(A)]
+        a = got["usage:claude"]
         self.assertEqual((a["type"], a["label"], a["detail"]), ("usage", "Claude", ""))
         self.assertEqual(a["source"], {"host": "testbox", "agent": "orca"})
         self.assertEqual(a["usage"]["provider"], "claude")
-        self.assertEqual(a["usage"]["account"], label(A))
+        self.assertEqual(a["usage"]["account"], "")
         self.assertEqual([(w["name"], w["used_pct"]) for w in a["usage"]["windows"]], [("5h", 51), ("7d", 41.2)])
         resets = [w["resets_at"] for w in a["usage"]["windows"]]
         self.assertTrue(all(resets))
@@ -240,8 +242,8 @@ class OrcaUsage(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("Traceback", r.stderr)
         got = self.by_key()
-        self.assertEqual(sorted(got), sorted(["usage:claude:" + label(A), "usage:claude:" + label(C)]))
-        a = got["usage:claude:" + label(A)]["usage"]["windows"]
+        self.assertEqual(sorted(got), sorted(["usage:claude", "usage:claude:" + label(C)]))
+        a = got["usage:claude"]["usage"]["windows"]
         self.assertEqual([(w["name"], w["used_pct"]) for w in a], [("5h", 100), ("7d", 0)])
         self.assertIsNone(a[1]["resets_at"])
         c = got["usage:claude:" + label(C)]["usage"]["windows"]
@@ -268,6 +270,48 @@ class OrcaUsage(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(sorted(self.by_key()), ["usage:codex"])
         self.assertIn("local", r.stdout)
+
+    def test_the_active_claude_account_is_the_one_in_the_home_directory(self):
+        # On the host Orca copies the chosen Claude login into ~/.claude, so needs-you-usage
+        # reports it under usage:claude: so does this command, and its own row goes.
+        self.write(account_list(claude_active=None, claude_ids=(A, B), rate_limits={
+            "claude": provider("claude", window(20, 3600), None),
+            "inactiveClaudeAccounts": [{"accountId": A, "rateLimits": provider("claude", window(5, 3600), None)}]}))
+        self.assertEqual(self.usage().returncode, 0)
+        self.assertEqual(sorted(self.by_key()), ["usage:claude", "usage:claude:" + label(A)])
+        self.write(account_list(claude_active=A, claude_ids=(A, B), rate_limits={
+            "claude": provider("claude", window(6, 3600), None),
+            "inactiveClaudeAccounts": [{"accountId": B, "rateLimits": provider("claude", window(9, 3600), None)}]}))
+        r = self.usage()
+        self.assertEqual(r.returncode, 0, r.stderr)  # usage:claude again inside 10 s is a 429: still 0
+        self.assertEqual(sorted(self.by_key()), ["usage:claude", "usage:claude:" + label(B)])
+
+    def test_a_wsl_claude_account_keeps_its_label(self):
+        # In WSL Orca gives the account its own CLAUDE_CONFIG_DIR, which needs-you-usage labels.
+        self.write(account_list(claude_ids=(A,), rate_limits={
+            "claude": provider("claude", window(20, 3600), None),
+            "claudeTarget": {"runtime": "wsl", "wslDistro": "Ubuntu"}}))
+        data = json.loads(open(os.path.join(self.odir, "account-list.json")).read())
+        data["result"]["claude"]["activeAccountIdsByRuntime"] = {"host": None, "wsl": {"Ubuntu": A}}
+        self.write(data)
+        self.assertEqual(self.usage().returncode, 0)
+        self.assertEqual(sorted(self.by_key()), ["usage:claude:" + label(A)])
+
+    def test_a_live_producer_in_an_orca_terminal_keeps_its_managed_account(self):
+        # The Codex hook in an Orca terminal (CODEX_HOME in codex-accounts/<id>/home) sends the
+        # same key with fresher numbers: this command leaves it alone, and never clears it.
+        self.write(account_list(codex_active=A, codex_ids=(A,), rate_limits={
+            "codex": provider("codex", window(10, 3600), None)}))
+        self.assertEqual(self.usage().returncode, 0)
+        self.assertEqual(sorted(self.by_key()), ["usage:codex:" + label(A)])
+        self.meter_state("codex", time.time() - 60, account=label(A))
+        r = self.usage("--dry-run")
+        self.assertEqual(json.loads(r.stdout)["records"], [])
+        self.assertIn({"key": "usage:codex:" + label(A), "reason": "a local producer reports it"},
+                      json.loads(r.stdout)["skipped"])
+        r = self.usage()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(self.by_key()), ["usage:codex:" + label(A)])  # still there
 
     def test_the_default_account_takes_the_local_account_label(self):
         self.write(account_list(rate_limits={"claude": provider("claude", window(20, 3600), None)}))
@@ -305,26 +349,26 @@ class OrcaUsage(CliTestCase):
             "claude": provider("claude", window(10, 3600), None)}))
         r = self.usage()
         self.assertEqual(r.returncode, 0, r.stderr)  # A's rewrite inside 10 s is a 429: still 0
-        self.assertEqual(sorted(self.by_key()), sorted(["usage:claude:" + label(A), "usage:codex"]))
+        self.assertEqual(sorted(self.by_key()), sorted(["usage:claude", "usage:codex"]))
 
     def test_dry_run_sends_nothing(self):
-        self.write(account_list(claude_active=A, claude_ids=(A,), rate_limits={
-            "claude": provider("claude", window(10, 3600), None)}))
+        self.write(account_list(codex_active=A, codex_ids=(A,), rate_limits={
+            "codex": provider("codex", window(10, 3600), None)}))
         r = self.usage("--dry-run")
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)
-        self.assertEqual([x["key"] for x in out["records"]], ["usage:claude:" + label(A)])
+        self.assertEqual([x["key"] for x in out["records"]], ["usage:codex:" + label(A)])
         self.assertEqual(out["records"][0]["body"]["usage"]["account"], label(A))
         self.assertNoLeak(r.stdout)
         self.assertEqual(self.statuses(), [])
 
     def test_json_summary(self):
-        self.write(account_list(claude_active=A, claude_ids=(A,), rate_limits={
-            "claude": provider("claude", window(10, 3600), None)}))
+        self.write(account_list(codex_active=A, codex_ids=(A,), rate_limits={
+            "codex": provider("codex", window(10, 3600), None)}))
         r = self.usage("--json")
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)
-        self.assertEqual((out["ok"], out["sent"], out["cleared"]), (True, ["usage:claude:" + label(A)], []))
+        self.assertEqual((out["ok"], out["sent"], out["cleared"]), (True, ["usage:codex:" + label(A)], []))
 
     # -- failures never fail the caller ------------------------------------------------------
 
@@ -355,8 +399,8 @@ class OrcaUsage(CliTestCase):
         self.assertIn("orca", r.stderr)
 
     def test_no_hub_configured(self):
-        self.write(account_list(claude_active=A, claude_ids=(A,), rate_limits={
-            "claude": provider("claude", window(10, 3600), None)}))
+        self.write(account_list(codex_active=A, codex_ids=(A,), rate_limits={
+            "codex": provider("codex", window(10, 3600), None)}))
         r = self.run_cli("orca", "usage", urls=[self.dead], token=self.sender, extra_env=self.env())
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.queued(), [])
@@ -377,8 +421,8 @@ class OrcaUsage(CliTestCase):
         return self.run_cli("-q", "flush", urls=[self.hub.url], token=self.sender, extra_env=self.env(**extra))
 
     def test_flush_runs_it_only_when_on_and_at_most_every_few_minutes(self):
-        self.write(account_list(claude_active=A, claude_ids=(A,), rate_limits={
-            "claude": provider("claude", window(10, 3600), None)}))
+        self.write(account_list(codex_active=A, codex_ids=(A,), rate_limits={
+            "codex": provider("codex", window(10, 3600), None)}))
         r = self.flush()
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         self.assertEqual(self.calls(), [])  # off by default
@@ -386,7 +430,7 @@ class OrcaUsage(CliTestCase):
         r = self.flush()
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         self.assertEqual(self.calls(), [["account", "list", "--json"]])
-        self.assertEqual(sorted(self.by_key()), ["usage:claude:" + label(A)])
+        self.assertEqual(sorted(self.by_key()), ["usage:codex:" + label(A)])
         r = self.flush()
         self.assertEqual(r.returncode, 0)
         self.assertEqual(len(self.calls()), 1)  # too soon: not again
@@ -406,14 +450,14 @@ class OrcaUsage(CliTestCase):
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
 
     def test_enable_and_disable(self):
-        self.write(account_list(claude_active=A, claude_ids=(A,), rate_limits={
-            "claude": provider("claude", window(10, 3600), None)}))
+        self.write(account_list(codex_active=A, codex_ids=(A,), rate_limits={
+            "codex": provider("codex", window(10, 3600), None)}))
         r = self.usage("--enable")
         self.assertEqual(r.returncode, 0, r.stderr)
         env_path = os.path.join(self.home, ".config", "needs-you", "env")
         with open(env_path) as fh:
             self.assertIn("NEEDS_YOU_ORCA_USAGE=1", fh.read())
-        self.assertEqual(sorted(self.by_key()), ["usage:claude:" + label(A)])  # and ran once
+        self.assertEqual(sorted(self.by_key()), ["usage:codex:" + label(A)])  # and ran once
         r = self.usage("--disable")
         self.assertEqual(r.returncode, 0, r.stderr)
         with open(env_path) as fh:
