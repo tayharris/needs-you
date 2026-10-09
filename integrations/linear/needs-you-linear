@@ -733,7 +733,7 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
         update_tracking(cfg, state, nodes, tracked_ids, returned, assigned, now)
         state["since"] = iso(now)
         if verbose:
-            warn("notifications: %d read (since %s), %d behind open cards; %s assigned issues"
+            warn("notifications: %d new or changed since %s, %d behind open cards; %s assigned issues"
                  % (len(nodes) - len(returned), since, len(state["notifs"]),
                     "?" if assigned is None else len(assigned)))
         if more:
