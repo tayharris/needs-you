@@ -155,6 +155,7 @@ DB="$HOME/Library/Application Support/NeedsYou/hub.db"
 <p><code>invite list --all</code> and <code>invite revoke &lt;name&gt;</code> work the same way for links.</p></li>
 <li><p><strong>Clean up the machine.</strong> Either run a live invite's installer with <code>--uninstall</code>, or by hand. First the Claude Code hooks, if they were installed (offline; user level, the current directory's project and every recorded project install):</p>
 <div class="code" data-copy><pre><code class="language-bash">needs-you uninstall-hooks</code></pre></div>
+<p>It also deletes the installers' backups (<code>&lt;file&gt;.bak-&lt;time&gt;</code>) that hold only needs-you's part, and the agent directories (such as <code>~/.gemini</code>) left empty; backups with your own settings in them stay.</p>
 <p>With a CLI older than <code>uninstall-hooks</code>: <code>integrations/claude-code/install-hooks.sh --uninstall</code> from a checkout, or fetch it from the hub:</p>
 <div class="code" data-copy><pre><code class="language-bash">. ~/.config/needs-you/env; d=$(mktemp -d)
 curl -fsS "$NEEDS_YOU_URL/dl/install-hooks.sh" -o "$d/install-hooks.sh"

@@ -13,6 +13,9 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Security
 
 - **A peer secret file others can read stops the hub.** A `peer_secret_file` (`--peer-secret-file`) that group or other users can read or write used to start the hub with a warning; the hub now refuses to start and says `chmod 600 <path>`, since the secret lets anyone replicate as a peer. Hubs set up by `install-hub.sh` keep the secret in their config file and aren't affected; check a hand-made secret file (such as the Mac's hand-set-peers `peer-secret`) before upgrading ([HUB.md](docs/HUB.md#config-reference)).
+### Changed
+
+- **Uninstall deletes the backups that hold only needs-you's part.** `needs-you uninstall-hooks` (which the invite installer's `--uninstall` runs) and each agent installer's own `--uninstall` delete the config backups the installers made (`<file>.bak-<time>`) when restoring one would bring back nothing but needs-you's entries (its hooks, its MCP server, its marked blocks) or an empty file, so a directory such as `~/.gemini` that needs-you made goes too once it's empty. A backup with any of your own settings in it stays. A config file left as `{}` or empty by an install before 0.3.1 still stays: nothing records whether needs-you made it.
 
 ## [0.3.1] - 2026-10-09
 
