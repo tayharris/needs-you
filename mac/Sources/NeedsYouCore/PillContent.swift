@@ -109,9 +109,11 @@ public struct PillMetrics: Equatable, Sendable {
 
     /// The pill's width for `units` digit-widths of counts, plus a title `titleWidth`
     /// points wide (measured by the app), capped at `maxWidth`. With no title this is
-    /// `PanelMetrics.countWidth(digits:)`, the original formula.
-    public func width(units: Int, titleWidth: CGFloat? = nil) -> CGFloat {
-        var w = baseWidth + CGFloat(max(0, units)) * digitWidth
+    /// `PanelMetrics.countWidth(digits:)`, the original formula. `trailing` is what sits
+    /// after the count (the usage rings or percentages): it counts toward the minimum width,
+    /// so a one-digit pill doesn't get the minimum's padding and the slot's both.
+    public func width(units: Int, titleWidth: CGFloat? = nil, trailing: CGFloat = 0) -> CGFloat {
+        var w = baseWidth + CGFloat(max(0, units)) * digitWidth + max(0, trailing)
         if let titleWidth, titleWidth > 0 { w += titleGap + ceil(titleWidth) }
         return min(maxWidth, max(minWidth, w))
     }
