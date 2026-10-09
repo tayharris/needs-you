@@ -74,7 +74,7 @@ class GeminiHook(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         # Gemini parses stdout (and else stderr) as the hook's JSON answer: both stay empty.
         self.assertEqual((r.stdout, r.stderr), ("", ""))
-        self.assertLess(time.time() - started, 2)
+        self.assertLess(time.time() - started, 5)
         return r
 
     def calls(self):

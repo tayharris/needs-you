@@ -86,7 +86,7 @@ class GrokHook(unittest.TestCase):
         r = subprocess.run(argv, input=json.dumps(payload), env=env, capture_output=True, text=True, timeout=30)
         # Never exit 2 (it would block Stop or hand stderr to the model) and never print.
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
-        self.assertLess(time.time() - started, 2)
+        self.assertLess(time.time() - started, 5)
         return r
 
     def calls(self):

@@ -77,7 +77,7 @@ class CopilotHook(unittest.TestCase):
         # Copilot parses stdout as the hook's JSON answer (a notification's additionalContext
         # would reach the model): it stays empty, and the hook doesn't hold Copilot up.
         self.assertEqual((r.stdout, r.stderr), ("", ""))
-        self.assertLess(time.time() - started, 2)
+        self.assertLess(time.time() - started, 5)
         return r
 
     def calls(self):

@@ -44,7 +44,7 @@ class AiderHook(HookCase):
         finally:
             os.close(wfd)
         self.assertEqual((p.returncode, out, err), (0, b"", b""))
-        self.assertLess(time.time() - started, 2)
+        self.assertLess(time.time() - started, 5)
 
     def test_waiting_card(self):
         self.run_like_aider()

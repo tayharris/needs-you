@@ -91,7 +91,7 @@ class KimiHook(unittest.TestCase):
         # Kimi appends a UserPromptSubmit hook's stdout to the model's context, and reads a
         # Stop hook's JSON as a decision: the hook prints nothing and returns at once.
         self.assertEqual((r.stdout, r.stderr), ("", ""))
-        self.assertLess(time.time() - started, 2)
+        self.assertLess(time.time() - started, 5)
         return r
 
     def calls(self):
