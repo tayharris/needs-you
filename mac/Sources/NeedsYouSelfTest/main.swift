@@ -66,6 +66,7 @@ let entries =
     + testEntries(PillMeterLayoutTests.self, PillMeterLayoutTests.allTests)
     + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
+    + testEntries(IntegrationCatalogTests.self, IntegrationCatalogTests.allTests)
     + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
     + testEntries(AppLocationTests.self, AppLocationTests.allTests)

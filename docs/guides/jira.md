@@ -40,6 +40,23 @@ The token file must be yours and mode `600`. If it isn't, the poller refuses it 
 
 Prefer a systemd user timer or, on a Mac, a LaunchAgent? Use the files in [integrations/jira](../../integrations/jira/README.md) instead of step 5.
 
+## Or let an agent set it up
+
+On your Mac, **Settings → Integrations → Cards from your tools → Jira** has the same commands with Copy buttons, and **Copy agent prompt**. Paste the prompt into Claude Code (or another agent) on the machine that will run the poller. It holds no token: the agent asks you to run step 2 in your own terminal and paste the token there yourself.
+
+```text
+Set up needs-you cards for Jira on this machine. The guide is https://github.com/tayharris/needs-you/blob/main/docs/guides/jira.md.
+This machine must already send needs-you alerts: if ~/.local/bin/needs-you is missing or ~/.local/bin/needs-you doctor shows a FAIL, stop and ask me for an invite link (Needs You on my Mac: Settings → Connect a machine).
+Install the poller: `curl -fsSL https://raw.githubusercontent.com/tayharris/needs-you/main/integrations/jira/needs-you-jira -o ~/.local/bin/needs-you-jira && chmod 755 ~/.local/bin/needs-you-jira`.
+needs-you-jira reads my Jira token from ~/.config/needs-you/jira-token, which must be mine and mode 600. Never ask me for the Jira token in chat, never print it, and never put it in ~/.config/needs-you/env, a cron line, a command or any file you write. Ask me to run this in my own terminal and paste the Jira token there myself (it isn't shown; press Enter after it), and wait until I say it's done: `mkdir -p ~/.config/needs-you && (umask 077; printf 'Jira token: '; read -rs t; printf '%s\n' "$t" > ~/.config/needs-you/jira-token); echo`. Then check only the file's mode with `ls -l ~/.config/needs-you/jira-token`: never read the file.
+Settings go in ~/.config/needs-you/env, which also holds this machine's needs-you token: only append lines to it (`echo 'NAME=value' >> ~/.config/needs-you/env`), never print, read out or rewrite it.
+Ask me for my Jira site URL and append it as NEEDS_YOU_JIRA_SITE=https://... . For Jira Cloud (a site on atlassian.net) also ask for the email I sign in with and append NEEDS_YOU_JIRA_EMAIL. The token is an API token from id.atlassian.com for Cloud, or a personal access token for Data Center.
+Its first run only records my open issues and posts nothing.
+Run `~/.local/bin/needs-you-jira -v` and tell me what it says.
+Schedule it. On Linux add the cron line: `(crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/.local/bin/needs-you-jira >/dev/null  # needs-you-jira') | crontab -`. On macOS use the LaunchAgent integrations/jira/io.needs-you.jira.plist from the repo instead (replace /Users/me with my home directory).
+If a run prints an error, fix what it names, or tell me if it needs me.
+```
+
 ## Check it works
 
 Ask a teammate to comment on one of your issues (or comment from another account). Within 5 minutes a card "New comment on ACME-123: *summary*" appears on your Mac; **Open** goes straight to the comment. Reply in Jira, and the card goes on the next run, since you acted last.
