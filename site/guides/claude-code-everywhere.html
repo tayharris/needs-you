@@ -98,9 +98,9 @@ echo '{"session_id":"test-1"}' | NEEDS_YOU_HOOK_LOG=/dev/stderr ~/.claude/hooks/
 <tr><td>On the Mac</td><td><strong>VS Code</strong>: opens the folder (<code>vscode://file&lt;cwd&gt;</code>)</td></tr>
 <tr><td>On a server, with <code>--ssh-alias devbox</code></td><td><strong>VS Code</strong>: opens the folder in a Remote-SSH window (<code>vscode://vscode-remote/ssh-remote+devbox&lt;cwd&gt;</code>)</td></tr>
 <tr><td>In the VS Code extension (not the CLI in VS Code's terminal)</td><td><strong>Claude</strong>: focuses that conversation's tab (<code>vscode://anthropic.claude-code/open?session=&lt;id&gt;</code>; the session must belong to the workspace open in the focused window)</td></tr>
-<tr><td>In Orca</td><td><strong>Terminal</strong>: switches Orca to that terminal</td></tr>
-<tr><td>In a terminal on the Mac (tmux, WezTerm, iTerm2, Terminal, Ghostty)</td><td><strong>Terminal</strong>: brings that tab or pane forward (<a href="#terminal-button">Terminal button</a>)</td></tr>
-<tr><td>On a server over SSH, with <code>LC_NEEDS_YOU_TERM</code> set on the Mac</td><td><strong>Terminal</strong>: brings forward the Mac tab the SSH connection runs in</td></tr>
+<tr><td>In Orca</td><td><strong>Orca</strong>: switches Orca to that terminal (no editor button beside it)</td></tr>
+<tr><td>In a terminal on the Mac (tmux, WezTerm, iTerm2, Terminal, Ghostty)</td><td>A button named for the terminal (<strong>tmux</strong>, <strong>WezTerm</strong>, <strong>iTerm2</strong>, <strong>Terminal</strong>, <strong>Ghostty</strong>): brings that tab or pane forward (<a href="#terminal-button">Terminal button</a>)</td></tr>
+<tr><td>On a server over SSH, with <code>LC_NEEDS_YOU_TERM</code> set on the Mac</td><td>A button named for the Mac terminal: brings forward the Mac tab the SSH connection runs in</td></tr>
 </tbody>
 </table></div>
 <p><code>NEEDS_YOU_AGENT_LINK</code> replaces the editor buttons with one of your own, and <code>none</code> turns them off (the Terminal button stays).</p>
@@ -154,7 +154,7 @@ fi</code></pre></div>
 <li>The remote's own tmux or WezTerm variables are never used: they name panes on the server, not on the Mac.</li>
 </ul>
 <h3 id="orca-terminals">Orca terminals <a class="anchor" href="#orca-terminals" aria-label="Link to this section">#</a></h3>
-<p>Sessions Orca starts are on automatically (Orca sets <code>$ORCA_TERMINAL_HANDLE</code>); <code>NEEDS_YOU_AGENT_ALERTS=0</code> turns them off. Their cards have a <strong>Terminal</strong> button: the Mac app runs <code>orca terminal switch</code> for that terminal, brings Orca forward and marks the card done. If the switch fails, the command goes on the clipboard. The body also has the command, for running by hand.</p>
+<p>Sessions Orca starts are on automatically (Orca sets <code>$ORCA_TERMINAL_HANDLE</code>); <code>NEEDS_YOU_AGENT_ALERTS=0</code> turns them off. Their cards have an <strong>Orca</strong> button: the Mac app runs <code>orca terminal switch</code> for that terminal, brings Orca forward and marks the card done. If the switch fails, the command goes on the clipboard. The body also has the command, for running by hand.</p>
 <p>On a paired Orca server, tell the hook the name the Mac's Orca gives that server (as <code>orca environment list</code> shows it on the Mac), so the command and the button target it directly: add <code>--orca-environment 'My Devbox'</code> to the installer line (it writes <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> to the env file).</p>
 <p>Without it, the button tries the Mac's own Orca and then each paired environment in turn. Add <code>--orca</code> to the installer line for the automation prompt block; more in <a href="orca.html">Orca</a>.</p>
 <h2 id="when-a-session-dies">When a session dies <a class="anchor" href="#when-a-session-dies" aria-label="Link to this section">#</a></h2>

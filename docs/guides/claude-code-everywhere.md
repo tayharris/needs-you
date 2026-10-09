@@ -70,9 +70,9 @@ No prompt text, transcript or tool input is sent: a permission card names the to
 | On the Mac | **VS Code**: opens the folder (`vscode://file<cwd>`) |
 | On a server, with `--ssh-alias devbox` | **VS Code**: opens the folder in a Remote-SSH window (`vscode://vscode-remote/ssh-remote+devbox<cwd>`) |
 | In the VS Code extension (not the CLI in VS Code's terminal) | **Claude**: focuses that conversation's tab (`vscode://anthropic.claude-code/open?session=<id>`; the session must belong to the workspace open in the focused window) |
-| In Orca | **Terminal**: switches Orca to that terminal |
-| In a terminal on the Mac (tmux, WezTerm, iTerm2, Terminal, Ghostty) | **Terminal**: brings that tab or pane forward ([Terminal button](#terminal-button)) |
-| On a server over SSH, with `LC_NEEDS_YOU_TERM` set on the Mac | **Terminal**: brings forward the Mac tab the SSH connection runs in |
+| In Orca | **Orca**: switches Orca to that terminal (no editor button beside it) |
+| In a terminal on the Mac (tmux, WezTerm, iTerm2, Terminal, Ghostty) | A button named for the terminal (**tmux**, **WezTerm**, **iTerm2**, **Terminal**, **Ghostty**): brings that tab or pane forward ([Terminal button](#terminal-button)) |
+| On a server over SSH, with `LC_NEEDS_YOU_TERM` set on the Mac | A button named for the Mac terminal: brings forward the Mac tab the SSH connection runs in |
 
 `NEEDS_YOU_AGENT_LINK` replaces the editor buttons with one of your own, and `none` turns them off (the Terminal button stays).
 
@@ -144,7 +144,7 @@ For tmux on the Mac, add `&host=iterm` (or `wezterm`, `ghostty`, `terminal`) so 
 
 ### Orca terminals
 
-Sessions Orca starts are on automatically (Orca sets `$ORCA_TERMINAL_HANDLE`); `NEEDS_YOU_AGENT_ALERTS=0` turns them off. Their cards have a **Terminal** button: the Mac app runs `orca terminal switch` for that terminal, brings Orca forward and marks the card done. If the switch fails, the command goes on the clipboard. The body also has the command, for running by hand.
+Sessions Orca starts are on automatically (Orca sets `$ORCA_TERMINAL_HANDLE`); `NEEDS_YOU_AGENT_ALERTS=0` turns them off. Their cards have an **Orca** button: the Mac app runs `orca terminal switch` for that terminal, brings Orca forward and marks the card done. If the switch fails, the command goes on the clipboard. The body also has the command, for running by hand.
 
 On a paired Orca server, tell the hook the name the Mac's Orca gives that server (as `orca environment list` shows it on the Mac), so the command and the button target it directly: add `--orca-environment 'My Devbox'` to the installer line (it writes `NEEDS_YOU_ORCA_ENVIRONMENT` to the env file).
 

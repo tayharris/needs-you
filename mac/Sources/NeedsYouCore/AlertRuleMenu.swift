@@ -73,12 +73,33 @@ public enum AlertRuleMenu {
         return (i, book.rules[i])
     }
 
-    /// Whether the rule at `index` never applies because an earlier rule of the same scope
-    /// for any event, or for the same event, matches first (a book ordered by hand).
+    /// Whether the rule at `index` never applies because an earlier rule matches every item
+    /// it does (`covers`): the same scope for any event or the same event, or a broader rule
+    /// such as Settings' "Agents Always Interrupt" (key prefix `agent:`) above a session's.
     static func isShadowed(_ book: RuleBook, at index: Int) -> Bool {
         let rule = book.rules[index]
-        return book.rules[..<index].contains { other in
-            other.match == rule.match && other.value == rule.value && (other.event == nil || other.event == rule.event)
+        return book.rules[..<index].contains { covers($0, rule) }
+    }
+
+    /// Whether `a` matches every item `b` matches (so `b` below `a` never applies). Only the
+    /// cases that can be told from the rules: a key prefix covers the keys and sessions that
+    /// start with it, a session itself and the keys under it, an agent prefix the longer
+    /// agent prefixes, a host the same host.
+    static func covers(_ a: BypassRule, _ b: BypassRule) -> Bool {
+        guard a.event == nil || a.event == b.event else { return false }
+        switch (a.match, b.match) {
+        case (.keyPrefix, .keyPrefix), (.keyPrefix, .session):
+            return b.value.hasPrefix(a.value)
+        case (.session, .session):
+            return b.value == a.value || b.value.hasPrefix(a.value + ":")
+        case (.session, .keyPrefix):
+            return b.value.hasPrefix(a.value + ":")
+        case (.agentPrefix, .agentPrefix):
+            return b.value.lowercased().hasPrefix(a.value.lowercased())
+        case (.host, .host):
+            return a.value.lowercased() == b.value.lowercased()
+        default:
+            return false
         }
     }
 
