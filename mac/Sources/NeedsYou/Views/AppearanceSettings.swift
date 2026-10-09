@@ -13,6 +13,14 @@ struct AppearanceSettingsSection: View {
 
     var body: some View {
         Section {
+            ThemeSample(model: model, settings: settings)
+        } header: {
+            Text("Preview")
+        } footer: {
+            Text("Urgent stays red and easy to read in every theme. With macOS's Increase Contrast on, secondary text and borders get stronger.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Section {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                 ForEach(PanelTheme.allCases, id: \.self) { theme in
                     ThemeSwatch(theme: theme, selected: settings.ui.theme == theme) {
@@ -46,19 +54,11 @@ struct AppearanceSettingsSection: View {
             Picker(selection: $settings.ui.background) {
                 ForEach(PanelBackground.allCases, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("Background", settings.ui.background.detail)
+                LabelWithDetail("Behind the pill and panel", settings.ui.background.detail)
             }
             .pickerStyle(.segmented)
         } header: {
             Text("Background")
-        }
-        Section {
-            ThemeSample(model: model, settings: settings)
-        } header: {
-            Text("Preview")
-        } footer: {
-            Text("Urgent stays red and easy to read in every theme. With macOS's Increase Contrast on, secondary text and borders get stronger.")
-                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

@@ -371,7 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
-                                           (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
+                                           (.theme, 3), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
                                            (.panel, 6), (.alerts, 4)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -399,19 +399,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The Theme sample in a light and a colourful theme: the desktop stays put.
             for theme in [PanelTheme.paper, .sunset] {
                 settings.ui.theme = theme
-                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
                                                    into: dir, name: "settings-theme-\(theme.rawValue)")
             }
             // Solid with an accent swatch, and the Opacity settings it turns off.
             settings.ui.theme = .standard
             settings.ui.background = .solid
             settings.ui.accent = .preset(.teal)
-            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
                                                into: dir, name: "settings-theme-solid-teal")
             await settingsWindow.writeSnapshot(of: .cards, showcase: showcase, shots: 4,
                                                into: dir, name: "settings-cards-solid")
             settings.ui.accent = .custom(ThemeRGB(hex: 0xE11D48))
-            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
                                                into: dir, name: "settings-theme-custom-red")
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
