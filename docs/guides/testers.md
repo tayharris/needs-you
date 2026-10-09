@@ -172,7 +172,7 @@ Please include:
 
   Skim it before attaching; it should hold nothing private, but you're the judge. Info lines don't stay in the log long, so run it soon after the problem. For a problem you can repeat, record it live instead: run `log stream --info --style compact --predicate 'subsystem == "app.needsyou.mac"'` (piped through the same `sed`), reproduce, then press Ctrl-C.
 
-**Never paste** a token (`ny_…`), an invite link or code (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env` or `~/Library/Application Support/NeedsYou/`. If one slips into an issue, tell the owner: revoking it takes a click in **Settings → Access**.
+**Never paste** a token (`ny_…`), an invite link or code (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env` or `~/Library/Application Support/NeedsYou/`. If one slips into an issue, tell the owner: revoking it takes a click in **Settings → Machines**.
 
 Security problems: don't open an issue; tell the owner directly ([SECURITY.md](../../SECURITY.md)).
 

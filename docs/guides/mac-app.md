@@ -79,7 +79,7 @@ While something isn't set up yet, the open panel shows a **setup tip**: a card l
 | **Reach this Mac from your other machines** | The hub on this Mac listens on `127.0.0.1` only (no Tailscale) and you have server hubs or cards from other machines | **Open Settings**, and the [Tailscale guide](tailscale.md) |
 | **Install the Claude Code hooks on this Mac** | `~/.claude` exists but `~/.claude/settings.json` doesn't use the needs-you hook, after the first sender connected | **Copy agent prompt**, and the [Claude Code guide](claude-code.md) |
 
-Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Invite a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
+Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Connect a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
 
 ### Orca worktrees
 
@@ -285,9 +285,9 @@ Under **Needs You**:
 For bug reports and contributing: **Settings → Advanced → Developer mode** (off by default) shows each card's key under its title and adds a **Developer** section to the card's **…** menu:
 
 - **Copy Item JSON**: the whole item as the hub sent it, pretty-printed with sorted keys and ISO 8601 dates.
-- **Copy Key** and **Copy ID**.
-- **Copy Debug Report**: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches, then the item JSON.
-- **Copy as needs-you add Command**: a one-line `needs-you add` command for bash or zsh that posts the same card again (key, title, body, context, priority, links, steps, question, source), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as `\n` inside `$'…'`), so pasting it runs nothing but `needs-you`, and only when you press Return.
+- **Copy Key** and **Copy ID** (anything token-shaped in them masked, like every other copy).
+- **Copy Debug Report**: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches (with the event the rule is for), then the item JSON.
+- **Copy as needs-you add Command**: a one-line `needs-you add` command for bash or zsh that posts the same card again (key, title, body, context, links, steps, question, source, the priority the sender sent rather than one a bypass rule gave it, and `source.event` as `--event`), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as `\n` inside `$'…'`), so pasting it runs nothing but `needs-you`, and only when you press Return.
 
 Nothing copied carries a token, peer secret or invite code: the item has none, and anything shaped like one in a card's text is masked (`ny_<redacted>`).
 
