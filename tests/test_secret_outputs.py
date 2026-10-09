@@ -242,6 +242,22 @@ class SecretOutputs(unittest.TestCase):
                      raw_request("PUT", a["url"] + "/v1/status/" + secret, sender, status_body())[1])
             self.saw("status clear by a %s" % label, raw_request("DELETE", a["url"] + "/v1/status/" + secret, sender)[1])
         self.saw("status with a token as bearer for GET", raw_request("GET", a["url"] + "/v1/status", sender)[1])
+        # Typed answers ("Other", ADR 0009): a secret in the words is refused without an echo.
+        st, asked = request("POST", a["url"] + "/v1/items", sender, {
+            "key": "acme:ask", "title": "Claude asks", "question": {"id": "q1", "answerable": True, "items": [
+                {"text": "Which?", "allow_other": True, "options": [{"label": "A"}]}]}})
+        self.assertEqual(st, 201, asked)
+        for label, secret in (("token", sender), ("peer secret", secrets["peer secret"]),
+                              ("invite code", inv["code"])):
+            self.saw("typed answer holding a %s" % label, raw_request(
+                "POST", a["url"] + "/v1/items/%s/answer" % asked["id"], owner,
+                {"question_id": "q1", "content_updated_at": asked["content_updated_at"],
+                 "answers": [{"text": "use " + secret}]})[1])
+        st, _ = request("POST", a["url"] + "/v1/items/%s/answer" % asked["id"], owner,
+                        {"question_id": "q1", "content_updated_at": asked["content_updated_at"],
+                         "answers": [{"text": "the second one"}]})
+        self.assertEqual(st, 200)
+        self.saw("the answer read back", get_text(a["url"] + "/v1/items/answer?key=acme:ask", sender)[1])
         # A join page names its own code (whoever reads it has the link); nothing else.
         for label, code in (("sender", inv["code"]), ("peer", secrets["peer invite code"])):
             for suffix in ("", "/install.sh"):
