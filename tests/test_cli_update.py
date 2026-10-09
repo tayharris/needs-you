@@ -433,7 +433,8 @@ class ReleaseCrossCheck(UpdateCase):
 
     def fake_gh(self, files, version, tamper=False, fail=False, attest="ok", private="false",
                 manifest_tarball_sha=None):
-        """attest: "ok" (gh attestation verify passes) or "fail"; private: what
+        """tamper: True (the CLI) or a file name the release has a different copy of;
+        attest: "ok" (gh attestation verify passes) or "fail"; private: what
         `gh api repos/... --jq .private` prints."""
         import io
         import tarfile
@@ -447,7 +448,7 @@ class ReleaseCrossCheck(UpdateCase):
                  "orca-snippet.md": "integrations/orca/snippet.md"}
         with tarfile.open(os.path.join(rel, tarball), "w:gz") as tf:
             for name, data in files.items():
-                if tamper and name == "needs-you":
+                if tamper and name == (tamper if isinstance(tamper, str) else "needs-you"):
                     data = data + b"# not the release\n"
                 info = tarfile.TarInfo("needs-you-%s/%s" % (version, paths[name]))
                 info.size = len(data)
@@ -805,6 +806,45 @@ class AutoUpdate(UpdateCase):
             fh.write("NEEDS_YOU_AUTO_UPDATE=1\nNEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH=0\n")
         self.run_cli("-q", "flush", urls=[h.url])
         self.assertEqual(read(self.cli), read(CLI))   # opted in through the env file
+
+
+class ProjectHooksCrossCheck(UpdateCase):
+    """Project hooks are installed from install-hooks.sh, the hook and hooks.json: each is
+    checked against the GitHub release like any other file."""
+
+    install_project = ProjectHooks.install_project
+    fake_gh = ReleaseCrossCheck.fake_gh
+    attestation = staticmethod(ReleaseCrossCheck.attestation)
+
+    def stale_project(self):
+        proj = self.install_project()
+        hook = os.path.join(proj, ".claude", "hooks", "needs-you-hook.sh")
+        with open(hook, "wb") as fh:
+            fh.write(b"#!/bin/bash\n# needs-you-version: 0.0.1\nexit 0\n")
+        return proj, hook
+
+    def test_matching_release_updates_the_project_hooks(self):
+        h = self.hub()
+        proj, hook = self.stale_project()
+        gh, _ = self.fake_gh(current_files(), h.version)
+        r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh}, cwd=proj)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("matches release v%s on GitHub" % h.version, r.stdout)
+        self.assertIn("updated the project hooks", r.stdout)
+        self.assertEqual(read(hook), read(HOOK))
+
+    def test_a_project_hook_file_not_in_the_release_refuses(self):
+        for name in ("install-hooks.sh", "needs-you-hook.sh", "hooks.json"):
+            with self.subTest(name=name):
+                h = self.hub()
+                proj, hook = self.stale_project()
+                old = read(hook)
+                gh, _ = self.fake_gh(current_files(), h.version, tamper=name)
+                r = self.run_cli("update", urls=[h.url], env={"NEEDS_YOU_GH": gh}, cwd=proj)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("%s from the hub doesn't match release" % name, r.stderr)
+                self.assertEqual(read(hook), old)
+                self.assertEqual(read(self.cli), self.old_cli)
 
 
 class ReleaseOverHttps(UpdateCase):
