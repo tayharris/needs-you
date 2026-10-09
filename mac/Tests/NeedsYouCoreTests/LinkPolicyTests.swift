@@ -17,6 +17,7 @@ final class LinkPolicyTests: XCTestCase {
         ("testMarkdownKeepsAllowedLinksAndStripsOthers", testMarkdownKeepsAllowedLinksAndStripsOthers),
         ("testMarkdownDropsImagesAndKeepsInlineStyles", testMarkdownDropsImagesAndKeepsInlineStyles),
         ("testMarkdownBulletsAndLengthLimit", testMarkdownBulletsAndLengthLimit),
+        ("testMarkdownHeadingsAreBoldLines", testMarkdownHeadingsAreBoldLines),
     ]
 
     func testAllowedSchemesOpen() {
@@ -156,6 +157,15 @@ final class LinkPolicyTests: XCTestCase {
         XCTAssertTrue(intents.contains(.emphasized))
         XCTAssertTrue(intents.contains(.code))
         XCTAssertFalse(String(rendered.characters).contains("x.png"))
+    }
+
+    /// Agents write "## Summary"; inline-only parsing showed the hashes. A heading line is a
+    /// bold line instead (as the Claude Code hook already sends it); "#tag" and "#123" aren't headings.
+    func testMarkdownHeadingsAreBoldLines() {
+        XCTAssertEqual(LimitedMarkdown.plainText("# Plan\n## Next *steps*\n#123 and #tag\n####### seven"),
+                       "Plan\nNext steps\n#123 and #tag\n####### seven")
+        let r = LimitedMarkdown.render("## Next")
+        XCTAssertEqual(r.runs.first?.inlinePresentationIntent, .stronglyEmphasized)
     }
 
     func testMarkdownBulletsAndLengthLimit() {

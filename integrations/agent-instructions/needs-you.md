@@ -44,7 +44,7 @@ If no hub answers, the CLI queues the item and still exits 0: don't retry in a l
 
 - **Key:** `<context>:<project-or-ticket>:<reason>`, for example `work:ACME-456:ssm-flag` or `personal:blog:cert-expiring`. Stable and specific: posting the same key again updates the card instead of adding one. Never a timestamp, run id or session id. Use the prefix the user or the project's docs give you.
 - **Title:** the action, first. "ACME-123: approve the prod deploy", not "Deploy status". At most 100 characters.
-- **Body:** why, the options, and where the question already lives (a PR thread, a ticket comment). At most 2,000 characters of Markdown; no HTML or images.
+- **Body:** why, the options, and where the question already lives (a PR thread, a ticket comment). At most 2,000 characters. The card renders **bold**, *italic*, `code`, ~~strike~~, [links](https://example.com), `- ` lists and line breaks; a `#` heading shows as a bold line. Tables, block quotes, HTML and images show as plain text.
 - **Links:** where they act, as deep as possible, that place first (the hotkey opens the first link): a PR's `/pull/<n>/files`, a check run, a Slack permalink, a Jira `/browse/<KEY>`. At most 6. Schemes `https`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`; `vscode://`/`cursor://` only as `file/<abs path>[:line[:col]]`, `vscode-remote/ssh-remote+<host>[/<path>]` or `anthropic.claude-code/open?session=<id>`.
 - **Priority:** `urgent` = broken now or someone is blocked today (breaks through snooze; rare). `normal` = today (the default). `low` = this week.
 - **Context:** `work` or `personal`; it decides when the card is prominent. Follow `NEEDS_YOU_AGENT_CONTEXT` if it's set; without `--context` the CLI uses this machine's default.

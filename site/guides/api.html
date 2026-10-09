@@ -187,7 +187,7 @@ all absent from hubs up to 0.1.2; <code>hub_id</code>, <code>name</code>, <code>
 <tbody>
 <tr><td><code>key</code></td><td>string</td><td>≤ 200 chars, only <code>A-Z a-z 0-9 . _ : - / @ # + =</code>; <code>""</code> is a 400 (leave it out, or send <code>null</code>, for no key)</td><td>the new item's id (so no dedupe)</td></tr>
 <tr><td><code>title</code></td><td>string</td><td>required, 1–100 chars after trimming, no control characters (see below)</td><td></td></tr>
-<tr><td><code>body</code></td><td>string</td><td>≤ 2,000 chars, markdown; newlines (<code>\n</code>, <code>\r</code>) and tabs allowed</td><td>empty</td></tr>
+<tr><td><code>body</code></td><td>string</td><td>≤ 2,000 chars, markdown (the Mac renders bold, italic, code, strikethrough, links, <code>- </code> lists and <code>#</code> headings as bold lines; the rest as plain text); newlines (<code>\n</code>, <code>\r</code>) and tabs allowed</td><td>empty</td></tr>
 <tr><td><code>context</code></td><td>string</td><td><code>work</code> or <code>personal</code> (case-insensitive)</td><td><code>work</code></td></tr>
 <tr><td><code>kind</code></td><td>string</td><td><code>needs</code>, <code>done</code> or <code>info</code> (case-insensitive)</td><td><code>needs</code></td></tr>
 <tr><td><code>priority</code></td><td>string</td><td><code>urgent</code>, <code>normal</code> or <code>low</code> (case-insensitive)</td><td><code>normal</code></td></tr>

@@ -1,7 +1,7 @@
 import Foundation
 
-/// The card body renderer: bold, italic, code, simple lists and allow-listed links.
-/// No HTML, no images (mac/README.md, "Design").
+/// The card body renderer: bold, italic, code, simple lists, headings as bold lines and
+/// allow-listed links. No HTML, no images, no tables or block quotes (mac/README.md, "Design").
 public enum LimitedMarkdown {
     public static let maxLength = 2_000
 
@@ -55,9 +55,20 @@ public enum LimitedMarkdown {
                 if rest.hasPrefix("- ") || rest.hasPrefix("* ") || rest.hasPrefix("+ ") {
                     return indent + "• " + rest.dropFirst(2)
                 }
+                if indent.count < 4, let heading = heading(rest) { return "**" + heading + "**" }
                 return line
             }
             .joined(separator: "\n")
+    }
+
+    /// "## Next steps" -> "Next steps": one to six `#` and a space (so "#123" and "#tag"
+    /// stay text), closing hashes and bold markers dropped. nil when it isn't a heading.
+    static func heading<S: StringProtocol>(_ line: S) -> String? {
+        let hashes = line.prefix(while: { $0 == "#" })
+        guard (1...6).contains(hashes.count), line.dropFirst(hashes.count).first == " " else { return nil }
+        var text = line.dropFirst(hashes.count).trimmingCharacters(in: CharacterSet(charactersIn: " #"))
+        if text.count > 4, text.hasPrefix("**"), text.hasSuffix("**") { text = String(text.dropFirst(2).dropLast(2)) }
+        return text.isEmpty ? nil : text
     }
 
     /// Plain-text fallback (used for previews and accessibility).
