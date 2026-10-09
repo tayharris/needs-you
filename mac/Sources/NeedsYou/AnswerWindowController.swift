@@ -60,12 +60,8 @@ final class AnswerWindowController: NSObject, NSWindowDelegate {
         previousApp = nil
     }
 
-    /// "Answer opencode · acme-web", from the item's source.
-    static func title(_ item: Item) -> String {
-        let agent = item.source?.agent.flatMap { $0.isEmpty ? nil : $0 } ?? "the agent"
-        let project = item.source?.project.flatMap { $0.isEmpty ? nil : $0 }
-        return "Answer \(agent)" + (project.map { " \u{00B7} \($0)" } ?? "")
-    }
+    /// "Answer opencode on devbox · acme-web", from the item's source.
+    static func title(_ item: Item) -> String { AnswerPolicy.windowTitle(item) }
 
     // MARK: Debug snapshot
 
@@ -156,6 +152,10 @@ private struct AnswerSheet: View {
             }
             .font(.system(size: 11))
             .fixedSize(horizontal: false, vertical: true)
+            Text(AnswerPolicy.windowWarning)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Text("\(text.unicodeScalars.count)/\(AnswerPolicy.maxTextLength)")
                     .font(.system(size: 10).monospacedDigit())

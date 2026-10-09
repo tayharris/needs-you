@@ -390,7 +390,9 @@ for an item with <code>allow_other: true</code>: one line, 1–1,000 characters 
 bidi or line-separator characters, typed by the person in the Mac's answer window. A
 single-choice item takes exactly one label <strong>or</strong> <code>text</code> (then <code>selected</code> is <code>[]</code> or absent);
 a <code>multi_select</code> item takes any labels plus <code>text</code>, at least one of them. An item without
-<code>allow_other</code> takes no <code>text</code> (<code>400</code>, <code>answers[i].text</code>).</li>
+<code>allow_other</code> takes no <code>text</code> (<code>400</code>, <code>answers[i].text</code>). Words holding a needs-you token,
+invite code or peer secret (<code>ny_…</code>, <code>nyi_…</code>, <code>nyp_…</code>) are refused (<code>400 secret_in_text</code>,
+<code>answers[i].text</code>); other token-shaped words go to the agent as typed.</li>
 </ul>
 <div class="code"><pre><code class="language-json">{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
  "answers": [{"selected": [], "text": "MySQL, the team knows it"}]}</code></pre></div>

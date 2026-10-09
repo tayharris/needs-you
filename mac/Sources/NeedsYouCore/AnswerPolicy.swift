@@ -136,6 +136,21 @@ public enum AnswerPolicy {
         return .ok(text)
     }
 
+    /// The answer window's title: who asks, and on which machine ("Answer Claude on devbox ·
+    /// acme-web"). Each part is the sender's own text, cleaned to one short line.
+    public static func windowTitle(_ item: Item) -> String {
+        func part(_ s: String?) -> String? {
+            let c = OrcaWorktrees.clean(s ?? "", limit: 40)
+            return c.isEmpty ? nil : c
+        }
+        return "Answer \(part(item.source?.agent) ?? "the agent")"
+            + (part(item.source?.host).map { " on \($0)" } ?? "")
+            + (part(item.source?.project).map { " \u{00B7} \($0)" } ?? "")
+    }
+
+    /// Under the answer window's field, always: the words go to an agent, as typed.
+    public static let windowWarning = "Never type a password or token here: the agent gets these words as typed."
+
     /// The button that opens the answer window for a question: "Other…" next to options,
     /// "Answer…" for a question without them. nil when it takes no typed words.
     public static func otherTitle(_ q: ItemQuestionItem) -> String? {
@@ -175,6 +190,7 @@ public enum AnswerPolicy {
         case "not_open"?: return "This card is closed."
         case "not_answerable"?: return "This question can only be answered in the terminal."
         case "rate_limited"?: return "Too many answers just now: wait a moment."
+        case "secret_in_text"?: return "Not sent: your words hold a needs-you token or invite code. Never send those."
         default: return "Not taken (\(code ?? "error")): answer in the terminal."
         }
     }
@@ -189,8 +205,12 @@ public enum AnswerPolicy {
     /// The items whose picks or answer state (`stamps`, by item id) no longer apply: the item
     /// is gone, or a re-post changed it. Without this a "Sent to the agent" from an earlier
     /// question would keep a new one locked, and old picks could show on new options.
-    public static func staleAnswerIDs(stamps: [String: String], items: [String: Item]) -> Set<String> {
+    /// `kept`: the ids with picks, typed words or an answer state; one without a stamp counts
+    /// as stale too (nothing says which version of the question it was made for).
+    public static func staleAnswerIDs(stamps: [String: String], items: [String: Item],
+                                      kept: Set<String> = []) -> Set<String> {
         Set(stamps.filter { id, stamp in items[id].map { Self.stamp($0) != stamp } ?? true }.keys)
+            .union(kept.subtracting(stamps.keys))
     }
 
     /// Does the question card show "Answer in the terminal"? While it waits for an answer

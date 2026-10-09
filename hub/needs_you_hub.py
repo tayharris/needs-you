@@ -121,6 +121,9 @@ MAX_OPTION_LABEL = 80
 MAX_OPTION_DESCRIPTION = 200
 # An answer's own words ("Other"), for a question item with allow_other: one line.
 MAX_ANSWER_TEXT = 1000
+# needs-you's own secrets (tokens, invite codes, peer secrets): never in item text (hard rule
+# 3), so never in typed words either; other token-shaped words go to the agent as typed.
+OWN_SECRET_RE = re.compile(r"(?:\b|(?<=%[0-9A-Fa-f]{2}))ny[ip]?_[A-Za-z0-9_-]{16,}")
 MAX_SOURCE_FIELD = 100
 # Status records (ADR 0011, docs/API.md "Status records"): quiet, keyed, expiring, never items.
 STATUS_TYPES = ("usage", "progress")
@@ -703,6 +706,9 @@ def validate_answers(data: Any, question: Dict[str, Any]) -> List[Dict[str, Any]
                 raise _invalid(path + ".text", "%s.text: this question takes only its options" % path)
             if _LINE_SEP_RE.search(text):
                 raise _invalid(path + ".text", "%s.text contains a line break (U+2028/U+2029)" % path)
+            if OWN_SECRET_RE.search(text):
+                raise ApiError(400, "secret_in_text", "%s.text holds a needs-you token, invite code or "
+                               "peer secret; those never go into a card" % path, path + ".text")
         labels = [o["label"] for o in item.get("options") or []]
         if not sel and text is None:
             raise _invalid(path + ".selected", "%s.selected must name at least one option" % path)
@@ -743,7 +749,7 @@ def _peer_answer(raw: Any) -> Optional[List[Dict[str, Any]]]:
                 rec["text"] = _str_field(ans, "text", MAX_ANSWER_TEXT)
             except ApiError:
                 return None
-            if not rec["text"] or _LINE_SEP_RE.search(rec["text"]):
+            if not rec["text"] or _LINE_SEP_RE.search(rec["text"]) or OWN_SECRET_RE.search(rec["text"]):
                 return None
         if not sel and "text" not in rec:
             return None

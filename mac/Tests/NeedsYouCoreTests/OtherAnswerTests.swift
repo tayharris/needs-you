@@ -19,6 +19,7 @@ final class OtherAnswerTests: XCTestCase {
         ("testWithTextSaysWhenTheAnswerIsWhole", testWithTextSaysWhenTheAnswerIsWhole),
         ("testTypedAnswer", testTypedAnswer),
         ("testTexts", testTexts),
+        ("testWindowSaysWhoAsksAndWarns", testWindowSaysWhoAsksAndWarns),
     ]
     static var asyncTests = [
         ("testDemoFeedTakesWords", testDemoFeedTakesWords),
@@ -147,6 +148,19 @@ final class OtherAnswerTests: XCTestCase {
                      answer: [ItemAnswer(selected: [], text: "MySQL"), ItemAnswer(selected: ["Tracing"], text: "Logs")])
         i.answeredBy = "work-mac"
         XCTAssertEqual(AnswerPolicy.answeredText(i), "Answered: \u{201C}MySQL\u{201D} · Tracing, \u{201C}Logs\u{201D} (work-mac)")
+    }
+
+    /// The answer window names the agent, the machine and the project (each one cleaned
+    /// line), and always says not to type a password or token.
+    func testWindowSaysWhoAsksAndWarns() {
+        var i = item(ItemQuestion(items: [db], answerable: true))
+        i.source = ItemSource(host: "devbox", agent: "claude-code", project: "acme-web")
+        XCTAssertEqual(AnswerPolicy.windowTitle(i), "Answer claude-code on devbox \u{00B7} acme-web")
+        i.source = ItemSource(host: "dev\u{202E}box", agent: "", project: String(repeating: "p", count: 90))
+        let t = AnswerPolicy.windowTitle(i)
+        XCTAssertTrue(t.hasPrefix("Answer the agent on dev box \u{00B7} "), t)
+        XCTAssertTrue(t.count <= 100, t)
+        XCTAssertTrue(AnswerPolicy.windowWarning.contains("password"))
     }
 
     func testDemoFeedTakesWords() async throws {

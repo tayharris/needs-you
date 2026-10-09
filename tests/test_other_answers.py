@@ -85,6 +85,18 @@ class TextAnswers(OtherCase):
         status, got = self.answer(item, answers)
         self.assertEqual((status, got["answer"][0]["text"]), (200, words))
 
+    def test_a_needs_you_secret_is_refused(self):
+        """Hard rule 3: needs-you's own tokens, invite codes and peer secrets never go into item
+        text, an answer's included (it is stored, replicated and passed to the agent). Other
+        token-shaped words still go as typed (the test above); the error doesn't echo it."""
+        item = self.ask()
+        for secret in ("ny_" + "A1b2C3d4e5F6g7H8i9J0k1L2m3N4o5P6", "nyi_AbCdEfGhIjKlMnOpQrStUvWx",
+                       "nyp_" + "Zz9" * 14, "x%3Dny_" + "Q" * 30):
+            status, err = self.answer(item, [{"text": "here: " + secret}] + self.GOOD[1:])
+            self.assertEqual((status, err.get("error"), err.get("field")), (400, "secret_in_text", "answers[0].text"))
+            self.assertNotIn(secret[-12:], str(err))
+        self.assertEqual(self.answer(item, [{"text": "nyc_office, any_thing"}] + self.GOOD[1:])[0], 200)
+
     def test_refused(self):
         item = self.ask()
         rest = self.GOOD[1:]
