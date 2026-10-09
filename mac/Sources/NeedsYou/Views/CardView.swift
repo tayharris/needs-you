@@ -34,15 +34,11 @@ struct CardView: View {
 
                 let mode = model.settings.ui.cardBodies
                 let expanded = model.expandedCards.contains(item.id)
-                // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body).
+                // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body),
+                // and what's left ("Answer in Claude.", the folder and session) comes after the question.
                 let body = QuestionDisplay.body(item)
-                if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
-                    Text(LimitedMarkdown.render(body))
-                        .font(Theme.body(model.bodyFont))
-                        .foregroundStyle(Theme.text.opacity(0.85))
-                        .tint(Theme.accent)
-                        .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
-                        .fixedSize(horizontal: false, vertical: true)
+                if item.question == nil, let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                    CardBodyText(text: body, mode: mode, expanded: expanded, model: model)
                 }
 
                 if !item.steps.isEmpty {
@@ -78,6 +74,9 @@ struct CardView: View {
                         }
                         .buttonStyle(.plain)
                         .help("Show the question and its choices")
+                    }
+                    if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
+                        CardBodyText(text: body, mode: mode, expanded: expanded, model: model)
                     }
                 }
 
@@ -122,6 +121,23 @@ struct CardView: View {
                 .animation(.easeOut(duration: 0.6), value: model.highlightedItem)
         )
         .id(item.id)
+    }
+}
+
+/// The card's body text (limited markdown), cut to the card text mode's lines.
+private struct CardBodyText: View {
+    let text: String
+    let mode: CardBodyMode
+    let expanded: Bool
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        Text(LimitedMarkdown.render(text))
+            .font(Theme.body(model.bodyFont))
+            .foregroundStyle(Theme.text.opacity(0.85))
+            .tint(Theme.accent)
+            .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
