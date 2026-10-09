@@ -1,0 +1,1053 @@
+#!/usr/bin/env python3
+"""needs-you-jira: turn changes on the Jira issues assigned to you into needs-you cards.
+
+  needs-you-jira [--dry-run] [--verbose] [--state PATH]
+
+Run it every ~5 minutes (cron, a systemd user timer or a LaunchAgent) on one machine. It
+is opt-in: it does nothing until NEEDS_YOU_JIRA_SITE is set. Each run:
+
+  1. A search for your issues updated since the last run (Jira Cloud: GET
+     /rest/api/3/search/jql, paged with nextPageToken; Data Center 8.14+: GET
+     /rest/api/2/search), with each issue's changelog, so it knows who moved it.
+  2. A second search for your open issues (statusCategory != Done): an issue that was
+     yours and isn't in it any more was unassigned (or left your filter).
+  3. For an issue whose `updated` moved, its latest comments, to count new ones and see
+     whether one mentions you. Comment bodies are read for that and never copied.
+  4. A status change, new comment, mention or new assignment is diffed against the last
+     run's saved state and becomes one card per issue, updated in place (the title says
+     the latest event). It is re-posted every run with an expiry of 3x the interval and
+     resolved when the issue reaches Done, is no longer yours, when you made the latest
+     change (you've already acted), or after 24 h with nothing new.
+
+The first run (and the first after the scope settings change) only records what's there:
+installing it never posts a burst of old changes.
+
+Everything read from Jira is untrusted: only the issue summary and status name reach a
+card (cleaned, redacted, truncated); comment bodies and descriptions never do. The token
+is read from a mode-600 file and never logged, printed or stored. It always exits 0.
+
+Config (environment, else ~/.config/needs-you/env):
+  NEEDS_YOU_JIRA_SITE        https://acme.atlassian.net, or the Data Center base URL (https only).
+                             Unset: the poller does nothing.
+  NEEDS_YOU_JIRA_AUTH        cloud | dc (default: cloud for *.atlassian.net, else dc)
+  NEEDS_YOU_JIRA_EMAIL       your Atlassian account email (cloud only)
+  NEEDS_YOU_JIRA_TOKEN_FILE  file holding the API token (cloud) or personal access token (dc);
+                             default ~/.config/needs-you/jira-token. Must be mode 600 (or 400)
+                             and yours: a file others can read is refused.
+  NEEDS_YOU_JIRA_EVENTS      status,comment,assigned,mention (default all); "-mention" drops one
+  NEEDS_YOU_JIRA_STATUSES    Blocked=urgent,In Review=normal,Backlog=off,*=low: the priority of a
+                             card for an issue in that status, "off" for no status card;
+                             statuses not listed get the "*" rule (no "*": no status card).
+                             Unset: every status change, low.
+  NEEDS_YOU_JIRA_PROJECTS    ACME=work:normal,OPS=work:urgent: the projects to watch (only these),
+                             each one's context and base priority. Unset: every project.
+  NEEDS_YOU_JIRA_JQL_EXTRA   more JQL, added as "AND (<it>)", so it can only narrow the search:
+                             'labels != noise'. Refused if its quotes or parentheses don't balance
+                             or it has ORDER BY.
+  NEEDS_YOU_JIRA_WATCHING    1 = also issues you watch (no "assigned" cards for those)
+  NEEDS_YOU_JIRA_INTERVAL    minutes between runs (default 5); cards expire after 3x this
+  NEEDS_YOU_JIRA_MAX_CARDS   at most this many cards open at once (default 20; urgent first)
+  NEEDS_YOU_BIN              path to the needs-you CLI (default: on PATH, else ~/.local/bin)
+
+State: ~/.local/state/needs-you/jira.json (mode 600): issue keys, statuses, last comment ids,
+what it posted. No token, no comment text.
+Python 3.9+ standard library only.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import datetime
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import ssl
+import stat
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+ALL_EVENTS = ("status", "comment", "assigned", "mention")
+EVENT_ALIASES = {"assign": "assigned", "comments": "comment", "mentions": "mention"}
+PRIORITIES = ("low", "normal", "urgent")
+RANK = {"low": 0, "normal": 1, "urgent": 2}
+EVENT_FLOOR = {"comment": "normal", "mention": "normal", "status": "low", "assigned": "low"}
+FAILS_BEFORE_CARD = 3
+MAX_AGE_H = 24.0
+TITLE_MAX = 100
+SUBJECT_MAX = 70
+PAGE_SIZE = 100
+MAX_PAGES = 10            # per search: 1,000 issues; a longer open list isn't trusted for unassigns
+COMMENT_FETCHES = 30      # issues whose comments are read per run; the rest wait for the next run
+MIN_WINDOW_MIN = 15
+MAX_WINDOW_MIN = 24 * 60
+HTTP_TIMEOUT = 30
+KEY_SAFE = re.compile(r"[^A-Za-z0-9._:/@#+=-]")
+ISSUE_KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,30}-[1-9][0-9]{0,9}$")
+PROJECT_KEY = re.compile(r"^[A-Z][A-Z0-9_]{0,30}$")
+SEARCH_FIELDS = "summary,status,updated,project,assignee,creator"
+
+
+# ---------------------------------------------------------------------------
+# Config, state, text hygiene
+# ---------------------------------------------------------------------------
+
+def warn(msg: str) -> None:
+    sys.stderr.write("needs-you-jira: %s\n" % msg)
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].strip()
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
+def config_base() -> str:
+    return os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+
+
+def state_base() -> str:
+    return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+
+
+def outbox_has_backlog() -> bool:
+    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
+    try:
+        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
+    except OSError:
+        return False
+
+
+def _csv(value: str) -> List[str]:
+    return [p.strip() for p in (value or "").split(",") if p.strip()]
+
+
+class ConfigError(Exception):
+    pass
+
+
+def check_jql_extra(raw: str) -> str:
+    """NEEDS_YOU_JIRA_JQL_EXTRA, made safe to AND onto the poller's own JQL: returned in
+    parentheses, so it can only narrow the search (an "OR ..." in it can't widen the
+    assignee clause). A leading "AND" is dropped. Refused (ConfigError) when it has control
+    characters, unbalanced quotes or parentheses (which could close ours), or ORDER BY."""
+    s = (raw or "").strip()
+    if re.match(r"(?i)and\s", s):
+        s = s[3:].strip()
+    if not s:
+        return ""
+    if len(s) > 500:
+        raise ConfigError("NEEDS_YOU_JIRA_JQL_EXTRA is longer than 500 characters")
+    if re.search(r"[\x00-\x1f\x7f]", s):
+        raise ConfigError("NEEDS_YOU_JIRA_JQL_EXTRA has a control character or a line break")
+    depth, quote, esc, outside = 0, "", False, []
+    for ch in s:
+        if quote:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == quote:
+                quote = ""
+            outside.append(" ")
+            continue
+        if ch in "\"'":
+            quote = ch
+            outside.append(" ")
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                raise ConfigError("NEEDS_YOU_JIRA_JQL_EXTRA closes a parenthesis it didn't open")
+        outside.append(ch)
+    if quote:
+        raise ConfigError("NEEDS_YOU_JIRA_JQL_EXTRA has an unclosed quote")
+    if depth:
+        raise ConfigError("NEEDS_YOU_JIRA_JQL_EXTRA has an unclosed parenthesis")
+    if re.search(r"(?i)\border\s+by\b", "".join(outside)):
+        raise ConfigError("NEEDS_YOU_JIRA_JQL_EXTRA can't have ORDER BY")
+    return "(" + s + ")"
+
+
+def site_slug(host: str) -> str:
+    """acme.atlassian.net -> acme; a Data Center host stays whole (jira.acme.example)."""
+    host = host.lower().rstrip(".")
+    if host.endswith(".atlassian.net") and host.count(".") == 2:
+        host = host.split(".", 1)[0]
+    return KEY_SAFE.sub("-", host)[:60] or "jira"
+
+
+class Config:
+    def __init__(self) -> None:
+        if os.environ.get("NEEDS_YOU_CONFIG"):
+            path = os.environ["NEEDS_YOU_CONFIG"]
+        else:
+            path = os.path.join(config_base(), "needs-you", "env")
+        f = read_env_file(path)
+        get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
+        self.errors: List[str] = []
+        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
+        self.default_context = ctx if ctx in ("work", "personal") else "work"
+        self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
+        local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
+        self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
+
+        # Site: https only, no credentials, query or fragment. Opt-in: unset means off.
+        self.site_raw = get("NEEDS_YOU_JIRA_SITE").strip()
+        self.enabled = bool(self.site_raw)
+        self.base = ""
+        self.slug = "jira"
+        u = urllib.parse.urlsplit(self.site_raw) if self.site_raw else None
+        if u is not None:
+            try:
+                hostname = u.hostname or ""
+                u.port  # noqa: B018 (raises on a bad port)
+            except ValueError:
+                hostname = ""
+            if hostname:
+                self.slug = site_slug(hostname)
+            if u.scheme != "https" or not hostname:
+                self.errors.append("NEEDS_YOU_JIRA_SITE must be an https:// URL")
+            elif u.username or u.password or u.query or u.fragment or re.search(r"[\s\x00-\x1f\x7f]", self.site_raw):
+                self.errors.append("NEEDS_YOU_JIRA_SITE must be a plain https://host[/path] URL")
+            else:
+                self.base = "https://%s%s" % (u.netloc.lower(), u.path.rstrip("/"))
+
+        auth = get("NEEDS_YOU_JIRA_AUTH").strip().lower()
+        if not auth:
+            auth = "cloud" if u is not None and (u.hostname or "").lower().endswith(".atlassian.net") else "dc"
+        if auth not in ("cloud", "dc"):
+            self.errors.append("NEEDS_YOU_JIRA_AUTH must be cloud or dc")
+        self.auth = auth
+        self.email = get("NEEDS_YOU_JIRA_EMAIL").strip()
+        if self.enabled and auth == "cloud" and not self.email:
+            self.errors.append("NEEDS_YOU_JIRA_EMAIL is needed for Jira Cloud (your Atlassian account email)")
+        self.token_file = os.path.expanduser(get("NEEDS_YOU_JIRA_TOKEN_FILE") or
+                                             os.path.join(config_base(), "needs-you", "jira-token"))
+
+        raw = [EVENT_ALIASES.get(e.lower(), e.lower()) for e in _csv(get("NEEDS_YOU_JIRA_EVENTS"))]
+        if raw and all(e.startswith("-") for e in raw):
+            off = {EVENT_ALIASES.get(e[1:], e[1:]) for e in raw}
+            self.events = {e for e in ALL_EVENTS if e not in off}
+        elif raw:
+            self.events = {e for e in raw if e in ALL_EVENTS}
+        else:
+            self.events = set(ALL_EVENTS)
+
+        # Statuses: name (case-insensitive) -> priority or "off"; None: every status, low.
+        self.statuses: Optional[Dict[str, str]] = None
+        if get("NEEDS_YOU_JIRA_STATUSES"):
+            self.statuses = {}
+            for pair in _csv(get("NEEDS_YOU_JIRA_STATUSES")):
+                name, sep, prio = pair.rpartition("=")
+                prio = prio.strip().lower()
+                if not sep or not name.strip() or prio not in PRIORITIES + ("off",):
+                    self.errors.append("NEEDS_YOU_JIRA_STATUSES: %r isn't Name=urgent|normal|low|off"
+                                       % safe_text(pair, 40))
+                    continue
+                self.statuses[name.strip().lower()] = prio
+
+        # Projects: KEY -> (context, base priority); empty: every project.
+        self.projects: Dict[str, Tuple[str, str]] = {}
+        for pair in _csv(get("NEEDS_YOU_JIRA_PROJECTS")):
+            key, _, rest = pair.partition("=")
+            key = key.strip().upper()
+            c, _, prio = rest.strip().lower().partition(":")
+            c = c or self.default_context
+            prio = prio or "low"
+            if not PROJECT_KEY.match(key) or c not in ("work", "personal") or prio not in PRIORITIES:
+                self.errors.append("NEEDS_YOU_JIRA_PROJECTS: %r isn't KEY=work|personal:low|normal|urgent"
+                                   % safe_text(pair, 40))
+                continue
+            self.projects[key] = (c, prio)
+
+        try:
+            self.jql_extra = check_jql_extra(get("NEEDS_YOU_JIRA_JQL_EXTRA"))
+        except ConfigError as e:
+            self.jql_extra = ""
+            self.errors.append(str(e))
+        self.watching = get("NEEDS_YOU_JIRA_WATCHING", "0").strip().lower() in ("1", "true", "yes", "on")
+        try:
+            self.interval_min = max(1.0, float(get("NEEDS_YOU_JIRA_INTERVAL", "5")))
+        except ValueError:
+            self.interval_min = 5.0
+        try:
+            self.max_cards = max(1, int(get("NEEDS_YOU_JIRA_MAX_CARDS", "20")))
+        except ValueError:
+            self.max_cards = 20
+
+    def scope(self) -> str:
+        """What decides which issues are tracked: when it changes, new issues are taken in
+        silently once instead of as "assigned" cards."""
+        s = json.dumps([self.base, self.auth, sorted(self.projects), self.jql_extra, self.watching])
+        return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
+
+    def project_rule(self, project: str) -> Tuple[str, str]:
+        return self.projects.get(project, (self.default_context, "low"))
+
+    def status_rule(self, status: str) -> Optional[str]:
+        """The priority for an issue in this status, or None for no status card."""
+        if self.statuses is None:
+            return "low"
+        rule = self.statuses.get(status.lower(), self.statuses.get("*"))
+        return None if rule in (None, "off") else rule
+
+    def jql(self, kind: str, window_min: int = MIN_WINDOW_MIN) -> str:
+        who = "assignee = currentUser()"
+        if self.watching:
+            who = "(assignee = currentUser() OR watcher = currentUser())"
+        parts = [who]
+        if self.projects:
+            parts.append("project in (%s)" % ", ".join(sorted(self.projects)))
+        if kind == "changed":
+            parts.append('updated >= "-%dm"' % window_min)
+        else:
+            parts.append("statusCategory != Done")
+        if self.jql_extra:
+            parts.append(self.jql_extra)
+        return " AND ".join(parts) + " ORDER BY updated DESC"
+
+
+_STRIP = re.compile("[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
+
+
+# --- needs-you redaction (begin) ---
+# Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
+# block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
+# integrations/mcp/needs_you_mcp.py and integrations/github/needs-you-github
+# (tests/test_redaction.py checks). Best effort: a secret that looks like a word isn't caught.
+# Every pattern runs in linear time on any input (tests/test_redaction.py times them): each one
+# starts on a literal and never backtracks over a run it has to give back.
+REDACTED = "[redacted]"
+# A %XX escape before a key (x%3Dghp_..., %22ghp_...) counts as a word's start.
+_SECRET_RAW = re.compile(r"(?:\b|(?<=%[0-9A-Fa-f]{2}))"
+                         r"(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_\w{16,}|sk-[A-Za-z0-9_-]{16,}"
+                         r"|xox[abpr]-[\w-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|ny[ip]?_[A-Za-z0-9_-]{8,}"
+                         r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}"
+                         r"|hf_\w{30,}|glptt-[\w-]{16,}|xapp-[\w-]{10,}|ya29\.[\w-]{20,})")
+# A webhook URL whose path is its secret: the host and the path's start stay.
+_WEBHOOK = re.compile(r"(hooks\.slack\.com/(?:services|workflows|triggers)/"
+                      r"|discord(?:app)?\.com/api/(?:v\d+/)?webhooks/)[\w/-]+")
+# A JWT: the whole run is taken greedily, then checked (a failed match never rescans the run).
+_JWT_RUN = re.compile(r"\beyJ[\w.-]+")
+_JWT = re.compile(r"eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]*")
+# A name ending in a secret's keyword, then its value (`:`, `=`, `=>`, or URL-encoded %3A/%3D).
+# Only the keyword is matched, never the name's prefix (PGPASSWORD, X_API_KEY, client_secret).
+# Keywords other than "password" start a word or follow _ or - (DB_PASS, not bypass).
+_SECRET_KV = re.compile(r"(?i)(password|(?<![a-z0-9])(?:passwd|pwd|pw|pass(?:phrase)?|token|secret"
+                        r"|(?:api|access|secret|private)[_-]?key|auth|credentials?|sig(?:nature)?))"
+                        r"([\"']?\s*(?:=>|[:=]|%3[ad])\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+# A command line's --password VALUE (with a space): _flag() checks the keyword ends a --flag.
+_SECRET_FLAG = re.compile(r"(?i)(?<=-)(password|passwd|token|secret|api-key)([ \t]+)(?!-)(\S+)")
+_SECRET_AUTH = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{8,}")
+_PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*?"
+                  r"(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|\Z)", re.S)
+_LONG_HEX = re.compile(r"\b[0-9A-Fa-f]{32,}\b")
+_LONG_RUN = re.compile(r"[A-Za-z0-9+/_=-]{40,}")
+_SPACES = re.compile(r"(\s+)")
+
+
+def _long_run(m):
+    s = m.group(0)
+    # base64-ish: digits and both cases, few separators (not a path or a branch name)
+    if (len(re.findall(r"[-_/]", s)) <= 3 and re.search(r"[0-9]", s) and re.search(r"[a-z]", s)
+            and re.search(r"[A-Z]", s)):
+        return REDACTED
+    return s
+
+
+def _jwt(m):
+    j = _JWT.match(m.group(0))
+    return REDACTED + m.group(0)[j.end():] if j else m.group(0)
+
+
+def _flag(m):
+    i = m.start()
+    while i > 0 and (m.string[i - 1].isalnum() or m.string[i - 1] in "-_"):
+        i -= 1
+    if m.string.startswith("--", i):
+        return m.group(1) + m.group(2) + REDACTED
+    return m.group(0)
+
+
+def _url_creds(word):
+    """scheme://user:<password>@host in one whitespace-free word: the password runs to the last
+    "@" before the query, so one holding "/" or "@" goes whole (a path's "@" may go with it)."""
+    parts = word.split("://")
+    for i in range(1, len(parts)):
+        seg = parts[i]
+        end = len(seg)
+        for c in "?#":
+            k = seg.find(c)
+            if 0 <= k < end:
+                end = k
+        at = seg.rfind("@", 0, end)
+        colon = seg.find(":", 0, at)
+        if at > 0 and 0 <= colon < at - 1 and "/" not in seg[:colon]:
+            parts[i] = seg[:colon + 1] + REDACTED + seg[at:]
+    return "://".join(parts)
+
+
+def redact(text):
+    text = _PEM.sub(REDACTED, text)
+    if "://" in text:
+        text = "".join(_url_creds(w) if "://" in w else w for w in _SPACES.split(text))
+    text = _WEBHOOK.sub(lambda m: m.group(1) + REDACTED, text)
+    text = _SECRET_RAW.sub(REDACTED, text)
+    text = _JWT_RUN.sub(_jwt, text)
+    text = _SECRET_KV.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _SECRET_FLAG.sub(_flag, text)
+    text = _SECRET_AUTH.sub(lambda m: m.group(1) + m.group(2) + REDACTED, text)
+    text = _LONG_HEX.sub(REDACTED, text)
+    return _LONG_RUN.sub(_long_run, text)
+# --- needs-you redaction (end) ---
+
+
+def safe_text(value: Any, limit: int) -> str:
+    """Untrusted Jira text, made fit for a card: no control, bidi or zero-width characters,
+    token-shaped text redacted, whitespace collapsed, truncated with an ellipsis."""
+    s = " ".join(redact(_STRIP.sub(" ", str(value or ""))).split())
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def md_escape(s: str) -> str:
+    """Body text is markdown: an untrusted status name must not become a link or emphasis."""
+    return re.sub(r"([\\`*_\[\]()<>#!|~])", r"\\\1", s)
+
+
+def load_state(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(path: str, state: Dict[str, Any]) -> None:
+    d = os.path.dirname(path)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    tmp = path + ".%d.tmp" % os.getpid()
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, indent=1, sort_keys=True)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def parse_time(value: Any) -> float:
+    """Jira's 2026-10-09T10:15:30.123+0000 (or +00:00, or Z) to epoch seconds; 0 if unparseable."""
+    s = str(value or "").strip()
+    if not s:
+        return 0.0
+    if s.endswith("Z"):
+        s = s[:-1] + "+0000"
+    m = re.match(r"^(.*[+-]\d\d):(\d\d)$", s)
+    if m:
+        s = m.group(1) + m.group(2)
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.datetime.strptime(s, fmt).timestamp()
+        except ValueError:
+            continue
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+# The token and Jira's REST API
+# ---------------------------------------------------------------------------
+
+class JiraError(Exception):
+    pass
+
+
+def read_token(path: str) -> str:
+    """The token file must be a regular file owned by you that nobody else can read or
+    write (mode 600 or 400). Anything else is refused: the strict choice."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as e:
+        raise ConfigError("can't open the token file %s (%s); put the token there with mode 600"
+                          % (path, e.strerror or type(e).__name__))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise ConfigError("the token file %s isn't a regular file" % path)
+        if hasattr(os, "getuid") and st.st_uid != os.getuid():
+            raise ConfigError("the token file %s isn't owned by you" % path)
+        if st.st_mode & 0o077:
+            raise ConfigError("the token file %s can be read or written by others: chmod 600 %s"
+                              % (path, path))
+        with os.fdopen(fd, "rb") as fh:
+            fd = -1
+            raw = fh.read(4096)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+    token = raw.decode("utf-8", "replace").strip()
+    if not token or re.search(r"[\s\x00-\x1f\x7f]", token):
+        raise ConfigError("the token file %s should hold just the token, on one line" % path)
+    return token
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: it would carry the Authorization header to wherever it points
+    (an SSO login page, another host). A redirect is an error the person has to look at."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        raise urllib.error.HTTPError(req.full_url, code, "redirected", headers, fp)
+
+
+class Jira:
+    def __init__(self, cfg: Config, token: str) -> None:
+        self.cfg = cfg
+        if cfg.auth == "cloud":
+            pair = ("%s:%s" % (cfg.email, token)).encode("utf-8")
+            self._auth = "Basic " + base64.b64encode(pair).decode("ascii")
+            self.api = cfg.base + "/rest/api/3"
+        else:
+            self._auth = "Bearer " + token
+            self.api = cfg.base + "/rest/api/2"
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=ssl.create_default_context()), _NoRedirect())
+        self.requests = 0
+
+    def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        url = self.api + path
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        if not url.startswith("https://"):
+            raise JiraError("refusing a non-https URL")
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Authorization", self._auth)
+        req.add_header("Accept", "application/json")
+        req.add_header("User-Agent", "needs-you-jira")
+        self.requests += 1
+        try:
+            with self._opener.open(req, timeout=HTTP_TIMEOUT) as resp:
+                body = resp.read(20 * 1024 * 1024)
+        except urllib.error.HTTPError as e:
+            raise JiraError(self._describe(e, path))
+        except (urllib.error.URLError, OSError, ssl.SSLError) as e:
+            reason = getattr(e, "reason", e)
+            raise JiraError("can't reach Jira at %s: %s" % (self.cfg.base, safe_text(reason, 120)))
+        try:
+            return json.loads(body.decode("utf-8"))
+        except ValueError:
+            raise JiraError("Jira answered %s with something that isn't JSON" % path.split("?")[0])
+
+    def _describe(self, e: urllib.error.HTTPError, path: str) -> str:
+        where = path.split("?")[0]
+        if e.code in (301, 302, 303, 307, 308):
+            return ("Jira redirected %s (HTTP %d): check NEEDS_YOU_JIRA_SITE, and that the token "
+                    "works without a browser login" % (where, e.code))
+        if e.code == 401:
+            return "Jira said 401 Unauthorized: check the token file%s" % (
+                " and NEEDS_YOU_JIRA_EMAIL" if self.cfg.auth == "cloud" else "")
+        if e.code == 403:
+            return "Jira said 403 Forbidden for %s" % where
+        if e.code == 429:
+            return "Jira rate-limited the poller (HTTP 429); it tries again next run"
+        detail = ""
+        try:
+            data = json.loads(e.read(65536).decode("utf-8"))
+            msgs = data.get("errorMessages") if isinstance(data, dict) else None
+            if isinstance(msgs, list) and msgs:
+                detail = ": " + safe_text("; ".join(str(m) for m in msgs[:3]), 200)
+        except (ValueError, OSError, AttributeError):
+            pass
+        return "Jira said HTTP %d for %s%s" % (e.code, where, detail)
+
+    def myself(self) -> Dict[str, str]:
+        data = self.get("/myself")
+        if not isinstance(data, dict):
+            raise JiraError("unexpected /myself answer")
+        me = {k: str(data.get(k) or "") for k in ("accountId", "name", "key")}
+        if not any(me.values()):
+            raise JiraError("Jira's /myself has no account id")
+        return me
+
+    def search(self, jql: str, expand: str = "") -> Tuple[List[Dict[str, Any]], bool]:
+        """(issues, complete). Cloud pages with nextPageToken, Data Center with startAt."""
+        out: List[Dict[str, Any]] = []
+        params: Dict[str, Any] = {"jql": jql, "fields": SEARCH_FIELDS, "maxResults": PAGE_SIZE}
+        if expand:
+            params["expand"] = expand
+        for _ in range(MAX_PAGES):
+            if self.cfg.auth == "cloud":
+                data = self.get("/search/jql", params)
+            else:
+                data = self.get("/search", dict(params, startAt=len(out)))
+            if not isinstance(data, dict) or not isinstance(data.get("issues"), list):
+                raise JiraError("unexpected search answer")
+            page = [i for i in data["issues"] if isinstance(i, dict)]
+            out.extend(page)
+            if self.cfg.auth == "cloud":
+                token = data.get("nextPageToken")
+                if not token or data.get("isLast") is True or not page:
+                    return out, True
+                params["nextPageToken"] = str(token)
+            else:
+                try:
+                    total = int(data.get("total") or 0)
+                except (TypeError, ValueError):
+                    total = 0
+                if not page or len(out) >= total:
+                    return out, True
+        return out, False
+
+    def comments(self, key: str) -> List[Dict[str, Any]]:
+        data = self.get("/issue/%s/comment" % urllib.parse.quote(key, safe=""),
+                        {"orderBy": "-created", "maxResults": 50})
+        if not isinstance(data, dict) or not isinstance(data.get("comments"), list):
+            raise JiraError("unexpected comments answer for %s" % key)
+        return [c for c in data["comments"] if isinstance(c, dict)]
+
+
+# ---------------------------------------------------------------------------
+# Who did what (identities, changelog, mentions)
+# ---------------------------------------------------------------------------
+
+def is_me(user: Any, me: Dict[str, str]) -> bool:
+    if not isinstance(user, dict):
+        return False
+    for k in ("accountId", "key", "name"):
+        if me.get(k) and str(user.get(k) or "") == me[k]:
+            return True
+    return False
+
+
+def latest_change(issue: Dict[str, Any], field: str) -> Tuple[float, Optional[Dict[str, Any]]]:
+    """(time, author) of the latest changelog entry that changed `field`, or (0, None)."""
+    best: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
+    histories = ((issue.get("changelog") or {}).get("histories")) if isinstance(issue.get("changelog"), dict) else None
+    for h in histories or []:
+        if not isinstance(h, dict):
+            continue
+        items = h.get("items") if isinstance(h.get("items"), list) else []
+        if not any(isinstance(i, dict) and (i.get("fieldId") == field or str(i.get("field") or "").lower() == field)
+                   for i in items):
+            continue
+        t = parse_time(h.get("created"))
+        if t >= best[0]:
+            best = (t, h.get("author") if isinstance(h.get("author"), dict) else None)
+    return best
+
+
+def _adf_mentions(node: Any, me: Dict[str, str], depth: int = 0) -> bool:
+    if depth > 60:
+        return False
+    if isinstance(node, dict):
+        if node.get("type") == "mention":
+            attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+            if me.get("accountId") and str(attrs.get("id") or "") == me["accountId"]:
+                return True
+        return any(_adf_mentions(v, me, depth + 1) for k, v in node.items() if k == "content")
+    if isinstance(node, list):
+        return any(_adf_mentions(v, me, depth + 1) for v in node)
+    return False
+
+
+def mentions_me(body: Any, me: Dict[str, str]) -> bool:
+    """Cloud bodies are Atlassian Document Format (mention nodes carry the account id); Data
+    Center bodies are wiki markup ([~name], [~accountid:...]). The body is only searched."""
+    if isinstance(body, (dict, list)):
+        return _adf_mentions(body, me)
+    text = str(body or "")
+    for k in ("name", "key"):
+        if me.get(k) and ("[~%s]" % me[k]).lower() in text.lower():
+            return True
+    return bool(me.get("accountId")) and ("[~accountid:%s]" % me["accountId"]) in text
+
+
+def comment_id(c: Dict[str, Any]) -> int:
+    try:
+        return int(str(c.get("id") or "0"))
+    except ValueError:
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Issues -> tracked records -> cards
+# ---------------------------------------------------------------------------
+
+def issue_fields(issue: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    key = str(issue.get("key") or "")
+    if not ISSUE_KEY.match(key):
+        return None
+    f = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    st = f.get("status") if isinstance(f.get("status"), dict) else {}
+    cat = st.get("statusCategory") if isinstance(st.get("statusCategory"), dict) else {}
+    proj = f.get("project") if isinstance(f.get("project"), dict) else {}
+    pkey = str(proj.get("key") or key.rsplit("-", 1)[0]).upper()
+    return {"key": key, "project": pkey if PROJECT_KEY.match(pkey) else key.rsplit("-", 1)[0],
+            "summary": safe_text(f.get("summary"), 200), "status": safe_text(st.get("name"), 40),
+            "done": str(cat.get("key") or "").lower() == "done", "updated": str(f.get("updated") or "")[:40],
+            "assignee": f.get("assignee"), "creator": f.get("creator")}
+
+
+def _title(prefix: str, subject: str) -> str:
+    room = TITLE_MAX - len(prefix) - 2
+    return prefix + (": " + safe_text(subject, min(SUBJECT_MAX, room)) if subject and room > 10 else "")
+
+
+def event_title(event: str, key: str, status: str, summary: str) -> str:
+    if event == "status":
+        return _title("%s moved to %s" % (key, status or "a new status"), summary)
+    if event == "comment":
+        return _title("New comment on %s" % key, summary)
+    if event == "mention":
+        return _title("You were mentioned on %s" % key, summary)
+    return _title("Assigned to you: %s" % key, summary)
+
+
+def body_line(rec: Dict[str, Any]) -> str:
+    n = int((rec.get("card") or {}).get("comments") or 0)
+    parts = []
+    if n:
+        parts.append("%d new comment%s" % (n, "" if n == 1 else "s"))
+    if rec.get("status"):
+        parts.append(("status " if parts else "Status ") + md_escape(rec["status"]))
+    return ", ".join(parts)
+
+
+def issue_card(cfg: Config, rec: Dict[str, Any]) -> Dict[str, Any]:
+    c = rec["card"]
+    ctx, base = cfg.project_rule(rec["project"])
+    prio = base
+    for p in (cfg.status_rule(rec.get("status") or ""), EVENT_FLOOR.get(c["event"], "low")):
+        if p and RANK[p] > RANK[prio]:
+            prio = p
+    link = "%s/browse/%s" % (cfg.base, rec["key"])
+    if c.get("cid") and c["event"] in ("comment", "mention"):
+        link += "?focusedCommentId=%d" % int(c["cid"])
+    return {"key": KEY_SAFE.sub("-", "%s:jira:%s:%s" % (ctx, cfg.slug, rec["key"]))[:200],
+            "title": event_title(c["event"], rec["key"], rec.get("status") or "", rec.get("summary") or "")[:TITLE_MAX],
+            "priority": prio, "context": ctx, "project": rec["project"], "event": c["event"], "src": "jira",
+            "links": [["Open", link]], "body": body_line(rec)}
+
+
+def card_hash(c: Dict[str, Any]) -> str:
+    keep = {k: c.get(k) for k in ("title", "priority", "context", "links", "body", "project", "event")}
+    return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+class Run:
+    """One poll: fetch, diff against the saved issues, decide each issue's card."""
+
+    def __init__(self, cfg: Config, jira: Jira, state: Dict[str, Any], now: float, verbose: bool) -> None:
+        self.cfg, self.jira, self.state, self.now, self.verbose = cfg, jira, state, now, verbose
+        self.issues: Dict[str, Dict[str, Any]] = {
+            k: v for k, v in (state.get("issues") or {}).items()
+            if isinstance(v, dict) and ISSUE_KEY.match(k)} if isinstance(state.get("issues"), dict) else {}
+        self.errors: List[str] = []
+        self.me: Dict[str, str] = {}
+
+    def identity(self) -> None:
+        cached = self.state.get("me")
+        if (isinstance(cached, dict) and cached.get("base") == self.cfg.base and cached.get("auth") == self.cfg.auth
+                and self.now - float(cached.get("at") or 0) < 86400):
+            self.me = {k: str(cached.get(k) or "") for k in ("accountId", "name", "key")}
+            return
+        self.me = self.jira.myself()
+        self.state["me"] = dict(self.me, base=self.cfg.base, auth=self.cfg.auth, at=self.now)
+
+    def window(self) -> int:
+        last = float(self.state.get("ok_at") or 0)
+        if not last:
+            return MIN_WINDOW_MIN
+        mins = int((self.now - last) / 60) + 5
+        return max(MIN_WINDOW_MIN, min(MAX_WINDOW_MIN, mins))
+
+    def poll(self) -> None:
+        self.identity()
+        changed, _ = self.jira.search(self.cfg.jql("changed", self.window()), expand="changelog")
+        open_list, complete = self.jira.search(self.cfg.jql("open"))
+        if self.verbose:
+            warn("%d issues changed, %d open%s" % (len(changed), len(open_list), "" if complete else " (truncated)"))
+        silent = self.state.get("scope") != self.cfg.scope() or not isinstance(self.state.get("issues"), dict)
+        seen_open: Set[str] = set()
+        fetches = 0
+        for raw in changed:
+            f = issue_fields(raw)
+            if not f:
+                continue
+            if f["done"]:
+                self.issues.pop(f["key"], None)  # Done: the card resolves
+                continue
+            seen_open.add(f["key"])
+            prev = self.issues.get(f["key"])
+            if prev is None:
+                self.issues[f["key"]] = self.track(f)
+                if not silent:
+                    self.on_new(raw, f)
+            elif f["updated"] != prev.get("updated"):
+                if (self.cfg.events & {"comment", "mention"}) and fetches >= COMMENT_FETCHES:
+                    continue  # comments wait for the next run; `updated` isn't moved so it's seen again
+                fetches += 1 if self.cfg.events & {"comment", "mention"} else 0
+                self.on_change(raw, f, prev)
+        for raw in open_list:
+            f = issue_fields(raw)
+            if not f or f["done"]:
+                continue
+            seen_open.add(f["key"])
+            if f["key"] not in self.issues:
+                self.issues[f["key"]] = self.track(f)  # outside the window (the poller was off): no card
+            else:
+                rec = self.issues[f["key"]]
+                rec["summary"], rec["project"] = f["summary"], f["project"]
+        if complete:
+            for key in [k for k in self.issues if k not in seen_open]:
+                del self.issues[key]  # unassigned, or out of the filter: the card resolves
+        for rec in self.issues.values():
+            card = rec.get("card")
+            if isinstance(card, dict) and self.now - float(card.get("at") or 0) > MAX_AGE_H * 3600:
+                rec["card"] = None
+        self.state["scope"] = self.cfg.scope()
+        self.state["ok_at"] = self.now
+
+    def track(self, f: Dict[str, Any]) -> Dict[str, Any]:
+        return {"key": f["key"], "project": f["project"], "summary": f["summary"], "status": f["status"],
+                "updated": f["updated"], "assigned": is_me(f["assignee"], self.me), "cid": None, "card": None}
+
+    def set_card(self, rec: Dict[str, Any], event: str, cid: int = 0, new_comments: int = 0) -> None:
+        prev = rec.get("card") if isinstance(rec.get("card"), dict) else {}
+        rec["card"] = {"event": event, "at": self.now, "cid": cid or None,
+                       "comments": int(prev.get("comments") or 0) + new_comments}
+
+    def on_new(self, raw: Dict[str, Any], f: Dict[str, Any]) -> None:
+        """An issue that wasn't yours at the last run and is now: an "assigned" card, unless
+        you assigned it to yourself (or created it assigned to you) or only watch it."""
+        if "assigned" not in self.cfg.events or not is_me(f["assignee"], self.me):
+            return
+        t, who = latest_change(raw, "assignee")
+        if who is None and not t:
+            who = f["creator"]
+        if not is_me(who, self.me):
+            self.set_card(self.issues[f["key"]], "assigned")
+
+    def on_change(self, raw: Dict[str, Any], f: Dict[str, Any], rec: Dict[str, Any]) -> None:
+        """Diff one issue whose `updated` moved against what was saved; the latest event by
+        someone else sets the card, and a later action of yours clears it."""
+        theirs: List[Tuple[float, int, str, int]] = []  # (time, order, event, comment id)
+        mine = 0.0
+        new_theirs = 0
+        if f["status"] != rec.get("status"):
+            t, who = latest_change(raw, "status")
+            t = t or parse_time(f["updated"]) or self.now
+            if is_me(who, self.me):
+                mine = max(mine, t)
+            elif "status" in self.cfg.events and self.cfg.status_rule(f["status"]):
+                theirs.append((t, 1, "status", 0))
+        now_mine = is_me(f["assignee"], self.me)
+        if now_mine and not rec.get("assigned"):
+            t, who = latest_change(raw, "assignee")
+            t = t or parse_time(f["updated"]) or self.now
+            if is_me(who, self.me):
+                mine = max(mine, t)
+            elif "assigned" in self.cfg.events:
+                theirs.append((t, 0, "assigned", 0))
+        if self.cfg.events & {"comment", "mention"}:
+            try:
+                comments = self.jira.comments(f["key"])
+            except JiraError as e:
+                self.errors.append(str(e))
+                return  # keep the old `updated`: the comments are read again next run
+            last = rec.get("cid")
+            since = parse_time(rec.get("updated"))
+            top = int(last or 0)
+            for c in comments:
+                cid = comment_id(c)
+                top = max(top, cid)
+                new = cid > int(last) if last else parse_time(c.get("created")) > since
+                if not new:
+                    continue
+                t = parse_time(c.get("created")) or self.now
+                if is_me(c.get("author"), self.me):
+                    mine = max(mine, t)
+                    continue
+                new_theirs += 1
+                if "mention" in self.cfg.events and mentions_me(c.get("body"), self.me):
+                    theirs.append((t, 3, "mention", cid))
+                elif "comment" in self.cfg.events:
+                    theirs.append((t, 2, "comment", cid))
+            rec["cid"] = top or None
+        rec.update(summary=f["summary"], status=f["status"], updated=f["updated"], project=f["project"],
+                   assigned=now_mine)
+        latest = max(theirs) if theirs else None
+        if mine and (latest is None or mine >= latest[0]):
+            rec["card"] = None  # you made the latest change: you've already acted
+        elif latest:
+            self.set_card(rec, latest[2], latest[3], new_theirs)
+
+
+# ---------------------------------------------------------------------------
+# Posting through the CLI
+# ---------------------------------------------------------------------------
+
+def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
+    argv = [cfg.cli, "-q", "add", "--key=" + c["key"], "--title=" + c["title"], "--priority=" + c["priority"],
+            "--context=" + c["context"], "--agent=jira", "--project=" + c["project"]]
+    if c.get("event"):
+        argv.append("--event=" + c["event"])
+    if expires_h:
+        argv.append("--expires-in=%.3f" % expires_h)
+    for label, url in c.get("links") or []:
+        argv.append("--link=%s=%s" % (label, url))
+    if c.get("body"):
+        argv.append("--body=" + c["body"])
+    return _cli(argv)
+
+
+def resolve(cfg: Config, key: str) -> bool:
+    return _cli([cfg.cli, "-q", "resolve", "--key=" + key])
+
+
+def _cli(argv: List[str]) -> bool:
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        warn("cannot run needs-you: %s" % type(e).__name__)
+        return False
+    if r.returncode != 0:
+        warn("needs-you %s exited %d: %s" % (argv[2], r.returncode, safe_text(r.stderr, 300)))
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# One run
+# ---------------------------------------------------------------------------
+
+def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None:
+    if not cfg.enabled:
+        if verbose:
+            warn("NEEDS_YOU_JIRA_SITE isn't set: nothing to do")
+        return
+    state = load_state(state_path)
+    now = time.time()
+    errors: List[str] = list(cfg.errors)
+    run: Optional[Run] = None
+    first = not isinstance(state.get("issues"), dict)
+    if not errors:
+        try:
+            jira = Jira(cfg, read_token(cfg.token_file))
+            run = Run(cfg, jira, state, now, verbose)
+            run.poll()
+            errors.extend(run.errors)
+            if verbose:
+                warn("%d Jira requests" % jira.requests)
+        except (ConfigError, JiraError) as e:
+            errors.append(str(e))
+            run = None
+    core_ok = run is not None
+    if core_ok:
+        state["issues"] = run.issues  # type: ignore[union-attr]
+
+    posted: Dict[str, Any] = state.get("posted") if isinstance(state.get("posted"), dict) else {}
+    desired: Dict[str, Dict[str, Any]] = {}
+    if core_ok:
+        cards = [issue_card(cfg, rec) for rec in run.issues.values() if isinstance(rec.get("card"), dict)]  # type: ignore[union-attr]
+        # Urgent first, then what's already on the panel, so the cap never churns cards.
+        cards.sort(key=lambda c: (-RANK[c["priority"]], c["key"] not in posted, c["key"]))
+        for c in cards:
+            if c["key"] in desired:
+                continue
+            if len(desired) >= cfg.max_cards:
+                if verbose:
+                    warn("over NEEDS_YOU_JIRA_MAX_CARDS=%d: skipped %s" % (cfg.max_cards, c["key"]))
+                continue
+            desired[c["key"]] = c
+        if first and verbose:
+            warn("first run: %d issues recorded; changes from now on become cards" % len(run.issues))  # type: ignore[union-attr]
+
+    # One card if Jira keeps failing (one stable key, posted once, never one per run). Only a
+    # run that couldn't look at all counts; one issue's comments failing is a warning.
+    fails = int(state.get("fails") or 0) + 1 if not core_ok else 0
+    state["fails"] = fails
+    health_key = KEY_SAFE.sub("-", "%s:jira:%s:%s:poller-failing" % (cfg.default_context, cfg.slug, cfg.host))
+    if errors:
+        warn("; ".join(errors))
+        if fails >= FAILS_BEFORE_CARD:
+            desired[health_key] = {
+                "key": health_key, "title": "Jira alerts stopped on %s: check its config" % safe_text(cfg.host, 40),
+                "priority": "low", "context": cfg.default_context, "project": "jira", "src": "health", "links": [],
+                "event": "", "body": "`needs-you-jira` on `%s` can't read Jira (the error is in its log). Run "
+                                     "`needs-you-jira -v` there, and check the token file and the "
+                                     "`NEEDS_YOU_JIRA_*` settings." % md_escape(safe_text(cfg.host, 40))}
+
+    if not dry_run and not cfg.cli:
+        warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
+        return
+    expires_h = 3 * cfg.interval_min / 60.0
+    backlog = outbox_has_backlog()
+    for key, c in sorted(desired.items()):
+        h = card_hash(c)
+        prev = posted.get(key) or {}
+        changed = prev.get("h") != h
+        if not changed and (backlog or (c["src"] == "health" and prev)):
+            continue  # hub unreachable: don't fill the outbox with renewals
+        if dry_run:
+            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+            continue
+        if post(cfg, c, None if c["src"] == "health" else expires_h):
+            posted[key] = {"h": h, "t": now, "src": c["src"]}
+    for key in sorted(set(posted) - set(desired)):
+        if (posted[key] or {}).get("src") == "jira" and not core_ok:
+            continue  # couldn't look: leave it to its expiry
+        if dry_run:
+            print("resolve %s" % key)
+            continue
+        if resolve(cfg, key):
+            del posted[key]
+    if dry_run:
+        if first and core_ok:
+            print("first run: %d open issues would be recorded; changes after that become cards"
+                  % len(run.issues))  # type: ignore[union-attr]
+        return
+    state["posted"] = posted
+    save_state(state_path, state)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(prog="needs-you-jira", description=__doc__.split("\n")[0])
+    p.add_argument("--dry-run", action="store_true", help="print what would be posted; change nothing")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--state", help="state file (default ~/.local/state/needs-you/jira.json)")
+    args = p.parse_args(argv)
+    path = args.state or os.path.join(state_base(), "needs-you", "jira.json")
+    try:
+        run_once(Config(), path, args.dry_run, args.verbose)
+    except Exception as e:  # never fail the scheduler: one line, exit 0
+        warn("unexpected error: %s: %s" % (type(e).__name__, safe_text(e, 200)))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
