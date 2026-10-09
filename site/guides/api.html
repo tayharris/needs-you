@@ -191,7 +191,7 @@ all absent from hubs up to 0.1.2; <code>hub_id</code>, <code>name</code>, <code>
 <tr><td><code>context</code></td><td>string</td><td><code>work</code> or <code>personal</code> (case-insensitive)</td><td><code>work</code></td></tr>
 <tr><td><code>kind</code></td><td>string</td><td><code>needs</code>, <code>done</code> or <code>info</code> (case-insensitive)</td><td><code>needs</code></td></tr>
 <tr><td><code>priority</code></td><td>string</td><td><code>urgent</code>, <code>normal</code> or <code>low</code> (case-insensitive)</td><td><code>normal</code></td></tr>
-<tr><td><code>links</code></td><td>array</td><td>≤ 6 of <code>{"label": ≤ 80 chars, "url": ≤ 2,000 chars}</code></td><td><code>[]</code></td></tr>
+<tr><td><code>links</code></td><td>array</td><td>≤ 6 of <code>{"label": 1–80 chars, "url": ≤ 2,000 chars}</code></td><td><code>[]</code></td></tr>
 <tr><td><code>steps</code></td><td>array</td><td>≤ 10 of <code>{"text", "link", "done"}</code>, see below</td><td><code>[]</code></td></tr>
 <tr><td><code>question</code></td><td>object</td><td>what an agent asked, see below</td><td><code>null</code></td></tr>
 <tr><td><code>source</code></td><td>object</td><td>optional <code>host</code>, <code>agent</code>, <code>project</code>, each ≤ 100 chars</td><td><code>{}</code></td></tr>

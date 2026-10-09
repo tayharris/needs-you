@@ -2045,8 +2045,9 @@ def _main(argv: Optional[List[str]] = None) -> int:
         sp.add_argument("--step", action="append", type=parse_step, metavar="TEXT[=URL]",
                         help="a step the person has to do, in order; repeatable, at most %d" % MAX_STEPS)
         sp.add_argument("--question-json", metavar="JSON|@PATH",
-                        help='what an agent asked, read-only: {"items": [{"text", "options": [{"label", '
-                             '"description"}], "multi_select"}]}')
+                        help='what an agent asked: {"items": [{"text", "options": [{"label", '
+                             '"description"}], "multi_select"}]}; add "answerable": true to wait for the '
+                             'click with answer-wait')
         sp.add_argument("--steps-json", metavar="JSON|@PATH",
                         help='steps as a JSON array of {"text", "link": {"label", "url"}, "done"}')
         sp.add_argument("--agent", help="source agent, e.g. orca:redo-fixer")

@@ -162,7 +162,7 @@ Create an item, or update the open item with the same `key`.
 | `context` | string | `work` or `personal` (case-insensitive) | `work` |
 | `kind` | string | `needs`, `done` or `info` (case-insensitive) | `needs` |
 | `priority` | string | `urgent`, `normal` or `low` (case-insensitive) | `normal` |
-| `links` | array | ≤ 6 of `{"label": ≤ 80 chars, "url": ≤ 2,000 chars}` | `[]` |
+| `links` | array | ≤ 6 of `{"label": 1–80 chars, "url": ≤ 2,000 chars}` | `[]` |
 | `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
 | `question` | object | what an agent asked, see below | `null` |
 | `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |
