@@ -74,7 +74,7 @@ extension UsageLevel {
     /// urgent (red) colours.
     var color: Color {
         switch self {
-        case .normal: return Theme.text.opacity(0.55)
+        case .normal: return Theme.text.opacity(Theme.palette.quietMeterOpacity)
         case .warning: return Theme.normal
         case .full: return Theme.urgent
         }

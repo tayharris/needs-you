@@ -23,7 +23,7 @@ struct RootView: View {
             .background(backdrop(display))
             .clipShape(shape(display))
             .overlay(ring(display))
-            .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: 0.5))
+            .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
             .background(
                 // Soft glow outside the edge; only visible while a pulse runs.
                 GlowEdge(shape: shape(display), color: glowColor, glow: glow, look: glowLook)
@@ -100,25 +100,31 @@ struct RootView: View {
     }
 
     /// Settings → Panel → Opacity → Background darkness: a dark layer behind the glass
-    /// (not the faint idle pill), so text reads over bright or busy windows.
+    /// (not the faint idle pill), so text reads over bright or busy windows. Theme →
+    /// Background → Solid covers the glass with the theme's surface colour instead.
     @ViewBuilder
     private func backdrop(_ display: PanelDisplay) -> some View {
         switch display {
         case .idle:
             EmptyView()
         default:
-            Theme.backdrop.opacity(model.palette.backdropOpacity(model.settings.ui.backdrop))
+            if model.settings.ui.background == .solid {
+                Theme.surface
+            } else {
+                Theme.backdrop.opacity(model.palette.backdropOpacity(model.settings.ui.backdrop))
+            }
         }
     }
 
-    /// Settings → Appearance → Theme: the theme's wash over the glass (none by default).
+    /// Settings → Appearance → Theme: the theme's wash over the glass (none by default; Solid
+    /// has it in its surface colour already).
     @ViewBuilder
     private func themeTint(_ display: PanelDisplay) -> some View {
         switch display {
         case .idle:
             EmptyView()
         default:
-            if model.palette.tintOpacity > 0 { Theme.tint }
+            if model.palette.tintOpacity > 0, model.settings.ui.background == .glass { Theme.tint }
         }
     }
 

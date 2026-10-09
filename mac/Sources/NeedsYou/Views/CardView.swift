@@ -124,7 +124,7 @@ struct CardView: View {
                 Color.clear.preference(key: CardBottomsKey.self, value: [proxy.frame(in: .named(CardBottomsKey.space)).maxY])
             }
         )
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
         // Opened at this card (the clicked preview, or the newest arrival): a brief outline.
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
