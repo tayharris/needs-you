@@ -489,6 +489,12 @@ class ExpiryUnits(HubTestCase):
         self.assertEqual(poller.rdap_base(boot, "example.com"), "https://com.example/")
         self.assertEqual(poller.rdap_base(boot, "example.org"), "")
 
+    def test_example_list_parses(self):
+        with open(os.path.join(ROOT, "integrations", "expiry", "expiry.conf.example")) as fh:
+            things, errors = poller.parse_list_text(fh.read())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(things), 5)
+
     def test_parse_lines(self):
         things, errors = poller.parse_list_text("\n".join([
             "# comment", "", "tls example.com", "tls mail.example.com:993  # trailing comment",
