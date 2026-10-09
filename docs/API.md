@@ -95,7 +95,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   "answer": null,                            // the person's answer to `question`: [{"selected": ["Postgres"]}], or null
   "answered_at": null,                       // when it was answered
   "answered_by": null,                       // the name of the token that answered (a person's Mac)
-  "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"},
+  "source": {"host": "my-server", "agent": "orca:redo-fixer", "project": "app"}, // optional "event" too (below)
   "status": "open",                          // open | resolved | dismissed
   "created_at": "2026-10-06T17:04:05.123Z",
   "updated_at": "2026-10-06T18:04:05.456Z",  // moves on EVERY write (re-post, resolve, patch)
@@ -166,11 +166,28 @@ Create an item, or update the open item with the same `key`.
 | `links` | array | ≤ 6 of `{"label": 1–80 chars, "url": ≤ 2,000 chars}` | `[]` |
 | `steps` | array | ≤ 10 of `{"text", "link", "done"}`, see below | `[]` |
 | `question` | object | what an agent asked, see below | `null` |
-| `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars | `{}` |
+| `source` | object | optional `host`, `agent`, `project`, each ≤ 100 chars, and `event` (below) | `{}` |
 | `expires_at` | timestamp | any accepted timestamp | `done`/`info`: now + 24 h (the hub's `default_expiry_hours`, see [HUB.md](HUB.md)); `needs`: none |
 | `status` | | **rejected** whenever the key is present, even `"status": null` (use resolve or PATCH) | |
 
 An optional field sent as `null` counts as left out (it gets its default).
+
+`source.event` is optional: what happened, as a short slug, so a person's alert rules can treat
+"the agent asked me something" differently from "the agent finished". It matches
+`^[a-z][a-z0-9_-]{0,31}$` after trimming and lowercasing (anything else is `400 invalid` with
+`field` `source.event`). These values have a meaning; others are allowed and shown as sent:
+
+| `event` | The sender is telling the person |
+|---|---|
+| `question` | The agent asked them something and waits for the answer |
+| `approval` | The agent wants permission (to run a command, edit a file, fetch a URL) or approval of a plan |
+| `finished` | The agent's turn ended and it waits for the next message |
+| `failed` | The turn errored, hit a rate limit, or needs a sign-in |
+| `context` | The agent's context window is nearly full |
+
+The hub stores it with the rest of `source` and never acts on it. Unknown `source` keys are
+dropped, so hubs that predate `event` drop it and it is safe to send to any hub. A replicated
+record with an `event` this hub would refuse keeps the item and drops the event.
 
 Link URLs must use one of these schemes (case-insensitive): `https`, `slack`,
 `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`. Anything else, including `http`, `jira`,

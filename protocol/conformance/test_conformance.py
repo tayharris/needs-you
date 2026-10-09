@@ -280,6 +280,10 @@ VALIDATION = [
     ("step bad link", _with(steps=[{"text": "s", "link": {"label": "l", "url": "ftp://x"}}]), "steps[0].link.url"),
     ("source not object", _with(source="me"), "source"),
     ("source.agent 101", _with(source={"agent": "a" * 101}), "source.agent"),
+    ("source.event not a slug", _with(source={"event": "Asked a question"}), "source.event"),
+    ("source.event 33", _with(source={"event": "e" * 33}), "source.event"),
+    ("source.event digit first", _with(source={"event": "1st"}), "source.event"),
+    ("source.event not a string", _with(source={"event": 3}), "source.event"),
     ("expires_at", _with(expires_at="tomorrow"), "expires_at"),
     ("question no items", _with(question={"items": []}), "question.items"),
     ("question text missing", _with(question={"items": [{"options": []}]}), "question.items[0].text"),
@@ -330,6 +334,20 @@ class Validation(HubCase):
         self.assertIs(body["question"]["answerable"], False)
         self.assertIsNotNone(body["expires_at"])  # info: default expiry
         self.assertEqual(len(body["id"]), 26)
+        call("POST", "/v1/items/resolve", Env.sender, {"id": body["id"]})
+
+    def test_source_event_is_kept_and_unknown_source_keys_dropped(self):
+        status, body = post({"key": key("event"), "title": "Asks", "source": {
+            "host": "devbox", "agent": "claude-code", "event": " Question ", "mood": "x"}})
+        self.assertEqual(status, 201, body)
+        self.assertEqual(body["source"], {"host": "devbox", "agent": "claude-code", "event": "question"})
+        status, again = item(body["id"])
+        self.assertEqual(status, 200, again)
+        self.assertEqual(again["source"]["event"], "question")
+        status, other = post({"key": key("event"), "title": "Asks", "source": {"event": "compacted"}})
+        self.assertEqual(status, 200, other)
+        self.assertEqual(other["source"], {"event": "compacted"})
+        call("POST", "/v1/items/resolve", Env.sender, {"id": body["id"]})
         call("POST", "/v1/items/resolve", Env.sender, {"id": body["id"]})
 
 

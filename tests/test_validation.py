@@ -92,6 +92,17 @@ class ValidateItemInput(unittest.TestCase):
         ("link not object", with_(links=["https://a"]), "must be an object"),
         ("source not object", with_(source="host"), "source must be an object"),
         ("source field too long", with_(source={"agent": "a" * 101}), "longer than 100"),
+        # source.event: a short slug saying what happened
+        ("source.event question", with_(source={"agent": "claude-code", "event": "question"}), None),
+        ("source.event any slug", with_(source={"event": "a0_-z"}), None),
+        ("source.event 32 ok", with_(source={"event": "e" * 32}), None),
+        ("source.event null", with_(source={"event": None}), None),
+        ("source.event 33", with_(source={"event": "e" * 33}), "source.event must be a short slug"),
+        ("source.event digit first", with_(source={"event": "9lives"}), "source.event must be a short slug"),
+        ("source.event space", with_(source={"event": "needs approval"}), "source.event must be a short slug"),
+        ("source.event empty", with_(source={"event": ""}), "source.event must be a short slug"),
+        ("source.event number", with_(source={"event": 1}), "source.event must be a short slug"),
+        ("source.event newline", with_(source={"event": "a\nb"}), "source.event must be a short slug"),
         ("bad expires_at", with_(expires_at="tomorrow"), "expires_at"),
         ("body not object", ["x"], "JSON object"),
         # steps: a checklist, links checked like item links
@@ -196,6 +207,15 @@ class ValidateItemInput(unittest.TestCase):
         self.assertEqual(out["links"], [])
         self.assertEqual(out["steps"], [])
         self.assertIsNone(out["key"])
+
+    def test_source_event_normalised_and_unknown_source_keys_dropped(self):
+        out = hubmod.validate_item_input(with_(source={"agent": "codex", "event": " Finished ", "mood": "ok"}))
+        self.assertEqual(out["source"], {"agent": "codex", "event": "finished"})
+        self.assertEqual(hubmod.validate_source({"event": None}), {})
+
+    def test_replicated_source_drops_a_bad_event(self):
+        self.assertEqual(hubmod.validate_source({"host": "h", "event": "Not a slug!"}, strict_event=False), {"host": "h"})
+        self.assertEqual(hubmod.validate_source({"event": "failed"}, strict_event=False), {"event": "failed"})
 
     def test_steps_normalised_and_unknown_fields_ignored(self):
         out = hubmod.validate_item_input(with_(steps=[
