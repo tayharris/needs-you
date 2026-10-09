@@ -56,7 +56,7 @@ Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `release-m
 
 What you should see: **no Dock icon and no window.** A faint pill appears at the top right of the screen. That's the idle state ("nothing needs you"):
 
-<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you.">
+<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: a faint capsule with a green dot reading Nothing needs you, with usage bars under it.">
 
 It's an accessory app: it lives in that pill (and, optionally, a menu bar icon), and you reach everything by **right-clicking the pill**: Settings…, About Needs You, Quit Needs You.
 

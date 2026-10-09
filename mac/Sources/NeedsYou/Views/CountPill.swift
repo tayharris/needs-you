@@ -27,13 +27,14 @@ extension AppModel {
     }
 
     /// The visible shape's size for `.waiting` (PanelController adds the glow padding), with
-    /// room for the usage meters (PillMeterLayout: a second bar, or the percentages' slots).
+    /// room for the usage meters (PillMeterLayout: their band, the rings' or percentages'
+    /// slots, a row's minimum width).
     var waitingPillSize: CGSize {
         let content = pillContent
-        let size = PillLayout.size(content, metrics: pillMetrics)
         let meters = waitingMeterLayout(content)
-        return CGSize(width: size.width + PillMeterMetrics.percentWidth(meters, size: pillMetrics.smallFont),
-                      height: meters.height)
+        let trailing = PillMeterMetrics.trailingWidth(meters, base: pillMetrics.smallFont)
+        let size = PillLayout.size(content, metrics: pillMetrics, trailing: trailing)
+        return CGSize(width: max(size.width, meters.minWidth(cornerRadius: pillCornerRadius)), height: meters.height)
     }
 }
 
@@ -41,11 +42,11 @@ enum PillLayout {
     static func titleFont(_ m: PillMetrics) -> NSFont { NSFont.systemFont(ofSize: m.titleFont, weight: .medium) }
 
     /// The pill's size: a circle for the dot, else the counts' digit units plus the title
-    /// measured with the same font the view draws it in.
-    static func size(_ content: PillContent, metrics m: PillMetrics) -> CGSize {
+    /// measured with the same font the view draws it in, plus `trailing` after them.
+    static func size(_ content: PillContent, metrics m: PillMetrics, trailing: CGFloat = 0) -> CGSize {
         if content.isDot { return CGSize(width: m.dotWidth, height: m.height) }
         let titleWidth = content.title.map { ($0 as NSString).size(withAttributes: [.font: titleFont(m)]).width }
-        return CGSize(width: m.width(units: content.units, titleWidth: titleWidth), height: m.height)
+        return CGSize(width: m.width(units: content.units, titleWidth: titleWidth, trailing: trailing), height: m.height)
     }
 }
 
@@ -62,9 +63,9 @@ struct CountPill: View {
     var body: some View {
         let content = model.pillContent
         let layout = model.waitingMeterLayout(content)
-        // Usage meters (Settings → Usage → On the pill): below or beside the count, never over it.
+        // Usage meters (Settings → Appearance → Usage meters): below or beside the count, never over it.
         PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
-                       cornerRadius: model.pillCornerRadius, percentSize: model.pillMetrics.smallFont) {
+                       cornerRadius: model.pillCornerRadius, numberBase: model.pillMetrics.smallFont) {
             PillContentView(content: content, metrics: model.pillMetrics,
                             focused: model.isFocused, focusSetByLink: model.focusSetByLink)
         }

@@ -2,7 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
-// Settings → Usage: where the usage meters show, for which providers and windows, and when
+// Settings → Appearance → Usage meters: where the usage meters show, for which providers and windows, and when
 // they take a colour (UsagePrefs; UsageMeters in NeedsYouCore). Settings window only.
 
 struct UsageSettingsSection: View {
@@ -33,12 +33,8 @@ struct UsageSettingsSection: View {
             Toggle(isOn: $settings.usage.onPill) {
                 LabelWithDetail("Show on the pill", "The fullest session and weekly window on the collapsed pill, also when nothing is waiting. The count stays readable.")
             }
-            Picker(selection: $settings.usage.pillStyle) {
-                ForEach(PillMeterStyle.allCases, id: \.self) { Text($0.title).tag($0) }
-            } label: {
-                LabelWithDetail("On the pill", "Bars under the count (the pill grows a little taller for two), thin bars along its bottom edge (the pill keeps its size), or the percentages after the count.")
-            }
-            .disabled(!settings.usage.onPill)
+            // Style, size, layout and percentages, with a preview of the pill.
+            UsageMeterAppearanceSection(settings: settings)
         } header: {
             Text("Meters")
         } footer: {
@@ -96,68 +92,11 @@ private struct UsagePreview: View {
                     .textSelection(.enabled)
             }
             preview(rows)
-            if settings.usage.onPill {
-                pillPreview(UsageMeters.pillBars(rows))
-            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.surface))
         .environment(\.colorScheme, Theme.colorScheme)
-    }
-
-    /// The collapsed pill with three waiting and with nothing waiting, in the chosen style.
-    @ViewBuilder private func pillPreview(_ bars: [UsageBar]) -> some View {
-        let m = settings.ui.pillMetrics
-        let panel = settings.ui.metrics
-        let style = settings.usage.pillStyle
-        let now = Date()
-        let items = (1...3).map { i in
-            Item(id: "usage-preview-\(i)", key: "usage-preview-\(i)", title: "Example \(i)", createdAt: now)
-        }
-        let content = PillContent.make(PillInput(context: .work, items: items, needsLabel: settings.needsLabel),
-                                       options: PillOptions(size: settings.ui.pillSize), hovering: false)
-        let waiting = PillMeterLayout.make(style, count: bars.count, height: m.height, font: m.font)
-        let idle = PillMeterLayout.make(style, count: bars.count, height: panel.idleHeight, font: panel.idleFont)
-        let idleText = "Nothing \(settings.needsLabel)"
-        let idleTextWidth = (idleText as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: panel.idleFont)]).width
-        HStack(alignment: .center, spacing: 14) {
-            Text("On the pill").font(.caption).foregroundStyle(Theme.muted)
-            sample(width: PillLayout.size(content, metrics: m).width + PillMeterMetrics.percentWidth(waiting, size: m.smallFont),
-                   height: waiting.height, radius: m.cornerRadius) {
-                PillWithMeters(bars: bars, layout: waiting, cornerRadius: m.cornerRadius, percentSize: m.smallFont) {
-                    PillContentView(content: content, metrics: m)
-                }
-            }
-            sample(width: panel.idleWidth(textWidth: idleTextWidth + PillMeterMetrics.percentWidth(idle, size: panel.idleFont - 1)),
-                   height: idle.height, radius: 9) {
-                PillWithMeters(bars: bars, layout: idle, cornerRadius: 9, percentSize: panel.idleFont - 1,
-                               percentTrailing: 8) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.green.opacity(0.8)).frame(width: 5, height: 5)
-                        Text(verbatim: idleText).font(.system(size: panel.idleFont)).foregroundStyle(Theme.text.opacity(0.85))
-                    }
-                    .padding(.leading, 8)
-                    .padding(.trailing, idle.showsPercent ? 0 : 8)
-                }
-            }
-            // As faint as the idle pill rests on the desktop.
-            .opacity(PillMeterLayout.idleAlpha(0.35, showsMeters: idle.count > 0))
-            Spacer(minLength: 0)
-        }
-        .padding(.top, 2)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    private func sample<V: View>(width: CGFloat, height: CGFloat, radius: CGFloat,
-                                 @ViewBuilder _ content: () -> V) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        return content()
-            .frame(width: width, height: height)
-            .background(Theme.raised)
-            .clipShape(shape)
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
     }
 
     @ViewBuilder private func preview(_ rows: [UsageRow]) -> some View {

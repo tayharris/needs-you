@@ -189,7 +189,7 @@ extension View {
 
 struct IdlePill: View {
     @ObservedObject var model: AppModel
-    /// Observed too, so a change in Settings → Usage redraws the meters straight away (the
+    /// Observed too, so a change in Settings → Appearance → Usage meters redraws the meters straight away (the
     /// panel resizes from the same settings).
     @ObservedObject var settings: AppSettings
 
@@ -200,14 +200,14 @@ struct IdlePill: View {
 
     var body: some View {
         // At rest a small, faint "Nothing needs <you>" (still easy to drag, right-click or
-        // hide); on hover the full status line. Usage meters (Settings → Usage → On the pill)
+        // hide); on hover the full status line. Usage meters (Settings → Appearance → Usage meters)
         // go below or after the line, and the pill rests a little stronger while they show
         // (PillMeterLayout.idleAlpha).
         let layout = model.idleMeterLayout
         PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
-                       cornerRadius: model.hovering ? 11 : 9, percentSize: model.metrics.idleFont - 1,
-                       percentTrailing: 8) {
-            line(trailing: layout.showsPercent ? 0 : 8)
+                       cornerRadius: model.hovering ? 11 : 9, numberBase: model.metrics.idleFont - 1,
+                       trailing: 8) {
+            line(trailing: layout.showsTrailing ? 0 : 8)
         }
         .animation(.easeInOut(duration: 0.15), value: model.hovering)
         .pillInteraction(model)
