@@ -423,14 +423,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ]
         }
         var items: [Item] = []
-        steps.append(("0-start", 1.0, { model in items = model.needsItems }))
+        // The start-of-day summary would open the panel mid-tour (test copy's suite only).
+        let summaryWasOn = phase3?.morningSummaryEnabled ?? false
+        phase3?.morningSummaryEnabled = false
+        steps.append(("0-start", 1.0, { model in
+            items = model.needsItems
+            model.collapse()
+        }))
         let restore: (AppModel) -> Void = { model in
             model.hovering = false
             let open = items
             Task { await model.applyDemoOpenSet(open) }
         }
         for shape in PanelShape.allCases {
-            steps.append(("shape-\(shape.rawValue)", 1.0, { model in
+            steps.append(("shape-\(shape.rawValue)", 2.5, { model in
                 model.settings.ui = savedUI
                 model.settings.ui.panelShape = shape
                 restore(model)
@@ -441,17 +447,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for shape in [PanelShape.rounded, .capsule] {
             for size in [PillSize.small, .large] {
                 let prefix = "size-\(size.rawValue)-\(shape.rawValue)"
-                steps.append((prefix, 1.0, { model in
+                steps.append((prefix, 2.5, { model in
                     model.settings.ui = savedUI
                     model.settings.ui.panelShape = shape
                     model.settings.ui.pillSize = size
                     restore(model)
                 }))
-                steps.append(("\(prefix)-1-waiting", 1.2, { $0.collapse() }))
+                steps.append(("\(prefix)-1-waiting", 1.2, { model in
+                    model.previewItem = nil
+                    model.collapse()
+                }))
+                steps.append(("\(prefix)-2-waiting-hover", 1.0, { $0.hovering = true }))
                 idle(prefix)
             }
         }
-        steps.append(("density", 1.0, { model in
+        steps.append(("density", 2.5, { model in
             model.settings.ui = savedUI
             restore(model)
         }))
@@ -482,6 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await settingsWindow.writeSnapshot(of: .cards, showcase: showcase, shots: 1,
                                                into: dir, name: "looks-settings-cards-compact")
             settings.ui = savedUI
+            phase3?.morningSummaryEnabled = summaryWasOn
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
     }
