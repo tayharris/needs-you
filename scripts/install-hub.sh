@@ -48,7 +48,7 @@ START=1
 INVITE=1
 JOIN=""
 # The release this installer belongs to: piped, it installs exactly this version from GitHub.
-INSTALLER_VERSION=0.2.1  # needs-you-version: 0.2.1
+INSTALLER_VERSION=0.3.0  # needs-you-version: 0.3.0
 
 usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }

@@ -11,10 +11,10 @@ Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which tests and the
 
 | Part | Where | Current |
 |---|---|---|
-| Hub | `VERSION` in `hub/needs_you_hub.py` (also served by `/v1/health`) | 0.2.1 |
-| CLI | `VERSION` in `cli/needs-you` (`needs-you --version`) | 0.2.1 |
-| MCP server | `VERSION` in `integrations/mcp/needs_you_mcp.py` (its `serverInfo.version`) | 0.2.1 |
-| Mac app | `VERSION` at the repo root (`mac/scripts/bundle.sh` reads it; `NEEDS_YOU_VERSION` overrides); build number = `git rev-list --count HEAD` | 0.2.1 |
+| Hub | `VERSION` in `hub/needs_you_hub.py` (also served by `/v1/health`) | 0.3.0 |
+| CLI | `VERSION` in `cli/needs-you` (`needs-you --version`) | 0.3.0 |
+| MCP server | `VERSION` in `integrations/mcp/needs_you_mcp.py` (its `serverInfo.version`) | 0.3.0 |
+| Mac app | `VERSION` at the repo root (`mac/scripts/bundle.sh` reads it; `NEEDS_YOU_VERSION` overrides); build number = `git rev-list --count HEAD` | 0.3.0 |
 
 `VERSION`, the hub, the CLI and the MCP server must agree (`tests/test_release.py` checks); bump them all in one commit, with the `CHANGELOG.md` section. So must the version stamps the hub reports on `/dl/manifest.json` (`needs-you-version: X.Y.Z` in `integrations/claude-code/needs-you-hook.sh`, `skill/needs-you/SKILL.md`, `integrations/orca/snippet.md`, and `"_needs_you_version"` in `hooks.json`; for Codex and Gemini CLI, the stamp in `integrations/<agent>/install-<agent>-hooks.sh` and `"_needs_you_version"` in `integrations/<agent>/<agent>-hooks.json`; the stamps in `integrations/opencode/needs-you.js` and `install-opencode-plugin.sh`; for Copilot CLI, `install-copilot-hooks.sh` and `"_needs_you_version"` in `copilot-hooks.json`; for Grok Build the same in `integrations/grok/`; for Cursor, `install-cursor-hooks.sh` and `"_needs_you_version"` in `cursor-hooks.json`; `integrations/cline/install-cline-hooks.sh`; `integrations/aider/install-aider-notifications.sh`; `integrations/claude-code/needs-you-usage`; `INSTALLER_VERSION` and its stamp in `scripts/install-hub.sh` (the server installer, also a release asset); for Kimi Code, `install-kimi-hooks.sh` and the `# needs-you-version:` line in `kimi-hooks.toml`; `integrations/agent-instructions/needs-you.md` is generated from SKILL.md, so after bumping SKILL.md run `python3 scripts/build_agent_instructions.py`); `scripts/build-release.sh` and `tests/test_updates.py` check them.
 

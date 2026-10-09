@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.2.1
+# needs-you-version: 0.3.0
 # install-cursor-hooks.sh: add the needs-you hooks to Cursor's user hooks.json.
 #
 #   ./install-cursor-hooks.sh                  ~/.cursor/hooks.json

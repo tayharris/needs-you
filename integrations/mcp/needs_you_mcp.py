@@ -32,7 +32,7 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 CLI_TIMEOUT = 120.0
 MAX_LINKS = 6

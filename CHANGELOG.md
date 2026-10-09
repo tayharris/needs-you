@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-09
+
+Usage meters for Claude and Codex in the panel and on the pill, answering an agent's question in your own words ("Other") from the Mac, the Mac's built-in hub pairing with an always-on server hub, short retention, and a security pass over everything since 0.2.1. **The database changes (schema 8 to 11): upgrade the Mac app and every server hub together**, then run `needs-you update` on each sender machine. The app is ad-hoc signed: the first launch of a downloaded copy needs right-click → Open, and endpoint security tools may flag it.
+
 ### Upgrade note
 
 - **Upgrade every hub together** (the Mac app and each server hub): the database goes from schema 8 to 11 (peer links, short retention, then status records for usage meters), and an older hub refuses a newer database. Re-run `install-hub.sh` on each server hub: besides the new code it installs downloads the old installer missed, so invites from that hub can use `--orca`, `--mcp`, `--agent-instructions` and `--usage` again.
