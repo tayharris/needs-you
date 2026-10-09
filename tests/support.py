@@ -88,6 +88,18 @@ def garbage_server(test, payload):
     return "http://127.0.0.1:%d" % srv.getsockname()[1]
 
 
+def drop_python_cache(home: str) -> None:
+    """macOS's /usr/bin/python3 writes .pyc files under $HOME/Library/Caches/com.apple.python
+    (its sys.pycache_prefix), so a temp HOME collects them from every Python run. Not ours:
+    remove them, and the Library dirs only they made, before checking what a test left."""
+    shutil.rmtree(os.path.join(home, "Library", "Caches", "com.apple.python"), ignore_errors=True)
+    for d in (os.path.join(home, "Library", "Caches"), os.path.join(home, "Library")):
+        try:
+            os.rmdir(d)
+        except OSError:
+            pass
+
+
 def wait_until(pred: Callable[[], bool], timeout: float = 15.0, interval: float = 0.05) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:

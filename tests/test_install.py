@@ -14,7 +14,7 @@ import subprocess
 import time
 import unittest
 
-from support import ROOT, HubTestCase, free_port, hubmod, request
+from support import ROOT, HubTestCase, drop_python_cache, free_port, hubmod, request
 
 with open(os.path.join(ROOT, "scripts", "install-hub.sh")) as _fh:
     INSTALLER_VERSION = __import__("re").search(r"^INSTALLER_VERSION=(\S+)", _fh.read(), __import__("re").M).group(1)
@@ -236,6 +236,7 @@ class InstallScript(HubTestCase):
         self.assertNotIn("left in place", r.stderr)
         # (~/Documents, which the Cline installer makes on a machine without one, is the
         # person's folder: never removed.)
+        drop_python_cache(self.home)
         empty = [os.path.relpath(dp, self.home) for dp, dns, fns in os.walk(self.home)
                  if dp != self.home and not dns and not fns]
         self.assertEqual(empty, ["Documents"])

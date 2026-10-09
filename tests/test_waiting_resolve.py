@@ -31,8 +31,8 @@ BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
 SESSION = "sess-1234-abcd"
 
-# Logs its argv. `add` touches $FAKE_ADD_STARTED, sleeps $FAKE_ADD_SLEEP seconds and exits
-# $FAKE_ADD_RC; with FAKE_ENV_LOG it also records which session variables it was given.
+# Logs its argv. `add` touches $FAKE_ADD_STARTED, sleeps $FAKE_ADD_SLEEP seconds (or, with
+# $FAKE_ADD_UNTIL, until that file exists: no race on a slow machine) and exits $FAKE_ADD_RC; with FAKE_ENV_LOG it also records which session variables it was given.
 FAKE_CLI = """#!/usr/bin/env python3
 import json, os, sys, time
 with open(os.environ["FAKE_CLI_LOG"], "a") as fh:
@@ -46,6 +46,10 @@ if sys.argv[1:2] == ["add"]:
     if os.environ.get("FAKE_ADD_STARTED"):
         open(os.environ["FAKE_ADD_STARTED"], "w").close()
     time.sleep(float(os.environ.get("FAKE_ADD_SLEEP") or 0))
+    until = os.environ.get("FAKE_ADD_UNTIL")
+    deadline = time.time() + 30
+    while until and not os.path.exists(until) and time.time() < deadline:
+        time.sleep(0.05)
     sys.exit(int(os.environ.get("FAKE_ADD_RC") or 0))
 """
 
@@ -166,10 +170,11 @@ class WaitingResolve(unittest.TestCase):
         # meanwhile: resolve the card and don't wait (nothing would end the wait but Stop).
         p = self.start(["ask"], {"hook_event_name": "PermissionRequest", "tool_name": "AskUserQuestion",
                                  "tool_input": QUESTION},
-                       FAKE_ADD_SLEEP="1.5", FAKE_ADD_STARTED=self.started)
+                       FAKE_ADD_UNTIL=os.path.join(self.tmp, "add-may-end"), FAKE_ADD_STARTED=self.started)
         self.in_flight()
         self.run_hook(["resolve"], {"hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion",
                                     "tool_input": dict(QUESTION, answers={"Which database?": "SQLite"})})
+        open(os.path.join(self.tmp, "add-may-end"), "w").close()  # the add ends only after the answer
         self.finish(p)
         self.assertEqual(p.stdout.read(), b"")  # no decision printed
         self.assert_resolved_after_add()
