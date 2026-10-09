@@ -92,6 +92,12 @@ class CopilotHook(unittest.TestCase):
         time.sleep(0.1)
         return self.calls()
 
+    def hook_running(self, mode):
+        """A background copy of the hook in `mode` for Copilot is still running."""
+        r = subprocess.run(["pgrep", "-f", "needs-you-hook.sh %s copilot" % mode],
+                           capture_output=True, text=True)
+        return r.returncode == 0
+
     def wait_marker(self, present=True):
         path = os.path.join(self.state, SESSION)
         self.assertTrue(wait_until(lambda: os.path.exists(path) == present, timeout=10))
@@ -173,7 +179,9 @@ class CopilotHook(unittest.TestCase):
         self.wait_marker(False)
         self.run_hook("resolve", {"toolName": "bash", "toolArgs": {"command": "ls"},
                                   "toolResult": {"resultType": "success", "textResultForLlm": SECRET}})
-        time.sleep(0.5)
+        # The hook hands its work to a background copy: wait for that copy to exit, so a slow
+        # one (a loaded CI Mac) can't run after the next card's marker is written.
+        self.assertTrue(wait_until(lambda: not self.hook_running("resolve"), timeout=20))
         self.assertEqual(len(self.calls()), 2)  # nothing posted since: no network call
         self.notification("permission_prompt", "Run command: make", 3)
         self.wait_marker(True)
