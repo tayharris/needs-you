@@ -169,7 +169,8 @@ final class PanelController {
         } else {
             peekScreenID = nil
         }
-        let size = panelSize(for: display)
+        let visible = contentSize(for: display)
+        let size = CGSize(width: visible.width + Self.glowPadding * 2, height: visible.height + Self.glowPadding * 2)
         let target = frame(forPanelSize: size)
         let changedShape = display != lastDisplay
         lastDisplay = display
@@ -203,7 +204,8 @@ final class PanelController {
             animated ? fade(to: alpha(for: display)) : (panel.alphaValue = alpha(for: display))
         }
 
-        effect.layer?.cornerRadius = cornerRadius(for: display)
+        // Settings → Appearance → Pill → Shape (PanelCorners), as RootView's outline draws it.
+        effect.layer?.cornerRadius = model.cornerRadius(for: display, height: visible.height)
         setExpandedBehaviour(display == .expanded)
     }
 
@@ -301,16 +303,18 @@ final class PanelController {
         let m = model.metrics
         switch display {
         case .idle:
-            // mac/README.md "Design": a faint "Nothing needs <you>" pill; on hover "all clear" and the last check.
+            // mac/README.md "Design": a faint "Nothing needs <you>" pill; on hover "all clear" and
+            // the last check. Settings → Appearance → Pill → Size scales it (PillMetrics).
+            let pm = model.pillMetrics
             let text = (model.hovering ? model.idleHoverLine : model.idleRestLine) as NSString
-            let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: m.idleFont)]).width
-                + (model.isFocused ? m.idleFont - 5 : 0)   // the moon is a little wider than the dot
-                + (model.focusSetByLink ? m.idleFont + 4 : 0)
+            let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: pm.idleFont)]).width
+                + (model.isFocused ? pm.idleFont - 5 : 0)   // the moon is a little wider than the dot
+                + (model.focusSetByLink ? pm.idleFont + 4 : 0)
             // Usage meters (PillMeterLayout): bars make it a little taller, rings and
             // percentages wider.
             let meters = model.idleMeterLayout
-            let idleWidth = m.idleWidth(textWidth: width + PillMeterMetrics.trailingWidth(meters, base: m.idleFont - 1))
-            return CGSize(width: max(idleWidth, meters.minWidth(cornerRadius: model.hovering ? 11 : 9)),
+            let idleWidth = pm.idleWidth(textWidth: width + PillMeterMetrics.trailingWidth(meters, base: pm.idleFont - 1))
+            return CGSize(width: max(idleWidth, meters.minWidth(cornerRadius: model.idleCornerRadius(height: meters.height))),
                           height: meters.height)
         case .waiting:
             // Settings → Appearance → Pill (PillContent; the defaults are the original size).
@@ -356,15 +360,6 @@ final class PanelController {
     private func panelSize(for display: PanelDisplay) -> CGSize {
         let s = contentSize(for: display)
         return CGSize(width: s.width + Self.glowPadding * 2, height: s.height + Self.glowPadding * 2)
-    }
-
-    private func cornerRadius(for display: PanelDisplay) -> CGFloat {
-        switch display {
-        case .idle: return model.hovering ? 11 : 9
-        case .waiting: return model.pillCornerRadius
-        case .preview, .digest: return 14
-        case .expanded: return 14
-        }
     }
 
     private func alpha(for display: PanelDisplay) -> CGFloat {

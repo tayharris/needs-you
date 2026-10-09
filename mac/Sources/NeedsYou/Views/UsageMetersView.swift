@@ -35,9 +35,9 @@ extension AppModel {
 
     /// Where the idle pill's meters go (it's taller on hover).
     var idleMeterLayout: PillMeterLayout {
-        let m = metrics
+        let m = pillMetrics
         return PillMeterLayout.make(settings.usage.pillAppearance, count: pillUsageBars.count,
-                                    height: hovering ? m.idleHoverHeight : m.idleHeight, font: m.idleFont)
+                                    height: m.idlePillHeight(hovering: hovering), font: m.idleFont)
     }
 }
 

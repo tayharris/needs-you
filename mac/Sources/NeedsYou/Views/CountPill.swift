@@ -21,10 +21,28 @@ extension AppModel {
         return PillContent.make(input, options: settings.ui.pillOptions, hovering: hovering)
     }
 
-    /// "Minimal dot" at rest is a circle; otherwise the pill's own radius.
-    var pillCornerRadius: CGFloat {
-        settings.ui.pillDetail == .dot && !hovering ? pillMetrics.height / 2 : pillMetrics.cornerRadius
+    /// Which surface `display` is for the corners (PanelCorners): "Minimal dot" at rest is
+    /// its own surface (a circle unless the shape is Square).
+    func surface(for display: PanelDisplay) -> PanelSurface {
+        switch display {
+        case .idle: return .idle(hovering: hovering)
+        case .waiting: return settings.ui.pillDetail == .dot && !hovering ? .dot : .pill
+        case .preview, .digest: return .peek
+        case .expanded: return .panel
+        }
     }
+
+    /// The corner radius of `display` drawn `height` points tall (Settings → Appearance →
+    /// Pill → Shape). RootView's outline and PanelController's glass both use it.
+    func cornerRadius(for display: PanelDisplay, height: CGFloat) -> CGFloat {
+        settings.ui.cornerRadius(surface(for: display), height: height)
+    }
+
+    /// The waiting pill's corners at `height` (its meters can make it taller).
+    func pillCornerRadius(height: CGFloat) -> CGFloat { cornerRadius(for: .waiting, height: height) }
+
+    /// The idle pill's corners at `height`.
+    func idleCornerRadius(height: CGFloat) -> CGFloat { cornerRadius(for: .idle, height: height) }
 
     /// The visible shape's size for `.waiting` (PanelController adds the glow padding), with
     /// room for the usage meters (PillMeterLayout: their band, the rings' or percentages'
@@ -34,7 +52,8 @@ extension AppModel {
         let meters = waitingMeterLayout(content)
         let trailing = PillMeterMetrics.trailingWidth(meters, base: pillMetrics.smallFont)
         let size = PillLayout.size(content, metrics: pillMetrics, trailing: trailing)
-        return CGSize(width: max(size.width, meters.minWidth(cornerRadius: pillCornerRadius)), height: meters.height)
+        return CGSize(width: max(size.width, meters.minWidth(cornerRadius: pillCornerRadius(height: meters.height))),
+                      height: meters.height)
     }
 }
 
@@ -65,7 +84,7 @@ struct CountPill: View {
         let layout = model.waitingMeterLayout(content)
         // Usage meters (Settings → Appearance → Usage meters): below or beside the count, never over it.
         PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
-                       cornerRadius: model.pillCornerRadius, numberBase: model.pillMetrics.smallFont) {
+                       cornerRadius: model.pillCornerRadius(height: layout.height), numberBase: model.pillMetrics.smallFont) {
             PillContentView(content: content, metrics: model.pillMetrics,
                             focused: model.isFocused, focusSetByLink: model.focusSetByLink)
         }

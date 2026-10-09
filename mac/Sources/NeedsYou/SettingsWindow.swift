@@ -817,6 +817,11 @@ struct SettingsView: View {
             } label: {
                 LabelWithDetail("Size", "Scales the pill, the cards' type and the open panel's width.")
             }
+            Picker(selection: $settings.ui.cardDensity) {
+                ForEach(CardDensity.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Density", "Compact tightens the cards' padding and the gaps between and inside them, so more fit.")
+            }
             Picker(selection: $settings.ui.textSize) {
                 ForEach(TextSize.allCases, id: \.self) { Text($0.title).tag($0) }
             } label: {

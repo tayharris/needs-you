@@ -128,7 +128,7 @@ struct SamplePill: View {
         let pm = settings.ui.pillMetrics
         let content = Self.content(items, newCount: newCount, settings: settings)
         let size = PillLayout.size(content, metrics: pm)
-        let shape = RoundedRectangle(cornerRadius: content.isDot ? pm.height / 2 : pm.cornerRadius, style: .continuous)
+        let shape = PanelOutline(settings.ui, content.isDot ? .dot : .pill)
         let top = items.map(\.priority).min()
         let look = settings.ui.alertLook(for: top ?? .low)
         PillContentView(content: content, metrics: pm)
