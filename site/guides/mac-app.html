@@ -298,9 +298,9 @@ Under <strong>Appearance</strong> (how things look, nothing else):</p></li>
 <p>For bug reports and contributing: <strong>Settings → Advanced → Developer mode</strong> (off by default) shows each card's key under its title and adds a <strong>Developer</strong> section to the card's <strong>…</strong> menu:</p>
 <ul>
 <li><strong>Copy Item JSON</strong>: the whole item as the hub sent it, pretty-printed with sorted keys and ISO 8601 dates.</li>
-<li><strong>Copy Key</strong> and <strong>Copy ID</strong>.</li>
-<li><strong>Copy Debug Report</strong>: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches, then the item JSON.</li>
-<li><strong>Copy as needs-you add Command</strong>: a one-line <code>needs-you add</code> command for bash or zsh that posts the same card again (key, title, body, context, priority, links, steps, question, source), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as <code>\n</code> inside <code>$'…'</code>), so pasting it runs nothing but <code>needs-you</code>, and only when you press Return.</li>
+<li><strong>Copy Key</strong> and <strong>Copy ID</strong> (anything token-shaped in them masked, like every other copy).</li>
+<li><strong>Copy Debug Report</strong>: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches (with the event the rule is for), then the item JSON.</li>
+<li><strong>Copy as needs-you add Command</strong>: a one-line <code>needs-you add</code> command for bash or zsh that posts the same card again (key, title, body, context, links, steps, question, source, the priority the sender sent rather than one a bypass rule gave it, and <code>source.event</code> as <code>--event</code>), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as <code>\n</code> inside <code>$'…'</code>), so pasting it runs nothing but <code>needs-you</code>, and only when you press Return.</li>
 </ul>
 <p>Nothing copied carries a token, peer secret or invite code: the item has none, and anything shaped like one in a card's text is masked (<code>ny_&lt;redacted&gt;</code>).</p>
 <p>Built in, not settings yet:</p>

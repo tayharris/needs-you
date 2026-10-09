@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- **The site and the guides cover everything through 0.5.0.** needsyou.app lists Jira and expiry dates under Works with, GitHub's Projects and Dependabot cards, the usage meters and the Appearance settings, and that a server hub now pairs with the app's built-in hub ([Server hubs](docs/HUB.md#with-the-apps-built-in-hub)). [Add a sender](docs/guides/add-a-sender.md#the-senders-config) documents every line of the sender's `env` file (`NEEDS_YOU_HOST`, `NEEDS_YOU_OUTBOX`, `NEEDS_YOU_CONFIG`, ...), and pages renamed in Settings (Access, Invite a machine, Join a hub) have their current names everywhere. Tests now fail when a guide names a Settings page, an env var or an image that doesn't exist.
+
 ## [0.5.0] - 2026-10-09
 
 A pre-release: choose how the pill's usage meters look (Bars, Thin bars, Rings or Percentages, in three sizes) and see them on the idle pill too, one Appearance section in Settings, new opt-in cards from Linear, Jira, GitHub Projects statuses, Dependabot alerts and certificate, domain and key expiry, and one "go there" button per agent card. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** before relying on the new bring-forward button (an older hub refuses its link and the card falls back to the editor button), then run `needs-you update` on sender machines for the new hooks.

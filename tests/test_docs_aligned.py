@@ -269,8 +269,11 @@ class EnvVarTests(unittest.TestCase):
             guides = (glob.glob(os.path.join(ROOT, "docs", "guides", d + "*.md"))
                       + glob.glob(os.path.join(top, "**", "*.md"), recursive=True))
             per_dir[d] = (env_in(files), env_in(guides))
-            if any(HOOK in open(f, encoding="utf-8", errors="replace").read() for f in files):
-                hook_users.append(d)
+            for f in files:
+                with open(f, encoding="utf-8", errors="replace") as fh:
+                    if HOOK in fh.read():
+                        hook_users.append(d)
+                        break
         # The one hook serves every agent: its variables may be in any of their guides.
         hook_docs = set().union(*(per_dir[d][1] for d in hook_users)) if hook_users else set()
         for d, (used, documented) in per_dir.items():
@@ -308,6 +311,15 @@ class GuideIndexTests(unittest.TestCase):
         for g in self.guides():
             with self.subTest(guide=g):
                 self.assertIn(g, links, "README.md links no %s" % g)
+
+    def test_landing_page_lists_every_integration(self):
+        # "Works with" on needsyou.app: every integration with a guide of its own.
+        html = read("site/index.html")
+        works = re.search(r'<section id="works".*?</section>', html, re.S).group(0)
+        for d in sorted(os.listdir(os.path.join(ROOT, "integrations"))):
+            if os.path.isfile(os.path.join(ROOT, "docs", "guides", d + ".md")):
+                with self.subTest(integration=d):
+                    self.assertIn('href="guides/%s.html"' % d, works, "add it to Works with in site/index.html")
 
     def test_landing_page_links_the_guides_index(self):
         self.assertRegex(read("site/index.html"), r'href="guides/(?:index\.html)?"')

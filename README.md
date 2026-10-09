@@ -8,12 +8,12 @@ needs-you has three parts:
 |---|---|---|
 | **The Needs You app** | Shows your alerts: the pill and the panel | Your Mac |
 | **A hub** | Stores alerts and hands them to the app. One Python file, SQLite, standard library only | Built into the app, on by default. Optionally also on a server you run, always on |
-| **Senders** | Post alerts when something needs you, and clear them when it's handled: the `needs-you` command, agent hooks, the MCP server, CI and cron jobs, the GitHub poller | Any machine where agents or jobs run, the Mac included |
+| **Senders** | Post alerts when something needs you, and clear them when it's handled: the `needs-you` command, agent hooks, the MCP server, CI and cron jobs, the GitHub, Linear, Jira and expiry pollers | Any machine where agents or jobs run, the Mac included |
 
 ```
  senders (any machine)              your Mac
  needs-you CLI, agent hooks,  ───►  the Needs You app
- MCP server, CI, GitHub poller       ├─ built-in hub: stores alerts
+ MCP server, CI, pollers             ├─ built-in hub: stores alerts
           │                          └─ pill and panel: show them
           └──► optional: a server hub, always on (HUB.md)
 ```
@@ -42,8 +42,8 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 | Cline (VS Code and CLI) | A task finishes or fails (no hook for approval prompts) | `--cline-hooks user` | [Cline](docs/guides/cline.md) |
 | Aider | It waits for you after a reply (clears when Aider exits, or after an hour) | `--aider` | [Aider](docs/guides/aider.md) |
 | Any MCP agent | The agent calls `needs_you_add` itself; for agents with MCP but no shell | `--mcp claude,codex,gemini,opencode,copilot,cursor` | [MCP server](docs/guides/mcp.md) |
-| Orca | Automations post blockers and run summaries; agent cards get a **Terminal** button | `--orca` | [Orca](docs/guides/orca.md) |
-| GitHub | Review requests, deploy approvals, failed CI, your PRs ready to merge or blocked, and an FYI when one merges | a poller on one machine | [GitHub](docs/guides/github.md) |
+| Orca | Automations post blockers and run summaries; agent cards get an **Orca** button back to the terminal | `--orca` | [Orca](docs/guides/orca.md) |
+| GitHub | Review requests, deploy approvals, failed CI, your PRs ready to merge or blocked, and an FYI when one merges; opt-in, a GitHub Projects status that needs you and critical Dependabot alerts | a poller on one machine | [GitHub](docs/guides/github.md) |
 | Expiry dates | A TLS certificate, a domain or an API key expires within 30 days (louder as it nears) | a daily poller on one machine | [Expiry](docs/guides/expiry.md) |
 | Linear | An issue assigned to you, a new comment, a mention or a status change; one card per issue, cleared when you read it in Linear | a poller on one machine, with a personal API key | [Linear](docs/guides/linear.md) |
 | Jira (Cloud, Data Center) | An issue assigned to you changes status, gets a comment or a mention, or is assigned to you | a poller on one machine | [Jira](docs/guides/jira.md) |
@@ -51,7 +51,7 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
 
-Open source, [Apache-2.0](LICENSE). **Status: early preview (0.1.x).**
+Open source, [Apache-2.0](LICENSE). **Status: early preview.** What each release changed: [CHANGELOG.md](CHANGELOG.md).
 
 ## Get started
 
@@ -122,7 +122,7 @@ Next:
 - [Quickstart](docs/guides/quickstart.md): the whole setup, step by step.
 - [Claude Code alerts everywhere](docs/guides/claude-code-everywhere.md): one copy-paste path to "my Claude sessions alert my Mac", on the Mac, over SSH, in tmux, VS Code Remote-SSH and Orca.
 - [Tailscale](docs/guides/tailscale.md): connecting servers to the Mac.
-- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md), [GitHub](docs/guides/github.md), [Linear](docs/guides/linear.md) and [expiry](docs/guides/expiry.md) integrations.
+- [Claude Code](docs/guides/claude-code.md), [Orca](docs/guides/orca.md), [GitHub](docs/guides/github.md), [Linear](docs/guides/linear.md), [Jira](docs/guides/jira.md) and [expiry](docs/guides/expiry.md) integrations.
 - [AGENT-GUIDE.md](docs/AGENT-GUIDE.md): the rules agents follow when they post.
 
 To build from source instead: `mac/scripts/bundle.sh` (see [mac/README.md](mac/README.md)).
@@ -181,7 +181,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Claude Code](docs/guides/claude-code.md) | Hooks for "agent is waiting" and the skill: what gets installed, what each hook posts, checking and uninstalling |
 | [Claude Code everywhere](docs/guides/claude-code-everywhere.md) | Alerts from local, SSH, tmux, VS Code Remote-SSH and Orca sessions |
 | [Tailscale](docs/guides/tailscale.md) | Putting the Mac and servers on one tailnet, checking reachability |
-| [Orca](docs/guides/orca.md) | Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example |
+| [Orca](docs/guides/orca.md) | Orca agents and automations on one or many servers: the Orca button, keys, usage meters for every account, a hand-off example |
 | [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, plus opt-in GitHub Projects statuses and Dependabot alerts, from one poller |
 | [Expiry dates](docs/guides/expiry.md) | A card before a TLS certificate, a domain or an API key expires, from one daily poller |
 | [Linear](docs/guides/linear.md) | Assignments, comments, mentions and status changes from your Linear inbox, from one poller |

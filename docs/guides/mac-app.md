@@ -285,9 +285,9 @@ Under **Needs You**:
 For bug reports and contributing: **Settings → Advanced → Developer mode** (off by default) shows each card's key under its title and adds a **Developer** section to the card's **…** menu:
 
 - **Copy Item JSON**: the whole item as the hub sent it, pretty-printed with sorted keys and ISO 8601 dates.
-- **Copy Key** and **Copy ID**.
-- **Copy Debug Report**: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches, then the item JSON.
-- **Copy as needs-you add Command**: a one-line `needs-you add` command for bash or zsh that posts the same card again (key, title, body, context, priority, links, steps, question, source), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as `\n` inside `$'…'`), so pasting it runs nothing but `needs-you`, and only when you press Return.
+- **Copy Key** and **Copy ID** (anything token-shaped in them masked, like every other copy).
+- **Copy Debug Report**: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches (with the event the rule is for), then the item JSON.
+- **Copy as needs-you add Command**: a one-line `needs-you add` command for bash or zsh that posts the same card again (key, title, body, context, links, steps, question, source, the priority the sender sent rather than one a bypass rule gave it, and `source.event` as `--event`), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as `\n` inside `$'…'`), so pasting it runs nothing but `needs-you`, and only when you press Return.
 
 Nothing copied carries a token, peer secret or invite code: the item has none, and anything shaped like one in a card's text is masked (`ny_<redacted>`).
 
