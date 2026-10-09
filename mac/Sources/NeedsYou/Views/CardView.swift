@@ -32,6 +32,16 @@ struct CardView: View {
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
 
+                if model.settings.developerMode {
+                    // Developer mode: the key, for bug reports (the "…" menu copies it).
+                    Text(item.key)
+                        .font(.system(size: m.metaFont, design: .monospaced))
+                        .foregroundStyle(Theme.faint)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(item.key)
+                }
+
                 let mode = model.settings.ui.cardBodies
                 let expanded = model.expandedCards.contains(item.id)
                 // With a question drawn as rows, the body's copy of it is left out (QuestionDisplay.body),
@@ -39,6 +49,7 @@ struct CardView: View {
                 let body = QuestionDisplay.body(item)
                 if item.question == nil, let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
                     CardBodyText(text: body, mode: mode, expanded: expanded, model: model)
+                    CommandChips(item: item, text: body, model: model)
                 }
 
                 if !item.steps.isEmpty {
@@ -77,6 +88,7 @@ struct CardView: View {
                     }
                     if let body, CardBodyPolicy.showsBody(mode, expanded: expanded) {
                         CardBodyText(text: body, mode: mode, expanded: expanded, model: model)
+                        CommandChips(item: item, text: body, model: model)
                     }
                 }
 
@@ -138,6 +150,44 @@ private struct CardBodyText: View {
             .tint(Theme.accent)
             .lineLimit(CardBodyPolicy.lineLimit(mode, expanded: expanded))
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The body's commands, paths and ids (CardCopy.snippets) as copy chips: a click puts the
+/// snippet on the clipboard, exactly the text the chip shows (never truncated; unsafe
+/// snippets get no chip), and the chip says "Copied" for a moment. The panel is
+/// never key, so the body's text can't be selected; these are how a command gets out.
+/// Plain buttons like the link chips: nothing here takes focus.
+private struct CommandChips: View {
+    let item: Item
+    let text: String
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let snippets = CardCopy.snippets(in: text)
+        if !snippets.isEmpty {
+            FlowLayout(spacing: 4, lineSpacing: 4) {
+                ForEach(snippets, id: \.self) { snippet in
+                    let copied = model.copied.map { $0.itemID == item.id && $0.inPlace && $0.text == snippet } ?? false
+                    Button { model.copy(snippet, from: item, what: "command", inPlace: true) } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: max(8, model.metrics.linkFont - 2), weight: .semibold))
+                            // The whole snippet, wrapped, never cut: what's copied is what's shown
+                            // (CardCopy.isSafeSnippet keeps it to one short line of visible text).
+                            Text(copied ? "Copied" : snippet)
+                                .font(.system(size: model.metrics.linkFont, design: .monospaced))
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .linkChip(horizontal: 7, vertical: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy: \(snippet)")
+                }
+            }
+            .padding(.top, 1)
+        }
     }
 }
 
@@ -543,22 +593,69 @@ struct CardActions: View {
             .menuIndicator(.hidden)
             .fixedSize()
             Spacer()
-            if let host = ItemStore.host(of: item) {
-                let count = model.itemsFromSameHost(as: item).count
-                Menu {
-                    Button("Dismiss All from \(host) (\(count))") { model.dismissAll(fromHostOf: item) }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: model.metrics.actionFont, weight: .semibold))
-                        .foregroundStyle(Theme.muted)
-                        .frame(width: 18)
-                        .contentShape(Rectangle())
+            if let notice = model.copied, notice.itemID == item.id, !notice.inPlace {
+                Label("Copied \(notice.what)", systemImage: "checkmark")
+                    .font(.system(size: model.metrics.metaFont))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+                    .transition(.opacity)
+            }
+            Menu {
+                CardMenuItems(item: item, model: model)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: model.metrics.actionFont, weight: .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 18)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Copy, and more")
+        }
+    }
+}
+
+/// The card's "…" menu: copying (the panel is never key, so text can't be selected),
+/// Dismiss All from the host, and in Developer mode the item itself for bug reports.
+private struct CardMenuItems: View {
+    let item: Item
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        Button("Copy Title and Text") { model.copy(CardCopy.titleAndText(item), from: item, what: "text") }
+        if let urls = CardCopy.linkURLs(item) {
+            Button(item.links.count == 1 ? "Copy Link URL" : "Copy Link URLs") { model.copy(urls, from: item, what: "links") }
+        }
+        let commands = CardCopy.snippets(in: item.body)
+        if commands.count == 1, let command = commands.first {
+            Button("Copy Command") { model.copy(command, from: item, what: "command") }
+        } else if commands.count > 1 {
+            Menu("Copy Command") {
+                ForEach(commands, id: \.self) { command in
+                    Button(command) { model.copy(command, from: item, what: "command") }
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("More")
+            }
+        }
+        if let host = ItemStore.host(of: item) {
+            Divider()
+            let count = model.itemsFromSameHost(as: item).count
+            Button("Dismiss All from \(host) (\(count))") { model.dismissAll(fromHostOf: item) }
+        }
+        if model.settings.developerMode {
+            Divider()
+            Section("Developer") {
+                Button("Copy Item JSON") { model.copy(CardCopy.itemJSON(item), from: item, what: "JSON") }
+                Button("Copy Key") { model.copy(item.key, from: item, what: "key") }
+                Button("Copy ID") { model.copy(item.id, from: item, what: "ID") }
+                Button("Copy Debug Report") {
+                    model.copy(CardCopy.debugReport(item, info: model.debugInfo(for: item)), from: item, what: "report")
+                }
+                Button("Copy as needs-you add Command") {
+                    model.copy(CardCopy.addCommand(item), from: item, what: "add command")
+                }
             }
         }
     }

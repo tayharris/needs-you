@@ -48,6 +48,7 @@ final class AppSettings: ObservableObject {
         static let showOrcaWorktrees = "showOrcaWorktrees"
         static let setupTipsDone = "setupTipsDone"
         static let setupTipsDismissed = "setupTipsDismissed"
+        static let developerMode = "developerMode"
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -126,6 +127,13 @@ final class AppSettings: ObservableObject {
     /// `orca` CLI is installed. Local only. Default on (it shows nothing without Orca).
     @Published var showOrcaWorktrees: Bool {
         didSet { defaults.set(showOrcaWorktrees, forKey: Key.showOrcaWorktrees) }
+    }
+    /// Settings → Advanced → Developer mode: a card's "…" menu gets a Developer section
+    /// (item JSON, key, id, a debug report, a `needs-you add` command) and the meta line
+    /// shows the key. For bug reports and contributing. Default off; not part of the look
+    /// that Reset to defaults resets.
+    @Published var developerMode: Bool {
+        didSet { defaults.set(developerMode, forKey: Key.developerMode) }
     }
     /// Setup tips whose condition was met once (SetupTip raw values); they never come back.
     @Published var setupTipsDone: Set<String> {
@@ -283,6 +291,7 @@ final class AppSettings: ObservableObject {
         }
         showSetupTips = defaults.bool(forKey: Key.showSetupTips)
         showOrcaWorktrees = defaults.bool(forKey: Key.showOrcaWorktrees)
+        developerMode = defaults.bool(forKey: Key.developerMode)
         setupTipsDone = Set(defaults.stringArray(forKey: Key.setupTipsDone) ?? [])
         setupTipsDismissed = Set(defaults.stringArray(forKey: Key.setupTipsDismissed) ?? [])
         previewDisplay = defaults.string(forKey: PreviewDisplay.defaultsKey).flatMap(PreviewDisplay.init(rawValue:)) ?? .standard

@@ -109,6 +109,10 @@ final class AppModel: ObservableObject {
     /// The footer's update line ("Update available: 0.3.0 → 0.3.1"), set by UpdateController.
     /// Footer text only: not an item, never counted, never animates the pill or notifies.
     @Published var updateFooter: UpdateFooter?
+    /// The last copy from a card (a command chip or the "…" menu), shown as "Copied" on the
+    /// card for a moment. Cleared after 1.5 s.
+    @Published private(set) var copied: CardCopyNotice?
+    private var copiedTask: Task<Void, Never>?
     /// The card the open panel scrolls to (ExpandFocus); the list clears it once scrolled.
     @Published var scrollTarget: String?
     /// The card drawn highlighted for a moment after the panel opened at it.
@@ -1165,6 +1169,41 @@ final class AppModel: ObservableObject {
         store.snoozeCard(id: item.id, until: option.until(from: Date()))
     }
 
+    // MARK: Copying from a card
+
+    /// Puts `text` on the clipboard and shows "Copied" on the card: on the chip clicked
+    /// (`inPlace`), else by the "…" menu. The panel is never key, so a card's text can't be
+    /// selected; this is how it's copied. Nothing activates.
+    func copy(_ text: String, from item: Item, what: String, inPlace: Bool = false) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        copied = CardCopyNotice(itemID: item.id, text: text, what: what, inPlace: inPlace)
+        copiedTask?.cancel()
+        copiedTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.copied = nil
+        }
+    }
+
+    /// Developer mode's debug report context: versions, the feed, and how the item would be
+    /// delivered now. Never a token, peer secret or invite code (the feed is a short name).
+    func debugInfo(for item: Item) -> CardCopy.DebugInfo {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = (info["CFBundleShortVersionString"] as? String) ?? "dev build"
+        let build = (info["CFBundleVersion"] as? String).map { " (\($0))" } ?? ""
+        let date = Date()
+        let feedName = isDemo ? "demo" : (activeHub.map { "\($0) (last successful poll)" } ?? "none yet")
+        return CardCopy.DebugInfo(appVersion: version + build,
+                                  osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+                                  feed: feedName,
+                                  delivery: DeliveryPolicy.decide(item, state: deliveryState(at: date)),
+                                  rule: settings.bypassRules.firstMatch(item),
+                                  focus: settings.focus.effectiveLevel(at: date).title,
+                                  capturedAt: date)
+    }
+
     // MARK: Panel visibility
 
     /// Is the floating panel on screen? (Shown, or peeking while hidden.)
@@ -1299,6 +1338,16 @@ final class AppModel: ObservableObject {
     func openSettings(page: SettingsTab) {
         if let openSettingsPageHandler { openSettingsPageHandler(page) } else { openSettings() }
     }
+}
+
+/// "Copied" on a card: which card, what was copied (a chip matches on `text`), how to say
+/// it ("Copied JSON"), and whether the chip clicked shows it itself.
+struct CardCopyNotice: Equatable {
+    let id = UUID()
+    let itemID: String
+    let text: String
+    let what: String
+    let inPlace: Bool
 }
 
 /// The line under a setup card after its button ran.
