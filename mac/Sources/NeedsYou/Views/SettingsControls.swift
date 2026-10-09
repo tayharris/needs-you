@@ -67,7 +67,7 @@ struct PanelPreview: View {
     }
 }
 
-/// Settings → Alerts: an item arriving on the pill, as it really does (ArrivalPreview). The
+/// Settings → Appearance → Alert style: an item arriving on the pill, as it really does (ArrivalPreview). The
 /// pill shows what was waiting, springs out to the new item's preview while the arrival
 /// animation plays at the chosen plays and speed, then springs back with the new count.
 /// Plays when an alert or arrival setting changes; Urgent and Normal play it again. Over

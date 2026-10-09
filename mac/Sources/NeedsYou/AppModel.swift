@@ -88,7 +88,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var now = Date()
     /// Height of the expanded card list as laid out by SwiftUI.
     @Published var expandedContentHeight: CGFloat = 0
-    /// Each card's bottom edge in the list (for Settings → Panel → Cards before scrolling).
+    /// Each card's bottom edge in the list (for Settings → Appearance → Panel and cards → Cards before scrolling).
     @Published var cardBottoms: [CGFloat] = []
     /// The resize grip is on the open panel's bottom edge; false puts it on the top edge
     /// (the panel sits on a bottom corner and grows up). Set by the panel controller.
@@ -211,7 +211,7 @@ final class AppModel: ObservableObject {
     /// the invite link or code.
     @Published var setupNotice: SetupNotice?
     private let localHost: String
-    /// The panel's colours: Settings → Appearance's theme and accent for macOS's current
+    /// The panel's colours: Settings → Appearance → Theme (theme and accent) for macOS's current
     /// light or dark appearance. Also copied to `Theme.palette`, which the views read.
     @Published private(set) var palette = PanelTheme.standardPalette
     private var appearanceObservers = Set<AnyCancellable>()
@@ -428,12 +428,12 @@ final class AppModel: ObservableObject {
     /// "needs Sam" / "needs you".
     var needsLabel: String { settings.needsLabel }
 
-    /// Sizes for the chosen panel size (Settings → Panel).
+    /// Sizes for the chosen panel size (Settings → Appearance → Panel and cards).
     var metrics: PanelMetrics { settings.ui.metrics }
-    /// Card body text size in points (Settings → Panel → Text size).
+    /// Card body text size in points (Settings → Appearance → Panel and cards → Card text size).
     var bodyFont: CGFloat { settings.ui.bodyFont }
 
-    /// Glow, ring and tint for a priority (Settings → Alerts; urgent has a floor).
+    /// Glow, ring and tint for a priority (Settings → Appearance → Alert style; urgent has a floor).
     func alertLook(_ priority: ItemPriority, basePulses: Int = 1) -> AlertLook {
         settings.ui.alertLook(for: priority, basePulses: basePulses)
     }
@@ -675,7 +675,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// After a good items poll: the same hub's statuses, when Settings → Usage shows them.
+    /// After a good items poll: the same hub's statuses, when Settings → Appearance → Usage meters shows them.
     /// A failure keeps the last ones (they carry their own expiry) and never touches items.
     private func refreshStatuses(generation: Int) async {
         guard settings.usage.isShown, let statusFeed = feed as? StatusFeed else {
@@ -870,7 +870,7 @@ final class AppModel: ObservableObject {
         pulse = PulseRequest(times: times, priority: priority)
     }
 
-    /// The arrival to play for a pulse (Settings → Alerts → Arrival animation and timing).
+    /// The arrival to play for a pulse (Settings → Appearance → Alert style → Arrivals, and Alerts → New items).
     /// Ambient arrivals stay one soft glow whatever the animation.
     func arrivalPlan(_ request: PulseRequest) -> ArrivalPlan {
         let ui = settings.ui
@@ -882,7 +882,7 @@ final class AppModel: ObservableObject {
         return ui.arrivalPlan(for: request.priority, basePulses: request.times, reduceMotion: reduceMotion)
     }
 
-    /// Settings → Alerts → Preview on the pill: a sample item arrives the way a real one
+    /// Settings → Appearance → Alert style → Preview on the pill: a sample item arrives the way a real one
     /// does (the announcer: the pill springs out to its preview with the arrival animation,
     /// the preview stays out for Show new items for, then the pill goes back). Nothing is
     /// posted or counted. Only changes what's drawn; never shows, orders front or focuses
@@ -899,7 +899,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Settings → Alerts → Remind about unseen urgent items: plays urgent's arrival again
+    /// Settings → Alerts → New items → Remind about unseen urgent items: plays urgent's arrival again
     /// every N minutes while an urgent item that came in since the panel was last open waits
     /// (UrgentReminder decides). Called from the 15 s tick.
     private func remindAboutUrgent(at date: Date) {

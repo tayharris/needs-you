@@ -75,10 +75,10 @@ public struct UIPrefs: Equatable, Sendable {
     public var backdrop: Double = PanelBackdrop.standard
     /// The open panel's list height in points, set by dragging its grip; 0 = automatic.
     public var expandedListHeight: Double = 0
-    /// Settings → Appearance: the panel's colours (PanelTheme) and an accent override.
+    /// Settings → Appearance → Theme: the panel's colours (PanelTheme) and an accent override.
     public var theme: PanelTheme = .standard
     public var accent: ThemeAccent = .theme
-    /// Settings → Alerts → Arrival animation, for urgent items and for the rest
+    /// Settings → Appearance → Alert style → Arrivals, for urgent items and for the rest
     /// (ArrivalMotion). Glow pulse is the original.
     public var arrivalUrgent: ArrivalAnimation = .glow
     public var arrivalOther: ArrivalAnimation = .glow

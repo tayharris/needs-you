@@ -4,7 +4,7 @@ import Foundation
 // How long arrival peeks stay out, and the expanded panel's dragged height. Pure, so
 // they're unit-tested; PanelController, AppModel and Phase3 only read the answers.
 
-/// Settings → Alerts → Show new items for: how long the new-item preview (and the
+/// Settings → Alerts → New items → Show new items for: how long the new-item preview (and the
 /// "3 waited while you were focused" peek) stays out. Pointing at it holds it open.
 public enum PeekDuration {
     /// Seconds; `untilDismissed` (0) keeps it out until it's clicked, or pointed at and left.

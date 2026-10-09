@@ -1,7 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Panel → Opacity: the collapsed pill and the open panel, each with the pointer
+/// Settings → Appearance → Panel and cards → Opacity: the collapsed pill and the open panel, each with the pointer
 /// away and over it. The open panel's values also apply to the arrival preview.
 struct OpacitySettingsSection: View {
     @ObservedObject var settings: AppSettings

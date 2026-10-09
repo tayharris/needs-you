@@ -2,12 +2,12 @@ import CoreGraphics
 import Foundation
 
 // What the collapsed ("waiting") pill shows and how wide it is. Pure data, so every
-// combination of Settings → Panel → Collapsed pill can be unit-tested; CountPill draws the
+// combination of Settings → Appearance → Pill can be unit-tested; CountPill draws the
 // segments and PanelController sizes the panel from `units` (plus the measured title).
 // The defaults (medium, count only, no split) are the original "3 · 1 +2" pill, and
 // PillContentTests pins that.
 
-/// How big the collapsed pill is, on top of the panel size (Settings → Panel → Size).
+/// How big the collapsed pill is, on top of the panel size (Settings → Appearance → Panel and cards → Size).
 public enum PillSize: String, CaseIterable, Codable, Sendable {
     case small, medium, large
 

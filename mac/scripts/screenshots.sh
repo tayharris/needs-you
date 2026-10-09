@@ -14,7 +14,7 @@
 # example items below (among them agents' questions: 6e-6l, 6k the answer window), and once
 # with one agent card (preview-agent.png). Demo mode also shows example usage meters
 # (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-pill*.png (each pill meter style at
-# 31 % / 10 %, waiting and idle) and settings-usage*.png.
+# 31 % / 10 %, waiting and idle) and settings-usageMeters*.png (Settings → Appearance → Usage meters).
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
 #

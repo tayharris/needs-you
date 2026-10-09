@@ -5,7 +5,7 @@ import Foundation
 // opacity and how many cards show before the list scrolls. Pure, so they're unit-tested;
 // the views only read the answers. Every default is the original behaviour.
 
-/// Settings → Panel → Card text: show bodies in full (the original), the first few lines,
+/// Settings → Appearance → Panel and cards → Card text: show bodies in full (the original), the first few lines,
 /// or not at all until the card's "Show details" is clicked.
 public enum CardBodyMode: String, CaseIterable, Codable, Sendable {
     case full, preview, hidden
@@ -77,7 +77,7 @@ public struct LinkRowPlan: Equatable, Sendable {
 public enum LinkRowPolicy {
     /// The original row: up to six links, wrapping.
     public static let maxLinks = 6
-    /// Settings → Panel → Compact links: at most three short labels on one line.
+    /// Settings → Appearance → Panel and cards → Compact links: at most three short labels on one line.
     public static let compactLinks = 3
     public static let compactLabelLength = 18
 
@@ -145,7 +145,7 @@ public enum LinkRowPolicy {
     }
 }
 
-/// Settings → Panel → Opacity: how see-through the count pill, preview and open panel are
+/// Settings → Appearance → Panel and cards → Opacity: how see-through the count pill, preview and open panel are
 /// when the pointer isn't over them. Hovering always shows them at full strength.
 public enum PanelOpacity {
     public static let choices: [Double] = [1.0, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3]
@@ -169,7 +169,7 @@ public enum PanelOpacity {
     }
 }
 
-/// Settings → Panel → Opacity → Background: how dark the layer behind the glass is.
+/// Settings → Appearance → Panel and cards → Opacity → Background: how dark the layer behind the glass is.
 public enum PanelBackdrop {
     public static let choices: [Double] = [0, 0.15, 0.3, 0.45, 0.6, 0.75]
     public static let standard = 0.3
@@ -184,7 +184,7 @@ public enum PanelBackdrop {
     }
 }
 
-/// Settings → Panel → Cards before scrolling: the expanded list's height.
+/// Settings → Appearance → Panel and cards → Cards before scrolling: the expanded list's height.
 public enum ListHeightPolicy {
     /// 0 = as many as fit (the original: up to the size's maximum height).
     public static let choices = [0, 2, 3, 5, 8]

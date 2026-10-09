@@ -311,7 +311,7 @@ final class PanelController {
             return CGSize(width: m.idleWidth(textWidth: width + PillMeterMetrics.percentWidth(meters, size: m.idleFont - 1)),
                           height: meters.height)
         case .waiting:
-            // Settings → Panel → Collapsed pill (PillContent; the defaults are the original size).
+            // Settings → Appearance → Pill (PillContent; the defaults are the original size).
             return model.waitingPillSize
         case .preview(let item):
             // PreviewLayout: a long title wraps to a second line, and a link button gets
@@ -375,7 +375,7 @@ final class PanelController {
             let ui = model.settings.ui
             return CGFloat(PanelOpacity.alpha(rest: ui.pillOpacity, hover: ui.pillHoverOpacity, hovering: model.hovering))
         case .preview, .digest, .expanded:
-            // Settings → Panel → Opacity; hovering always shows it at full strength.
+            // Settings → Appearance → Panel and cards → Opacity; hovering always shows it at full strength.
             let ui = model.settings.ui
             return CGFloat(PanelOpacity.alpha(rest: ui.panelOpacity, hover: ui.panelHoverOpacity, hovering: model.hovering))
         }
@@ -521,7 +521,7 @@ final class PanelController {
 
     // MARK: Arrival motion
 
-    /// Bounce, shake and slide (Settings → Alerts → Arrival animation) move the glass and
+    /// Bounce, shake and slide (Settings → Appearance → Alert style → Arrivals) move the glass and
     /// the content together. Bounce and shake start once a preview has sprung out (the
     /// shape change takes 0.28 s), so they play on the settled shape. Glow and ripple are drawn
     /// by RootView. Nothing here touches key status or activation.
