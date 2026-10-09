@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-09
+
+Usage meters for every account Orca manages, Settings that say when no usage numbers arrive, the strict option on three security questions (typed answers only from the owner, a readable peer secret file stops the hub, uninstall removes needs-you-only backups), and a server installer that works with an old `gh`. **Upgrade every hub** (typed answers are checked by the hub), then the Mac app's updater and `needs-you update` do the rest. To get usage meters from Orca, run `needs-you orca usage --enable` on the machine where Orca is signed in.
+
 ### Added
 
 - **Usage meters for every account Orca manages.** On a machine where Orca holds several Claude or Codex logins, `needs-you orca usage --enable` (or the invite installer's `--orca-usage`) makes the 5-minute flush send a meter row for each one to the Mac, from `orca account list --json` and nothing else: no login files, tokens or cookies. An account shows as `Claude · orca-1a2b3c4d` (a short hash of Orca's account id), never its email. Orca's own default login shares the local hooks' row rather than adding a second one, accounts removed from Orca lose their row, and an absent or broken Orca only means no rows. `--dry-run` shows what it would send; `--disable` stops it and clears its rows ([Orca guide](docs/guides/orca.md#usage-meters-for-every-orca-account)) Each account shows once: the Claude account picked in Orca shares the local row (Orca copies its login into `~/.claude`), and in an Orca terminal the Codex hook labels a managed account as the poller does, from its `CODEX_HOME` path alone.
