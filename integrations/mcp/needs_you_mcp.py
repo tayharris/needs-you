@@ -154,9 +154,9 @@ TOOLS: List[Dict[str, Any]] = [
 # --- needs-you redaction (begin) ---
 # Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
 # block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
-# integrations/mcp/needs_you_mcp.py, integrations/github/needs-you-github and
-# integrations/linear/needs-you-linear (tests/test_redaction.py checks). Best effort: a secret
-# that looks like a word isn't caught.
+# integrations/mcp/needs_you_mcp.py, integrations/github/needs-you-github,
+# integrations/linear/needs-you-linear and integrations/jira/needs-you-jira
+# (tests/test_redaction.py checks). Best effort: a secret that looks like a word isn't caught.
 # Every pattern runs in linear time on any input (tests/test_redaction.py times them): each one
 # starts on a literal and never backtracks over a run it has to give back.
 REDACTED = "[redacted]"

@@ -231,9 +231,10 @@ class GuideNamesTheOrcaButton(unittest.TestCase):
     def test_claude_code_everywhere(self):
         with open(os.path.join(ROOT, "docs", "guides", "claude-code-everywhere.md"), encoding="utf-8") as fh:
             text = fh.read()
-        self.assertIn("| In Orca | **Orca**: switches Orca to that terminal (no editor button beside it) |", text)
+        self.assertIn("| 1 | In Orca (`ORCA_TERMINAL_HANDLE`) | **Orca**: switches Orca to that terminal |", text)
+        self.assertIn("Each card gets one \"go there\" button", text)
         self.assertIn("Their cards have an **Orca** button", text)
-        self.assertNotIn("| In Orca | **Terminal**", text)
+        self.assertNotIn("In Orca (`ORCA_TERMINAL_HANDLE`) | **Terminal**", text)
 
 
 if __name__ == "__main__":

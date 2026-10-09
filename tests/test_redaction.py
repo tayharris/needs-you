@@ -18,7 +18,7 @@ BEGIN = "# --- needs-you redaction (begin) ---\n"
 END = "# --- needs-you redaction (end) ---\n"
 COPIES = ("integrations/claude-code/needs-you-hook.sh", "cli/needs-you",
           "integrations/mcp/needs_you_mcp.py", "integrations/github/needs-you-github",
-          "integrations/linear/needs-you-linear")
+          "integrations/linear/needs-you-linear", "integrations/jira/needs-you-jira")
 
 
 def block(rel):
