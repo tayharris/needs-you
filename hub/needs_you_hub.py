@@ -814,6 +814,9 @@ def validate_status_key(raw: str) -> str:
     key = raw.strip()
     if not key or len(key) > MAX_KEY or not KEY_RE.match(key):
         raise _invalid("key", "a status key is 1-%d letters, digits and . _ : - / @ # + =" % MAX_KEY)
+    if looks_secret(key):  # it's listed and replicated like the text
+        raise ApiError(400, "secret_in_text", "the status key looks like it contains a token or key; "
+                       "statuses never carry secrets", "key")
     return key
 
 
@@ -885,6 +888,9 @@ def validate_status_body(data: Any) -> Dict[str, Any]:
     for name, v in src.items():
         if _LINE_SEP_RE.search(v):
             raise _invalid("source." + name, "source.%s contains a line break (U+2028/U+2029)" % name)
+        if looks_secret(v):
+            raise ApiError(400, "secret_in_text", "source.%s looks like it contains a token or key; "
+                           "statuses never carry secrets" % name, "source." + name)
     out["source"] = src
     if typ == "progress":
         if not out["label"]:

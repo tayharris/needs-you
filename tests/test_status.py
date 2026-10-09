@@ -105,6 +105,11 @@ class Validation(HubTestCase):
         self.check(dict(usage_body(), usage={"provider": "claude", "account": "nyp_" + "x" * 20,
                                              "windows": [{"name": "5h", "used_pct": 1}]}),
                    "usage.account", "secret_in_text")
+        self.check(dict(usage_body(), source={"host": "ghp_" + "a" * 20}), "source.host", "secret_in_text")
+        with self.assertRaises(hubmod.ApiError) as cm:
+            hubmod.validate_status_key("usage:ny_" + "A1b2C3d4e5F6g7H8")
+        self.assertEqual((cm.exception.code, cm.exception.field), ("secret_in_text", "key"))
+        self.assertNotIn("A1b2C3d4", cm.exception.message)
 
     def test_ordinary_text_is_not_a_secret(self):
         for text in ("nightly-import-of-the-acme-customer-data", "Claude (team-2)",

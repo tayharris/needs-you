@@ -120,7 +120,7 @@ same key is a different record). Body:
   an `ETag`; `If-None-Match` answers `304`. The Mac polls it with its items poll. Not part of
   `GET /v1/items` or `/v1/stream`, so no client that predates it ever sees one.
 - Validation as for item text: control and bidi characters refused, token-shaped text refused
-  (`400 secret_in_text`, the same patterns the hooks redact), `@` refused in `account` (no
+  (`400 secret_in_text`, the same patterns the hooks redact; in the key and `source` too), `@` refused in `account` (no
   emails), `provider` and window `name` from `[a-z0-9-]{1,20}`, at most 4 windows.
 - Limits: at most 20 live statuses per token and 64 per hub (`429 too_many_status`); at most
   one write per key every 10 s (`429 too_fast`, with `Retry-After`); sets and clears per token

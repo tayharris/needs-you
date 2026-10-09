@@ -66,7 +66,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
   | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds) |
-  | 400 | `secret_in_text` | A status label, detail or account looks like a token or key ([status records](#status-records-usage-meters)) |
+  | 400 | `secret_in_text` | A status key, label, detail, account or source field looks like a token or key ([status records](#status-records-usage-meters)) |
   | 429 | `too_many_status`, `too_fast` | A status write over the live-status limits, or a second write to one status key within 10 s (with `Retry-After`) |
   | 429 | `rate_limited` | Too many status sets and clears from one token (120 a minute by default, apart from posts; with `Retry-After`) |
   | 500 | `internal` | Bug; details are in the hub's log |
@@ -558,7 +558,8 @@ times, plus a required `expires_at`:
 | `expires_at` | required, in the future: at most now + 1 h for `progress`, now + 8 days for `usage` |
 
 Text fields refuse control, bidi and line-separator characters like item text, and
-token-shaped text (`400 secret_in_text`, with `field`). `@` in `account` is refused (no emails).
+token-shaped text (`400 secret_in_text`, with `field`), as do the key and the `source` fields
+(a status is listed and replicated whole). `@` in `account` is refused (no emails).
 
 Response `200` with the stored record. A write to an existing key replaces it entirely.
 
