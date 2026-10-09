@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Jira cards.** `needs-you-jira`, a poller for one always-on machine, turns changes on the Jira issues assigned to you into one card per issue: moved to another status, a new comment, a comment that mentions you, or newly assigned to you, each with its `source.event` (`status`, `comment`, `mention`, `assigned`) for the Mac's alert rules. **Open** goes to the issue or the comment. A card clears when the issue is done or no longer yours, when you comment or move it yourself, or after a day. Jira Cloud (email + API token) and Data Center 8.14+ (personal access token); the token lives in a mode-600 file and a readable one is refused. Off until `NEEDS_YOU_JIRA_SITE` is set; which statuses and projects matter, and how much, is set with `NEEDS_YOU_JIRA_*` lines ([Jira guide](docs/guides/jira.md)).
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.

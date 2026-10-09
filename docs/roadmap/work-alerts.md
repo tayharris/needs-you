@@ -1,6 +1,6 @@
 # Work-tool alerts: tickets, design files, ops, and getting you there
 
-Status (2026-10-09): research only, nothing built. Three research passes (ticketing, design and ops sources, deep links into desktop apps) behind the owner's ask: "if something assigned to me moves to a status, or a ticket I'm assigned gets a comment, it pops up, and I can configure which and how loudly". Vendor facts link to vendor docs; a few are marked unverified and need a live check before we build on them.
+Status (2026-10-09): the Jira poller (step 3) is built: `integrations/jira/needs-you-jira`, [guide](../guides/jira.md). The rest is research only. Three research passes (ticketing, design and ops sources, deep links into desktop apps) behind the owner's ask: "if something assigned to me moves to a status, or a ticket I'm assigned gets a comment, it pops up, and I can configure which and how loudly". Vendor facts link to vendor docs; a few are marked unverified and need a live check before we build on them.
 
 ## How events get in: poll, not webhooks or MCP
 
@@ -44,8 +44,8 @@ Two layers, so a sender never has to guess what's urgent to someone:
 
    ```
    NEEDS_YOU_JIRA_SITE=https://acme.atlassian.net      # or the Data Center base URL
-   NEEDS_YOU_JIRA_AUTH=cloud                           # cloud | dc; token in NEEDS_YOU_JIRA_TOKEN (+ _EMAIL for cloud)
-   NEEDS_YOU_JIRA_EVENTS=status,comment,assign,mention # -mention drops one
+   NEEDS_YOU_JIRA_AUTH=cloud                           # cloud | dc; token in the mode-600 NEEDS_YOU_JIRA_TOKEN_FILE (+ _EMAIL for cloud)
+   NEEDS_YOU_JIRA_EVENTS=status,comment,assigned,mention # -mention drops one
    NEEDS_YOU_JIRA_STATUSES=Blocked=urgent,In Review=normal,QA Failed=urgent,*=low
    NEEDS_YOU_JIRA_PROJECTS=ACME=work:normal,OPS=work:urgent   # context + base priority; also the include list
    NEEDS_YOU_JIRA_JQL_EXTRA='AND labels != noise'
@@ -97,7 +97,7 @@ A card is only as good as its "go there" button. What's built and what's left (t
 |---|---|---|
 | 1 | `source.event` + per-session and per-event alert rules (in progress, `tay/session-alert-rules`) | in progress |
 | 2 | Linear poller (dedicated; the notifications feed maps almost 1:1 onto the GitHub poller) | S |
-| 3 | Jira poller, Cloud and Data Center (saved-state diff; fake HTTP server tests) | M |
+| 3 | Jira poller, Cloud and Data Center (saved-state diff; fake HTTP server tests) | built: `integrations/jira/` |
 | 4 | Host detection + one primary "go there" button; `needsyou://app/activate` | M |
 | 5 | Generic poller with configs for Sentry, Vercel, GitLab | M |
 | 6 | Cert, domain and key expiry | S |
