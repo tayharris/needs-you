@@ -22,8 +22,10 @@
 // Answers from the card (ADR 0009 B2): for a question the card can show whole (1-4
 // questions, each with 1-8 options, labels as written, not a plan approval) the card is
 // posted answerable, and the hook's `answer-wait` mode waits for the person's click (up to
-// NEEDS_YOU_ANSWER_TIMEOUT s, default 600). A click's labels, checked against the options
-// asked, go to opencode's own POST /question/{id}/reply; the TUI shows the question all the
+// NEEDS_YOU_ANSWER_TIMEOUT s, default 600). opencode lets the person type their own answer
+// ("Type your own answer") to such a question, so the card offers "Other…" too. A click's
+// labels, or the words typed on the Mac, checked against the question asked, go to
+// opencode's own POST /question/{id}/reply; the TUI shows the question all the
 // while, and whichever answer comes first wins. question.replied or question.rejected stops
 // the wait. Nothing is ever answered on a timeout, an error or by default, and permission
 // prompts are never answered.
@@ -101,20 +103,35 @@ function answerable(list) {
       str(o.label) !== "" && str(o.label).length <= 80 && !/[\u0000-\u001f\u007f-\u009f]/.test(str(o.label))))
 }
 
-// The answer the hook printed, as opencode's reply: one array of labels per question, in
-// order, every label one of that question's options, one for a single-choice question. null
-// for anything else (then nothing is answered).
+// The person's own words from an answer ("Other"): undefined when there are none, null when
+// they aren't what the hub takes (one line, 1-1000 characters, no control or bidi characters).
+function ownWords(v) {
+  if (v === undefined || v === null) return undefined
+  if (typeof v !== "string" || v.trim() === "") return null
+  const t = v.trim()
+  if ([...t].length > 1000 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/.test(t)) return null
+  return t
+}
+
+// The answer the hook printed, as opencode's reply: one array per question, in order, of
+// labels from that question's options and then the person's own words if they typed any; one
+// label or the words for a single-choice question. null for anything else (then nothing is
+// answered).
 function replyFor(list, printed, requestID) {
   let a
   try { a = JSON.parse(printed) } catch { return null }
   if (!a || a.question_id !== requestID || !Array.isArray(a.answers) || a.answers.length !== list.length) return null
   const out = []
   for (let i = 0; i < list.length; i++) {
-    const sel = a.answers[i] && a.answers[i].selected
+    const ans = a.answers[i]
+    const sel = ans && ans.selected
+    const words = ans ? ownWords(ans.text) : null
     const labels = list[i].options.map((o) => o.label)
-    if (!Array.isArray(sel) || sel.length < 1 || (!list[i].multiple && sel.length !== 1)) return null
+    if (!Array.isArray(sel) || words === null) return null
+    const given = sel.length + (words === undefined ? 0 : 1)
+    if (given < 1 || (!list[i].multiple && given !== 1)) return null
     if (!sel.every((l) => typeof l === "string" && labels.includes(l)) || new Set(sel).size !== sel.length) return null
-    out.push(sel.slice())
+    out.push(words === undefined ? sel.slice() : [...sel, words])
   }
   return out
 }
@@ -181,7 +198,7 @@ export const NeedsYou = async (input) => {
     const list = Array.isArray(p.questions) ? p.questions : []
     const canAnswer = requestID !== "" && answerable(list)
     const posted = notify(sid, { hook_event_name: "Question", question_id: requestID, questions: questions(p.questions),
-      ...(canAnswer ? { answerable: true } : {}) })
+      ...(canAnswer ? { answerable: true, allow_other: true } : {}) })
     if (!canAnswer || !posted) return
     const pending = { stopped: false, child: null }
     waits.set(requestID, pending)

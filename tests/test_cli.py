@@ -799,6 +799,18 @@ class AnswerWait(CliTestCase):
         r = self.run_cli("answer-wait", "--key", "q", "--timeout", "0", urls=[self.hub.url], token=self.sender)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_prints_typed_words(self):
+        q = {"id": "toolu_1", "answerable": True, "items": [
+            {"text": "Which database?", "allow_other": True, "options": [{"label": "Postgres"}]}]}
+        item = self.ask("typed", q)
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+                           {"question_id": "toolu_1", "content_updated_at": item["content_updated_at"],
+                            "answers": [{"selected": [], "text": "MySQL"}]})
+        self.assertEqual(st, 200, body)
+        r = self.run_cli("answer-wait", "--key", "typed", "--timeout", "5", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["answers"], [{"selected": [], "text": "MySQL"}])
+
     def test_timeout_is_exit_3_and_never_an_answer(self):
         self.ask()
         started = time.time()

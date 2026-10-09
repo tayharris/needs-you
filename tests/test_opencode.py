@@ -386,6 +386,29 @@ if sys.argv[1:2] == ["answer-wait"]:
         wait = [c for c in self.calls() if c[0] == "answer-wait"]
         self.assertEqual(wait, [["answer-wait", "--key", opt(add, "--key"), "--timeout", "600"]])
 
+    def test_typed_words_become_part_of_opencodes_reply(self):
+        self.install()
+        typed = dict(self.answer([], ["Linux"]))
+        typed["answers"] = [{"selected": [], "text": " hotfix/2.0 "}, {"selected": ["Linux"], "text": "FreeBSD"}]
+        self.drive([self.event()], typed)
+        self.assertTrue(wait_until(lambda: self.posted(), timeout=10))
+        self.assertEqual(self.posted()[0]["body"], {"answers": [["hotfix/2.0"], ["Linux", "FreeBSD"]]})
+        add = [c for c in self.calls() if c[0] == "add"][-1]
+        q = json.loads(opt(add, "--question-json"))
+        self.assertEqual([it.get("allow_other") for it in q["items"]], [True, True])
+
+    def test_typed_words_that_dont_fit_answer_nothing(self):
+        self.install()
+        for entry in ({"selected": ["main"], "text": "also dev"}, {"selected": [], "text": "  "},
+                      {"selected": [], "text": "a\nb"}, {"selected": [], "text": "x" * 1001},
+                      {"selected": [], "text": 3}, {"selected": []}):
+            with self.subTest(entry=str(entry)[:60]):
+                a = self.answer(["main"], ["Linux"])
+                a["answers"][0] = entry
+                self.drive([self.event()], a)
+                time.sleep(0.5)
+                self.assertEqual(self.posted(), [])
+
     def test_nothing_is_answered_without_a_good_answer(self):
         self.install()
         bad = [

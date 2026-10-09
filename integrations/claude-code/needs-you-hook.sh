@@ -1179,10 +1179,12 @@ def shown_whole(value, limit, block=False):
     return one_line(value, limit) == one_line(value, 1 << 30)
 
 
-def question_field(questions, qid="", answerable=False):
+def question_field(questions, qid="", answerable=False, allow_other=False):
     """The `question` field for `questions` (the hub's limits: 4 questions, 8 options), or None.
     With `answerable` (the opencode plugin waits for an answer): marked answerable, with its
-    expiry, when the question fits whole (answerable_as_is)."""
+    expiry, when the question fits whole (answerable_as_is). With `allow_other` too (the agent
+    takes typed words for every question: Claude's and opencode's "Other"), each question of
+    an answerable card says so, and the person can type an answer on the Mac."""
     items = []
     for header, text, opts, multi in questions:
         t = text_block(text, MAX_QUESTION_TEXT) or one_line(header, MAX_QUESTION_TEXT)
@@ -1205,10 +1207,13 @@ def question_field(questions, qid="", answerable=False):
     if answerable and answerable_as_is(questions, out):
         out["answerable"] = True
         out["expires_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + answer_timeout()))
+        if allow_other:
+            for item in items:
+                item["allow_other"] = True
     return out
 
 
-def question_card(name, questions, qid="", answerable=False):
+def question_card(name, questions, qid="", answerable=False, allow_other=False):
     """(what, msg, Asked) for a card about `questions`, or None. `name` is the agent
     ("Claude"). The body lists each question's choices (for clients that don't show the
     `question` field); the steps form is only for a CLI or hub that refuses the field."""
@@ -1254,7 +1259,7 @@ def question_card(name, questions, qid="", answerable=False):
         listed.append("\n".join(lines))
     listed += parts[len(listed):]  # "+N more questions"
     msg = clamp("\n\n".join([p for p in listed if p] + [tail]), QUESTION_BUDGET + 400)
-    field_ = question_field(questions, qid, answerable)
+    field_ = question_field(questions, qid, answerable, allow_other)
     if field_ and field_.get("answerable"):
         msg = clamp(msg[:-len(tail)] + "Pick here or answer in %s." % name, QUESTION_BUDGET + 400) \
             if msg.endswith(tail) else msg
@@ -1702,7 +1707,8 @@ def opencode_card():
     if event == "Question":
         # The plugin sets `answerable` when it will wait for the card's answer (ADR 0009 B2).
         asked = (question_card("opencode", questions_from(data.get("questions")), field("question_id"),
-                               answerable=data.get("answerable") is True)
+                               answerable=data.get("answerable") is True,
+                               allow_other=data.get("allow_other") is True)
                  if questions_on() else None)
         if asked:
             return ("question",) + asked
@@ -1906,7 +1912,9 @@ def notify_card():
         if tool == "ExitPlanMode":
             what, msg = plan_card("Claude", ti.get("plan"))
         elif tool == "AskUserQuestion":
-            card = (question_card("Claude", questions_from(ti.get("questions")), ASK["qid"], ASK["answerable"])
+            # Claude's dialog always offers "Other" (type your own answer), so the card does too.
+            card = (question_card("Claude", questions_from(ti.get("questions")), ASK["qid"], ASK["answerable"],
+                                  allow_other=True)
                     if questions_on() else None)
             what, msg, asked = card or ("Claude asked you a question", "Claude is waiting for your answer.", None)
         elif tool in ("Bash", "PowerShell"):
@@ -1967,7 +1975,8 @@ def notify_card():
 # ADR 0009 B3. Claude Code runs the `ask` entry (PermissionRequest, matcher AskUserQuestion)
 # synchronously and reads its stdout as a decision, while its own question dialog shows: an
 # `allow` with `updatedInput` (the tool input, plus `answers`: question text -> label, a
-# multi-select's labels joined with ", ") answers the question. Measured on Claude Code
+# multi-select's labels joined with ", "; "Other", the person's own words, in place of a single
+# choice's label or after a multi-select's labels) answers the question. Measured on Claude Code
 # 2.1.294: the dialog doesn't wait for this hook, and when the person answers there first,
 # Claude goes on and ignores what the hook prints later.
 
@@ -2023,10 +2032,25 @@ def ask():
     return 0
 
 
+def answer_text(value):
+    """The person's own words from an answer ("Other"), or None when there are none, and
+    False when they aren't what the hub takes (one line, 1-1000 characters, no control,
+    bidi or line-separator characters). Passed on as typed: never redacted or cut."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        return False
+    value = value.strip()
+    if len(value) > 1000 or re.search("[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]", value):
+        return False
+    return value
+
+
 def reply():
     """Claude's decision for the answer `needs-you answer-wait` printed (NY_ANSWER) to the
     question NY_QID, or nothing when it doesn't fit that question exactly: the same question,
-    one entry per question, only offered labels, no repeats, one for a single choice."""
+    one entry per question, only offered labels, no repeats; a single choice one label or the
+    person's own words ("Other"), a multi-select any labels plus the words."""
     ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
     raw = ti.get("questions")
     if field("tool_name") != "AskUserQuestion" or not claude_answerable(raw):
@@ -2043,13 +2067,15 @@ def reply():
         return 0
     answers = {}
     for q, s in zip(raw, sel):
-        picked = s.get("selected") if isinstance(s, dict) else None
+        picked = s.get("selected", []) if isinstance(s, dict) else None
+        text = answer_text(s.get("text")) if isinstance(s, dict) else False
         labels = [o["label"] for o in q["options"]]
-        if (not isinstance(picked, list) or not picked
+        given = len(picked) + (text is not None) if isinstance(picked, list) else 0
+        if (text is False or not isinstance(picked, list) or not given
                 or any(not isinstance(p, str) or p not in labels for p in picked)
-                or len(set(picked)) != len(picked) or (q.get("multiSelect") is not True and len(picked) != 1)):
+                or len(set(picked)) != len(picked) or (q.get("multiSelect") is not True and given != 1)):
             return 0
-        answers[q["question"]] = ", ".join(l for l in labels if l in picked)
+        answers[q["question"]] = ", ".join([l for l in labels if l in picked] + ([text] if text else []))
     updated = dict(ti)
     updated["answers"] = answers
     sys.stdout.write(json.dumps({"hookSpecificOutput": {
