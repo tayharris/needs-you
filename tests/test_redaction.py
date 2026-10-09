@@ -165,13 +165,21 @@ class HubSecrets(unittest.TestCase):
                         secret = mint()
                         out = redact("key %s here" % secret)
                         self.assertEqual(out, "key [redacted] here", secret)
+                    # URL-encoded around it (%3D is =, %22 a quote, %20 a space): the word
+                    # boundary before the prefix is gone, but the secret still goes, cut short too
+                    secret = mint()
+                    for text, want in (("x%3D" + secret, "x%3D[redacted]"),
+                                       ("%22" + secret + "%22", "%22[redacted]%22"),
+                                       ("a%20" + secret[:20], "a%20[redacted]")):
+                        self.assertEqual(redact(text), want, text)
 
     def test_the_hub_log_redacts_them_too(self):
         for name in self.MINTS:
             for _ in range(50):
                 secret = getattr(hubmod, name)()
                 with self.subTest(mint=name):
-                    self.assertNotIn(secret.split("_", 1)[1], hubmod.redact_log("GET /?x=%s" % secret))
+                    for line in ("GET /?x=%s" % secret, "GET /?x%%3D%s" % secret, "GET /?q=%%22%s" % secret):
+                        self.assertNotIn(secret.split("_", 1)[1], hubmod.redact_log(line), line)
 
 
 class Callers(unittest.TestCase):
@@ -196,7 +204,8 @@ class LinearTime(unittest.TestCase):
               "eyJ-", "eyJa.", "sk-", "ny_-", "-----BEGIN RSA PRIVATE KEY-----", "@", ":@", "a:b@",
               "nyp_", "-----BEGIN PGP PRIVATE KEY BLOCK-----", "-----BEGIN A ", "hooks.slack.com/services/",
               "discord.com/api/webhooks/", "discordapp.com/api/v1/", "sig=", "&sig", "signature:",
-              "AKIA", "ASIA", "sk_live_", "rk_test_", "npm_", "hf_", "glptt-", "xapp-", "ya29.")
+              "AKIA", "ASIA", "sk_live_", "rk_test_", "npm_", "hf_", "glptt-", "xapp-", "ya29.",
+              "%3D", "%2", "%3Dny_-", "%22nyp_")
 
     def test_100_kb_of_crafted_text(self):
         redact = redact_fn()
