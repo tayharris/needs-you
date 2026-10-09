@@ -14,7 +14,8 @@ import Foundation
 ///
 /// Look and behaviour are kept apart: every setting that only changes how something looks
 /// is under Appearance (Theme, Pill, Panel and cards, Alert style, Usage meters); Panel and
-/// Alerts keep what shows, where, and what may interrupt you.
+/// Alerts keep what shows, where, and what may interrupt you. Which page shows each setting,
+/// and the pages' sections, are in SettingsLayout.swift (SettingsRegistry, SettingsSection).
 public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     case general
     // Hubs and machines
@@ -83,17 +84,17 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .pill:
             return "The collapsed pill: its size, what it says, how it splits the count, and the new badge."
         case .cards:
-            return "The open panel's size, its cards' text and links, and how see-through it is."
+            return "The open panel's size and height, its cards' text and links, and how see-through it is."
         case .alertStyle:
-            return "How a new item looks as it arrives: the glow and ring, and the animation on the pill."
+            return "How a new item looks as it arrives: the glow and ring, the animation on the pill, and the edge glow."
         case .usageMeters:
-            return "Meters for your agents' session and weekly limits, as their hooks report them. Never counted or announced."
+            return "How the meters for your agents' session and weekly limits look: the warning colour and the pill's meter style."
         case .panel:
             return "Whether the pill and menu bar icon show, how the open panel behaves, what it lists, and the shortcut."
         case .alerts:
             return "What can interrupt you, and when: delivery, focus, snoozes, rules and reminders."
         case .integrations:
-            return "What the shortcut and a card's Terminal button do, and live updates."
+            return "What a card's Terminal button does, live updates, and how to send usage meters."
         case .updates:
             return "This app's version, automatic updates, and which machines are out of date."
         case .advanced:
@@ -111,7 +112,8 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     }
 
     /// A page by name: today's raw value, or a page that was renamed, merged or split up
-    /// (`usage` is now Appearance → Usage meters, `appearance` is Appearance → Theme).
+    /// (`usage` is now Appearance → Usage meters, whose page points to Panel for what shows;
+    /// `appearance` is Appearance → Theme).
     /// For names kept in prefs, links or scripts; nil for an unknown one.
     public init?(name: String) {
         if let tab = SettingsTab(rawValue: name) { self = tab; return }

@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Settings → Updates: this app's version, the update checks and installs, and which
 /// sender machines are behind. Lives in the Settings window only, never in the panel.
+// settings-section: updates
 struct UpdatesSettingsView: View {
     @ObservedObject var updates: UpdateController
     @ObservedObject var connect: ConnectController

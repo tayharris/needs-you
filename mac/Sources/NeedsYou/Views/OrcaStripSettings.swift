@@ -1,6 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: orca
 /// Settings → Panel → Orca: the open panel's list of Orca worktrees (OrcaWorktrees).
 struct OrcaStripSettingsSection: View {
     @ObservedObject var settings: AppSettings

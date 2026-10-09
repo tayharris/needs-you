@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
         if let phase3 {
-            settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
+            settingsWindow.extraSettings = [.schedule: { phase3.scheduleSection }, .liveUpdates: { phase3.streamSection }]
         }
         // Self-update (docs/roadmap/rollout-updates.md). Checks and installs never activate
         // the app; Settings → Updates has the detail, the open panel's footer one quiet line.
@@ -340,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
                                            (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
-                                           (.panel, 6), (.alerts, 4)]
+                                           (.panel, 7), (.alerts, 4), (.integrations, 2)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {

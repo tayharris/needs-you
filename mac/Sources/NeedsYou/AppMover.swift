@@ -218,6 +218,7 @@ enum LoginItem {
 }
 
 /// Settings → General, at the top while the app isn't in Applications.
+// settings-section: moveToApplications
 struct MoveToApplicationsSection: View {
     @ObservedObject var mover: AppMover
 

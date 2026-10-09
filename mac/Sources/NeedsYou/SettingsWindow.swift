@@ -8,7 +8,9 @@ import SwiftUI
 /// (advanced)); the "Appearance" group (Theme, Pill, Panel and cards, Alert style, Usage
 /// meters: everything that only changes how things look); then Panel, Alerts,
 /// Integrations, Updates and Advanced. The page list is `SettingsTab` in Core
-/// (SettingsPages.swift). Each page is a grouped form that scrolls.
+/// (SettingsPages.swift), and each page's sections, and which page shows each setting, are
+/// `SettingsSection` and `SettingsRegistry` (SettingsLayout.swift). Each page is a grouped
+/// form that scrolls.
 ///
 /// Focus rule: `show()` is the ONLY place the app activates or makes a window key, and it
 /// is only called from an explicit user action (the Settings menu item / gear button,
@@ -22,9 +24,9 @@ final class SettingsWindowController {
     private let localHub: LocalHubController
     private let hotKeys: HotKeyController
     private let navigation = SettingsNavigation()
-    /// Extra Settings sections per page (phase 3 adds its schedule and stream options;
-    /// Updates is filled entirely this way).
-    var extraSettings: [SettingsTab: () -> AnyView] = [:]
+    /// Sections filled from elsewhere (phase 3's schedule and live updates; Updates is filled
+    /// entirely this way). Each shows where `SettingsSection` puts it.
+    var extraSettings: [SettingsSection: () -> AnyView] = [:]
 
     init(model: AppModel, connect: ConnectController, localHub: LocalHubController, hotKeys: HotKeyController) {
         self.model = model
@@ -195,7 +197,7 @@ struct SettingsView: View {
     @ObservedObject var localHub: LocalHubController
     @ObservedObject var hotKeys: HotKeyController
     @ObservedObject var navigation: SettingsNavigation
-    var extra: [SettingsTab: AnyView] = [:]
+    var extra: [SettingsSection: AnyView] = [:]
     var close: () -> Void
     /// Snapshot tour only (NEEDS_YOU_SNAPSHOT_DIR): draw the pages as if the hub on this
     /// Mac were running at these addresses, even in demo mode. Never set in a real window.
@@ -279,88 +281,78 @@ struct SettingsView: View {
         .id(page)   // each page starts scrolled to the top
     }
 
-    /// Each page's sections, in order. `extra[page]` is where the app delegate plugs in
-    /// sections from elsewhere (phase 3, Updates).
-    @ViewBuilder
+    /// A page is its sections, in the order Core lists them (`SettingsSection.sections(on:)`),
+    /// so where each setting shows is declared once, in NeedsYouCore (SettingsLayout.swift),
+    /// and SettingsLayoutTests can check it.
     private func pageContent(_ page: SettingsTab) -> some View {
-        switch page {
-        case .general:
+        ForEach(SettingsSection.sections(on: page), id: \.self) { section in
+            sectionContent(section)
+        }
+    }
+
+    /// One section. Each view that writes a setting is tagged `// settings-section: <case>`
+    /// where it is defined, and may only write keys SettingsRegistry puts on this section's
+    /// page. `extra[section]` is where the app delegate plugs in sections from elsewhere
+    /// (phase 3, Updates).
+    @ViewBuilder
+    private func sectionContent(_ section: SettingsSection) -> some View {
+        switch section {
+        // General
+        case .moveToApplications:
             // First, so the first thing a new user clicks through to shows it (no launch alert).
             if mover.canMove && showcase == nil { MoveToApplicationsSection(mover: mover) }
-            if isFirstRun { welcome }
-            youSection
-            startupSection
-            demoSection
-            extra[.general]
-        case .inbox:
-            howItWorksSection
-            thisMacSection
-            if let reach = runningReach {
-                addressesSection(reach)
-                // Talks to the hub on this Mac, so not in a snapshot tour.
-                if showcase == nil, settings.localHubToken != nil {
-                    AlwaysOnHubSection(settings: settings, reach: reach, hubID: localHub.plan?.hubID)
-                }
+        case .welcome: if isFirstRun { welcome }
+        case .you: youSection
+        case .startup: startupSection
+        case .demo: demoSection
+        // Built-in hub
+        case .howItWorks: howItWorksSection
+        case .builtInHub: thisMacSection
+        case .hubAddresses: if let reach = runningReach { addressesSection(reach) }
+        case .alwaysOnHubs:
+            // Talks to the hub on this Mac, so not in a snapshot tour.
+            if let reach = runningReach, showcase == nil, settings.localHubToken != nil {
+                AlwaysOnHubSection(settings: settings, reach: reach, hubID: localHub.plan?.hubID)
             }
-            extra[.inbox]
-        case .connect:
-            if canInvite {
-                if let warning = inviteReachWarning { inviteWarningSection(warning) }
-                inviteSection
-            } else {
-                inviteUnavailableSection
-            }
-            extra[.connect]
-        case .machines:
-            machinesSection
-            openInvitesSection
-            extra[.machines]
-        case .otherHubs:
-            otherHubsIntroSection
-            connectSection
-            linkSourcesSection
-            serverHubsSection
-            hubsSection
-            extra[.otherHubs]
+        // Connect a machine
+        case .inviteWarning: if canInvite, let warning = inviteReachWarning { inviteWarningSection(warning) }
+        case .invite: if canInvite { inviteSection }
+        case .inviteUnavailable: if !canInvite { inviteUnavailableSection }
+        // Machines
+        case .machines: machinesSection
+        case .openInvites: openInvitesSection
+        // Other hubs
+        case .otherHubsIntro: otherHubsIntroSection
+        case .joinWithLink: connectSection
+        case .linkSources: linkSourcesSection
+        case .serverHubs: serverHubsSection
+        case .hubList: hubsSection
         // Appearance: how things look, nothing about what shows or when.
-        case .theme:
-            AppearanceSettingsSection(model: model, settings: settings)
-            extra[.theme]
-        case .pill:
-            PillSettingsSection(settings: settings)
-            extra[.pill]
-        case .cards:
-            lookSection
-            OpacitySettingsSection(settings: settings)
-            extra[.cards]
-        case .alertStyle:
-            alertStyleSection
-            ArrivalSettingsSection(model: model, settings: settings)
-            extra[.alertStyle]
-        case .usageMeters:
-            // The whole former Usage page: the meters' look, what they show, and (in its
-            // preview, before any numbers arrive) how to start sending them.
-            UsageSettingsSection(model: model, settings: settings)
-            extra[.usageMeters]
-        // Behaviour.
-        case .panel:
-            visibilitySection
-            OpenPanelSettingsSection(settings: settings)
-            SetupTipsSettingsSection(settings: settings)
-            OrcaStripSettingsSection(settings: settings)
-            keyboardSection
-            extra[.panel]
-        case .alerts:
-            ArrivalTimingSection(settings: settings)
-            DeliverySection(settings: settings)
-            breakthroughSection
-            BypassRulesSection(settings: settings)
-            WorkScreenSection(settings: settings)
-            extra[.alerts]
-        case .integrations:
-            terminalJumpSection
-            extra[.integrations]
-            sendersSection
+        case .theme: AppearanceSettingsSection(model: model, settings: settings)
+        case .pill: PillSettingsSection(settings: settings)
+        case .panelAndCards: lookSection
+        case .opacity: OpacitySettingsSection(settings: settings)
+        case .glowAndRing: alertStyleSection
+        case .arrivals: ArrivalSettingsSection(model: model, settings: settings)
+        case .edgeGlow: EdgeGlowSection(settings: settings)
+        case .usageMeterLook: UsageSettingsSection(model: model, settings: settings)
+        // Behaviour: what shows, where and when.
+        case .panelAndMenuBar: visibilitySection
+        case .openPanel: OpenPanelSettingsSection(settings: settings)
+        case .usageMeterContent: UsageContentSection(model: model, settings: settings)
+        case .setupTips: SetupTipsSettingsSection(settings: settings)
+        case .orca: OrcaStripSettingsSection(settings: settings)
+        case .keyboard: keyboardSection
+        case .newItems: ArrivalTimingSection(settings: settings)
+        case .delivery: DeliverySection(settings: settings)
+        case .snoozedOrHidden: breakthroughSection
+        case .bypassRules: BypassRulesSection(settings: settings)
+        case .workScreen: WorkScreenSection(settings: settings)
+        case .schedule: extra[.schedule]
+        case .terminalButton: terminalJumpSection
+        case .liveUpdates: extra[.liveUpdates]
+        case .usageSetup: UsageSetupSection()
+        case .senders: sendersSection
         case .updates:
             // Filled by the app delegate (UpdatesSettingsView).
             if let updates = extra[.updates] {
@@ -368,9 +360,7 @@ struct SettingsView: View {
             } else {
                 Section { Text("Updates aren't available in this build.").foregroundStyle(.secondary) }
             }
-        case .advanced:
-            advancedSection
-            extra[.advanced]
+        case .advanced: advancedSection
         }
     }
 
@@ -391,6 +381,7 @@ struct SettingsView: View {
 
     // MARK: General
 
+    // settings-section: welcome
     private var welcome: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
@@ -420,6 +411,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: startup
     private var startupSection: some View {
         Section {
             Toggle(isOn: Binding(get: { openAtLogin }, set: { setOpenAtLogin($0) })) {
@@ -438,6 +430,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: demo
     private var demoSection: some View {
         Section {
             Toggle(isOn: Binding(
@@ -457,6 +450,7 @@ struct SettingsView: View {
 
     // MARK: Built-in hub
 
+    // settings-section: howItWorks
     /// Three lines on what the parts are (senders, hub, app), at the top of Built-in hub.
     private var howItWorksSection: some View {
         Section {
@@ -479,6 +473,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: builtInHub
     private var thisMacSection: some View {
         Section {
             Toggle(isOn: Binding(
@@ -523,6 +518,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: hubAddresses
     /// Both addresses of the running hub, each with Copy; or why other machines can't
     /// reach it.
     private func addressesSection(_ reach: LocalHubReach) -> some View {
@@ -561,6 +557,7 @@ struct SettingsView: View {
 
     // MARK: Other hubs (advanced)
 
+    // settings-section: otherHubsIntro
     private var otherHubsIntroSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
@@ -574,6 +571,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: serverHubs
     private var serverHubsSection: some View {
         Section {
             Text("A server hub is the same hub, running all the time on a Linux server or VM on your tailnet. To add one, use Built-in hub → Always-on hub: it makes a one-use link, and one command on the server installs a hub and pairs it with this app's built-in hub. The two then copy every alert to each other, and links you make here list both, so senders use the server while this Mac sleeps. You don't join it here.")
@@ -592,6 +590,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: joinWithLink
     private var connectSection: some View {
         Section {
             Text("Use this on the Mac that should show the alerts. Paste a link that was made for this Mac, then press Join.")
@@ -629,6 +628,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: linkSources
     private var linkSourcesSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
@@ -656,6 +656,7 @@ struct SettingsView: View {
 
     // MARK: Connect a machine
 
+    // settings-section: invite
     private var inviteSection: some View {
         Section {
             Picker(selection: $inviteRole) {
@@ -706,6 +707,7 @@ struct SettingsView: View {
         return "This Mac isn't on Tailscale, so links made here point at 127.0.0.1 and only work on this Mac."
     }
 
+    // settings-section: inviteWarning
     private func inviteWarningSection(_ warning: String) -> some View {
         Section {
             HStack(alignment: .top) {
@@ -717,6 +719,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: inviteUnavailable
     private var inviteUnavailableSection: some View {
         Section {
             if settings.isDemo {
@@ -739,6 +742,7 @@ struct SettingsView: View {
 
     // MARK: Machines
 
+    // settings-section: machines
     private var machinesSection: some View {
         Section {
             HStack {
@@ -778,6 +782,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: openInvites
     private var openInvitesSection: some View {
         Section {
             if connect.accessInvites.isEmpty {
@@ -797,6 +802,7 @@ struct SettingsView: View {
 
     // MARK: General → You (shown on the General page)
 
+    // settings-section: you
     private var youSection: some View {
         Section {
             TextField("Your name", text: $settings.userName, prompt: Text("you"))
@@ -809,6 +815,7 @@ struct SettingsView: View {
 
     // MARK: Appearance → Panel and cards
 
+    // settings-section: panelAndCards
     private var lookSection: some View {
         Section {
             PanelPreview(model: model, settings: settings)
@@ -835,16 +842,26 @@ struct SettingsView: View {
             } label: {
                 LabelWithDetail("Cards before scrolling", "How many cards the open panel shows before its list scrolls.")
             }
+            HStack {
+                LabelWithDetail("Dragged height", settings.ui.expandedListHeight > 0
+                                ? "\(Int(settings.ui.expandedListHeight)) pt, set by dragging the open panel's edge. It replaces Cards before scrolling."
+                                : "None. Drag the open panel's bottom (or top) edge to set one.")
+                Spacer()
+                Button("Automatic") { settings.ui.expandedListHeight = 0 }
+                    .disabled(settings.ui.expandedListHeight <= 0)
+            }
         } header: {
             Text("Open panel and cards")
         } footer: {
-            Text("The sample card above shows your choices as you make them.")
+            Text("The sample card above shows your choices as you make them. Double-click the open panel's edge to go back to Cards before scrolling.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
+    // settings-section-end
     // MARK: Panel
 
+    // settings-section: panelAndMenuBar
     private var visibilitySection: some View {
         Section {
             Toggle(isOn: Binding(
@@ -883,6 +900,7 @@ struct SettingsView: View {
         }
     }
 
+    // settings-section: keyboard
     private var keyboardSection: some View {
         Section {
             ShortcutRecorder(hotKeys: hotKeys)
@@ -896,6 +914,7 @@ struct SettingsView: View {
 
     // MARK: Appearance → Alert style
 
+    // settings-section: glowAndRing
     private var alertStyleSection: some View {
         Section {
             AlertPreview(settings: settings)
@@ -919,6 +938,7 @@ struct SettingsView: View {
 
     // MARK: Alerts
 
+    // settings-section: snoozedOrHidden
     private var breakthroughSection: some View {
         Section {
             Toggle(isOn: $settings.urgentBreaksSnooze) {
@@ -937,6 +957,7 @@ struct SettingsView: View {
 
     // MARK: Integrations
 
+    // settings-section: terminalButton
     private var terminalJumpSection: some View {
         Section {
             Toggle(isOn: Binding(
@@ -973,6 +994,7 @@ struct SettingsView: View {
         TerminalJumpRunner.requestAutomation { automationStatus = $0 }
     }
 
+    // settings-section: senders
     private var sendersSection: some View {
         Section {
             Text("Claude Code hooks, Orca automations, CI jobs and scripts are senders: they post alerts to your hub. To set up a machine, make a link for it in Connect a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
@@ -990,11 +1012,12 @@ struct SettingsView: View {
 
     // MARK: Advanced
 
+    // settings-section: advanced
     @ViewBuilder
     private var advancedSection: some View {
         Section {
             HStack {
-                LabelWithDetail("Appearance and alerts", "Theme, pill, panel and cards, opacity and alert style (not Usage meters), plus how long new items show, the urgent reminder, and the open panel's height and click-elsewhere, back to how they started.")
+                LabelWithDetail("Appearance and alerts", "Theme, pill, panel and cards (with the open panel's height), opacity and alert style (not the edge glow or Usage meters), plus how long new items show, the urgent reminder and click-elsewhere, back to how they started.")
                 Spacer()
                 Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
                     .disabled(settings.ui == UIPrefs.defaults)
@@ -1039,6 +1062,7 @@ struct SettingsView: View {
 
     // MARK: Other hubs → by URL and token
 
+    // settings-section: hubList
     private var hubsSection: some View {
         Section {
             if settings.tokensNeedReconnect && !settings.hubsMissingTokens.isEmpty {
@@ -1085,6 +1109,8 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
+    // settings-section-end
+
     private func statusText(_ status: ConnectController.Status?) -> some View {
         switch status {
         case .none: EmptyView()
