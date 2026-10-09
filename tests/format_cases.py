@@ -166,6 +166,17 @@ ACCEPTED = [
                                "options": options(8, "Choice %d." % (q + 1))} for q in range(4)]},
                           "source": src("opencode")}),
     ("source-long", {"title": "Long source fields", "source": {"host": "h" * 100, "agent": "a" * 100, "project": "p" * 100}}),
+    # Typed answers (allow_other): "Other…" under the options, then one terminal button.
+    ("q-answerable-other", {"title": "Claude asks \u201cWhich database?\u201d (or your own words)",
+                            "body": "Pick here, type your own, or answer in Claude.",
+                            "question": {"id": "toolu_fmt4", "answerable": True, "items": [
+                                {"header": "Database", "text": "Which database should the service use?", "allow_other": True,
+                                 "options": [{"label": "Postgres"}, {"label": "SQLite"}]}]},
+                            "links": [TERMINAL], "source": src()}),
+    ("q-answerable-free-text", {"title": "Claude asks \u201cWhat should the file be called?\u201d",
+                                "question": {"id": "toolu_fmt5", "answerable": True, "items": [
+                                    {"text": "What should the new config file be called?", "allow_other": True}]},
+                                "links": [TERMINAL], "source": src()}),
 ]
 
 # Re-posts under the same key (fmt:<nn>-<name>): what changes, and whether the hub says changed.
