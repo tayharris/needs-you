@@ -364,7 +364,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             // What the person does before the senders re-post: picks, answers, a tick.
             for item in before {
-                guard let q = item.question, q.answerable else { continue }
+                // Typed-only questions (no options) are answered in the answer window, not by a click.
+                guard let q = item.question, q.answerable, q.items.allSatisfy({ !$0.options.isEmpty }) else { continue }
                 if AnswerPolicy.sendsOnClick(q) {
                     model.pickOption(item, question: 0, label: q.items[0].options[0].label)
                 } else {
