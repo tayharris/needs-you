@@ -189,6 +189,14 @@ extension View {
 
 struct IdlePill: View {
     @ObservedObject var model: AppModel
+    /// Observed too, so a change in Settings → Usage redraws the meters straight away (the
+    /// panel resizes from the same settings).
+    @ObservedObject var settings: AppSettings
+
+    init(model: AppModel) {
+        self.model = model
+        self.settings = model.settings
+    }
 
     var body: some View {
         // At rest a small, faint "Nothing needs <you>" (still easy to drag, right-click or
