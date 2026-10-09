@@ -78,6 +78,7 @@ While something isn't set up yet, the open panel shows a **setup tip**: a card l
 | **Connect your first agent or machine** | The hub answers, but nothing has ever posted to it and it lists no token besides this Mac's | **Copy agent prompt**: makes a one-use sender invite (24 hours) and copies the prompt to paste into Claude Code |
 | **Reach this Mac from your other machines** | The hub on this Mac listens on `127.0.0.1` only (no Tailscale) and you have server hubs or cards from other machines | **Open Settings**, and the [Tailscale guide](tailscale.md) |
 | **Install the Claude Code hooks on this Mac** | `~/.claude` exists but `~/.claude/settings.json` doesn't use the needs-you hook, after the first sender connected | **Copy agent prompt**, and the [Claude Code guide](claude-code.md) |
+| **Get cards from Linear, Jira and GitHub** | Something has posted, the hooks tip isn't up, and no card has come from the Linear, Jira, GitHub or expiry poller yet | **Open Settings** ([Integrations](#cards-from-your-tools)) |
 
 Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Invite a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
 
@@ -277,8 +278,14 @@ Under **Needs You**:
 
 - **Panel:** whether the floating panel and menu bar icon show, snap to corners, opening at launch and closing on a click elsewhere, the list height, setup tips, Orca worktrees, the keyboard shortcut.
 - **Alerts:** how long new items stay out and the urgent reminder, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
-- **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
+- **Integrations:** **Cards from your tools** (below) and **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
 - **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; **Developer mode**, below; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
+
+### Cards from your tools
+
+**Settings → Integrations → Cards from your tools** lists the pollers that turn another tool into cards: [Linear](linear.md), [Jira](jira.md), [GitHub Projects statuses and Dependabot alerts](github.md#projects-statuses-and-dependabot-alerts-opt-in), and [expiring certificates, domains and keys](expiry.md). Each row says in a sentence what it sends; open it for what it needs (where its token lives, or which `gh` scope), its settings in `~/.config/needs-you/env`, the commands with **Copy** buttons (install, store the token, try it, schedule it), and **Copy agent prompt**.
+
+The pollers run on one always-on machine that already sends alerts, not in the app. Paste the agent prompt into Claude Code or another agent there and it does the setup. The prompt never holds a token: it names the file the poller reads (mode 600) and has you paste the token in yourself, in your own terminal, or has you run `gh auth refresh -s <scope>` for GitHub. Each guide carries the same prompt.
 
 ### Developer mode
 

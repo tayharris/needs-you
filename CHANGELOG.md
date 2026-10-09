@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Set up Linear, Jira, GitHub Projects, Dependabot and expiry cards from the Mac app.** **Settings → Integrations → Cards from your tools** lists each poller with a sentence on what it sends; open one for what it needs, its settings in `~/.config/needs-you/env`, the install, try and schedule commands with **Copy** buttons, and **Copy agent prompt**, which you paste into Claude Code (or another agent) on the machine that will run it. The prompt never holds a token: it names the mode-600 file the poller reads and has you paste the token in yourself, or has you run `gh auth refresh -s <scope>`. A new setup tip, **Get cards from Linear, Jira and GitHub**, points there once something is sending and goes for good when a poller's first card arrives. Each guide carries the same prompt ([Mac app](docs/guides/mac-app.md#cards-from-your-tools)).
+
 ## [0.5.0] - 2026-10-09
 
 A pre-release: choose how the pill's usage meters look (Bars, Thin bars, Rings or Percentages, in three sizes) and see them on the idle pill too, one Appearance section in Settings, new opt-in cards from Linear, Jira, GitHub Projects statuses, Dependabot alerts and certificate, domain and key expiry, and one "go there" button per agent card. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** before relying on the new bring-forward button (an older hub refuses its link and the card falls back to the editor button), then run `needs-you update` on sender machines for the new hooks.
