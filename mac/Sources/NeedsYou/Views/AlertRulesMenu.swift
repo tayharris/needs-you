@@ -35,7 +35,7 @@ private struct ScopeMenu: View {
         if let summary = AlertRuleMenu.summary(book, scope) {
             Text(summary)
         }
-        Button("Remove Rules") { model.setBypassRules(AlertRuleMenu.removingAll(in: book, scope)) }
+        Button("Remove Rules") { model.setBypassRules(AlertRuleMenu.removingAll(in: model.settings.bypassRules, scope)) }
             .disabled(!AlertRuleMenu.hasRules(book, scope))
         if book.isFull {
             Text("The list is full (\(RuleBook.maxRules) rules): remove some in Settings → Alerts")
@@ -46,15 +46,13 @@ private struct ScopeMenu: View {
     private func actions(book: RuleBook, event: String?) -> some View {
         let current = AlertRuleMenu.current(book, scope, event: event)
         ForEach(AlertRuleMenu.actions, id: \.self) { action in
-            Button {
-                model.setBypassRules(AlertRuleMenu.choosing(action, in: book, scope, event: event))
-            } label: {
-                if current == action {
-                    Label(action.menuTitle, systemImage: "checkmark")
-                } else {
-                    Text(action.menuTitle)
-                }
-            }
+            // A Toggle in a menu is a menu item with the system checkmark.
+            Toggle(action.menuTitle, isOn: Binding(
+                get: { current == action },
+                set: { _ in
+                    // The rules as they are at the click, not as the menu was drawn.
+                    model.setBypassRules(AlertRuleMenu.choosing(action, in: model.settings.bypassRules, scope, event: event))
+                }))
             .disabled(!AlertRuleMenu.canChoose(book, scope, event: event))
         }
     }
