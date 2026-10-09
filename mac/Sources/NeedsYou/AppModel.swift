@@ -106,6 +106,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var answerStates: [String: AnswerState] = [:]
     /// The item each selection and state was made for (AnswerPolicy.stamp).
     private var answerStamps: [String: String] = [:]
+    /// The token role for each hub of the current feed (nil: unknown), set when it's built.
+    private var feedRoles: [HubRole?] = []
+    /// Every hub refused this Mac's typed words (`forbidden`) since the feed was built: the
+    /// cards stop offering Other… until the hubs change in Settings.
+    @Published private(set) var typedAnswersRefused = false
+    /// May the cards offer Other… and Answer…? Not when every hub's token is known not to be
+    /// an owner one (AnswerPolicy.mayType), or the hubs refused typed words already.
+    var mayTypeAnswers: Bool { !typedAnswersRefused && AnswerPolicy.mayType(roles: feedRoles) }
     /// The footer's update line ("Update available: 0.3.0 → 0.3.1"), set by UpdateController.
     /// Footer text only: not an item, never counted, never animates the pill or notifies.
     @Published var updateFooter: UpdateFooter?
@@ -473,6 +481,8 @@ final class AppModel: ObservableObject {
         activeHub = nil
         demoFeed = nil
         feedHubCount = 0
+        feedRoles = []
+        typedAnswersRefused = false
         statuses = []
         statusETag = nil
 
@@ -489,6 +499,7 @@ final class AppModel: ObservableObject {
             // One or more hubs, polled in order with failover (FailoverFeed). The local
             // hub, when on, is first.
             feedHubCount = configs.count
+            feedRoles = configs.map { settings.role(for: $0.baseURL) }
             feed = FailoverFeed(hubs: configs.map {
                 FailoverFeed.Hub(name: AppSettings.displayName(for: $0.baseURL), feed: HubClient(config: $0))
             })
@@ -1022,7 +1033,7 @@ final class AppModel: ObservableObject {
     /// window, where the person types their own words. The one card button that activates
     /// the app (CLAUDE.md rule 2): typing needs a key window, and the panel never is one.
     func openAnswerWindow(_ item: Item, question: Int) {
-        guard AnswerPolicy.canAnswer(item, now: Date()), let q = item.question,
+        guard AnswerPolicy.canAnswer(item, now: Date(), mayType: mayTypeAnswers), let q = item.question,
               q.items.indices.contains(question), q.items[question].allowOther,
               answerStates[item.id] != .sending, answerStates[item.id] != .sent else { return }
         openAnswerWindowHandler?(item, question)
@@ -1050,7 +1061,7 @@ final class AppModel: ObservableObject {
     /// keeps the words and its Send waits for the other questions. Returns why the words
     /// weren't taken, for the window; nil when they were (the window closes).
     func submitTypedAnswer(itemID: String, question: Int, text raw: String, seenVersion: String?) -> String? {
-        guard let item = store.items[itemID], AnswerPolicy.canAnswer(item, now: Date()),
+        guard let item = store.items[itemID], AnswerPolicy.canAnswer(item, now: Date(), mayType: mayTypeAnswers),
               answerStates[itemID] != .sending, answerStates[itemID] != .sent else {
             return "This question can't take an answer any more: answer in the terminal."
         }
@@ -1090,17 +1101,27 @@ final class AppModel: ObservableObject {
         answerStamps[item.id] = AnswerPolicy.stamp(item)
         let id = item.id
         let generation = feedGeneration
+        let typed = AnswerPolicy.hasText(request)
         Task {
             let state: AnswerState
+            var typedRefused = false
             do {
                 switch try await feed.answer(id: id, request) {
                 case .taken: state = .sent
-                case .refused(let code): state = .failed(AnswerPolicy.failureText(code: code))
+                case .refused(let code):
+                    typedRefused = typed && code == "forbidden"
+                    state = .failed(AnswerPolicy.failureText(code: code, typed: typed))
                 }
             } catch {
                 state = .failed(AnswerPolicy.failureText(code: nil))
             }
             guard generation == feedGeneration else { return }
+            if typedRefused {
+                // No hub takes this Mac's typed words: drop them so the card's options can be
+                // picked, and stop offering Other… (the card says why).
+                typedAnswersRefused = true
+                answerSelections[id] = answerSelections[id]?.withoutTexts()
+            }
             answerStates[id] = state
             if state == .sent {
                 answerSelections[id] = nil
