@@ -23,6 +23,7 @@ final class AppLocationTests: XCTestCase {
         ("testExistingCopyNeedsConfirmation", testExistingCopyNeedsConfirmation),
         ("testFailedVerifyReplacesNothing", testFailedVerifyReplacesNothing),
         ("testSameAsSourceRefused", testSameAsSourceRefused),
+        ("testCopyMustBeTheRunningApp", testCopyMustBeTheRunningApp),
     ]
 
     private let home = "/Users/sam"
@@ -240,5 +241,18 @@ final class AppLocationTests: XCTestCase {
             XCTAssertEqual(e, .sameAsSource)
         }
         XCTAssertEqual(contents(app), "v1")
+    }
+
+    /// Security finding 4: `codesign --verify` alone passes any validly signed bundle, so the
+    /// check also requires the running app's cdhash; without one, nothing is checked or moved.
+    func testCopyMustBeTheRunningApp() {
+        let hash = Data((0..<20).map { UInt8($0 * 13 % 256) })
+        XCTAssertEqual(AppSignature.requirement(cdhash: hash), "cdhash H\"000d1a2734414e5b6875828f9ca9b6c3d0ddeaf7\"")
+        XCTAssertEqual(AppSignature.verifyArguments(path: "/Applications/.NeedsYou.app.moving.1", cdhash: hash),
+                       ["--verify", "--deep", "--strict", "-R", "=cdhash H\"000d1a2734414e5b6875828f9ca9b6c3d0ddeaf7\"",
+                        "/Applications/.NeedsYou.app.moving.1"])
+        XCTAssertNil(AppSignature.verifyArguments(path: "/x", cdhash: nil))
+        XCTAssertNil(AppSignature.verifyArguments(path: "/x", cdhash: Data()))
+        XCTAssertNil(AppSignature.verifyArguments(path: "/x", cdhash: Data(repeating: 1, count: 32)))
     }
 }
