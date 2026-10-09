@@ -63,6 +63,7 @@ The open panel shows one context at a time; the tab in its header switches (here
 - A card with **steps** shows them as a numbered checklist at your card text size, each step's link as a button. Tick steps off as you go (the ticks stay on this Mac; steps the agent already marked done are ticked for you); once every step is ticked the card offers **All steps done: mark Done**. With **Card text** set to First lines or Title only, the card shows "3 steps" until you click it. Choices an older agent hook posted as steps still show this way.
 - An agent's **question** card shows each question under its header ("Database · choose one", or "choose any" when it takes several) and the choices it offered as rows, each with its description below the label. There are no tick boxes. When the agent waits for an answer from the card (Claude Code and opencode do, and any script that posts an answerable question), the choices are buttons: for a single question with one choice, a click sends that answer at once; with several questions or a "choose any" question, click your choices and then **Send**. When the agent also takes your own words (Claude Code's and opencode's "Other"), the question has an **Other…** row below its choices (**Answer…** when it has no choices): clicking it opens a small **answer window** with the question and a text field. Type, then **Send** (Return) or **Cancel** (Escape); the window closes and the app you were in comes back. With other questions on the card still unanswered, the button says **Use**: your words wait on the card as the chosen row (click it to change them, × to take them back) until you press the card's **Send**. Your words go to the agent as typed: one line, up to 1,000 characters. Only an owner token may send typed words (the app has one for its own hub; a Mac connected to a server hub with a reader link can pick choices but not type: it shows no **Other…**, and if a hub refuses typed words the card says to pick a choice instead). **Answer in the terminal** brings the agent's terminal forward instead. The card then says **Sent to the agent**, then **Answered: …**, or why it wasn't taken (another click got there first, the question changed, the agent stopped waiting). Clicking a choice never makes the app active or takes the keyboard from what you're typing in; only **Other…** does, since you type in its window. Otherwise answer in the agent (the Terminal button). With **Card text** set to First lines or Title only, the card says "Asks: Which database should we use? · 3 choices" until you click it, and the arrival preview shows the question and its first choices.
 - A card waiting 4 hours or more shows its age next to the title (`5 h`, `2 d`; amber after 2 days). Its **…** menu has **Dismiss All from <host>**, which clears every card and Recent row from that machine in this context, for when a machine went away without resolving its cards.
+- **Copying from a card.** The panel never takes the keyboard, so you can't select a card's text. Instead, commands, paths and ids in a card's text (anything the sender put in `code` or a fenced block that looks like a command, a path or an id, such as `orca terminal switch --terminal term_…`) show under the text as small chips with a copy icon: click one to put it on the clipboard (the chip says **Copied**). A chip always shows the whole of what it copies, so a chip is only offered for one line of plain visible text up to 200 characters: no multi-line blocks, and nothing with hidden or control characters (tabs, escapes, bidi or zero-width characters) that could make it read differently from what you'd paste. Every card's **…** menu has **Copy Title and Text**, **Copy Link URLs** and **Copy Command** (a submenu when there are several).
 - **Right-click** the pill (or the button in the expanded header) to snooze everything: 15 min, 30 min, 1 hr, 3 hr, until tomorrow. Urgent items still pulse once through a snooze. What else arrives while snoozed waits under **Later** (below).
 - **Control-Option-Space (⌃⌥Space)** opens the card list, or collapses it when it's open (a hidden panel comes back open). Double-clicking the open panel's header bar also collapses it. Change it in **Settings → Panel → Keyboard**.
 - Drag the pill anywhere; it stays where you drop it (or snaps to a corner with **Snap to corners**) and remembers the spot per display setup. **Reset Position** in the right-click menu puts it back top right. If a remembered spot would put the pill off its display (a display was rearranged or changed resolution), it starts in the top right of the main display instead; the next drag saves a new spot.
@@ -112,7 +113,16 @@ Each for **30 min**, **1 hr**, **2 hr** or **until tomorrow** (7:00). A moon on 
 
 Two guards: an urgent item breaks through a focus unless you turn off **Settings → Alerts → Urgent items break through Focus** (for a presentation), and a sender that would interrupt more than 6 times in an hour is held to ambient for the rest of it (the open panel says so).
 
-**Settings → Alerts → Delivery** sets the tier for normal, low, done/info and other-context items, and shows a table of what each focus does. **Bypass rules** (same tab) override everything, top to bottom, first match wins: match a **key prefix** (`agent:`, `work:gh:deploy:`), a sender **agent** prefix (`orca:`, `claude-code`) or a **host** (`devbox`), and choose **Always interrupt**, **Never interrupt** (ambient at most) or **Always later**. A hidden panel stays hidden; bypass never means taking focus.
+**Settings → Alerts → Delivery** sets the tier for normal, low, done/info and other-context items, and shows a table of what each focus does. **Bypass rules** (same tab) override everything, top to bottom, first match wins: match a **key prefix** (`agent:`, `work:gh:deploy:`), one agent **session** (its key, `agent:<host>:<session>`; the session's context card too), a sender **agent** prefix (`orca:`, `claude-code`) or a **host** (`devbox`), and choose:
+
+- **Treat as urgent**: the card is red, sorts first, counts as urgent on the pill and arrives as an urgent item does (it breaks through a snooze, and through Focus unless you turned that off). **Treat as low** is the opposite.
+- **Always interrupt**, **Never interrupt** (ambient at most) or **Always later**.
+
+A rule can also be narrowed to one **event**, what the sender says happened (`source.event`, set by the agent hooks for every agent they serve): **asks** a question, **needs approval** (a command, an edit, a plan), **finishes** its turn, **fails** (an error, a rate limit, a sign-in), or its **context** is nearly full. One click adds **Agent questions are urgent** or **Agent failures are urgent** (key prefix `agent:` with that event), or **Agents always interrupt**.
+
+From a card: an agent card's **…** menu has **Alerts for This Session** and **Alerts for All <agent> Sessions** (for example *claude-code*), each with **Treat as Urgent**, **Always Interrupt**, **Never Interrupt** and **Always Later**, the same under **Only When It Asks / Needs Approval / Finishes / Fails**, and **Remove Rules**. A checkmark shows the rule in force; choosing it again removes it. Rules made there go to the top of the list, so they win over the rest, and show up in Settings. So "tell me loudly when *this* session stops or asks, and nothing else" is: **Alerts for This Session → Treat as Urgent** on its card, plus **Never Interrupt** (or **Always Later**) under **Alerts for All claude-code Sessions** on any card.
+
+A hidden panel stays hidden; no rule ever takes focus.
 
 ### Drive it from Shortcuts or a script
 
@@ -174,7 +184,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). The de
 | How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
 | Urgent items break through Focus | Alerts → Delivery | On, Off |
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
-| Bypass rules | Alerts → **Bypass rules** | None; up to 50 |
+| Bypass rules | Alerts → **Bypass rules**, or an agent card's **…** menu | None; up to 50 |
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 | Edge glow | Alerts → On the work screen | Off, Urgent arrivals |
 
@@ -198,7 +208,7 @@ The repeat reminder plays urgent's arrival again every few minutes while an urge
 
 ## Terminal button
 
-Agent cards from the Claude Code hook (and Orca) carry a **Terminal** button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done.
+Agent cards from the Claude Code hook (and Orca) carry a **Terminal** button: an app action, not a web link. Clicking it shows you the terminal the session runs in and marks the card done. The button is named for where it goes, whatever the sender labelled it: **Orca**, **WezTerm**, **tmux**, **iTerm2**, **Terminal** or **Ghostty**. A session in Orca gets only the Orca button, no editor button beside it.
 
 | Link | What the app does |
 |---|---|
@@ -242,7 +252,18 @@ Under **Needs You**:
 - **Alerts:** how loud new items are, the arrival animation and its timing, delivery and focus, snooze and hidden-panel rules, bypass rules, the work screen.
 - **Usage:** the usage meters in the panel and on the pill, which providers, session, weekly or both, hide under a percentage, and the warning colour ([Usage meters](#usage-meters)).
 - **Integrations:** **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)).
-- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
+- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; **Developer mode**, below; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
+
+### Developer mode
+
+For bug reports and contributing: **Settings → Advanced → Developer mode** (off by default) shows each card's key under its title and adds a **Developer** section to the card's **…** menu:
+
+- **Copy Item JSON**: the whole item as the hub sent it, pretty-printed with sorted keys and ISO 8601 dates.
+- **Copy Key** and **Copy ID**.
+- **Copy Debug Report**: Markdown to paste into an issue: the app and macOS versions, which hub the last check came from, how the card is delivered right now (Interrupt, Ambient or Later, and why) and any bypass rule it matches, then the item JSON.
+- **Copy as needs-you add Command**: a one-line `needs-you add` command for bash or zsh that posts the same card again (key, title, body, context, priority, links, steps, question, source), to reproduce what you saw on another hub or machine. Every value is quoted, and control, bidi and zero-width characters are dropped first (line breaks are kept as `\n` inside `$'…'`), so pasting it runs nothing but `needs-you`, and only when you press Return.
+
+Nothing copied carries a token, peer secret or invite code: the item has none, and anything shaped like one in a card's text is masked (`ny_<redacted>`).
 
 Built in, not settings yet:
 

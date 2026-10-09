@@ -10,6 +10,7 @@ Plans, and the record of plans that are built. Each file's status line says what
 |---|---|---|
 | [next-big-item.md](next-big-item.md) | Its recommendation is built (0.3.0) | The four candidates compared; the pick, peering the Mac's hub with an always-on hub (ADR 0004 phases 1–2, [ADR 0012](../adr/0012-mac-hub-peers.md)), shipped in 0.3.0. Left: the iPhone widget, the Focus filter, GitHub webhooks |
 | [status-and-usage.md](status-and-usage.md) | Mostly built in 0.3.0: usage meters (status records), the ORCA panel section, `needs-you orca`, Claude and Codex usage cards, the "PR merged" card; since: the Orca accounts usage poller (`needs-you orca usage`) | The progress strip from status records (deferred by ADR 0011), a deploy-finished CI recipe |
+| [work-alerts.md](work-alerts.md) | Research | Ticket, design and ops alerts (Linear and Jira pollers, a generic poller, Sentry, deploys, expiries, Figma), configurable urgency, and one "go there" button per agent card |
 | [ios-widget.md](ios-widget.md) | Plan | iPhone app and widgets: reaching a hub from a phone, refresh and push, shared Swift core |
 | [future.md](future.md) | Plans | GitHub org webhooks, Discord/Slack fallback for urgent items, team mode, in-app help and onboarding, keyboard navigation in the open panel |
 | [ai-first.md](ai-first.md) | MCP server and `doctor` built | A machine-readable API spec, a conformance suite, the repo moves, routing |

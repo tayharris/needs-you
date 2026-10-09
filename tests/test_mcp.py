@@ -150,7 +150,7 @@ class Tools(McpTestCase):
     def test_add_update_resolve(self):
         body = '-x "quoted" $(not a command)\nline two'
         args = {"key": "work:ACME-1:deploy", "title": "ACME-1: approve the deploy", "body": body,
-                "priority": "urgent", "context": "personal", "project": "app",
+                "priority": "urgent", "context": "personal", "project": "app", "event": "approval",
                 "links": [{"label": "PR #42", "url": "https://github.com/example/app/pull/42/files"},
                           {"label": "a=b", "url": "https://example.com/x?y=1"}],
                 "steps": [{"text": "Approve in the PR", "link": {"label": "Approve", "url": "https://example.com/a"}},
@@ -178,7 +178,8 @@ class Tools(McpTestCase):
         self.assertEqual([s["text"] for s in item["steps"]], ["Approve in the PR", "Watch the rollout"])
         self.assertEqual(item["steps"][0]["link"]["label"], "Approve")
         self.assertTrue(item["steps"][1]["done"])
-        self.assertEqual(item["source"], {"host": "testbox", "agent": "mcp:Claude-Code", "project": "app"})
+        self.assertEqual(item["source"], {"host": "testbox", "agent": "mcp:Claude-Code", "project": "app",
+                                          "event": "approval"})
         self.assertIsNotNone(item["expires_at"])
 
     def test_done_kind(self):
@@ -222,7 +223,8 @@ class Tools(McpTestCase):
                  ({"key": "k", "title": "t", "priority": "asap"}, "priority must be one of"),
                  ({"key": "k", "title": "t", "links": [{"url": "https://x"}]}, "links[0]"),
                  ({"key": "k", "title": "t", "steps": [{"text": "s"}] * 11}, "at most 10"),
-                 ({"key": "k", "title": "t", "expires_in_hours": -1}, "expires_in_hours")]
+                 ({"key": "k", "title": "t", "expires_in_hours": -1}, "expires_in_hours"),
+                 ({"key": "k", "title": "t", "event": "needs approval"}, "event must be a short slug")]
         out, r = self.session(*[call(i, "needs_you_add", a) for i, (a, _) in enumerate(cases, 1)],
                               rpc(50, "tools/call", {"name": "needs_you_add", "arguments": "nope"}),
                               urls=[self.hub.url], token=self.sender)

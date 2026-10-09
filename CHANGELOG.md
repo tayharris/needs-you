@@ -4,6 +4,17 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Copy from a card on the Mac.** A card's text can't be selected (the panel never takes the keyboard), so commands, paths and ids in it, such as Orca's `orca terminal switch --terminal …`, now show as copy chips under the text: one click copies the whole command. Every card's **…** menu has **Copy Title and Text**, **Copy Link URLs** and **Copy Command** ([guide](docs/guides/mac-app.md#using-it)).
+- **Developer mode** (Settings → Advanced, off by default) for bug reports and contributing: each card shows its key, and its **…** menu copies the item JSON, its key and id, a Markdown debug report, and a `needs-you add` command that posts the same card again. Nothing copied includes a token ([guide](docs/guides/mac-app.md#developer-mode)).
+- **Alert rules per agent session, and per kind of event.** An agent card's **…** menu on the Mac has **Alerts for This Session** and **Alerts for All <agent> Sessions**: treat it as urgent, always interrupt, never interrupt or always later, for everything it posts or only when it asks, needs approval, finishes or fails. **Treat as urgent** makes the card red, sorts it first and delivers it as an urgent item; **Treat as low** does the opposite. Settings → Alerts → Bypass rules gets the same: a session match, an event for any rule, and one-click **Agent questions are urgent** and **Agent failures are urgent** ([Mac app guide](docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).
+- **`source.event`**: senders may say what happened (`question`, `approval`, `finished`, `failed`, `context`) with `needs-you add --event`, the MCP server's `event` or the API ([API](docs/API.md#post-v1items-sender)). The agent hooks set it on every card, for every agent they serve, and `needs-you run` on its failure and done cards. Older hubs drop it; upgrade the hubs and run `needs-you update` on sender machines for rules that match events.
+
+### Changed
+
+- **Orca cards have an Orca button.** The way back to an agent's Orca terminal was labelled **Terminal**, next to a VS Code button the hook added on every Mac. The hook now labels it **Orca** and adds no editor button when Orca is where the session runs, and the Mac app names every jump button for where it goes (Orca, iTerm2, tmux, WezTerm, Ghostty), whatever an older hook called it ([Orca guide](docs/guides/orca.md#the-orca-button)).
+
 ## [0.3.2] - 2026-10-09
 
 Usage meters for every account Orca manages, Settings that say when no usage numbers arrive, the strict option on three security questions (typed answers only from the owner, a readable peer secret file stops the hub, uninstall removes needs-you-only backups), and a server installer that works with an old `gh`. **Upgrade every hub** (typed answers are checked by the hub), then the Mac app's updater and `needs-you update` do the rest. To get usage meters from Orca, run `needs-you orca usage --enable` on the machine where Orca is signed in.

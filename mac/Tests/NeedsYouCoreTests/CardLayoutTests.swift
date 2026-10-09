@@ -94,6 +94,20 @@ final class CardLayoutTests: XCTestCase {
         XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "", url: "slack:open"), maxLength: nil), "slack:open")
     }
 
+    func testAppActionsAreNamedForWhereTheyGo() {
+        let orca = "needsyou://orca/terminal?handle=term_4f261ae3-041a-47c6-872a-cf02e1e40804"
+        // An older hook's "Terminal" label on the Orca jump still reads "Orca".
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "Terminal", url: orca), maxLength: nil), "Orca")
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "Somewhere else", url: orca + "&environment=Work"), maxLength: nil), "Orca")
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "Terminal", url: "needsyou://terminal/focus?app=wezterm&pane=12"), maxLength: nil), "WezTerm")
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "Terminal", url: "needsyou://terminal/focus?app=iterm&session=0123ABCD-0123-0123-0123-0123456789AB"), maxLength: nil), "iTerm2")
+        XCTAssertEqual(LinkRowPolicy.actionName("needsyou://terminal/focus?app=ghostty"), "Ghostty")
+        // Anything that doesn't parse as an action keeps the sender's label.
+        XCTAssertNil(LinkRowPolicy.actionName("needsyou://orca/terminal?handle=bad"))
+        XCTAssertNil(LinkRowPolicy.actionName("https://example.com"))
+        XCTAssertEqual(LinkRowPolicy.label(ItemLink(label: "Terminal", url: "needsyou://orca/terminal?handle=bad"), maxLength: nil), "Terminal")
+    }
+
     func testLinkDestinationShowsTheRealHost() {
         func dest(_ label: String, _ url: String) -> String? { LinkRowPolicy.destination(ItemLink(label: label, url: url)) }
         // A label that names one site but links to another shows where it really goes.

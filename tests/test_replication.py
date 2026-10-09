@@ -407,6 +407,22 @@ class LastWriterWins(HubTestCase):
         self.assertIsNone(wire["question"])
         self.assertEqual(wire["title"], self.rec()["title"])
 
+    def test_source_event_round_trip_and_a_bad_one_is_dropped(self):
+        h = self.make_hub("hub-x", start=False)
+        st = h.store
+        iid = self.rec()["id"]
+        src = {"host": "devbox", "agent": "claude-code", "event": "question"}
+        self.assertTrue(st.apply_item(self.rec(source=src)))
+        wire = hubmod.item_wire(st.get_item(iid))
+        self.assertEqual(wire["source"], src)
+        h2 = self.make_hub("hub-y", start=False)
+        self.assertTrue(h2.store.apply_item(wire))
+        self.assertEqual(hubmod.item_wire(h2.store.get_item(iid)), wire)
+        # a newer peer's event this hub would refuse: the item stays, the event goes
+        self.assertTrue(st.apply_item(self.rec(source={"host": "devbox", "event": "Not A Slug", "x": 1},
+                                               updated_at="2026-10-06T10:00:01.000Z")))
+        self.assertEqual(hubmod.item_wire(st.get_item(iid))["source"], {"host": "devbox"})
+
     def test_peer_step_links_are_checked(self):
         """Defence in depth, like item links: a peer's step link this hub would refuse is
         dropped (the step stays)."""

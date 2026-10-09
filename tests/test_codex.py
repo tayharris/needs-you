@@ -185,7 +185,7 @@ class CodexHook(CodexHookBase):
                       ORCA_TERMINAL_HANDLE="term_0123456789abcdef")
         argv = self.calls()[-1]
         self.assertTrue(opt(argv, "--key").endswith(":term_0123456789abcdef"))
-        self.assertIn("Terminal=needsyou://orca/terminal?handle=term_0123456789abcdef",
+        self.assertIn("Orca=needsyou://orca/terminal?handle=term_0123456789abcdef",
                       [argv[i + 1] for i, a in enumerate(argv) if a == "--link"])
 
     def test_claude_mode_is_unchanged(self):

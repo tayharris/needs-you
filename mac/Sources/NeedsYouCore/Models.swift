@@ -240,11 +240,27 @@ public struct ItemSource: Codable, Hashable, Sendable {
     public var host: String?
     public var agent: String?
     public var project: String?
+    /// What happened (`question`, `approval`, `finished`, `failed`, `context`, or a sender's
+    /// own slug; docs/API.md). Bypass rules can match it. Nil from hubs and senders that
+    /// predate it, and for anything that isn't a slug.
+    public var event: String?
 
-    public init(host: String? = nil, agent: String? = nil, project: String? = nil) {
+    enum CodingKeys: String, CodingKey { case host, agent, project, event }
+
+    public init(host: String? = nil, agent: String? = nil, project: String? = nil, event: String? = nil) {
         self.host = host
         self.agent = agent
         self.project = project
+        self.event = event
+    }
+
+    /// Lenient: a field of the wrong type is nil instead of costing the item.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        host = (try? c.decodeIfPresent(String.self, forKey: .host)) ?? nil
+        agent = (try? c.decodeIfPresent(String.self, forKey: .agent)) ?? nil
+        project = (try? c.decodeIfPresent(String.self, forKey: .project)) ?? nil
+        event = ((try? c.decodeIfPresent(String.self, forKey: .event)) ?? nil).flatMap { AgentEvent.isValid($0) ? $0 : nil }
     }
 
     /// `devbox · orca:redo-fixer`, skipping empty parts.
@@ -285,6 +301,9 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     /// A closed item whose text the hub has purged (ADR 0012): only its id, key, status and
     /// times are left. Never shown; it tells a client the item closed.
     public var tombstone: Bool = false
+    /// The priority the sender gave, once a bypass rule's "Treat as urgent" or "Treat as low"
+    /// may have changed `priority` (RuleBook.applied). Local only, never encoded.
+    public var senderPriority: ItemPriority?
 
     /// Closed on the hub: resolved or dismissed, or a tombstone (whatever its status says).
     public var isClosed: Bool { status != .open || tombstone }

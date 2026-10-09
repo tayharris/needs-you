@@ -47,6 +47,8 @@ let entries =
     + testEntries(DeliveryPolicyTests.self, DeliveryPolicyTests.allTests)
     + testEntries(FocusStateTests.self, FocusStateTests.allTests)
     + testEntries(BypassRuleTests.self, BypassRuleTests.allTests)
+    + testEntries(SessionRuleTests.self, SessionRuleTests.allTests)
+    + testEntries(AlertRuleMenuTests.self, AlertRuleMenuTests.allTests)
     + testEntries(NoisySenderGuardTests.self, NoisySenderGuardTests.allTests)
     + testEntries(FocusLinkTests.self, FocusLinkTests.allTests)
     + testEntries(WorkDisplayTests.self, WorkDisplayTests.allTests)
@@ -66,6 +68,7 @@ let entries =
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
     + testEntries(AppLocationTests.self, AppLocationTests.allTests)
     + testEntries(LaunchBehaviorTests.self, LaunchBehaviorTests.allTests)
+    + testEntries(CardCopyTests.self, CardCopyTests.allTests)
 
 let code = await runTests(entries)
 exit(code)

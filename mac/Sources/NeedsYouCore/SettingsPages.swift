@@ -79,7 +79,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .updates:
             return "This app's version, automatic updates, and which machines are out of date."
         case .advanced:
-            return "Reset the look and alerts, and see where settings and data are kept."
+            return "Reset the look and alerts, developer mode, and where settings and data are kept."
         }
     }
 
