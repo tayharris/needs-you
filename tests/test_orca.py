@@ -224,5 +224,17 @@ class HookOrcaBodyTests(unittest.TestCase):
         self.assertIn("Session `s1`", body)
 
 
+class GuideNamesTheOrcaButton(unittest.TestCase):
+    """The hook labels an Orca session's jump `Orca` and adds no editor button beside it
+    (HookOrcaBodyTests above); the Claude Code guide's button table says the same."""
+
+    def test_claude_code_everywhere(self):
+        with open(os.path.join(ROOT, "docs", "guides", "claude-code-everywhere.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("| In Orca | **Orca**: switches Orca to that terminal (no editor button beside it) |", text)
+        self.assertIn("Their cards have an **Orca** button", text)
+        self.assertNotIn("| In Orca | **Terminal**", text)
+
+
 if __name__ == "__main__":
     unittest.main()
