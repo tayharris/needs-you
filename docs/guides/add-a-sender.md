@@ -138,6 +138,8 @@ Ready-made pieces are in [integrations/ci](../../integrations/ci/README.md): a w
    needs-you uninstall-hooks
    ```
 
+   It also deletes the installers' backups (`<file>.bak-<time>`) that hold only needs-you's part, and the agent directories (such as `~/.gemini`) left empty; backups with your own settings in them stay.
+
    With a CLI older than `uninstall-hooks`: `integrations/claude-code/install-hooks.sh --uninstall` from a checkout, or fetch it from the hub:
 
    ```bash
