@@ -1,5 +1,6 @@
 # Tests on every push and PR, and the gate the release workflow calls before it builds.
-# Same suites as the test-all skill. See docs/roadmap/ci-cd.md.
+# Same suites as the test-all skill; scripts/check.sh runs them locally (tests/test_check_script.py
+# keeps its commands identical to these). See docs/roadmap/ci-cd.md.
 name: ci
 
 on:
