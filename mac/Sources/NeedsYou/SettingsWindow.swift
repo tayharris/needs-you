@@ -5,7 +5,9 @@ import SwiftUI
 
 /// The Settings window: a sidebar of short pages, like System Settings. General; the
 /// "Hubs and machines" group (Built-in hub, Connect a machine, Machines, Other hubs
-/// (advanced)); then Panel, Alerts, Integrations, Updates and Advanced. The page list is `SettingsTab` in Core
+/// (advanced)); the "Appearance" group (Theme, Pill, Panel and cards, Alert style, Usage
+/// meters: everything that only changes how things look); then Panel, Alerts,
+/// Integrations, Updates and Advanced. The page list is `SettingsTab` in Core
 /// (SettingsPages.swift). Each page is a grouped form that scrolls.
 ///
 /// Focus rule: `show()` is the ONLY place the app activates or makes a window key, and it
@@ -318,30 +320,41 @@ struct SettingsView: View {
             serverHubsSection
             hubsSection
             extra[.otherHubs]
-        case .panel:
-            lookSection
+        // Appearance: how things look, nothing about what shows or when.
+        case .theme:
+            AppearanceSettingsSection(model: model, settings: settings)
+            extra[.theme]
+        case .pill:
             PillSettingsSection(settings: settings)
+            extra[.pill]
+        case .cards:
+            lookSection
+            OpacitySettingsSection(settings: settings)
+            extra[.cards]
+        case .alertStyle:
+            alertStyleSection
+            ArrivalSettingsSection(model: model, settings: settings)
+            extra[.alertStyle]
+        case .usageMeters:
+            // The whole former Usage page: the meters' look, what they show, and (in its
+            // preview, before any numbers arrive) how to start sending them.
+            UsageSettingsSection(model: model, settings: settings)
+            extra[.usageMeters]
+        // Behaviour.
+        case .panel:
             visibilitySection
             OpenPanelSettingsSection(settings: settings)
-            OpacitySettingsSection(settings: settings)
             SetupTipsSettingsSection(settings: settings)
             OrcaStripSettingsSection(settings: settings)
             keyboardSection
             extra[.panel]
-        case .appearance:
-            AppearanceSettingsSection(model: model, settings: settings)
-            extra[.appearance]
         case .alerts:
-            alertStyleSection
-            ArrivalSettingsSection(model: model, settings: settings)
+            ArrivalTimingSection(settings: settings)
             DeliverySection(settings: settings)
             breakthroughSection
             BypassRulesSection(settings: settings)
             WorkScreenSection(settings: settings)
             extra[.alerts]
-        case .usage:
-            UsageSettingsSection(model: model, settings: settings)
-            extra[.usage]
         case .integrations:
             terminalJumpSection
             extra[.integrations]
@@ -792,7 +805,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Panel
+    // MARK: Appearance → Panel and cards
 
     private var lookSection: some View {
         Section {
@@ -821,12 +834,14 @@ struct SettingsView: View {
                 LabelWithDetail("Cards before scrolling", "How many cards the open panel shows before its list scrolls.")
             }
         } header: {
-            Text("Look")
+            Text("Open panel and cards")
         } footer: {
             Text("The sample card above shows your choices as you make them.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
+
+    // MARK: Panel
 
     private var visibilitySection: some View {
         Section {
@@ -877,7 +892,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Alerts
+    // MARK: Appearance → Alert style
 
     private var alertStyleSection: some View {
         Section {
@@ -893,12 +908,14 @@ struct SettingsView: View {
                 LabelWithDetail("Normal and low items", "Off: no pulse, just a faint ring on the count.")
             }
         } header: {
-            Text("New items")
+            Text("Glow and ring")
         } footer: {
             Text("How loud a new item is: the glow, how many times it pulses (and how far it moves), and the ring on the count. Bright also tints the pill. Arrivals below picks the animation.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
+
+    // MARK: Alerts
 
     private var breakthroughSection: some View {
         Section {
@@ -975,7 +992,7 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             HStack {
-                LabelWithDetail("Look and alerts", "The pill, the cards' size and text, theme, opacity, alert styles and arrival animations, back to how they started.")
+                LabelWithDetail("Appearance and alerts", "Theme, pill, panel and cards, opacity and alert style (not Usage meters), plus how long new items show, the urgent reminder, and the open panel's height and click-elsewhere, back to how they started.")
                 Spacer()
                 Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
                     .disabled(settings.ui == UIPrefs.defaults)
@@ -1317,6 +1334,10 @@ private struct SettingsPageHeader: View {
                 .foregroundStyle(.tint)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
+                // A subpage says which group it's in: "Appearance".
+                if tab.group == .appearance, let group = tab.group.title {
+                    Text(group).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                }
                 Text(tab.title).font(.title2.weight(.semibold))
                 Text(tab.summary)
                     .font(.callout)

@@ -267,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.settings.ui.pillSplit = .none
                 model.settings.ui.pillDetail = .topItem
             }),
-            // Settings → Appearance: a few themes on the open panel and the pill.
+            // Settings → Appearance → Theme: a few themes on the open panel and the pill.
             ("10-theme-midnight", { model in
                 model.settings.ui.pillDetail = .count
                 model.settings.ui.theme = .midnight
@@ -279,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
-            // Settings → Alerts → Preview on the pill: a sample urgent item arriving.
+            // Settings → Appearance → Alert style → Preview on the pill: a sample urgent item arriving.
             ("14-arrival-preview", { model in
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
@@ -318,7 +318,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
-        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1), (.panel, 14), (.appearance, 2), (.alerts, 3), (.usage, 1)]
+        let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
+                                           (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
+                                           (.panel, 6), (.alerts, 4)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
@@ -342,11 +344,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await settingsWindow.writeSnapshot(of: tab, showcase: showcase, shots: shots,
                                                    into: dir, name: "settings-\(tab.rawValue)")
             }
-            // The Appearance sample in a light and a colourful theme: the desktop stays put.
+            // The Theme sample in a light and a colourful theme: the desktop stays put.
             for theme in [PanelTheme.paper, .sunset] {
                 settings.ui.theme = theme
-                await settingsWindow.writeSnapshot(of: .appearance, showcase: showcase, shots: 2,
-                                                   into: dir, name: "settings-appearance-\(theme.rawValue)")
+                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+                                                   into: dir, name: "settings-theme-\(theme.rawValue)")
             }
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
