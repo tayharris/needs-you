@@ -30,13 +30,12 @@ final class ArrivalMotionTests: XCTestCase {
     private var store: UserDefaults!
 
     override func setUp() {
-        suite = "needsyou-arrival-test-\(UUID().uuidString)"
-        store = UserDefaults(suiteName: suite)
+        suite = TestDefaults.suiteName(Self.self)
+        store = TestDefaults.make(suite)
     }
 
     override func tearDown() {
-        store.removePersistentDomain(forName: suite)
-        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(suite).plist")
+        TestDefaults.clear(suite)
     }
 
     private func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 0.0001 }

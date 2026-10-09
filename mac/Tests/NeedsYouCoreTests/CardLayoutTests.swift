@@ -173,12 +173,9 @@ final class CardLayoutTests: XCTestCase {
     }
 
     func testPrefsRoundTripAndValidation() {
-        let suite = "needsyou-cardlayout-test-\(UUID().uuidString)"
-        let store = UserDefaults(suiteName: suite)!
-        defer {
-            store.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(suite).plist")
-        }
+        let suite = TestDefaults.suiteName(Self.self)
+        let store = TestDefaults.make(suite)
+        defer { TestDefaults.clear(suite) }
         var p = UIPrefs()
         p.panelOpacity = 0.7
         p.panelHoverOpacity = 0.9

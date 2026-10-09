@@ -6,7 +6,7 @@ import XCTest
 import Foundation
 import NeedsYouCore
 
-/// Forward-only prefs migrations (`prefsVersion`). Each test uses its own throwaway suite.
+/// Forward-only prefs migrations (`prefsVersion`). Each test starts from an empty suite (`TestDefaults`).
 final class PrefsMigrationTests: XCTestCase {
     static var allTests = [
         ("testFreshPrefsGetCurrentVersion", testFreshPrefsGetCurrentVersion),
@@ -21,14 +21,12 @@ final class PrefsMigrationTests: XCTestCase {
     private var defaults: UserDefaults!
 
     override func setUp() {
-        suite = "needsyou-prefs-test-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)
+        suite = TestDefaults.suiteName(Self.self)
+        defaults = TestDefaults.make(suite)
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        // removePersistentDomain can leave an empty plist behind; remove it so tests leave no trace.
-        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(suite).plist")
+        TestDefaults.clear(suite)
     }
 
     func testFreshPrefsGetCurrentVersion() {

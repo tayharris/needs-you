@@ -7,7 +7,7 @@ import Foundation
 import NeedsYouCore
 
 /// The look-and-feel prefs: defaults are the original look, bad values fall back, and
-/// loading never writes. Each test uses its own throwaway suite.
+/// loading never writes. Each test starts from an empty suite (`TestDefaults`).
 final class UIPrefsTests: XCTestCase {
     static var allTests = [
         ("testFreshPrefsAreTheOriginalLook", testFreshPrefsAreTheOriginalLook),
@@ -24,13 +24,12 @@ final class UIPrefsTests: XCTestCase {
     private var store: UserDefaults!
 
     override func setUp() {
-        suite = "needsyou-uiprefs-test-\(UUID().uuidString)"
-        store = UserDefaults(suiteName: suite)
+        suite = TestDefaults.suiteName(Self.self)
+        store = TestDefaults.make(suite)
     }
 
     override func tearDown() {
-        store.removePersistentDomain(forName: suite)
-        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(suite).plist")
+        TestDefaults.clear(suite)
     }
 
     private var storedKeys: Set<String> {

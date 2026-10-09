@@ -303,9 +303,9 @@ final class PruningTests: XCTestCase {
     }
 
     func testRoleStorageAndPruning() throws {
-        let suite = "needsyou-test-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = TestDefaults.suiteName(Self.self)
+        let defaults = TestDefaults.make(suite)
+        defer { TestDefaults.clear(suite) }
 
         let a = URL(string: "http://Hub1.t.ts.net:8765/")!, b = URL(string: "http://hub2.t.ts.net:8765")!
         var book = HubRoleBook()

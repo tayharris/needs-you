@@ -270,9 +270,9 @@ final class DeliveryPolicyTests: XCTestCase {
     }
 
     func testDefaultsLoadAndSave() {
-        let suite = "needsyou.delivery.\(UUID().uuidString)"
-        let store = UserDefaults(suiteName: suite)!
-        defer { store.removePersistentDomain(forName: suite) }
+        let suite = TestDefaults.suiteName(Self.self)
+        let store = TestDefaults.make(suite)
+        defer { TestDefaults.clear(suite) }
         XCTAssertEqual(DeliveryDefaults.load(from: store), DeliveryDefaults.standard)
         // Unknown or not-allowed values fall back.
         store.set("loud", forKey: DeliveryDefaults.Key.normal)
@@ -325,9 +325,9 @@ final class FocusStateTests: XCTestCase {
     }
 
     func testPersistence() {
-        let suite = "needsyou.focus.\(UUID().uuidString)"
-        let store = UserDefaults(suiteName: suite)!
-        defer { store.removePersistentDomain(forName: suite) }
+        let suite = TestDefaults.suiteName(Self.self)
+        let store = TestDefaults.make(suite)
+        defer { TestDefaults.clear(suite) }
         XCTAssertEqual(FocusState.load(from: store, now: now), .off)
         let state = FocusState(level: .agentsAndUrgent, until: now.addingTimeInterval(600), source: .link)
         state.save(to: store)

@@ -69,6 +69,7 @@ let entries =
     + testEntries(AppLocationTests.self, AppLocationTests.allTests)
     + testEntries(LaunchBehaviorTests.self, LaunchBehaviorTests.allTests)
     + testEntries(CardCopyTests.self, CardCopyTests.allTests)
+    + testEntries(TestDefaultsTests.self, TestDefaultsTests.allTests)
 
 let code = await runTests(entries)
 exit(code)
