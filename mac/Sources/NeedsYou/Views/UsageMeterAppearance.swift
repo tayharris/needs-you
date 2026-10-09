@@ -2,6 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: usageMeterLook
 // How the collapsed pill draws its usage meters (UsagePrefs.pillAppearance, PillMeterLayout):
 // a style, a size, and where they apply the layout and the percentages, with a live preview
 // of the pill. Self-contained rows, so a Settings page can host them in any Section.

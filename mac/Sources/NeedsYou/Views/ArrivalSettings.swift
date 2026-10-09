@@ -1,6 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: arrivals
 /// Settings → Appearance → Alert style → Arrivals: the arrival animation (urgent and the
 /// rest), how many times it plays and how fast, and a Preview that plays it on the pill.
 /// How long the preview stays out and the urgent reminder are behaviour, on Alerts
@@ -49,6 +50,30 @@ struct ArrivalSettingsSection: View {
     }
 }
 
+// settings-section: edgeGlow
+/// Settings → Appearance → Alert style → Edge glow: a red glow around the work screen's edge
+/// when an urgent item arrives (EdgeGlowController). Where new items spring out is
+/// behaviour, on Alerts (WorkScreenSection).
+struct EdgeGlowSection: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Section {
+            Picker(selection: $settings.edgeGlow) {
+                ForEach(EdgeGlowMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Edge glow", "A few seconds of red glow around the edge of the display a new item springs out on, when an urgent item arrives. Clicks go through it.")
+            }
+        } header: {
+            Text("Edge glow")
+        } footer: {
+            Text("Which display that is: Alerts → On the work screen. The glow never takes focus.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+// settings-section: newItems
 /// Settings → Alerts → New items: how long the new-item preview (and the Later summary
 /// peek) stays out, and the repeat reminder for unseen urgent items. How they look is
 /// Appearance → Alert style (ArrivalSettingsSection).

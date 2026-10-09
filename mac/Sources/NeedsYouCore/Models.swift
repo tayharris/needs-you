@@ -392,6 +392,13 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
             || question != old.question
     }
 
+    /// What runs the alert rules again on a re-post: a visible change, or a new `source.event`
+    /// (bypass rules can match on the event alone, such as "Always interrupt, when it asks").
+    /// The hub keeps an event-only re-post as an update (`updated_at`), not new content.
+    public func hasAlertChange(from old: Item) -> Bool {
+        hasVisibleChange(from: old) || source?.event != old.source?.event
+    }
+
     public func isExpired(at now: Date) -> Bool {
         if let expiresAt { return expiresAt <= now }
         return false

@@ -1,6 +1,6 @@
 # Request update: why a hub can't make a machine run anything
 
-The Mac app's **Request update** (Settings → Access, the machine list) lets the owner ask a
+The Mac app's **Request update** (Settings → Machines, the machine list) lets the owner ask a
 sender machine to update. This note records the threat model behind its design. Contract:
 [API.md](../API.md#post-v1tokensid-or-namerequest-update-owner); user guide:
 [updates.md](../guides/updates.md#sender-machines).

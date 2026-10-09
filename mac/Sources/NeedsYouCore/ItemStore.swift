@@ -4,7 +4,8 @@ import Foundation
 public struct MergeResult: Equatable, Sendable {
     /// Items the app hadn't seen before.
     public var inserted: [Item] = []
-    /// Known items whose title, body or priority changed (these re-animate).
+    /// Known items whose title, body, priority, steps, question or `source.event` changed
+    /// (these re-animate and go through the alert rules again).
     public var changed: [Item] = []
     /// Known items whose update was invisible (e.g. an hourly re-post). No animation.
     public var touched: [Item] = []
@@ -120,7 +121,7 @@ public struct ItemStore: Sendable {
                     heldForLater[incoming.id] = held
                 }
                 items[incoming.id] = incoming
-                if incoming.hasVisibleChange(from: twin) { result.changed.append(incoming) } else { result.touched.append(incoming) }
+                if incoming.hasAlertChange(from: twin) { result.changed.append(incoming) } else { result.touched.append(incoming) }
                 continue
             }
 
@@ -131,7 +132,7 @@ public struct ItemStore: Sendable {
                 promotedToNeeds[incoming.id] = incoming.updatedAt
             }
             if let existing {
-                if incoming.hasVisibleChange(from: existing) {
+                if incoming.hasAlertChange(from: existing) {
                     result.changed.append(incoming)
                 } else if incoming != existing {
                     result.touched.append(incoming)

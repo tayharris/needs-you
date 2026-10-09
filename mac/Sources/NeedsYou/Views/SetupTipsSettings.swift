@@ -1,6 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: setupTips
 /// Settings → Panel → Setup tips: the local cards about what isn't set up yet
 /// (SetupChecklist), and bringing back dismissed ones.
 struct SetupTipsSettingsSection: View {
@@ -9,7 +10,7 @@ struct SetupTipsSettingsSection: View {
     var body: some View {
         Section {
             Toggle(isOn: $settings.showSetupTips) {
-                LabelWithDetail("Show setup tips", "Cards in the panel when something isn't set up yet: no hub, nothing connected, other machines can't reach this Mac, no Claude Code hooks.")
+                LabelWithDetail("Show setup tips", "Cards in the panel when something isn't set up yet: no hub, nothing connected, other machines can't reach this Mac, no Claude Code hooks, no cards from your tools yet.")
             }
             HStack {
                 LabelWithDetail("Dismissed tips", settings.setupTipsDismissed.isEmpty
@@ -28,11 +29,14 @@ struct SetupTipsSettingsSection: View {
     }
 }
 
+// settings-section-end
+
 extension SettingsTab {
     /// Where a setup card's Open Settings goes: the one place that maps Core's pages to tabs.
     init(setupPage: SetupSettingsPage) {
         switch setupPage {
         case .thisMac: self = .inbox
+        case .integrations: self = .integrations
         }
     }
 }

@@ -79,7 +79,7 @@ CURATED = [
     (AGENTS, "docs/guides/opencode.md", "opencode", "opencode",
      "An opencode plugin: a card when a session asks for permission, asks a question or goes idle."),
     (AGENTS, "docs/guides/orca.md", "orca", "Orca",
-     "Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example."),
+     "Orca agents and automations on one or many servers: the Orca button, keys, usage meters for every account, a hand-off example."),
     (AGENTS, "docs/guides/mcp.md", "mcp", "MCP server",
      "A stdlib-Python MCP server so agents without a shell can post, resolve and run doctor through MCP tools."),
     (AGENTS, "docs/guides/custom-connector.md", "custom-connector", "Custom connector",

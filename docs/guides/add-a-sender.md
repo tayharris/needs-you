@@ -96,6 +96,25 @@ printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
 | `--alerts`, `--context-alert`, `--ssh-alias`, `--agent-link`, `--orca-environment` | Claude Code hook settings, as in the installer above. |
 | `--orca-usage` | The Orca accounts' usage meters, as in the installer above. |
 
+## The sender's config
+
+The CLI, the agent hooks and the pollers (GitHub, Linear, Jira, expiry) all read `~/.config/needs-you/env`: `KEY=VALUE` lines, mode 600. A variable set in the environment wins over the same line in the file. The installer writes the first three; the rest are optional.
+
+| Variable | Meaning |
+|---|---|
+| `NEEDS_YOU_URLS` | Hub URLs, comma-separated, tried in order (failover). Preferred over `NEEDS_YOU_URL` |
+| `NEEDS_YOU_URL` | A hub URL (or a comma-separated list), used when `NEEDS_YOU_URLS` is unset |
+| `NEEDS_YOU_TOKEN` | This machine's sender token |
+| `NEEDS_YOU_DEFAULT_CONTEXT` | `work` or `personal`: the context when a sender doesn't give one (default `work`) |
+| `NEEDS_YOU_HOST` | The machine name on cards (default: the short hostname) |
+| `NEEDS_YOU_TIMEOUT` | Seconds to wait for each hub (default 3) |
+| `NEEDS_YOU_OUTBOX_MAX` | How many queued requests the outbox keeps (default 500; environment only) |
+| `NEEDS_YOU_OUTBOX_MAX_DAYS` | Queued requests older than this many days are dropped (default 7; environment only) |
+| `NEEDS_YOU_CONFIG` | Read another file instead of `~/.config/needs-you/env` (environment only) |
+| `NEEDS_YOU_ENV_FILE` | The same for the agent hooks and their installers only; `needs-you doctor` warns when it differs from the CLI's file |
+| `NEEDS_YOU_OUTBOX` | Keep the outbox somewhere other than `~/.local/state/needs-you/outbox` (environment only) |
+
+Each integration's own settings (`NEEDS_YOU_AGENT_*`, `NEEDS_YOU_GITHUB_*`, ...) are in its guide.
 
 ## Without the CLI
 

@@ -89,6 +89,12 @@ class LinkMirrorTests(unittest.TestCase):
             hook.update(re.findall(r'"([^"]+)":\s*"([^"]+)"', m.group(1)))
         self.assertEqual(hook, swift)
         self.assertGreater(len(swift), 10)
+        # docs/API.md lists the same ids for senders.
+        with open(os.path.join(ROOT, "docs", "API.md"), encoding="utf-8") as fh:
+            api = fh.read()
+        listed = re.search(r"`app/activate` brings forward only these bundle ids.*?\n\n(.*?)\n\n", api, re.S)
+        self.assertTrue(listed, "docs/API.md: the app/activate bundle id list")
+        self.assertEqual(set(re.findall(r"`([A-Za-z0-9][A-Za-z0-9.-]+)`", listed.group(1))), set(swift))
         self.assertNotIn("app.needsyou.mac", swift)
         for bid in swift:
             self.assertRegex(bid, r"^[A-Za-z0-9][A-Za-z0-9.-]{0,127}$")

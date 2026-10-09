@@ -2,6 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: pill
 // Settings → Appearance → Pill: the panel's shape (PanelCorners: the pill, the preview and
 // the open panel), the pill's size, how much it says, how it splits the count, and the
 // "N new" badge (UIPrefs pill keys; PillContent in NeedsYouCore). Settings window only,

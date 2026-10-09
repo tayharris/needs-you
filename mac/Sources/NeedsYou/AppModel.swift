@@ -205,6 +205,9 @@ final class AppModel: ObservableObject {
     private var setupProbed = false
     /// Something arrived from a hub (or the hub lists another token) since launch.
     @Published private(set) var senderObserved = false
+    /// A card from a tool poller (Linear, Jira, GitHub, expiry) has arrived: the
+    /// integrations setup tip is done.
+    @Published private(set) var integrationObserved = false
     @Published private(set) var claudeCodeInstalled = false
     @Published private(set) var claudeHooksInstalled = false
     /// A line under a setup card after its button ran ("Agent prompt copied…"). Never holds
@@ -323,6 +326,8 @@ final class AppModel: ObservableObject {
             || SetupChecklist.hasOtherHosts(Array(store.items.values), localHost: localHost)
         s.claudeCodeInstalled = claudeCodeInstalled
         s.claudeHooksInstalled = claudeHooksInstalled
+        s.integrationSeen = integrationObserved
+            || settings.setupTipsDone.contains(SetupTip.integrations.rawValue)
         s.closed = settings.setupTipsDone.union(settings.setupTipsDismissed)
         s.context = context
         s.now = now
@@ -330,7 +335,17 @@ final class AppModel: ObservableObject {
     }
 
     /// The setup cards to show, in order. Not in the store, the count or the menu bar.
-    var setupCards: [SetupCard] { SetupChecklist.cards(state: setupState) }
+    var setupCards: [SetupCard] {
+        if let tips = snapshotSetupTips {
+            let state = setupState
+            return tips.map { SetupChecklist.card($0, state: state) }
+        }
+        return SetupChecklist.cards(state: setupState)
+    }
+
+    /// Snapshot tour only (mac/scripts/screenshots.sh): draw these setup cards whatever the
+    /// state (demo mode shows none). Never set in normal use.
+    @Published var snapshotSetupTips: [SetupTip]?
 
     /// The "set up" pill's click: straight to Settings, unless a setup card explains what
     /// to do (then it opens the panel, and the card's button opens Settings).
@@ -657,6 +672,9 @@ final class AppModel: ObservableObject {
             }
             hasSynced = true
             if !isDemo, !senderObserved, !updated.items.isEmpty { senderObserved = true }
+            if !isDemo, !integrationObserved, SetupChecklist.hasIntegrationItems(Array(updated.items.values)) {
+                integrationObserved = true
+            }
             recordSetupProgress()
             if isExpanded { markVisibleSeen() }
             refreshStatusesInBackground(generation: generation)
