@@ -202,7 +202,90 @@ final class AlertRuleMenuTests: XCTestCase {
         ("testEventsAreSeparateRules", testEventsAreSeparateRules),
         ("testRemoveAllAndSummary", testRemoveAllAndSummary),
         ("testFullBook", testFullBook),
+        ("testEventRuleOutranksAnAnyEventRuleChosenLater", testEventRuleOutranksAnAnyEventRuleChosenLater),
+        ("testSessionOutranksAgent", testSessionOutranksAgent),
+        ("testMostRecentFirstAmongEquals", testMostRecentFirstAmongEquals),
+        ("testShadowedRuleIsNotShownAsActive", testShadowedRuleIsNotShownAsActive),
     ]
+
+    /// "Only When It Asks → Treat as Urgent", then "Always Interrupt" for the same session:
+    /// the question rule still applies to questions (first match wins, so it stays above).
+    func testEventRuleOutranksAnAnyEventRuleChosenLater() {
+        let scope = RuleScope.session("agent:devbox:s1")
+        let asks = rule(.session, "agent:devbox:s1", .urgent, event: "question")
+        let any = rule(.session, "agent:devbox:s1", .alwaysInterrupt)
+        for order in [[("question" as String?), nil], [nil, "question"]] {
+            var book = RuleBook()
+            for event in order {
+                book = AlertRuleMenu.choosing(event == nil ? .alwaysInterrupt : .urgent, in: book, scope, event: event)
+            }
+            XCTAssertEqual(book.rules, [asks, any], "chosen \(order)")
+            let question = agentItem("q", event: "question")
+            XCTAssertEqual(book.effectivePriority(question), .urgent)
+            XCTAssertEqual(book.firstMatch(question)?.action, .urgent)
+            XCTAssertEqual(book.firstMatch(agentItem("f", event: "finished"))?.action, .alwaysInterrupt)
+            XCTAssertEqual(book.effectivePriority(agentItem("f", event: "finished")), .normal)
+            XCTAssertEqual(AlertRuleMenu.current(book, scope, event: "question"), .urgent)
+            XCTAssertEqual(AlertRuleMenu.current(book, scope, event: nil), .alwaysInterrupt)
+            XCTAssertEqual(AlertRuleMenu.summary(book, scope), "Treat as urgent when it asks; Always interrupt")
+        }
+    }
+
+    /// A session's rules sit above its agent's, whichever came first; within the agent scope,
+    /// an event rule above the any-event one.
+    func testSessionOutranksAgent() {
+        let session = RuleScope.session("agent:devbox:s1")
+        let agent = RuleScope.agent("claude-code")
+        var book = AlertRuleMenu.choosing(.urgent, in: RuleBook(), agent, event: nil)
+        book = AlertRuleMenu.choosing(.alwaysInterrupt, in: book, agent, event: "question")
+        book = AlertRuleMenu.choosing(.neverInterrupt, in: book, session, event: nil)
+        book = AlertRuleMenu.choosing(.alwaysLater, in: book, session, event: "finished")
+        XCTAssertEqual(book.rules, [
+            rule(.session, "agent:devbox:s1", .alwaysLater, event: "finished"),
+            rule(.session, "agent:devbox:s1", .neverInterrupt),
+            rule(.agentPrefix, "claude-code", .alwaysInterrupt, event: "question"),
+            rule(.agentPrefix, "claude-code", .urgent),
+        ])
+        XCTAssertEqual(book.firstMatch(agentItem("a"))?.action, .neverInterrupt, "this session")
+        XCTAssertEqual(book.effectivePriority(agentItem("a")), .normal)
+        XCTAssertEqual(book.firstMatch(agentItem("b", key: "agent:devbox:s2", event: "question"))?.action, .alwaysInterrupt)
+        XCTAssertEqual(book.effectivePriority(agentItem("c", key: "agent:devbox:s2")), .urgent, "another session")
+        // An agent rule chosen last still goes below the session's.
+        book = AlertRuleMenu.choosing(.low, in: book, agent, event: nil)
+        XCTAssertEqual(book.rules[2], rule(.agentPrefix, "claude-code", .alwaysInterrupt, event: "question"))
+        XCTAssertEqual(book.rules[3], rule(.agentPrefix, "claude-code", .low))
+    }
+
+    /// Equal rank: the latest first. Rules the menu doesn't make (Settings' key prefixes,
+    /// hosts) stay below card-made ones.
+    func testMostRecentFirstAmongEquals() {
+        let manual = rule(.keyPrefix, "agent:", .alwaysLater)
+        var book = RuleBook([manual])
+        book = AlertRuleMenu.choosing(.urgent, in: book, .session("agent:devbox:s1"), event: nil)
+        book = AlertRuleMenu.choosing(.low, in: book, .session("agent:devbox:s2"), event: nil)
+        XCTAssertEqual(book.rules, [rule(.session, "agent:devbox:s2", .low), rule(.session, "agent:devbox:s1", .urgent), manual])
+        book = AlertRuleMenu.choosing(.urgent, in: book, .agent("codex"), event: nil)
+        XCTAssertEqual(book.rules.last, manual)
+        XCTAssertEqual(book.rules[2], rule(.agentPrefix, "codex", .urgent))
+    }
+
+    /// A book ordered by hand in Settings can put an any-event rule above the same scope's
+    /// event rule: that one never applies, so the menu doesn't check it or list it, and
+    /// choosing it again puts it where it applies.
+    func testShadowedRuleIsNotShownAsActive() {
+        let scope = RuleScope.session("agent:devbox:s1")
+        let any = rule(.session, "agent:devbox:s1", .alwaysInterrupt)
+        let asks = rule(.session, "agent:devbox:s1", .urgent, event: "question")
+        var book = RuleBook([any, asks])
+        XCTAssertEqual(book.effectivePriority(agentItem("q", event: "question")), .normal, "shadowed")
+        XCTAssertNil(AlertRuleMenu.current(book, scope, event: "question"))
+        XCTAssertEqual(AlertRuleMenu.summary(book, scope), "Always interrupt")
+        XCTAssertTrue(AlertRuleMenu.hasRules(book, scope))
+        book = AlertRuleMenu.choosing(.urgent, in: book, scope, event: "question")
+        XCTAssertEqual(book.rules, [asks, any], "re-placed, not removed")
+        XCTAssertEqual(book.effectivePriority(agentItem("q", event: "question")), .urgent)
+        XCTAssertEqual(AlertRuleMenu.current(book, scope, event: "question"), .urgent)
+    }
 
     func testScopes() {
         XCTAssertEqual(RuleScope.scopes(for: agentItem("a")), [.session("agent:devbox:s1"), .agent("claude-code")])
@@ -257,7 +340,8 @@ final class AlertRuleMenuTests: XCTestCase {
         book = AlertRuleMenu.choosing(.urgent, in: book, scope, event: "question")
         book = AlertRuleMenu.choosing(.alwaysInterrupt, in: book, scope, event: nil)
         XCTAssertTrue(AlertRuleMenu.hasRules(book, scope))
-        XCTAssertEqual(AlertRuleMenu.summary(book, scope), "Always interrupt; Treat as urgent when it asks")
+        XCTAssertEqual(AlertRuleMenu.summary(book, scope), "Treat as urgent when it asks; Always interrupt",
+                       "in the order they apply")
         book = AlertRuleMenu.removingAll(in: book, scope)
         XCTAssertEqual(book.rules, [other])
     }

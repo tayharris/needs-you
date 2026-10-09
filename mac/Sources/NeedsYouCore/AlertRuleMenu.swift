@@ -2,8 +2,9 @@ import Foundation
 
 // A card's "Alerts for This Session" and "Alerts for All <agent> Sessions" menus: bypass
 // rules made from an agent card in one click (docs/roadmap/focus-tiers.md, "Bypass"). The
-// state and edits live here so they're testable; the view only draws them. Rules made here go
-// to the top of the list, since the first match wins.
+// state and edits live here so they're testable; the view only draws them. The first match
+// wins, so rules made here go in by specificity (RuleBook.inserting): above Settings' rules, a
+// session's above its agent's, an event rule above the same scope's any-event rule.
 
 /// Who a card-made rule is for.
 public enum RuleScope: Hashable, Sendable {
@@ -66,10 +67,26 @@ public enum AlertRuleMenu {
         rule.match == scope.match && rule.value == scope.value
     }
 
-    /// The action of the scope's rule for exactly this event (nil: for any event), if there is
-    /// one: the checkmark.
+    /// The scope's rule for exactly this event (nil: for any event), if there is one.
+    static func existing(_ book: RuleBook, _ scope: RuleScope, event: String?) -> (index: Int, rule: BypassRule)? {
+        guard let i = book.rules.firstIndex(where: { isScope($0, scope) && $0.event == event }) else { return nil }
+        return (i, book.rules[i])
+    }
+
+    /// Whether the rule at `index` never applies because an earlier rule of the same scope
+    /// for any event, or for the same event, matches first (a book ordered by hand).
+    static func isShadowed(_ book: RuleBook, at index: Int) -> Bool {
+        let rule = book.rules[index]
+        return book.rules[..<index].contains { other in
+            other.match == rule.match && other.value == rule.value && (other.event == nil || other.event == rule.event)
+        }
+    }
+
+    /// The action of the scope's rule for exactly this event (nil: for any event), when it
+    /// applies: the checkmark. A shadowed rule gets none, and choosing it re-places it.
     public static func current(_ book: RuleBook, _ scope: RuleScope, event: String?) -> BypassAction? {
-        book.rules.first { isScope($0, scope) && $0.event == event }?.action
+        guard let found = existing(book, scope, event: event), !isShadowed(book, at: found.index) else { return nil }
+        return found.rule.action
     }
 
     /// Whether the scope has any rule (enables "Remove Rules").
@@ -79,11 +96,11 @@ public enum AlertRuleMenu {
 
     /// Whether choosing `action` can be saved: it replaces a rule, or there's room for one.
     public static func canChoose(_ book: RuleBook, _ scope: RuleScope, event: String?) -> Bool {
-        !book.isFull || current(book, scope, event: event) != nil
+        !book.isFull || existing(book, scope, event: event) != nil
     }
 
     /// Picking a menu item: the checked action again removes the rule; another replaces the
-    /// scope's rule for that event with a new one at the top of the list.
+    /// scope's rule for that event with a new one, placed by specificity (RuleBook.inserting).
     public static func choosing(_ action: BypassAction, in book: RuleBook, _ scope: RuleScope,
                                 event: String?) -> RuleBook {
         let was = current(book, scope, event: event)
@@ -98,10 +115,11 @@ public enum AlertRuleMenu {
         book.removing { isScope($0, scope) }
     }
 
-    /// A one-line summary of the scope's rules for the menu ("Treat as urgent when it asks"),
-    /// nil when there are none.
+    /// A one-line summary of the scope's rules that apply, in the order they do ("Treat as
+    /// urgent when it asks; Always interrupt"), nil when there are none.
     public static func summary(_ book: RuleBook, _ scope: RuleScope) -> String? {
-        let mine = book.rules.filter { isScope($0, scope) }
+        let mine = book.rules.indices.filter { isScope(book.rules[$0], scope) && !isShadowed(book, at: $0) }
+            .map { book.rules[$0] }
         guard !mine.isEmpty else { return nil }
         return mine.map { rule in
             rule.event.map { "\(rule.action.title) \(AgentEvent.title(of: $0).lowercased())" } ?? rule.action.title
