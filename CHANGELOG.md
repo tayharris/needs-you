@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Security
+
+- **Typed answers ("Other…") come only from owner tokens.** The words the agent reads as the person's own answer are now taken only from an `owner` token (the person's own Mac; the app's built-in hub has one). A `reader` token still answers by picking the listed options; an answer with typed words from it gets `403` ([API](docs/API.md#post-v1itemsidanswer-reader), [ADR 0009](docs/adr/0009-questions-on-cards.md)). Answers that come from another hub by replication are kept as before. Upgrade every hub: an older one still takes typed words from a reader.
+
 ## [0.3.1] - 2026-10-09
 
 A fix release: `needs-you update` works again on machines with `gh`, answers survive two hubs, uninstall tidies up, and a Help us test guide. **Upgrade every hub** (the answer fix is in the hub), then let `needs-you update` or the Mac app's updater do the rest.

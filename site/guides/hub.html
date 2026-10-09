@@ -252,8 +252,9 @@ needs-you-admin invite create hub-b --role peer       # another hub joins this o
 echo '&lt;peer invite link&gt;' | needs-you-admin peer join -   # this hub joins another
 needs-you-admin peer list                              # peers: config and invite, never secrets
 needs-you-admin peer remove hub-b                      # by hub id, URL or name (invite peers)</code></pre></div>
-<p>Roles: <code>sender</code> posts and resolves; <code>reader</code> reads, resolves and dismisses; <code>owner</code> is a reader
-that can also create invites (the Mac app). Codes and tokens are stored as sha256 hashes and
+<p>Roles: <code>sender</code> posts and resolves; <code>reader</code> reads, resolves, dismisses and answers a card's
+question by picking its options; <code>owner</code> is a reader that can also create invites and type an
+answer's own words ("Other…") (the Mac app). Codes and tokens are stored as sha256 hashes and
 printed once. Revoking an invite doesn't revoke tokens it already minted. A <code>peer</code> invite is
 for another hub, not a machine: it stays on this hub (it isn't replicated) and mints no token.</p>
 <p>The admin tool writes straight to the database (safe while the hub runs, thanks to WAL) and

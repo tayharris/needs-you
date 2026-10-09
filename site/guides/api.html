@@ -102,7 +102,7 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tbody>
 <tr><td>400</td><td><code>invalid</code></td><td>Validation failed, bad JSON, bad query parameter</td></tr>
 <tr><td>401</td><td><code>unauthorized</code></td><td>Missing, unknown or revoked token (or bad peer secret)</td></tr>
-<tr><td>403</td><td><code>forbidden</code></td><td>Valid token, wrong role for the endpoint</td></tr>
+<tr><td>403</td><td><code>forbidden</code></td><td>Valid token, wrong role for the endpoint, or typed answer <code>text</code> from a reader token (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>404</td><td><code>not_found</code></td><td>Unknown endpoint, unknown id on <code>GET</code>/<code>PATCH /v1/items/{id}</code>, or nothing to revoke on <code>DELETE /v1/invites/…</code> / <code>/v1/tokens/…</code></td></tr>
 <tr><td>409</td><td><code>self</code></td><td>A hub tried to replicate to itself, or to redeem its own peer invite</td></tr>
 <tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer</td></tr>
@@ -381,7 +381,9 @@ the item, or <code>404</code> for an unknown id. Patching an already-closed item
 <h3 id="post-v1itemsidanswer-reader"><code>POST /v1/items/{id}/answer</code> (reader) <a class="anchor" href="#post-v1itemsidanswer-reader" aria-label="Link to this section">#</a></h3>
 <p>The person's answer to the item's <code>question</code>, from an explicit click on one of its options, or
 the words they typed after an explicit click on "Other…" (reader or owner token; sender tokens get <code>403</code>, so one agent machine can't answer another
-agent's question).</p>
+agent's question). Typed <code>text</code> is taken only from an <strong>owner</strong> token (the person's own Mac):
+the agent reads those words as the person's, so a reader token (another Mac, a dashboard)
+answers by picking options only, and an answer with <code>text</code> from it gets <code>403 forbidden</code>.</p>
 <div class="code"><pre><code class="language-json">{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
  "answers": [{"selected": ["Postgres"]}, {"selected": ["Auth", "Export"]}]}</code></pre></div>
 <ul>
@@ -407,7 +409,8 @@ and unexpired (<code>409 not_open</code>), has a question with <code>answerable:
 whose <code>expires_at</code> hasn't passed (<code>409 question_expired</code>), <code>question_id</code> and
 <code>content_updated_at</code> match the item's (<code>409 question_changed</code>: the question changed under the
 person), and it has no answer yet (<code>409 already_answered</code>: the first answer wins). Then
-<code>answers</code> is checked (<code>400 invalid</code>, with <code>field</code> such as <code>answers[0].selected[1]</code>). A token
+<code>answers</code> is checked (<code>400 invalid</code>, with <code>field</code> such as <code>answers[0].selected[1]</code>), then a
+<code>text</code> from a token that isn't an owner (<code>403 forbidden</code>; nothing is taken). A token
 may send at most 30 answer requests a minute (<code>answer_rate_limit</code> per
 <code>answer_rate_window_seconds</code>, see <a href="hub.html">Server hubs</a>); past that, <code>429 rate_limited</code>.</p>
 <p>On success the item's <code>answer</code>, <code>answered_at</code> and <code>answered_by</code> (the token's name) are set,
@@ -878,7 +881,9 @@ replicated like any other), so every hub ends up with the answer. A record with 
 question, or from another token, decides by LWW as usual. A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
 offered labels (or <code>text</code> where the question has <code>allow_other</code>), one entry per question, one
-label or the text for a single choice. Otherwise it is
+label or the text for a single choice. A replicated <code>text</code> is kept whichever token
+answered: a peer is a trusted hub that took it at its own edge (from an owner token, on a hub
+with this rule; an older hub took it from a reader too). Otherwise it is
 dropped with its <code>answered_at</code> and <code>answered_by</code> (the item stays). Hubs before 0.3.0 don't
 know <code>allow_other</code> or <code>text</code>: they drop the field from the question (and a question with an
 answerable item that has no options), and they drop an answer that has only <code>text</code> or keep only
