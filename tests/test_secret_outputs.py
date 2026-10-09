@@ -220,6 +220,28 @@ class SecretOutputs(unittest.TestCase):
                  raw_request("DELETE", a["url"] + "/v1/peers/" + secrets["peer secret"], owner)[1])
         self.saw("item key that is a token", raw_request("POST", a["url"] + "/v1/items", sender,
                                                          {"key": sender + "!", "title": "x"})[1])
+        # Status records (ADR 0011): one real one, then a secret in each text field and the key.
+        def status_body(**over):
+            body = {"type": "usage", "label": "Claude", "expires_at": time.time() + 3600,
+                    "usage": {"provider": "claude", "account": "", "windows": [{"name": "5h", "used_pct": 5}]},
+                    "source": {"host": "devbox"}}
+            body.update(over)
+            return body
+        st, _ = raw_request("PUT", a["url"] + "/v1/status/usage:claude", sender, status_body())
+        self.assertEqual(st, 200)
+        for label, secret in (("token", sender), ("peer secret", secrets["peer secret"]),
+                              ("invite code", inv["code"])):
+            for where, body in (("label", status_body(label="x " + secret)),
+                                ("detail", status_body(detail=secret)),
+                                ("account", status_body(usage={"provider": "claude", "account": secret,
+                                                               "windows": [{"name": "5h", "used_pct": 5}]})),
+                                ("source", status_body(source={"host": secret}))):
+                self.saw("status %s holding a %s" % (where, label),
+                         raw_request("PUT", a["url"] + "/v1/status/k-" + where, sender, body)[1])
+            self.saw("status key that is a %s" % label,
+                     raw_request("PUT", a["url"] + "/v1/status/" + secret, sender, status_body())[1])
+            self.saw("status clear by a %s" % label, raw_request("DELETE", a["url"] + "/v1/status/" + secret, sender)[1])
+        self.saw("status with a token as bearer for GET", raw_request("GET", a["url"] + "/v1/status", sender)[1])
         # A join page names its own code (whoever reads it has the link); nothing else.
         for label, code in (("sender", inv["code"]), ("peer", secrets["peer invite code"])):
             for suffix in ("", "/install.sh"):
@@ -232,7 +254,7 @@ class SecretOutputs(unittest.TestCase):
 
         # Every listing, on both hubs, with every kind of credential.
         for h in (a, b):
-            for path in ("/v1/health", "/v1/tokens", "/v1/invites?all=1", "/v1/peers", "/v1/items",
+            for path in ("/v1/health", "/v1/tokens", "/v1/invites?all=1", "/v1/peers", "/v1/items", "/v1/status",
                          "/v1/items?status=all"):
                 self.saw("%s GET %s" % (h["name"], path), get_text(h["url"] + path, owner)[1])
             self.saw("%s GET /v1/health (sender)" % h["name"], get_text(h["url"] + "/v1/health", sender)[1])
@@ -257,6 +279,9 @@ class SecretOutputs(unittest.TestCase):
         self.cli(home, "post", "--key", "acme:x", "--title", "x", env={"NEEDS_YOU_URLS": "http://127.0.0.1:1"})
         self.cli(home, "health", env={"NEEDS_YOU_URLS": "http://127.0.0.1:1"})
         self.cli(home, "update", "--check")
+        self.cli(home, "status", "set", "--key", "acme:meter", "--provider", "claude", "--window", "5h=5")
+        self.cli(home, "status", "set", "--key", "acme:meter2", "--label", "x " + sender)
+        self.cli(home, "status", "clear", "--key", "acme:meter")
 
         # Let maintenance run once, then stop the hubs so their logs are complete.
         time.sleep(1.5)
