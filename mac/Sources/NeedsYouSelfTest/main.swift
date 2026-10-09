@@ -67,6 +67,7 @@ let entries =
     + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
     + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
+    + testEntries(PanelColourTests.self, PanelColourTests.allTests)
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
     + testEntries(AppLocationTests.self, AppLocationTests.allTests)
     + testEntries(LaunchBehaviorTests.self, LaunchBehaviorTests.allTests)
