@@ -96,7 +96,7 @@ A card is only as good as its "go there" button. What's built and what's left (t
 | Step | What | Effort |
 |---|---|---|
 | 1 | `source.event` + per-session and per-event alert rules (in progress, `tay/session-alert-rules`) | in progress |
-| 2 | Linear poller (dedicated; the notifications feed maps almost 1:1 onto the GitHub poller) | built (`tay/linear-poller`); live check left |
+| 2 | Linear poller (dedicated; the notifications feed maps almost 1:1 onto the GitHub poller) | S (built: `integrations/linear/`; live check left) |
 | 3 | Jira poller, Cloud and Data Center (saved-state diff; fake HTTP server tests) | M |
 | 4 | Host detection + one primary "go there" button; `needsyou://app/activate` | M |
 | 5 | Generic poller with configs for Sentry, Vercel, GitLab | M |
