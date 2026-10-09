@@ -1,7 +1,7 @@
 # 0011. Status records: a quiet progress strip and usage meters, apart from items
 
-- Status: Proposed (design only; nothing is built). The owner decides whether needs-you shows anything that isn't "you have to do something", and the open questions at the end
-- Date: 2026-10-08
+- Status: Accepted for usage meters (2026-10-09); the progress strip is deferred (see "Owner decisions")
+- Date: 2026-10-08, accepted 2026-10-09
 
 ## Context
 
@@ -50,7 +50,46 @@ the hub. Constraints that any design must keep:
 - **Cheap on peers.** A progress value can change every few seconds; item replication was
   built for writes a person causes.
 
-## Decision (proposed)
+## Owner decisions (2026-10-09)
+
+The owner asked for usage meters ("we want usage meters, so whatever you need"; "get usage in
+the app showing tracker, more customizations") and answered the open questions:
+
+1. **Yes, for usage meters.** The progress strip is deferred: the hub accepts and lists
+   `progress` statuses as designed, but the Mac app doesn't show them yet.
+2. **Producers are hooks, status line helpers and pollers.** `needs-you status set` exists for
+   them; the agent guide and skill don't tell agents to post progress, and "no progress cards"
+   stays.
+3. **Statuses replicate between hubs**, short-lived as designed.
+4. **Meters show in the panel by default**, and a compact meter on the pill that Settings can
+   turn off.
+5. **Default providers: whatever has a producer** (Claude through `needs-you-usage`, Codex
+   through its Stop hook), both the session (5 h) and weekly windows, "hide under" 0 % (always
+   shown), all changeable in Settings → Usage. A warning colour from 80 % by default.
+
+Also given: never read OAuth tokens or cookies; no emails in records; accounts are labelled by
+a local id (`NEEDS_YOU_USAGE_ACCOUNT`) or a hash.
+
+### As built
+
+Where the build differs from the proposal below, the build and [API.md](../API.md#status-records-usage-meters) win:
+
+- Schema 11 (not 9) adds the `status` table. A status's id is derived from its token and key
+  (`st_` + sha256), so every hub names it the same.
+- Replication carries statuses in their own `statuses` array in pushes and change pages, not as
+  `{"kind": "status"}` records among items. Hubs that predate them ignore the array. A status a
+  hub can't read is skipped (`"kind": "status"` in `skipped`), with no quarantine.
+- A clear (`DELETE`) is a write that sets `expires_at` to now, so it replicates; expired records
+  are therefore pushed like any other, and housekeeping deletes them an hour after expiry.
+  `DELETE` answers `{"ok": true, "cleared": <bool>}` and is never refused as `too_fast`.
+- `label` may be empty for a usage status; `account` follows `[A-Za-z0-9._-]{0,40}`.
+- The producers send both windows when a number changed (at most every 15 s) and every
+  5 minutes otherwise; `NEEDS_YOU_USAGE_METER=0` turns that off. The threshold cards stay.
+- The Mac app shows one row per provider and account (the newest report wins when several
+  machines report the same pair), a window whose `resets_at` has passed as reset (0 %), and
+  fetches `GET /v1/status` from the hub that served its last items poll.
+
+## Decision (as proposed)
 
 Add **status records**: a separate, small resource on the hub, not a kind of item.
 
@@ -145,7 +184,7 @@ hub it reads.
   say how much someone used a paid plan; the Mac shows them only when switched on.
 - Replication volume grows by at most one write per status per 10 s per token.
 
-## Open questions for the owner
+## Open questions for the owner (answered above, 2026-10-09)
 
 1. Should needs-you show anything that isn't "you have to do something" (a progress strip,
    usage meters)? If not, this ADR is rejected and the threshold cards stay the only usage

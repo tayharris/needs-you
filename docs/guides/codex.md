@@ -65,6 +65,8 @@ echo 'NEEDS_YOU_USAGE_ALERT_PCT=85' >> ~/.config/needs-you/env   # NEEDS_YOU_USA
 
 At the end of each turn the hook reads the limit numbers Codex writes into its own session file (ChatGPT logins only; never a credential), posts one low card when a window passes the threshold, and clears it after the reset. Details in [integrations/codex](../../integrations/codex/README.md).
 
+The same numbers also feed the Mac app's [usage meters](mac-app.md#usage-meters) (Codex's session and weekly bars) with no setup: the hook sends them as a quiet status, never a card. `NEEDS_YOU_USAGE_METER=0` turns that off.
+
 ## Tell Codex when to post (optional)
 
 The hooks cover "Codex is waiting". For the agent to post on its own when it's blocked on you, finished something you're waiting on, or hit something broken, give it the rules the Claude Code skill gives Claude: add `--agent-instructions codex` to the invite's one line.
