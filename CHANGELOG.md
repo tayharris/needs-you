@@ -87,6 +87,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 - **Status writes have a per-token rate.** A set after a clear is never too fast and each new key is a new row, so one sender could write statuses (and every paired hub store them) without end. Sets and clears now get `429 rate_limited` past the post rate (120 a minute by default), counted apart from posts.
 - **A status key or `source` field that looks like a secret is refused** (`400 secret_in_text`), as the label, detail and account already were: statuses are listed and replicated whole.
 - **Usage meters are sturdier.** The status line helper printed a traceback instead of its line on numbers like `NaN` or `1e999`; its state files and the Codex meter's are now mode 600. The Codex meter posts in the background. The Mac app bounds and cleans what a hub sends for meters (64 records, 4 windows, short single-line text) and fetches them without holding up new items.
+- **Typed answers can't carry a needs-you secret.** Words holding a needs-you token, invite code or peer secret are refused (`400 secret_in_text`) and the Mac says why; other words still go to the agent as typed.
+- **Typed words follow the question they were typed for.** After a re-post that changed the question, words typed for the old one could stay on the card and be sent as the answer to the new one; they're now cleared like picks. The answer window also names the machine that asks and says never to type a password or token.
 
 ## [0.2.1] - 2026-10-08
 
