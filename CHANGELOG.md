@@ -10,6 +10,9 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Security
 
 - **Typed answers ("Other…") come only from owner tokens.** The words the agent reads as the person's own answer are now taken only from an `owner` token (the person's own Mac; the app's built-in hub has one). A `reader` token still answers by picking the listed options; an answer with typed words from it gets `403` ([API](docs/API.md#post-v1itemsidanswer-reader), [ADR 0009](docs/adr/0009-questions-on-cards.md)). Answers that come from another hub by replication are kept as before. Upgrade every hub: an older one still takes typed words from a reader.
+### Security
+
+- **A peer secret file others can read stops the hub.** A `peer_secret_file` (`--peer-secret-file`) that group or other users can read or write used to start the hub with a warning; the hub now refuses to start and says `chmod 600 <path>`, since the secret lets anyone replicate as a peer. Hubs set up by `install-hub.sh` keep the secret in their config file and aren't affected; check a hand-made secret file (such as the Mac's hand-set-peers `peer-secret`) before upgrading ([HUB.md](docs/HUB.md#config-reference)).
 
 ## [0.3.1] - 2026-10-09
 
