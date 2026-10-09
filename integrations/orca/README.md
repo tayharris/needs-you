@@ -213,6 +213,10 @@ orca worktree set --worktree active --workspace-status in-review --comment "Bloc
 
 `needs-you orca` prints the same board as one line per worktree, read-only (see [the Orca guide](../../docs/guides/orca.md#whats-running-needs-you-orca)).
 
+## Usage meters for Orca's accounts
+
+When Orca manages several Claude or Codex logins on this machine, `needs-you orca usage --enable` (or the invite installer's `--orca-usage`) gives each one a row in the Mac's usage meters: the 5-minute `needs-you flush` runs `orca account list --json` and sends one `usage` status per account ([ADR 0011](../../docs/adr/0011-status-records.md)), keyed `usage:<provider>:orca-<8 hex>` (a hash of Orca's account id, never the email). Orca's "system default" login goes under the local hooks' `usage:<provider>` row unless they reported it in the last 15 minutes. Nothing but that one command runs, and a broken or absent Orca only means no rows. Details: [the Orca guide](../../docs/guides/orca.md#usage-meters-for-every-orca-account).
+
 ## Test it
 
 From an Orca terminal on the same machine:

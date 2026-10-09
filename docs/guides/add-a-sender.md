@@ -51,6 +51,7 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--agent-link 'LABEL=URL'` | One link template for agent cards instead of the automatic editor links; `none` turns them off. See [claude-code-everywhere.md](claude-code-everywhere.md#buttons). |
 | `--orca-environment NAME` | On a paired Orca server: its name in the Mac's Orca. |
 | `--orca` | Write the Orca automation snippet to `~/.config/needs-you/orca-snippet.md` and print it. See [orca.md](orca.md). |
+| `--orca-usage` | Usage meters for every Claude and Codex account Orca manages here, sent by the flush (`NEEDS_YOU_ORCA_USAGE=1`). See [orca.md](orca.md#usage-meters-for-every-orca-account). |
 | `--context work\|personal` | Default context for this machine's items. |
 | `--host NAME` | This machine's name (default: short hostname). |
 | `--hub URL` | Use a different URL for the same hub (e.g. its IP while DNS is broken). It is used for the install and saved first in `NEEDS_YOU_URLS`, ahead of the hub's advertised URLs. |
@@ -93,6 +94,7 @@ printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
 | `--require-health` | Exit 3 if no hub answers. |
 | `--no-schedule` / `--no-path` | Skip the flush schedule / the shell profile line. |
 | `--alerts`, `--context-alert`, `--ssh-alias`, `--agent-link`, `--orca-environment` | Claude Code hook settings, as in the installer above. |
+| `--orca-usage` | The Orca accounts' usage meters, as in the installer above. |
 
 
 ## Without the CLI

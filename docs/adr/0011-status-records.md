@@ -88,6 +88,16 @@ Where the build differs from the proposal below, the build and [API.md](../API.m
 - The Mac app shows one row per provider and account (the newest report wins when several
   machines report the same pair), a window whose `resets_at` has passed as reset (0 %), and
   fetches `GET /v1/status` from the hub that served its last items poll.
+- A third producer, the Orca accounts poller (`needs-you orca usage`, run by the 5-minute
+  `flush` with `NEEDS_YOU_ORCA_USAGE=1`, at most every 4 minutes), sends a usage status for
+  every Claude and Codex account Orca manages on a host, from `orca account list --json` and
+  nothing else. A managed account is labelled `orca-` + 8 hex of sha256 of its Orca account id.
+  Orca's "system default" login is the account the local producers see, so it goes under their
+  key (`usage:<provider>[:NEEDS_YOU_USAGE_ACCOUNT]`), one record and one row, and is left to
+  them while either has sent within 15 minutes; the poller never clears that key. It clears
+  the keys of accounts Orca no longer lists, skips Orca errors, numbers older than 12 h and
+  more than 12 accounts (the 20-per-token limit), and sends nothing when `orca` is absent or
+  its answer can't be read. No wire change.
 
 ## Decision (as proposed)
 

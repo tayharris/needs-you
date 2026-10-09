@@ -42,6 +42,7 @@
         <li><a href="#how-an-automation-posts-and-resolves">How an automation posts and resolves</a></li>
         <li><a href="#worked-example-hand-off-to-a-human-and-resume">Worked example: hand off to a human and resume</a></li>
         <li><a href="#whats-running-needs-you-orca">What's running: <code>needs-you orca</code></a></li>
+        <li><a href="#usage-meters-for-every-orca-account">Usage meters for every Orca account</a></li>
         <li><a href="#check-it-works">Check it works</a></li>
       </ul>
     </nav>
@@ -151,12 +152,25 @@ needs-you done --key "work:redo-fixer:last-run" --title "Redo fixer: 1 ticket ba
 needs-you orca --all      # also every paired environment (`orca environment list`, at most 8)
 needs-you orca --environment "My Devbox" --json</code></pre></div>
 <p>It runs <code>orca worktree ps --json</code> (no shell, 20 s at most) and prints only the host, name, branch, repo, workspace status, live terminal and agent counts, unread flag, linked PR number and last activity, each cleaned to one short line. It never prints a terminal's <code>preview</code>, a worktree's comment, its path or any URL: those are free text from terminals and trackers. Archived worktrees are left out (<code>--archived</code> adds them). It never posts, queues or reaches a hub, and it exits 1 when <code>orca</code> isn't on <code>PATH</code> or can't answer. <code>--json</code> gives <code>{ok, worktrees: [...], scopes: {...}, errors: [...]}</code>.</p>
+<h2 id="usage-meters-for-every-orca-account">Usage meters for every Orca account <a class="anchor" href="#usage-meters-for-every-orca-account" aria-label="Link to this section">#</a></h2>
+<p>When Orca manages several Claude or Codex logins on a machine (<code>orca account add</code>), the hooks only see the account the current session runs on. <code>needs-you orca usage</code> sends the Mac's <a href="mac-app.html#usage-meters">usage meters</a> a row for each of them, from the numbers Orca already fetched:</p>
+<div class="code" data-copy><pre><code class="language-bash">needs-you orca usage --enable     # NEEDS_YOU_ORCA_USAGE=1 in the env file, and send once now
+needs-you orca usage --dry-run    # print what it would send; send nothing
+needs-you orca usage --disable    # stop, and clear the rows it sent</code></pre></div>
+<p>With <code>NEEDS_YOU_ORCA_USAGE=1</code> (or the invite installer's <code>--orca-usage</code>), the 5-minute <code>needs-you flush</code> runs it, at most every 4 minutes. It runs <code>orca account list --json</code> and nothing else (15 s at most, <code>NEEDS_YOU_ORCA_TIMEOUT</code>); it never reads Orca's login files, tokens or cookies. If Orca isn't running, or its answer can't be read, nothing is sent and the flush stays quiet. Cron's <code>PATH</code> is short, so it also looks in <code>~/.local/bin</code>, <code>/usr/local/bin</code>, <code>/opt/homebrew/bin</code> and <code>/Applications/Orca.app/Contents/Resources/bin</code>; <code>NEEDS_YOU_ORCA_BIN</code> names another path.</p>
+<ul>
+<li><strong>One row per account.</strong> A managed account shows as <code>Claude · orca-1a2b3c4d</code>: <code>orca-</code> and the first 8 hex digits of the sha256 of its Orca account id. Never its email, workspace or organisation name. <code>--dry-run</code> prints the labels Orca's accounts get here.</li>
+<li><strong>The account Orca didn't add</strong> (Orca's "system default": the login Claude Code or Codex uses outside Orca's managed accounts) is the one the local hooks already report, so it goes under their row (<code>Claude</code>, or <code>Claude · &lt;NEEDS_YOU_USAGE_ACCOUNT&gt;</code>). While <code>needs-you-usage</code> or the Codex hook has sent that meter in the last 15 minutes, the poller leaves it to them.</li>
+<li><strong>What's skipped:</strong> a provider other than Claude and Codex, an account Orca reports with an error or no numbers, numbers Orca fetched more than 12 hours ago, and more than 12 accounts. A window whose reset time has passed is sent as 0 %.</li>
+<li><strong>An account you remove from Orca</strong> loses its row on the next run; one that only failed to refresh keeps its last row until it expires (at its latest reset).</li>
+</ul>
+<p>Orca refreshes the active account's numbers itself; the other accounts' numbers are refreshed when you open Orca's usage view, so their rows can lag. Statuses are never queued: with no hub reachable, that run's numbers are dropped and the next run sends fresh ones.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <p>From an Orca terminal:</p>
 <div class="code" data-copy><pre><code class="language-bash">needs-you add --key "work:orca-test:hello" --title "Orca can reach needs-you" --agent "orca:test"
 needs-you resolve --key "work:orca-test:hello"</code></pre></div>
 <p>Then run one automation by hand (<code>orca automations run ...</code>) and watch for its card.</p>
-<p><code>needs-you doctor</code> prints an <code>orca</code> INFO line in an Orca terminal or wherever <code>orca</code> is on <code>PATH</code> (whether the terminal handle, worktree id and <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> are set). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when <code>orca</code> is on <code>PATH</code> and you didn't pass <code>--orca</code>, that the flag exists.</p>
+<p><code>needs-you doctor</code> prints an <code>orca</code> INFO line in an Orca terminal or wherever <code>orca</code> is on <code>PATH</code> (whether the terminal handle, worktree id and <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> are set, and whether the account usage meters are on). Where Orca isn't installed but the repo you run it in has 3 or more git worktrees, the same line is a tip that Orca would give those agents' cards a Terminal button; it's only a tip, never a warning. The invite installer likewise says once, when <code>orca</code> is on <code>PATH</code> and you didn't pass <code>--orca</code>, that the flag exists.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/orca.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/orca.md">docs/guides/orca.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 
