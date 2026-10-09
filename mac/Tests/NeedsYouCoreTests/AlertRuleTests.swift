@@ -206,6 +206,7 @@ final class AlertRuleMenuTests: XCTestCase {
         ("testSessionOutranksAgent", testSessionOutranksAgent),
         ("testMostRecentFirstAmongEquals", testMostRecentFirstAmongEquals),
         ("testShadowedRuleIsNotShownAsActive", testShadowedRuleIsNotShownAsActive),
+        ("testBroaderSettingsRuleShadowsACardRule", testBroaderSettingsRuleShadowsACardRule),
     ]
 
     /// "Only When It Asks → Treat as Urgent", then "Always Interrupt" for the same session:
@@ -285,6 +286,48 @@ final class AlertRuleMenuTests: XCTestCase {
         XCTAssertEqual(book.rules, [asks, any], "re-placed, not removed")
         XCTAssertEqual(book.effectivePriority(agentItem("q", event: "question")), .urgent)
         XCTAssertEqual(AlertRuleMenu.current(book, scope, event: "question"), .urgent)
+    }
+
+    /// Settings' one-click presets go to the top of the list, above rules made from a card:
+    /// "Agents Always Interrupt" (key prefix `agent:`) then takes every agent card first, so a
+    /// session's "Treat as Urgent" never applies. The menu mustn't check it, and choosing it
+    /// again puts it back above the preset.
+    func testBroaderSettingsRuleShadowsACardRule() {
+        let scope = RuleScope.session("agent:devbox:s1")
+        let mine = rule(.session, "agent:devbox:s1", .urgent, event: "question")
+        let preset = rule(.keyPrefix, "agent:", .alwaysInterrupt)
+        var book = RuleBook([preset, mine])
+        XCTAssertEqual(book.effectivePriority(agentItem("q", event: "question")), .normal, "shadowed")
+        XCTAssertNil(AlertRuleMenu.current(book, scope, event: "question"))
+        XCTAssertNil(AlertRuleMenu.summary(book, scope))
+        XCTAssertTrue(AlertRuleMenu.hasRules(book, scope), "Remove Rules still removes it")
+        book = AlertRuleMenu.choosing(.urgent, in: book, scope, event: "question")
+        XCTAssertEqual(book.rules, [mine, preset], "re-placed above the preset, not removed")
+        XCTAssertEqual(book.effectivePriority(agentItem("q", event: "question")), .urgent)
+        XCTAssertEqual(AlertRuleMenu.current(book, scope, event: "question"), .urgent)
+
+        // Only a rule that matches everything the card rule does shadows it.
+        let notBroader: [BypassRule] = [
+            rule(.keyPrefix, "agent:", .urgent, event: "failed"),   // another event
+            rule(.keyPrefix, "work:", .alwaysLater),                // other keys
+            rule(.keyPrefix, "agent:devbox:s1x", .alwaysLater),     // a longer prefix
+            rule(.host, "devbox", .alwaysLater),                    // source.host isn't the key's
+            rule(.agentPrefix, "claude", .alwaysLater),             // cards without that agent
+            rule(.session, "agent:devbox:s2", .alwaysLater),
+        ]
+        for other in notBroader {
+            XCTAssertEqual(AlertRuleMenu.current(RuleBook([other, mine]), scope, event: "question"), .urgent, "\(other)")
+        }
+        for broader in [rule(.keyPrefix, "agent:devbox:", .low, event: "question"), rule(.keyPrefix, "agent:devbox:s1", .low),
+                        rule(.session, "agent:devbox", .low)] {
+            XCTAssertNil(AlertRuleMenu.current(RuleBook([broader, mine]), scope, event: "question"), "\(broader)")
+            XCTAssertEqual(RuleBook([broader, mine]).firstMatch(agentItem("q", event: "question")), broader)
+        }
+        let agent = RuleScope.agent("claude-code")
+        let agentRule = rule(.agentPrefix, "claude-code", .urgent)
+        XCTAssertNil(AlertRuleMenu.current(RuleBook([rule(.agentPrefix, "CLAUDE", .low), agentRule]), agent, event: nil))
+        XCTAssertEqual(AlertRuleMenu.current(RuleBook([rule(.keyPrefix, "agent:", .low), agentRule]), agent, event: nil), .urgent,
+                       "an agent's cards aren't all agent: keys")
     }
 
     func testScopes() {
