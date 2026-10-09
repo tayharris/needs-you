@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **A card's alert rules no longer hide each other.** Every rule made from a card's menu went to the top of the list, and the first match wins, so choosing **Always Interrupt** (or any rule for everything) after **Only When It Asks → Treat as Urgent** stopped questions being urgent while the menu still showed both. Card-made rules now go in by how specific they are: a session's above its agent's, an "Only When It…" rule above the same menu's rule for everything, the latest first among equals, all above the rules made in Settings. The menu's checkmarks and summary show only the rules that apply, in the order they do ([guide](docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).
+- **Developer mode's copies show what the sender sent.** The item JSON, the debug report and **Copy as needs-you add Command** gave the priority a bypass rule turned it into (a card made urgent by a rule copied as `--priority=urgent`); they now give the sender's. The `needs-you add` command also carries the card's `source.event` as `--event`, so the copy matches the same event rules.
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.
