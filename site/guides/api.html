@@ -289,8 +289,9 @@ the Mac app keeps the person's ticks locally (it offers Done once every step is 
 and the choices it offered, so a client can show them as choices rather than as a checklist.
 By default it is read-only: the person answers in the agent. With <code>"answerable": true</code> the
 sender is waiting for an answer from a client too: the person's Mac posts the options they
-click (<a href="#post-v1itemsidanswer-reader"><code>POST /v1/items/{id}/answer</code></a>) and the sender reads them
-back (<a href="#get-v1itemsanswerkeykey-sender"><code>GET /v1/items/answer</code></a>).</p>
+click, or the words they type where the sender takes them (<code>allow_other</code>)
+(<a href="#post-v1itemsidanswer-reader"><code>POST /v1/items/{id}/answer</code></a>), and the sender reads them back
+(<a href="#get-v1itemsanswerkeykey-sender"><code>GET /v1/items/answer</code></a>).</p>
 <div class="code"><pre><code class="language-jsonc">"question": {
   "id": "toolu_01ABC",            // optional, ≤ 200 chars: the agent's own id for the request
   "items": [{                     // 1–4 questions, in order
@@ -299,18 +300,24 @@ back (<a href="#get-v1itemsanswerkeykey-sender"><code>GET /v1/items/answer</code
     "options": [                  // 0–8; none for a free-text question
       {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
     ],
-    "multi_select": false         // true: the agent takes several options
+    "multi_select": false,        // true: the agent takes several options
+    "allow_other": false          // optional: true when the sender also takes the person's own words
   }],
-  "answerable": false,            // optional: true when the sender waits for an answer (every item needs options)
+  "answerable": false,            // optional: true when the sender waits for an answer (every item needs options or allow_other)
   "expires_at": "2026-10-08T17:04:05.000Z"  // optional: the sender stops waiting then; no answer is taken after it
 }</code></pre></div>
 <p>Text follows the same rules as every field (trimmed, no control or bidi characters; only
 <code>text</code> may hold newlines). Unknown fields are ignored. Errors name the part, for example
 <code>question.items[1].options[0].label</code>. The hub returns it normalised: <code>header</code> and
 <code>description</code> as <code>""</code> when left out, <code>options</code> as <code>[]</code>, <code>multi_select</code> as a boolean, <code>id</code> only
-when given, <code>answerable</code> as a boolean, <code>expires_at</code> only when given (in the hub's timestamp
-form); an item without one has <code>"question": null</code>. An answerable question with an item that has
-no options is refused (<code>400</code>, <code>question.answerable</code>): only offered labels can be answered.
+when given, <code>allow_other</code> only when <code>true</code>, <code>answerable</code> as a boolean, <code>expires_at</code> only when
+given (in the hub's timestamp form); an item without one has <code>"question": null</code>.
+<code>allow_other: true</code> says the sender takes a free-text answer to that question ("Other" in
+Claude Code and opencode): with options, in place of a single choice or next to a multi-select's
+picks; without options, as the only answer (a free-text question). Set it only when the agent
+really takes typed words for that question. An answerable question with an item that has
+neither options nor <code>allow_other: true</code> is refused (<code>400</code>, <code>question.answerable</code>): there would
+be nothing to answer with.
 So is one with two options of the same label within a question (<code>400</code>, the second one's
 <code>question.items[i].options[j].label</code>): an answer carries labels only, so the two couldn't be
 told apart. A read-only question may repeat a label; different questions may share labels.
@@ -368,8 +375,8 @@ outside the inbox can't resolve anything.</li>
 <p>At least one is required. Moves <code>updated_at</code>, never <code>content_updated_at</code>. Returns <code>200</code> with
 the item, or <code>404</code> for an unknown id. Patching an already-closed item is allowed.</p>
 <h3 id="post-v1itemsidanswer-reader"><code>POST /v1/items/{id}/answer</code> (reader) <a class="anchor" href="#post-v1itemsidanswer-reader" aria-label="Link to this section">#</a></h3>
-<p>The person's answer to the item's <code>question</code>, from an explicit click on one of its options
-(reader or owner token; sender tokens get <code>403</code>, so one agent machine can't answer another
+<p>The person's answer to the item's <code>question</code>, from an explicit click on one of its options, or
+the words they typed after an explicit click on "Other…" (reader or owner token; sender tokens get <code>403</code>, so one agent machine can't answer another
 agent's question).</p>
 <div class="code"><pre><code class="language-json">{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
  "answers": [{"selected": ["Postgres"]}, {"selected": ["Auth", "Export"]}]}</code></pre></div>
@@ -377,9 +384,17 @@ agent's question).</p>
 <li><code>question_id</code>: the question's <code>id</code> as the client saw it (<code>null</code> or absent when it has none).</li>
 <li><code>content_updated_at</code>: the item's <code>content_updated_at</code> as the client saw it.</li>
 <li><code>answers</code>: one entry per question item, in order. <code>selected</code> holds labels from that item's
-<code>options</code>, exactly as given, no repeats: exactly one for a single-choice item, at least one
-for <code>multi_select</code>. There is no free text.</li>
+<code>options</code>, exactly as given, no repeats. <code>text</code> (optional) is the person's own words, only
+for an item with <code>allow_other: true</code>: one line, 1–1,000 characters after trimming, no control,
+bidi or line-separator characters, typed by the person in the Mac's answer window. A
+single-choice item takes exactly one label <strong>or</strong> <code>text</code> (then <code>selected</code> is <code>[]</code> or absent);
+a <code>multi_select</code> item takes any labels plus <code>text</code>, at least one of them. An item without
+<code>allow_other</code> takes no <code>text</code> (<code>400</code>, <code>answers[i].text</code>).</li>
 </ul>
+<div class="code"><pre><code class="language-json">{"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
+ "answers": [{"selected": [], "text": "MySQL, the team knows it"}]}</code></pre></div>
+<p>The hub stores <code>text</code> as given (trimmed), never redacts or rewrites it, and never logs it.
+The answer is returned normalised: <code>{"selected": [...]}</code> plus <code>"text"</code> only when given.</p>
 <p>A <code>question_id</code> that isn't a string or <code>null</code>, or a <code>content_updated_at</code> that isn't a
 timestamp, is <code>400 invalid</code>. Then the hub takes the answer only if, in this order: the item exists (<code>404 not_found</code>), is open
 and unexpired (<code>409 not_open</code>), has a question with <code>answerable: true</code> (<code>409 not_answerable</code>)
@@ -415,7 +430,7 @@ request older than <code>request_read_seconds</code>), so long polls can't starv
 <tr><td><code>409</code></td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code></td><td>No answer will come: the item closed, has no answerable question, or the question expired</td></tr>
 </tbody>
 </table></div>
-<p><code>answers</code> has the shape posted to <code>POST /v1/items/{id}/answer</code>. Check <code>question_id</code>: once
+<p><code>answers</code> has the shape posted to <code>POST /v1/items/{id}/answer</code>, <code>text</code> included. Check <code>question_id</code>: once
 nothing is open under the key, the answer read back is the last item's, which may be an
 earlier question's. <code>needs-you answer-wait</code> wraps this (<code>--question-id</code> keeps waiting past
 another question's answer; see the <a href="agent-guide.html">agent guide</a>).</p>
@@ -846,8 +861,12 @@ answerable one that repeats a label (from an older hub). <code>answer</code>,
 <code>answered_at</code> and <code>answered_by</code> work the same way (a record without an <code>answer</code> key keeps the
 receiver's answer when <code>content_updated_at</code> matches). A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
-offered labels, one entry per question, one label for a single choice. Otherwise it is
-dropped with its <code>answered_at</code> and <code>answered_by</code> (the item stays).</p>
+offered labels (or <code>text</code> where the question has <code>allow_other</code>), one entry per question, one
+label or the text for a single choice. Otherwise it is
+dropped with its <code>answered_at</code> and <code>answered_by</code> (the item stays). Hubs before 0.3.0 don't
+know <code>allow_other</code> or <code>text</code>: they drop the field from the question (and a question with an
+answerable item that has no options), and they drop an answer that has only <code>text</code> or keep only
+its labels. Upgrade every hub before senders set <code>allow_other</code>.</p>
 <p><strong>Status records</strong> travel in their own <code>statuses</code> array, in pushes and in change pages: the
 public status record plus <code>token_id</code> and <code>updated_by</code>. The receiver checks each as a <code>PUT</code> body
 (text, usage, no secrets; a past <code>expires_at</code> is fine, since a clear is an expiry, and up to a

@@ -176,7 +176,8 @@ needs-you add --key "work:billing:rotate-stripe-key" --priority urgent \
 When you need the person to pick between a few options and you can wait for it, post the
 question as `answerable` and wait for the answer. The person's Mac shows each option as a
 button; their click comes back to you as JSON. Only the labels you offered can come back,
-never free text, and nothing comes back unless the person clicks.
+plus the person's own words for a question where you set `"allow_other": true`, and nothing
+comes back unless the person clicks.
 
 ```bash
 qid="deploy-214-$(date +%s)"   # a new id each time you ask
@@ -195,12 +196,21 @@ needs-you resolve --key "work:deploy:api-v2.14"   # once you've acted on it
 ```
 
 - 1 to 4 questions, each with 1 to 8 options (labels up to 80 characters); every question
-  needs options. `"multi_select": true` lets the person pick several. Add `"expires_at"`
-  when you'll stop waiting, so a late click is refused rather than lost.
+  needs options or `"allow_other": true`. `"multi_select": true` lets the person pick
+  several. Add `"expires_at"` when you'll stop waiting, so a late click is refused rather
+  than lost.
+- `"allow_other": true` on a question says you also take the person's own words for it: the
+  Mac adds **Other…** below the options (**Answer…** for a question with no options, a
+  free-text question), which opens a small window to type in. Set it only when your code
+  really handles text there. The words come back as `"text"` in that question's answer: one
+  line, 1 to 1,000 characters, exactly as typed (not redacted; treat them as the person's
+  instruction, not as a label). A single-choice question's answer is one label **or** the
+  text (`"selected": []`); a multi-select's is any labels plus, optionally, the text.
 - Within a question, every label must differ: an answer is labels only, so the hub refuses
   an answerable question that repeats one (`400`).
 - `answer-wait` prints `{"id", "key", "status", "question_id", "answers": [{"selected":
-  [labels]}], "answered_at", "answered_by"}` and exits 0. It exits 3 when `--timeout`
+  [labels], "text"?}], "answered_at", "answered_by"}` and exits 0 (`"text"` only when the
+  person typed words). It exits 3 when `--timeout`
   runs out and 4 when no answer will come (the card was resolved or dismissed, the question
   expired, or it isn't answerable). Treat anything but 0 as "no answer": never pick a
   default for the person. With `NEEDS_YOU_WATCH_PID=<pid>` in its environment it also

@@ -1,6 +1,7 @@
 # 0009. Questions and choices on cards
 
-- Status: Accepted (2026-10-08): phases A, B1, B2 and B3 (Claude Code, after the live check) built
+- Status: Accepted (2026-10-08): phases A, B1, B2 and B3 (Claude Code, after the live check) built;
+  amended 2026-10-09 (typed "Other" answers from an answer window, rule 6)
 - Date: 2026-10-08
 
 ## Context
@@ -204,3 +205,52 @@ This tightens validation, so it is a breaking change for a sender that posted su
 question: no sender in this repo did (the hooks keep those cards read-only), and the CLI
 reports the `400` (exit 2). A replicated record with such a question from an older hub loses
 its question, like any question this hub would refuse.
+
+## Amendment (2026-10-09): your own words ("Other") from an answer window
+
+Rule 6 said free text is not offered on the card, so the person had to go to the terminal
+whenever the agent's own "Other" (Claude Code's AskUserQuestion always offers it; so does
+opencode's "Type your own answer") was the answer they wanted. The owner asked for it on the
+Mac, without breaking the focus rule. Rule 6 now reads:
+
+6. **The panel never takes focus.** Each option is a button on the card (multi-select:
+   toggle buttons plus one Send). Clicking one sends the answer without activating the app
+   or making the panel key. When the sender takes the person's own words for a question
+   (`allow_other`), the card adds **Other…** below its options (**Answer…** for a question
+   without options). That click, and only that click, opens a small separate **answer
+   window** (an ordinary titled window that may become key, like Settings): the question, a
+   text field, Send and Cancel. Send posts the words as that question's answer and closes the
+   window; the app the person was in comes back. The panel itself still never becomes key
+   and holds no text field. "Answer in the terminal" stays for everything else.
+
+As built:
+
+- **Wire** ([API.md](../API.md#post-v1itemsidanswer-reader)): a question item may carry
+  `allow_other: true` (returned only when true). An answer entry may then carry `text`: one
+  line, 1–1,000 characters after trimming, the same character rules as other one-line text
+  (no control, bidi or line-separator characters). A single choice takes one label **or**
+  the text; a multi-select any labels plus the text. An answerable item without options is
+  allowed only with `allow_other` (a free-text question). The hub stores the text as typed,
+  never redacts or logs it, and checks a replicated answer's text the same way. Hubs before
+  0.3.0 drop the field and such answers: upgrade every hub first.
+- **Senders.** The Claude Code `ask` hook marks every question of an answerable card
+  `allow_other` (Claude's dialog always takes "Other") and puts the words into
+  `updatedInput.answers` as Claude's TUI does: in place of a single choice's label, after a
+  multi-select's labels joined with ", ". Claude Code 2.1.295's bundled code takes any string
+  there (up to 8,192 characters; the tool result then says "The user answered: …", as for a
+  typed "Other" in the terminal) [bin]. The
+  opencode plugin does the same for questions it answers (`custom` isn't `false`), adding the
+  words as one more entry of that question's reply. `needs-you answer-wait` prints `text`
+  with the labels. Words that don't fit (blank, too long, control characters, a label and
+  words for a single choice) answer nothing. Rule 5 holds: permission prompts and plans are
+  never answerable, and nothing is ever answered without the person's click and Send.
+- **Mac.** `AnswerWindow` (Core) is the window; `FloatingPanelTests` checks it is not the
+  panel and that the panel still can't become key. The window checks the words as the hub
+  will (line breaks from a paste become spaces) and otherwise sends them as typed. On a
+  card with other questions still unanswered, the window's button says **Use**: the words
+  wait on the card (shown as the chosen row, click to change, × to take back) for the card's
+  Send. [CLAUDE.md](../../CLAUDE.md) rule 2 names this as the second explicit-click
+  exception.
+- **Privacy.** The words are the person's, typed for the agent, so they are not redacted
+  (a token-shaped word in them goes to the agent as typed). They live on the item like the
+  rest of the answer and are purged with its text.

@@ -45,7 +45,7 @@ New Swift test classes must be registered in `mac/Sources/NeedsYouSelfTest/main.
 ## Hard rules
 
 1. **Python is stdlib-only and 3.9-compatible** (`/usr/bin/python3` on macOS). `from __future__ import annotations`; no `match`, no runtime `X | Y` unions, no `tomllib`. No pip, no new dependencies anywhere (Swift packages included) without an ADR.
-2. **The panel never takes focus or activates the app.** `FloatingPanel` keeps `canBecomeKey`/`canBecomeMain` false and `FloatingPanelTests` guards it. No text fields or focusable views in the panel. Only an explicit user click on Settings may activate the app.
+2. **The panel never takes focus or activates the app.** `FloatingPanel` keeps `canBecomeKey`/`canBecomeMain` false and `FloatingPanelTests` guards it. No text fields or focusable views in the panel. Only two explicit user clicks may activate the app and make a window key: opening Settings, and a question card's **Other…**/**Answer…** button, which opens the separate `AnswerWindow` for typed answers (ADR 0009 amendment 2026-10-09). Nothing else opens either window: no poll, arrival, timer or hotkey.
 3. **Tokens are never logged, printed (except once at mint), committed, or put in item text.** The hub stores sha256 only. The same goes for peer secrets and invite codes.
 4. **Hubs bind loopback or the tailnet only.** Never `0.0.0.0`/`::` by default; the hub refuses them unless explicitly overridden.
 5. **No personal hostnames, tailnet names, employer or client names anywhere in the repo.** Use `hub-a.example.ts.net`, `<tailnet>`, `devbox`, `acme`, `ACME-123`.
