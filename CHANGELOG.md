@@ -17,6 +17,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- **Settings → Usage says when no numbers have arrived.** Its preview showed example meters when the hub had none, so the meters looked set up while the pill stayed empty. It now says the meters are examples and how to start sending numbers: `needs-you orca usage --enable` on a machine with Orca, `--usage` for Claude Code's status line, or the Codex hook.
 - **`install-hub.sh` installs from a release with an old `gh`.** Like `needs-you update` in 0.3.1, the server installer treated a `gh` too old to verify build provenance (Ubuntu 24.04's gh 2.45) as a failed check and installed nothing. It now counts as no `gh`: the files are still checked against the release's `SHA256SUMS` and `release-manifest.json`, and it says provenance wasn't checked.
 
 ## [0.3.1] - 2026-10-09
