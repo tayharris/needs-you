@@ -301,9 +301,12 @@ So is one with two options of the same label within a question (`400`, the secon
 `question.items[i].options[j].label`): an answer carries labels only, so the two couldn't be
 told apart. A read-only question may repeat a label; different questions may share labels.
 Senders keep the question's text in `body` as well, for clients and views that don't show the
-field. A re-post that changes the question (any part of it), or a re-post by a different
-token, clears the item's `answer`: an answer is only ever read back by the token that asked.
-An unchanged re-post by the same token keeps it.
+field. An answer belongs to the question it answers: a re-post that changes the question (any
+part of it, `expires_at` included), or a re-post by a different token, clears the item's
+`answer` (an answer is only ever read back by the token that asked). A re-post by the same
+token with the same question keeps it, even when it changes `title`, `body` or `priority` (that
+moves `content_updated_at`, so an answer the person started to the earlier version gets
+`409 question_changed`, but one already taken stands).
 
 Semantics:
 
@@ -978,7 +981,13 @@ their own copies have no steps. `question` works the same way: carried as the ob
 replicated question this hub would refuse on POST is dropped (the item stays), including an
 answerable one that repeats a label (from an older hub). `answer`,
 `answered_at` and `answered_by` work the same way (a record without an `answer` key keeps the
-receiver's answer when `content_updated_at` matches). A replicated answer is kept only if
+receiver's answer when `content_updated_at` matches). An answer outlives last-writer-wins
+against a version written by a hub that hadn't heard of it yet, the same way a re-post keeps it
+on one hub: when the record's `question` (and `token_id`) equal the receiver's, a newer record
+without an answer keeps the receiver's answer, and an older one (or an equal version) that
+carries an answer the receiver lacks gives it its answer as a new write (a fresh `updated_at`,
+replicated like any other), so every hub ends up with the answer. A record with another
+question, or from another token, decides by LWW as usual. A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
 offered labels (or `text` where the question has `allow_other`), one entry per question, one
 label or the text for a single choice. Otherwise it is
@@ -1106,6 +1115,11 @@ database was replaced) or its `max_seq` is below the cursor, the puller restarts
 - First answer wins on each hub. Two clicks on different hubs within the replication delay can
   both be taken; LWW then keeps the later one on every hub, and a sender that read the earlier
   one has already acted on it.
+- An answer survives a concurrent re-post of the same question (see the replication record
+  above), but not a merge of two ids minted for one key: the winner takes the answer of the
+  freshest content, so an answer on the other id is lost when that id's content was older.
+  A re-post that changes the question on another hub clears the answer there and, once it
+  wins LWW, everywhere.
 - Closed items lose their text after `text_retention_hours` and are deleted after
   `retention_days` (30). A hub that slept for less than that learns of closes from the
   tombstones. One offline for longer can still hold (and push) open versions of items the others

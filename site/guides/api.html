@@ -323,9 +323,12 @@ So is one with two options of the same label within a question (<code>400</code>
 <code>question.items[i].options[j].label</code>): an answer carries labels only, so the two couldn't be
 told apart. A read-only question may repeat a label; different questions may share labels.
 Senders keep the question's text in <code>body</code> as well, for clients and views that don't show the
-field. A re-post that changes the question (any part of it), or a re-post by a different
-token, clears the item's <code>answer</code>: an answer is only ever read back by the token that asked.
-An unchanged re-post by the same token keeps it.</p>
+field. An answer belongs to the question it answers: a re-post that changes the question (any
+part of it, <code>expires_at</code> included), or a re-post by a different token, clears the item's
+<code>answer</code> (an answer is only ever read back by the token that asked). A re-post by the same
+token with the same question keeps it, even when it changes <code>title</code>, <code>body</code> or <code>priority</code> (that
+moves <code>content_updated_at</code>, so an answer the person started to the earlier version gets
+<code>409 question_changed</code>, but one already taken stands).</p>
 <p>Semantics:</p>
 <ol>
 <li>If an item with this <code>key</code> is open (and not expired), it is updated **in place, keeping its
@@ -866,7 +869,13 @@ their own copies have no steps. <code>question</code> works the same way: carrie
 replicated question this hub would refuse on POST is dropped (the item stays), including an
 answerable one that repeats a label (from an older hub). <code>answer</code>,
 <code>answered_at</code> and <code>answered_by</code> work the same way (a record without an <code>answer</code> key keeps the
-receiver's answer when <code>content_updated_at</code> matches). A replicated answer is kept only if
+receiver's answer when <code>content_updated_at</code> matches). An answer outlives last-writer-wins
+against a version written by a hub that hadn't heard of it yet, the same way a re-post keeps it
+on one hub: when the record's <code>question</code> (and <code>token_id</code>) equal the receiver's, a newer record
+without an answer keeps the receiver's answer, and an older one (or an equal version) that
+carries an answer the receiver lacks gives it its answer as a new write (a fresh <code>updated_at</code>,
+replicated like any other), so every hub ends up with the answer. A record with another
+question, or from another token, decides by LWW as usual. A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
 offered labels (or <code>text</code> where the question has <code>allow_other</code>), one entry per question, one
 label or the text for a single choice. Otherwise it is
@@ -977,6 +986,11 @@ wins.</li>
 <li>First answer wins on each hub. Two clicks on different hubs within the replication delay can
 both be taken; LWW then keeps the later one on every hub, and a sender that read the earlier
 one has already acted on it.</li>
+<li>An answer survives a concurrent re-post of the same question (see the replication record
+above), but not a merge of two ids minted for one key: the winner takes the answer of the
+freshest content, so an answer on the other id is lost when that id's content was older.
+A re-post that changes the question on another hub clears the answer there and, once it
+wins LWW, everywhere.</li>
 <li>Closed items lose their text after <code>text_retention_hours</code> and are deleted after
 <code>retention_days</code> (30). A hub that slept for less than that learns of closes from the
 tombstones. One offline for longer can still hold (and push) open versions of items the others

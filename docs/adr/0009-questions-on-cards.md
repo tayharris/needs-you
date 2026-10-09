@@ -264,3 +264,20 @@ As built:
   the hub refuses words holding one (`400 secret_in_text`), and a replicated answer with one
   is dropped. They live on the item like the
   rest of the answer and are purged with its text.
+
+## Amendment (2026-10-09): an answer belongs to its question, across hubs too
+
+- **One hub.** A re-post by the same token with the same question keeps the answer, also
+  when it changes the title, body or priority (`content_updated_at` moves, so an answer in
+  progress to the earlier version gets `409 question_changed`; one already taken stands). A
+  re-post that changes the question, or one by another token, clears it.
+- **Replication.** An answer used to lose last-writer-wins to a re-post on another hub that
+  hadn't heard of it yet: the answer vanished everywhere, and the card asked again. Now the
+  same rule holds across hubs: a newer record with the same question and token but no answer
+  keeps the receiver's answer, and an older record that carries one the receiver lacks gives
+  it as a new write, so every hub converges on it (`apply_item`, docs/API.md Replication,
+  conformance `test_an_answer_outlives_a_concurrent_repost`).
+- **Still open.** A merge of two ids minted for one key keeps the answer of the freshest
+  content only; an answer on the other id is lost when its content was older. Rare (two hubs
+  took the first post of a key and the answer within one replication delay); left as a
+  documented limit.
