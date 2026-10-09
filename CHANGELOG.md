@@ -4,6 +4,14 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- **One "go there" button per agent card.** The agent hooks now work out once where a session runs (Orca, VS Code or Cursor, tmux, WezTerm, iTerm2, kitty, Ghostty, Terminal, then any other known terminal or editor) and give its card that one button. A session in a terminal no longer gets a VS Code folder button beside its terminal button; sessions in VS Code or Cursor, or where the hook can't tell, still get the folder button, and Cursor sessions now get `cursor://` links ([which button](docs/guides/claude-code-everywhere.md#buttons)). Run `needs-you update` on sender machines to get the new hook.
+
+### Added
+
+- **Bring the session's app forward.** For an app with no tab jump (kitty, Warp, Alacritty, Hyper, Tabby, Zed, Windsurf, VS Code Insiders, a JetBrains IDE), the card's button brings that app forward with a new app action, `needsyou://app/activate?bundle=<id>`. The Mac app only brings forward a running app on its fixed list of terminals and editors, never launches one and never itself, and ignores the link when it comes from outside the panel ([API](docs/API.md#post-v1items-sender), [Mac app](docs/guides/mac-app.md#terminal-button)). **Upgrade every hub**: an older hub refuses the link, and the hook then posts the card with the editor button instead.
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.

@@ -96,7 +96,7 @@ The body is one JSON object (UTF-8, at most 64 KiB). Only `title` is required. A
 - for `https`, have a host;
 - for `vscode` and `cursor`, be exactly one of `vscode://file/<abs path>[:line[:col]]`, `vscode://vscode-remote/ssh-remote+<host>[/<abs path>]`, `vscode://vscode-remote/tunnel+<name>[/<abs path>]` or `vscode://anthropic.claude-code/open?session=<id>` (same with `cursor://`); details in [API.md](../API.md#post-v1items-sender).
 
-The app's own `needsyou://` actions (the **Terminal** button) are accepted only in the fixed shapes in API.md; leave them to the built-in hooks. **One bad link refuses the whole item**, so a connector that copies URLs from events should send only `https://` URLs it has checked, or retry without links when the CLI exits 2 (example (b) does).
+The app's own `needsyou://` actions (the card's "go there" button: Orca, a terminal, or an app brought forward) are accepted only in the fixed shapes in API.md; leave them to the built-in hooks. **One bad link refuses the whole item**, so a connector that copies URLs from events should send only `https://` URLs it has checked, or retry without links when the CLI exits 2 (example (b) does).
 
 **Steps** (each an object; unknown step fields are ignored):
 

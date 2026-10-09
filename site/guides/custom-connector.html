@@ -118,7 +118,7 @@ curl -sS --max-time 5 -X POST "$NEEDS_YOU_URL/v1/items" \
 <li>for <code>https</code>, have a host;</li>
 <li>for <code>vscode</code> and <code>cursor</code>, be exactly one of <code>vscode://file/&lt;abs path&gt;[:line[:col]]</code>, <code>vscode://vscode-remote/ssh-remote+&lt;host&gt;[/&lt;abs path&gt;]</code>, <code>vscode://vscode-remote/tunnel+&lt;name&gt;[/&lt;abs path&gt;]</code> or <code>vscode://anthropic.claude-code/open?session=&lt;id&gt;</code> (same with <code>cursor://</code>); details in <a href="api.html#post-v1items-sender">API</a>.</li>
 </ul>
-<p>The app's own <code>needsyou://</code> actions (the <strong>Terminal</strong> button) are accepted only in the fixed shapes in API.md; leave them to the built-in hooks. <strong>One bad link refuses the whole item</strong>, so a connector that copies URLs from events should send only <code>https://</code> URLs it has checked, or retry without links when the CLI exits 2 (example (b) does).</p>
+<p>The app's own <code>needsyou://</code> actions (the card's "go there" button: Orca, a terminal, or an app brought forward) are accepted only in the fixed shapes in API.md; leave them to the built-in hooks. <strong>One bad link refuses the whole item</strong>, so a connector that copies URLs from events should send only <code>https://</code> URLs it has checked, or retry without links when the CLI exits 2 (example (b) does).</p>
 <p><strong>Steps</strong> (each an object; unknown step fields are ignored):</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Rule</th><th>Default</th></tr></thead>
