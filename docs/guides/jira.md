@@ -34,7 +34,7 @@ EOF
 (crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/.local/bin/needs-you-jira >/dev/null  # needs-you-jira') | crontab -
 ```
 
-For **Data Center**, step 3 is just the base URL (`NEEDS_YOU_JIRA_SITE=https://jira.acme.example`, with a context path such as `/jira` if yours has one); the poller uses your personal access token as a Bearer token. Set `NEEDS_YOU_JIRA_AUTH=dc` if your Data Center site happens to end in `.atlassian.net`, or `cloud` for a Cloud site on a custom domain.
+For **Data Center**, step 3 is just the base URL (`NEEDS_YOU_JIRA_SITE=https://jira.acme.example`, with a context path such as `/jira` if yours has one); the poller uses your personal access token as a Bearer token. Set `NEEDS_YOU_JIRA_AUTH=dc` if your Data Center site happens to end in `.atlassian.net`, or `cloud` for a Cloud site on a custom domain. If the server's certificate comes from your company's own CA, put that CA in a PEM file and set `NEEDS_YOU_JIRA_CA_FILE=/path/to/acme-ca.pem`: the poller then trusts only that CA, and still checks the certificate and host name.
 
 The token file must be yours and mode `600`. If it isn't, the poller refuses it and tells you to `chmod 600` it: anyone who can read it can act as you in Jira.
 

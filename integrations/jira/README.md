@@ -62,6 +62,7 @@ In `~/.config/needs-you/env` (or the environment).
 | `NEEDS_YOU_JIRA_AUTH` | `cloud` for `*.atlassian.net`, else `dc` | `cloud`: Basic auth with your email and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens). `dc`: a personal access token as a Bearer token (Data Center 8.14+) |
 | `NEEDS_YOU_JIRA_EMAIL` | none | Your Atlassian account email (Cloud only) |
 | `NEEDS_YOU_JIRA_TOKEN_FILE` | `~/.config/needs-you/jira-token` | The file holding the token, alone on one line. It must be yours and mode `600` (or `400`): a file anyone else can read or write is refused. There is no environment variable for the token itself |
+| `NEEDS_YOU_JIRA_CA_FILE` | unset (the system's CAs) | A PEM file with the CA that signs a Data Center server's certificate, for a private CA. When set, only it is trusted; the certificate and host name are still checked |
 | `NEEDS_YOU_JIRA_EVENTS` | `status,comment,assigned,mention` | The events to post; or turn some off: `-comment,-assigned` |
 | `NEEDS_YOU_JIRA_STATUSES` | every status, low | `Blocked=urgent,In Review=normal,Backlog=off,*=low`: the priority for an issue in that status (names aren't case-sensitive), `off` for no status card. A status not listed takes the `*` rule; with no `*`, a move to an unlisted status posts no card. The rule also raises the priority of comments on an issue in that status |
 | `NEEDS_YOU_JIRA_PROJECTS` | every project, default context, low | `ACME=work:normal,OPS=work:urgent`: only these projects, each one's context (and key prefix) and base priority |

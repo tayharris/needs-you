@@ -226,7 +226,7 @@ class JiraBase(HubTestCase):
     def env(self, extra=None):
         env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_TIMEOUT": "1",
                "NEEDS_YOU_HOST": "devbox", "NEEDS_YOU_URL": ",".join(self.urls), "NEEDS_YOU_TOKEN": self.sender,
-               "NEEDS_YOU_BIN": CLI, "SSL_CERT_FILE": self.certkey[0], "NEEDS_YOU_JIRA_SITE": self.site,
+               "NEEDS_YOU_BIN": CLI, "NEEDS_YOU_JIRA_CA_FILE": self.certkey[0], "NEEDS_YOU_JIRA_SITE": self.site,
                "NEEDS_YOU_JIRA_AUTH": self.MODE, "NEEDS_YOU_JIRA_TOKEN_FILE": self.token_file}
         if self.MODE == "cloud":
             env["NEEDS_YOU_JIRA_EMAIL"] = EMAIL
@@ -502,6 +502,19 @@ class CloudPoller(JiraBase):
         r = self.poll()
         self.assertIn("401", r.stderr)
         self.assertIn("NEEDS_YOU_JIRA_EMAIL", r.stderr)
+
+    def test_certificate_is_verified(self):
+        # Without NEEDS_YOU_JIRA_CA_FILE the self-signed test server isn't trusted: no request
+        # completes, so the token never reaches it.
+        r = self.poll({"NEEDS_YOU_JIRA_CA_FILE": None})
+        self.assertIn("CERTIFICATE_VERIFY_FAILED", r.stderr)
+        self.assertEqual(self.world.log, [])
+        self.assertNotIn(TOKEN, r.stdout + r.stderr)
+
+    def test_missing_ca_file_is_refused(self):
+        r = self.poll({"NEEDS_YOU_JIRA_CA_FILE": os.path.join(self.tmp, "nope.pem")})
+        self.assertIn("NEEDS_YOU_JIRA_CA_FILE", r.stderr)
+        self.assertEqual(self.world.log, [])
 
     def test_redirect_is_not_followed(self):
         self.world.redirect = True

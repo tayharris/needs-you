@@ -34,6 +34,9 @@ Config (environment, else ~/.config/needs-you/env):
   NEEDS_YOU_JIRA_TOKEN_FILE  file holding the API token (cloud) or personal access token (dc);
                              default ~/.config/needs-you/jira-token. Must be mode 600 (or 400)
                              and yours: a file others can read is refused.
+  NEEDS_YOU_JIRA_CA_FILE     a PEM file of the CA(s) that sign a Data Center server's certificate,
+                             for a private CA. Set, only it is trusted (not the system's CAs);
+                             the certificate and host name are still checked.
   NEEDS_YOU_JIRA_EVENTS      status,comment,assigned,mention (default all); "-mention" drops one
   NEEDS_YOU_JIRA_STATUSES    Blocked=urgent,In Review=normal,Backlog=off,*=low: the priority of a
                              card for an issue in that status, "off" for no status card;
@@ -247,6 +250,10 @@ class Config:
             self.errors.append("NEEDS_YOU_JIRA_EMAIL is needed for Jira Cloud (your Atlassian account email)")
         self.token_file = os.path.expanduser(get("NEEDS_YOU_JIRA_TOKEN_FILE") or
                                              os.path.join(config_base(), "needs-you", "jira-token"))
+        ca = get("NEEDS_YOU_JIRA_CA_FILE").strip()
+        self.ca_file = os.path.expanduser(ca) if ca else None
+        if self.ca_file and not os.path.isfile(self.ca_file):
+            self.errors.append("NEEDS_YOU_JIRA_CA_FILE is not a file: %s" % self.ca_file)
 
         raw = [EVENT_ALIASES.get(e.lower(), e.lower()) for e in _csv(get("NEEDS_YOU_JIRA_EVENTS"))]
         if raw and all(e.startswith("-") for e in raw):
@@ -533,7 +540,8 @@ class Jira:
             self._auth = "Bearer " + token
             self.api = cfg.base + "/rest/api/2"
         self._opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=ssl.create_default_context()), _NoRedirect())
+            urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=cfg.ca_file)),
+            _NoRedirect())
         self.requests = 0
 
     def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
