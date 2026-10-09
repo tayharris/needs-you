@@ -644,6 +644,7 @@ private struct CardMenuItems: View {
             let count = model.itemsFromSameHost(as: item).count
             Button("Dismiss All from \(host) (\(count))") { model.dismissAll(fromHostOf: item) }
         }
+        AlertRulesMenu(item: item, model: model)
         if model.settings.developerMode {
             Divider()
             Section("Developer") {

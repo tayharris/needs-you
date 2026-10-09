@@ -256,6 +256,22 @@ public struct ItemStore: Sendable {
         items[id]?.seenAt = date
     }
 
+    /// Re-applies the bypass rules' "Treat as urgent" and "Treat as low" to every item
+    /// (RuleBook.applied), after the rules changed. True when any item changed. Polled
+    /// items get the same treatment before `merge`, so both copies agree.
+    @discardableResult
+    public mutating func applyRules(_ rules: RuleBook) -> Bool {
+        var changed = false
+        for (id, item) in items {
+            let next = rules.applied(to: item)
+            if next != item {
+                items[id] = next
+                changed = true
+            }
+        }
+        return changed
+    }
+
     // MARK: - Later (delivery tiers)
 
     /// Keep an open `needs` item under Later: out of the count and the card list until

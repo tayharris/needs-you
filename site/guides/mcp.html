@@ -81,7 +81,7 @@ needs-you install-mcp claude,gemini          # the same registration the install
   | python3 ~/.local/bin/needs-you-mcp</code></pre></div>
 <h2 id="what-the-agent-sees">What the agent sees <a class="anchor" href="#what-the-agent-sees" aria-label="Link to this section">#</a></h2>
 <ul>
-<li><code>needs_you_add</code>: <code>key</code> and <code>title</code> are required; <code>body</code>, <code>kind</code> (<code>needs</code>, <code>done</code> or <code>info</code>), <code>priority</code>, <code>context</code>, <code>links</code>, <code>steps</code>, <code>project</code> and <code>expires_in_hours</code> are optional. Each item's agent is <code>mcp:&lt;client name&gt;</code>.</li>
+<li><code>needs_you_add</code>: <code>key</code> and <code>title</code> are required; <code>body</code>, <code>kind</code> (<code>needs</code>, <code>done</code> or <code>info</code>), <code>priority</code>, <code>context</code>, <code>links</code>, <code>steps</code>, <code>project</code>, <code>event</code> (what happened: <code>question</code>, <code>approval</code>, <code>finished</code>, <code>failed</code> or <code>context</code>) and <code>expires_in_hours</code> are optional. Each item's agent is <code>mcp:&lt;client name&gt;</code>.</li>
 <li>If no hub answers, the result says the item was queued (<code>"queued": true</code>): the CLI sends it later, and the agent shouldn't retry. A refusal (a bad link, a title over 100 characters) comes back as a tool error with the hub's message.</li>
 <li>There's no tool to list the agent's open cards. A sender can post and resolve but can't read your inbox, and that stays so; the agent keeps track of the keys it posted.</li>
 <li>Nothing token-shaped ever appears in a result.</li>

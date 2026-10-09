@@ -88,6 +88,7 @@ class RunCommand(CliTestCase):
         self.assertEqual([(i["key"], i["kind"], i["title"]) for i in open_items],
                          [("work:devbox:build", "done", "Build finished")])
         self.assertIsNotNone(open_items[0]["expires_at"])
+        self.assertEqual(open_items[0]["source"]["event"], "finished")
         r = self.run_wrapped("--key", "work:devbox:build2", "--done-after", "-1", "--", PY, "-c", "pass")
         self.assertNotIn("work:devbox:build2", self.by_key())
 
@@ -96,6 +97,7 @@ class RunCommand(CliTestCase):
         item = self.by_key()["work:testbox:run:false"]
         self.assertEqual(item["title"], "false failed on testbox")
         self.assertEqual(item["source"]["agent"], "run:false")
+        self.assertEqual(item["source"]["event"], "failed")
         self.run_wrapped("--key", "personal:nas:backup", "--", "false")
         self.assertEqual(self.by_key()["personal:nas:backup"]["context"], "personal")
 

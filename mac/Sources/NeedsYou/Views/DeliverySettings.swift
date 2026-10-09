@@ -113,7 +113,8 @@ struct WorkScreenSection: View {
     }
 }
 
-/// The bypass list: per key prefix, sender agent or host; checked top to bottom.
+/// The bypass list: per key prefix, session, sender agent or host, optionally only for one
+/// `source.event`; checked top to bottom. Agent cards' "…" menu adds rules here too.
 struct BypassRulesSection: View {
     @ObservedObject var settings: AppSettings
     @State private var drafts: [Draft] = []
@@ -124,7 +125,43 @@ struct BypassRulesSection: View {
         var match: BypassMatch
         var value: String
         var action: BypassAction
+        /// "" = any event.
+        var event: String = ""
+
+        init(match: BypassMatch, value: String, action: BypassAction, event: String? = nil) {
+            self.match = match
+            self.value = value
+            self.action = action
+            self.event = event ?? ""
+        }
+
+        init(_ rule: BypassRule) {
+            self.init(match: rule.match, value: rule.value, action: rule.action, event: rule.event)
+        }
+
+        var rule: BypassRule? { BypassRule(match: match, value: value, action: action, event: event) }
     }
+
+    /// One-click rules, put at the top of the list (the first match wins).
+    struct Preset {
+        let title: String
+        let help: String
+        let rule: BypassRule
+    }
+
+    static let presets: [Preset] = [
+        Preset(title: "Agent Questions Are Urgent",
+               help: "An agent's question card (source.event question, keys starting agent:) is treated as urgent",
+               rule: BypassRule(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .urgent,
+                                event: AgentEvent.question.rawValue)!),
+        Preset(title: "Agent Failures Are Urgent",
+               help: "An agent that stopped on an error, a rate limit or a sign-in (source.event failed) is treated as urgent",
+               rule: BypassRule(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .urgent,
+                                event: AgentEvent.failed.rawValue)!),
+        Preset(title: "Agents Always Interrupt",
+               help: "Every agent session's card (keys starting agent:) interrupts, whatever the focus",
+               rule: BypassRule(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .alwaysInterrupt)!),
+    ]
 
     var body: some View {
         Section {
@@ -137,6 +174,16 @@ struct BypassRulesSection: View {
                     .fixedSize()
                     TextField(Self.placeholder(draft.match), text: $draft.value)
                         .textFieldStyle(.roundedBorder)
+                    Picker("Event", selection: $draft.event) {
+                        Text(AgentEvent.title(of: nil)).tag("")
+                        ForEach(AgentEvent.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
+                        if !draft.event.isEmpty && AgentEvent(rawValue: draft.event) == nil {
+                            Text(AgentEvent.title(of: draft.event)).tag(draft.event)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Only cards whose sender says this happened (source.event); the agent hooks set it")
                     Picker("Action", selection: $draft.action) {
                         ForEach(BypassAction.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
@@ -157,12 +204,12 @@ struct BypassRulesSection: View {
                     drafts.append(Draft(match: .keyPrefix, value: "", action: .alwaysInterrupt))
                 }
                 .disabled(drafts.count >= RuleBook.maxRules)
-                if !drafts.contains(where: { $0.match == .keyPrefix && $0.value == FocusLevel.agentKeyPrefix }) {
-                    Button("Agents Always Interrupt") {
-                        drafts.append(Draft(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .alwaysInterrupt))
+                ForEach(Self.presets, id: \.title) { preset in
+                    if !drafts.contains(where: { $0.rule == preset.rule }) {
+                        Button(preset.title) { drafts.insert(Draft(preset.rule), at: 0) }
+                            .disabled(drafts.count >= RuleBook.maxRules)
+                            .help(preset.help)
                     }
-                    .disabled(drafts.count >= RuleBook.maxRules)
-                    .help("Every Claude Code session's card (keys starting agent:) interrupts, whatever the focus")
                 }
                 Spacer()
                 Text("\(drafts.count) of \(RuleBook.maxRules)").font(.caption).foregroundStyle(.secondary)
@@ -170,23 +217,29 @@ struct BypassRulesSection: View {
         } header: {
             Text("Bypass rules")
         } footer: {
-            Text("Checked top to bottom; the first match wins. Always interrupt gets through any focus or snooze (a hidden panel stays hidden). Never interrupt: ambient at most. Always later: held under Later. A sender that would interrupt more than \(NoisySenderGuard.defaultThreshold) times in an hour is held to ambient for the rest of it.")
+            Text("Checked top to bottom; the first match wins. Treat as urgent: the card is red, sorts first and arrives as urgent does; treat as low: the opposite. Always interrupt gets through any focus or snooze (a hidden panel stays hidden). Never interrupt: ambient at most. Always later: held under Later. An event narrows a rule to what the agent did: asked, needs approval, finished, failed, or context nearly full. An agent card's … menu sets rules for its session or its agent. A sender that would interrupt more than \(NoisySenderGuard.defaultThreshold) times in an hour is held to ambient for the rest of it.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onAppear {
             guard !loaded else { return }
             loaded = true
-            drafts = settings.bypassRules.rules.map { Draft(match: $0.match, value: $0.value, action: $0.action) }
+            drafts = settings.bypassRules.rules.map(Draft.init)
+        }
+        .onChange(of: settings.bypassRules) { _, saved in
+            // A card's menu changed the rules while Settings is open: show them. (Rows with
+            // an empty value, never saved, are dropped then.)
+            if RuleBook(drafts.compactMap(\.rule)) != saved { drafts = saved.rules.map(Draft.init) }
         }
         .onChange(of: drafts) { _, edited in
             // Rows with an empty value are kept on screen but not saved.
-            settings.bypassRules = RuleBook(edited.compactMap { BypassRule(match: $0.match, value: $0.value, action: $0.action) })
+            settings.bypassRules = RuleBook(edited.compactMap(\.rule))
         }
     }
 
     static func placeholder(_ match: BypassMatch) -> String {
         switch match {
         case .keyPrefix: return "agent: or work:gh:deploy:"
+        case .session: return "agent:devbox:<session id>"
         case .agentPrefix: return "orca: or claude-code"
         case .host: return "devbox"
         }

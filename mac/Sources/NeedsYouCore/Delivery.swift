@@ -283,12 +283,15 @@ public struct DeliveryDecision: Equatable, Sendable {
 /// no rules, the snoozed and hidden results match the old SnoozeBreakthrough and
 /// HiddenArrivalPolicy, which now delegate here.
 public enum DeliveryPolicy {
-    static func isOpenUrgent(_ item: Item) -> Bool {
-        item.kind == .needs && item.priority == .urgent && item.status == .open
+    static func isOpenUrgent(_ item: Item, priority: ItemPriority? = nil) -> Bool {
+        item.kind == .needs && (priority ?? item.priority) == .urgent && item.status == .open
     }
 
     public static func decide(_ item: Item, state: DeliveryState) -> DeliveryDecision {
-        let urgent = isOpenUrgent(item)
+        // A "Treat as urgent" or "Treat as low" rule changes the priority the item arrives as
+        // (the items in the store already carry it; this keeps the policy right for any item).
+        let priority = state.rules.effectivePriority(item)
+        let urgent = isOpenUrgent(item, priority: priority)
         let inContext = item.context == state.context
         let d = state.defaults
 
@@ -303,7 +306,7 @@ public enum DeliveryPolicy {
         } else if item.kind != .needs {
             tier = d.recent
         } else {
-            tier = item.priority == .low ? d.low : d.normal
+            tier = priority == .low ? d.low : d.normal
         }
 
         func quiet(to other: DeliveryTier, because why: DeliveryReason) {
@@ -364,6 +367,8 @@ public enum DeliveryPolicy {
             case .alwaysLater:
                 tier = .later
                 reason = .rule
+            case .urgent, .low:
+                break  // the priority above already decided it, as for a sender's urgent or low
             }
         }
 

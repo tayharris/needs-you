@@ -125,6 +125,8 @@ MAX_ANSWER_TEXT = 1000
 # 3), so never in typed words either; other token-shaped words go to the agent as typed.
 OWN_SECRET_RE = re.compile(r"(?:\b|(?<=%[0-9A-Fa-f]{2}))ny[ip]?_[A-Za-z0-9_-]{16,}")
 MAX_SOURCE_FIELD = 100
+# source.event: what happened, as a short slug (question, approval, finished, failed, context).
+SOURCE_EVENT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 # Status records (ADR 0011, docs/API.md "Status records"): quiet, keyed, expiring, never items.
 STATUS_TYPES = ("usage", "progress")
 STATUS_STATES = ("working", "waiting", "idle", "done", "failed")
@@ -757,7 +759,9 @@ def _peer_answer(raw: Any) -> Optional[List[Dict[str, Any]]]:
     return out
 
 
-def validate_source(source: Any) -> Dict[str, str]:
+def validate_source(source: Any, strict_event: bool = True) -> Dict[str, str]:
+    """host, agent and project (text), and event (a slug, lowercased). Unknown keys are
+    dropped. With strict_event off (a replicated record), a bad event is dropped, not refused."""
     if source is None:
         return {}
     if not isinstance(source, dict):
@@ -767,6 +771,14 @@ def validate_source(source: Any) -> Dict[str, str]:
         v = _str_field(source, name, MAX_SOURCE_FIELD, path="source." + name)
         if v:
             out[name] = v
+    event = source.get("event")
+    if event is not None:
+        ok = isinstance(event, str) and SOURCE_EVENT_RE.match(event.strip().lower())
+        if ok:
+            out["event"] = event.strip().lower()
+        elif strict_event:
+            raise _invalid("source.event", "source.event must be a short slug: a-z first, then a-z 0-9 _ -, "
+                                           "at most 32 characters")
     return out
 
 
@@ -2985,7 +2997,7 @@ def normalise_item_record(rec: Any) -> Dict[str, Any]:
         source = rec.get("source") or {}
         if not isinstance(source, dict):
             raise ValueError("source")
-        out["source"] = json.dumps(validate_source(source))
+        out["source"] = json.dumps(validate_source(source, strict_event=False))
         for c in ("created_at", "updated_at"):
             out[c] = parse_ts(rec[c])
         out["content_updated_at"] = parse_ts(rec.get("content_updated_at") or rec["updated_at"])
