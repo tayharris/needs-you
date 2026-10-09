@@ -774,9 +774,10 @@ class TerminalLinkTests(HookHarness):
         self.assertEqual(self.terminal(SSH_CONNECTION="1 2 3 4", NEEDS_YOU_HOOK_PLATFORM="darwin",
                                        TMUX="x", TMUX_PANE="%3", WEZTERM_PANE="2"), [])
 
-    def test_comes_first_and_editor_links_follow(self):
+    def test_is_the_only_button(self):
+        # One "go there" button: no editor folder link beside a terminal jump.
         self.assertEqual(self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", WEZTERM_PANE="12", NEEDS_YOU_AGENT_LINK=""),
-                         [TERM + "app=wezterm&pane=12", "VS Code=vscode://file" + self.cwd])
+                         [TERM + "app=wezterm&pane=12"])
 
     def test_orca_wins(self):
         h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
@@ -792,6 +793,15 @@ class TerminalLinkTests(HookHarness):
         self.assertEqual(self.links(calls[0])[0], TERM + "app=wezterm&pane=12")
         self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file" + self.cwd])
 
+    def test_old_hub_retry_after_activate_gets_the_editor_link(self):
+        with open(self.cli, "w") as fh:
+            fh.write(FAKE_CLI + "sys.exit(2 if any('=needsyou://' in a for a in sys.argv) else 0)\n")
+        self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", KITTY_WINDOW_ID="1", NEEDS_YOU_AGENT_LINK="")
+        calls = self.calls()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.links(calls[0]), [KITTY])
+        self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file" + self.cwd])
+
     def test_refused_template_link_still_posts_the_card(self):
         # security audit #14: the hub refuses extension handlers; the card arrives without links
         with open(self.cli, "w") as fh:
@@ -801,6 +811,106 @@ class TerminalLinkTests(HookHarness):
         calls = self.calls()
         self.assertEqual(len(calls), 3)
         self.assertEqual(self.links(calls[2]), [])
+
+
+ACT = "=needsyou://app/activate?bundle="
+KITTY = "kitty" + ACT + "net.kovidgoyal.kitty"
+
+
+class HostDetectionTests(HookHarness):
+    """One primary "go there" button per agent card: the host is detected once, first match
+    wins (Orca, an editor, tmux, WezTerm, iTerm2, kitty, Ghostty, Terminal, then any other
+    allow-listed __CFBundleIdentifier), and the editor folder link only comes when the host
+    is the editor or no button could be built."""
+
+    def links_for(self, **extra):
+        extra.setdefault("NEEDS_YOU_HOOK_PLATFORM", "darwin")
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"}, **extra)
+        return self.links(self.last())
+
+    def folder(self, editor="VS Code", scheme="vscode"):
+        return "%s=%s://file%s" % (editor, scheme, self.cwd)
+
+    def test_first_match_wins(self):
+        h = "term_4f261ae3-041a-47c6-872a-cf02e1e40804"
+        tmux = {"TMUX": "/private/tmp/tmux-501/default,1,0", "TMUX_PANE": "%7"}
+        everything = dict(tmux, WEZTERM_PANE="3", ITERM_SESSION_ID="w0t0p0:" + UUID, KITTY_WINDOW_ID="1",
+                          TERM_PROGRAM="Apple_Terminal", NEEDS_YOU_HOOK_TTY="ttys004",
+                          __CFBundleIdentifier="dev.warp.Warp-Stable")
+        self.assertEqual(self.links_for(ORCA_TERMINAL_HANDLE=h, CURSOR_TRACE_ID="x", **everything),
+                         ["Orca=needsyou://orca/terminal?handle=" + h])
+        self.assertEqual(self.links_for(CURSOR_TRACE_ID="x", **everything), [self.folder("Cursor", "cursor")])
+        self.assertEqual(self.links_for(**everything), [TERM + "app=tmux&pane=7&host=iterm"])
+        del everything["TMUX"], everything["TMUX_PANE"]
+        self.assertEqual(self.links_for(**everything), [TERM + "app=wezterm&pane=3"])
+        del everything["WEZTERM_PANE"]
+        self.assertEqual(self.links_for(**everything), [TERM + "app=iterm&session=" + UUID])
+        del everything["ITERM_SESSION_ID"]
+        self.assertEqual(self.links_for(**everything), [KITTY])
+        del everything["KITTY_WINDOW_ID"]
+        self.assertEqual(self.links_for(GHOSTTY_RESOURCES_DIR="/x", **everything), [TERM + "app=ghostty"])
+        self.assertEqual(self.links_for(**everything), [TERM + "app=terminal&tty=/dev/ttys004"])
+        del everything["TERM_PROGRAM"]
+        self.assertEqual(self.links_for(**everything), ["Warp" + ACT + "dev.warp.Warp-Stable"])
+
+    def test_editor_hosts(self):
+        self.assertEqual(self.links_for(TERM_PROGRAM="vscode", WEZTERM_PANE="1"), [self.folder()])
+        self.assertEqual(self.links_for(__CFBundleIdentifier="com.microsoft.VSCode", TMUX="x", TMUX_PANE="%1"),
+                         [self.folder()])
+        self.assertEqual(self.links_for(__CFBundleIdentifier="com.todesktop.230313mzl4w4u92", TERM_PROGRAM="vscode"),
+                         [self.folder("Cursor", "cursor")])
+        # the extension's own tab, in the editor that hosts it
+        self.assertEqual(self.links_for(CLAUDE_CODE_ENTRYPOINT="claude-vscode", CURSOR_TRACE_ID="x"),
+                         ["Claude=cursor://anthropic.claude-code/open?session=sess-1234-abcd",
+                          self.folder("Cursor", "cursor")])
+        # an editor without an allowed folder link: brought forward, nothing else
+        self.assertEqual(self.links_for(__CFBundleIdentifier="dev.zed.Zed", TERM_PROGRAM="zed"),
+                         ["Zed" + ACT + "dev.zed.Zed"])
+        self.assertEqual(self.links_for(__CFBundleIdentifier="com.microsoft.VSCodeInsiders", TERM_PROGRAM="vscode"),
+                         ["VS Code Insiders" + ACT + "com.microsoft.VSCodeInsiders"])
+        self.assertEqual(self.links_for(__CFBundleIdentifier="com.jetbrains.pycharm"),
+                         ["PyCharm" + ACT + "com.jetbrains.pycharm"])
+
+    def test_nothing_detected_gets_the_folder_link(self):
+        self.assertEqual(self.links_for(), [self.folder()])
+        self.assertEqual(self.links_for(TERM_PROGRAM="Hyper"), [self.folder()])
+        # bundle ids off the allow-list are never sent: unknown apps, Needs You itself, tricks
+        for bad in ("com.example.app", "app.needsyou.mac", "com.apple.Terminal&x=1", "COM.APPLE.TERMINAL",
+                    "com.apple.Terminal ", "-a"):
+            with self.subTest(bad):
+                self.assertEqual(self.links_for(__CFBundleIdentifier=bad), [self.folder()])
+
+    def test_a_jump_that_cant_be_built_falls_back(self):
+        # the terminal's app when its bundle id is known, else the folder link
+        self.assertEqual(self.links_for(TERM_PROGRAM="Apple_Terminal", NEEDS_YOU_HOOK_TTY="??",
+                                        __CFBundleIdentifier="com.apple.Terminal"),
+                         ["Terminal" + ACT + "com.apple.Terminal"])
+        self.assertEqual(self.links_for(ITERM_SESSION_ID="w0t0p0:nope", __CFBundleIdentifier="com.googlecode.iterm2"),
+                         ["iTerm2" + ACT + "com.googlecode.iterm2"])
+        self.assertEqual(self.links_for(TERM_PROGRAM="Apple_Terminal", NEEDS_YOU_HOOK_TTY="??"), [self.folder()])
+
+    def test_off_the_mac_the_bundle_id_is_ignored(self):
+        ssh = {"SSH_CONNECTION": "10.0.0.2 5000 10.0.0.3 22", "NEEDS_YOU_SSH_ALIAS": "devbox"}
+        remote = "VS Code=vscode://vscode-remote/ssh-remote+devbox" + self.cwd
+        self.assertEqual(self.links_for(__CFBundleIdentifier="dev.zed.Zed", KITTY_WINDOW_ID="1", **ssh), [remote])
+        self.assertEqual(self.links_for(LC_NEEDS_YOU_TERM="app=wezterm&pane=4", **ssh),
+                         [TERM + "app=wezterm&pane=4"])
+        # VS Code Remote-SSH's own terminal: the editor is the host, not the Mac tab
+        self.assertEqual(self.links_for(TERM_PROGRAM="vscode", LC_NEEDS_YOU_TERM="app=wezterm&pane=4", **ssh),
+                         [remote])
+
+    def test_template_follows_the_go_there_button(self):
+        self.assertEqual(self.links_for(KITTY_WINDOW_ID="1", NEEDS_YOU_AGENT_LINK="Cursor=cursor://file{cwd}"),
+                         [KITTY, "Cursor=cursor://file" + self.cwd])
+        self.assertEqual(self.links_for(KITTY_WINDOW_ID="1", NEEDS_YOU_AGENT_LINK="none"), [KITTY])
+
+    def test_every_go_there_link_passes_the_hub(self):
+        got = (self.links_for(KITTY_WINDOW_ID="1") + self.links_for(__CFBundleIdentifier="dev.zed.Zed")
+               + self.links_for(__CFBundleIdentifier="org.alacritty"))
+        self.assertEqual(len(got), 3)
+        for lk in got:
+            with self.subTest(lk):
+                self.assertTrue(hubmod.link_allowed(lk.partition("=")[2]))
 
 
 def usage_line(total, model="claude-opus-5", sidechain=False, cache=True):

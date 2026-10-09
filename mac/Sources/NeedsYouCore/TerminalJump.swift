@@ -305,10 +305,12 @@ public struct TerminalJump: Equatable, Sendable {
 public enum AppAction: Equatable, Sendable {
     case orca(OrcaJump)
     case terminal(TerminalJump)
+    case activate(AppActivation)
 
     public static func parse(_ string: String) -> AppAction? {
         if let j = OrcaJump.parse(string) { return .orca(j) }
         if let j = TerminalJump.parse(string) { return .terminal(j) }
+        if let a = AppActivation.parse(string) { return .activate(a) }
         return nil
     }
 
@@ -318,6 +320,7 @@ public enum AppAction: Equatable, Sendable {
         switch self {
         case .orca(let j): return j.url
         case .terminal(let j): return j.url
+        case .activate(let a): return a.url
         }
     }
 }

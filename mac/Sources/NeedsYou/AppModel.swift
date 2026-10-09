@@ -1378,6 +1378,7 @@ final class AppModel: ObservableObject {
         switch action {
         case .orca(let jump): OrcaJumpRunner.run(jump)
         case .terminal(let jump): TerminalJumpRunner.run(jump, appleScript: settings.terminalAppleScript)
+        case .activate(let app): AppActivationRunner.run(app)
         }
     }
 

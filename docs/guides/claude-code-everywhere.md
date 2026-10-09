@@ -65,16 +65,18 @@ No prompt text, transcript or tool input is sent: a permission card names the to
 
 ### Buttons
 
-| Session runs | Button |
-|---|---|
-| On the Mac | **VS Code**: opens the folder (`vscode://file<cwd>`) |
-| On a server, with `--ssh-alias devbox` | **VS Code**: opens the folder in a Remote-SSH window (`vscode://vscode-remote/ssh-remote+devbox<cwd>`) |
-| In the VS Code extension (not the CLI in VS Code's terminal) | **Claude**: focuses that conversation's tab (`vscode://anthropic.claude-code/open?session=<id>`; the session must belong to the workspace open in the focused window) |
-| In Orca | **Orca**: switches Orca to that terminal (no editor button beside it) |
-| In a terminal on the Mac (tmux, WezTerm, iTerm2, Terminal, Ghostty) | A button named for the terminal (**tmux**, **WezTerm**, **iTerm2**, **Terminal**, **Ghostty**): brings that tab or pane forward ([Terminal button](#terminal-button)) |
-| On a server over SSH, with `LC_NEEDS_YOU_TERM` set on the Mac | A button named for the Mac terminal: brings forward the Mac tab the SSH connection runs in |
+Each card gets one "go there" button for where the session runs. The hook works out the host once, and the first match wins:
 
-`NEEDS_YOU_AGENT_LINK` replaces the editor buttons with one of your own, and `none` turns them off (the Terminal button stays).
+| # | Session runs | Button |
+|---|---|---|
+| 1 | In Orca (`ORCA_TERMINAL_HANDLE`) | **Orca**: switches Orca to that terminal |
+| 2 | In an editor: the VS Code extension, VS Code's or Cursor's terminal (`CLAUDE_CODE_ENTRYPOINT=claude-vscode`, `TERM_PROGRAM=vscode`, `CURSOR_TRACE_ID`, or the app's bundle id) | **VS Code** or **Cursor**: opens the folder (`vscode://file<cwd>`, `cursor://file<cwd>`; on a server, the Remote-SSH window with `--ssh-alias`). In the extension, also **Claude**: focuses that conversation's tab (`vscode://anthropic.claude-code/open?session=<id>`; the session must belong to the workspace open in the focused window). Another editor (Zed, Windsurf, VS Code Insiders, a JetBrains IDE) has no folder link we allow, so its button brings it forward |
+| 3–8 | In a terminal on the Mac: tmux, WezTerm, iTerm2, kitty, Ghostty, Terminal, in that order | That terminal's button: brings the tab or pane forward ([Terminal button](#terminal-button)); kitty comes forward as an app |
+| 9 | In another terminal the Mac app knows (Warp, Alacritty, Hyper, Tabby), from `__CFBundleIdentifier` | Brings that app forward |
+| | On a server over SSH, with `LC_NEEDS_YOU_TERM` set on the Mac | A button named for the Mac terminal: brings forward the Mac tab the SSH connection runs in |
+| | None of these, or a terminal whose jump can't be built | **VS Code**: opens the folder (on a server, with `--ssh-alias devbox`, in a Remote-SSH window: `vscode://vscode-remote/ssh-remote+devbox<cwd>`) |
+
+So a session in iTerm2 gets the iTerm2 button only, not a VS Code button beside it. `NEEDS_YOU_AGENT_LINK` adds one link of your own after the go-there button instead of the editor buttons, and `none` turns the editor buttons off (the go-there button stays).
 
 ### Context alert
 
@@ -86,7 +88,7 @@ The hook reads only the tail of the session's transcript (the last 256 KB, then 
 
 ### On the Mac
 
-The installer lists `http://127.0.0.1:8765` first in `~/.config/needs-you/env` on the Mac, so local sessions post even while Tailscale is down. Cards from the Mac get a **VS Code** button that opens the project folder; `--agent-link 'Cursor=cursor://file{cwd}'` swaps it for Cursor.
+The installer lists `http://127.0.0.1:8765` first in `~/.config/needs-you/env` on the Mac, so local sessions post even while Tailscale is down. Cards from a terminal on the Mac get that terminal's button; from VS Code or Cursor, or when the terminal isn't known, a **VS Code** (or **Cursor**) button that opens the project folder ([Buttons](#buttons)). `--agent-link 'Cursor=cursor://file{cwd}'` sets your own.
 
 ### On a server, over SSH
 

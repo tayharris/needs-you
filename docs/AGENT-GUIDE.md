@@ -267,7 +267,7 @@ token.
    | A Jira ticket or comment | `https://<site>.atlassian.net/browse/<KEY>[?focusedCommentId=<id>]` |
    | A Linear issue | `https://linear.app/<ws>/issue/<ID>` |
 
-   The app's own `needsyou://` actions (the **Terminal** button) are written by the hooks and
+   The app's own `needsyou://` actions (the card's "go there" button) are written by the hooks and
    the Orca block; don't build them by hand.
 5. **Never send secrets**, credentials, customer data, card data, or code beyond a short
    identifier (a ticket key, a sha, a file name).

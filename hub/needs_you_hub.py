@@ -99,8 +99,10 @@ EDITOR_SCHEMES = ("vscode", "cursor")
 # exactly needsyou://<host>/<path>?<query>. The app parses each into a typed value and
 # validates every parameter again before it runs anything (docs/API.md, "Links").
 #   orca/terminal    the Orca jump: ?handle=term_<uuid>[&environment=<name>]
-#   terminal/focus   a Mac terminal tab: ?app=<wezterm|tmux|iterm|terminal>&...
-APP_LINK_PATHS = ("orca/terminal", "terminal/focus")
+#   terminal/focus   a Mac terminal tab: ?app=<wezterm|tmux|iterm|terminal|ghostty>&...
+#   app/activate     bring an app forward: ?bundle=<id>, only ids on the app's fixed
+#                    list of terminals and editors (AppActivation.allowedApps)
+APP_LINK_PATHS = ("orca/terminal", "terminal/focus", "app/activate")
 APP_LINK_PREFIXES = tuple("needsyou://%s?" % p for p in APP_LINK_PATHS)
 
 MAX_TITLE = 100

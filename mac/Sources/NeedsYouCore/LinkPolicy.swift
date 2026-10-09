@@ -60,7 +60,7 @@ public enum LinkPolicy {
     /// The app's own `needsyou://<host>/<path>?…` actions a card may carry, mirrored by the
     /// hub's `APP_LINK_PATHS` (hard rule 7: change both). Each one has a parser below that
     /// validates every parameter; a path here without a parser opens nothing.
-    public static let appActionPaths: [String] = ["orca/terminal", "terminal/focus"]
+    public static let appActionPaths: [String] = ["orca/terminal", "terminal/focus", "app/activate"]
 
     /// The URL another app opens, or nil if the string isn't an allowed, well-formed link.
     public static func externalURL(_ string: String) -> URL? {
@@ -78,7 +78,7 @@ public enum LinkPolicy {
 
     /// The URL to act on, or nil if the string isn't an allowed, well-formed link. The
     /// app's own scheme counts only for the actions in `appActionPaths` that parse
-    /// (`AppAction`: the Orca jump, the terminal jump); callers hand those to their
+    /// (`AppAction`: the Orca jump, the terminal jump, bringing a listed app forward); callers hand those to their
     /// runner, never to NSWorkspace (that would route back to this app).
     public static func openableURL(_ string: String) -> URL? {
         guard isWellFormedRaw(string.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }

@@ -249,13 +249,14 @@ parameters on the Claude link. <code>orca://</code> was dropped: Orca's only lin
 (<code>orca://skills/share/&lt;id&gt;</code>) imports a skill, which a card should never ask for, and the Orca
 jump is the app action below.</p>
 <p>One exception: the Mac app's own scheme, for a fixed set of <strong>app actions</strong> (the card's
-<strong>Terminal</strong> button). The hub accepts <code>needsyou://&lt;host&gt;/&lt;path&gt;?&lt;query&gt;</code> only for these
+"go there" button: Orca, the terminal, or the app the session runs in). The hub accepts <code>needsyou://&lt;host&gt;/&lt;path&gt;?&lt;query&gt;</code> only for these
 <code>&lt;host&gt;/&lt;path&gt;</code> pairs (case-insensitive), and nothing else under <code>needsyou://</code>:</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Action</th><th>Link</th><th>What the app does</th></tr></thead>
 <tbody>
 <tr><td><code>orca/terminal</code></td><td><code>needsyou://orca/terminal?handle=term_&lt;uuid&gt;[&amp;environment=&lt;name&gt;]</code></td><td><code>orca terminal switch</code>. The handle is <code>term_</code> plus 8–64 lowercase hex or <code>-</code>; the environment name is letters, digits, space, <code>.</code>, <code>_</code>, <code>-</code>, ≤ 64</td></tr>
 <tr><td><code>terminal/focus</code></td><td><code>needsyou://terminal/focus?app=&lt;app&gt;&amp;&lt;id&gt;</code></td><td>Focuses one terminal tab or pane on the Mac (below)</td></tr>
+<tr><td><code>app/activate</code></td><td><code>needsyou://app/activate?bundle=&lt;id&gt;</code></td><td>Brings that app forward when the sender knows the app the session runs in but no window jump exists for it (kitty, Warp, Zed, a JetBrains IDE). Exactly one parameter, <code>bundle</code>, matched exactly against a fixed list of terminals and editors built into the app (below); only an app that is already running comes forward, it is never launched, and Needs You itself is never on the list</td></tr>
 </tbody>
 </table></div>
 <p><code>terminal/focus</code> takes <code>app</code> and exactly the parameters for that app, each at most once:</p>
@@ -269,12 +270,27 @@ jump is the app action below.</p>
 <tr><td><code>ghostty</code></td><td>none</td><td>Ghostty comes forward (no tab selection yet)</td></tr>
 </tbody>
 </table></div>
+<p><code>app/activate</code> brings forward only these bundle ids (<code>AppActivation.allowedApps</code> in the Mac
+app, mirrored by the Claude Code hook; any other id, a different case, a second parameter or
+an extra character does nothing):</p>
+<ul>
+<li>Terminals: <code>com.apple.Terminal</code>, <code>com.googlecode.iterm2</code>, <code>com.github.wez.wezterm</code>,
+<code>com.mitchellh.ghostty</code>, <code>net.kovidgoyal.kitty</code>, <code>org.alacritty</code>, <code>dev.warp.Warp-Stable</code>,
+<code>co.zeit.hyper</code>, <code>org.tabby</code>.</li>
+<li>Editors: <code>com.microsoft.VSCode</code>, <code>com.microsoft.VSCodeInsiders</code>,
+<code>com.todesktop.230313mzl4w4u92</code> (Cursor), <code>com.exafunction.windsurf</code>, <code>com.vscodium</code>,
+<code>dev.zed.Zed</code>, <code>com.jetbrains.intellij</code>, <code>com.jetbrains.intellij.ce</code>, <code>com.jetbrains.pycharm</code>,
+<code>com.jetbrains.pycharm.ce</code>, <code>com.jetbrains.goland</code>, <code>com.jetbrains.WebStorm</code>,
+<code>com.jetbrains.CLion</code>, <code>com.jetbrains.rider</code>, <code>com.jetbrains.rubymine</code>,
+<code>com.jetbrains.PhpStorm</code>, <code>com.google.android.studio</code>.</li>
+</ul>
+<p>Opened from outside the panel (a web page, <code>open</code>), an <code>app/activate</code> link does nothing.</p>
 <p>The hub checks only the action prefix; the app parses every link into a typed value and
 refuses anything else (an unknown parameter, a repeated one, a value outside its pattern, a
 value starting with <code>-</code>, user, port or fragment), and then does nothing. It runs only fixed
 executables from fixed paths with argument arrays, never a shell, and AppleScript only as
 fixed handlers called with the validated value as a typed parameter. Worst case for a
-sender: the Mac shows a different terminal tab. A hub older than an action rejects the item
+sender: the Mac shows a different terminal tab, or brings a different listed app forward. A hub older than an action rejects the item
 with 400; senders that add one (the Claude Code hook) retry without their <code>needsyou://</code> links.</p>
 <p>Control characters are refused in every text field (<code>title</code>, <code>body</code> except newline and tab,
 link labels, <code>source</code> fields): C0, DEL, C1 (U+0080–U+009F), and the bidi embedding, override
