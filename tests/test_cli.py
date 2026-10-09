@@ -810,6 +810,22 @@ class AnswerWait(CliTestCase):
         r = self.run_cli("answer-wait", "--key", "typed", "--timeout", "5", urls=[self.hub.url], token=self.sender)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)["answers"], [{"selected": [], "text": "MySQL"}])
+        # Typed words print as escaped JSON: nothing in them can act on the terminal.
+        q2 = dict(q, id="toolu_2")
+        self.ask("typed2", q2)
+        item = [i for i in self.items(self.hub, self.reader, "open") if i["key"] == "typed2"][0]
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+                           {"question_id": "toolu_2", "content_updated_at": item["content_updated_at"],
+                            "answers": [{"selected": [], "text": "café \u2067rtl\u2069? no: \u2028 refused"}]})
+        self.assertEqual((st, body.get("field")), (400, "answers[0].text"))
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+                           {"question_id": "toolu_2", "content_updated_at": item["content_updated_at"],
+                            "answers": [{"selected": [], "text": "café \U0001F600 ok"}]})
+        self.assertEqual(st, 200, body)
+        r = self.run_cli("answer-wait", "--key", "typed2", "--timeout", "5", urls=[self.hub.url], token=self.sender)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(r.stdout.isascii() and "\x1b" not in r.stdout, r.stdout)
+        self.assertEqual(json.loads(r.stdout)["answers"][0]["text"], "café \U0001F600 ok")
 
     def test_timeout_is_exit_3_and_never_an_answer(self):
         self.ask()

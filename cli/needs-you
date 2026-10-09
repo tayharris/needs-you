@@ -1778,7 +1778,9 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool,
             status, body = got
             if status == 200 and isinstance(body.get("answers"), list):
                 if question_id is None or body.get("question_id") == question_id:
-                    print(json.dumps(body, sort_keys=True))
+                    # The person's typed words ride in here: JSON with ensure_ascii escapes
+                    # every control and non-ASCII character, and say_clean makes sure.
+                    say_clean(json.dumps(body, sort_keys=True, ensure_ascii=True))
                     return 0
                 last_note = "the answer under %r is to another question" % key
             if status == 409:
