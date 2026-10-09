@@ -2768,8 +2768,12 @@ def fetch_manifest(cfg: Config, errors: List[str]) -> Optional[Tuple[UpdateTarge
     except UpdateRefused as e:
         errors.append(str(e))
         return None
-    except (OSError, ValueError) as e:
-        errors.append("%s: %s" % (t.url, clean(getattr(e, "reason", e))))
+    except OSError as e:
+        reason = getattr(e, "reason", None) or getattr(e, "strerror", None) or e
+        errors.append("couldn't reach the update hub %s (%s)" % (t.url, clean(reason)))
+        return None
+    except ValueError as e:
+        errors.append("%s: %s" % (t.url, clean(e)))
         return None
     return t, manifest
 
@@ -2833,8 +2837,8 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
     if hub_v is None:
         raise UpdateRefused("the hub's manifest has no X.Y.Z version")
     if mine is not None and hub_v < mine and not allow_downgrade:
-        notes.append("the hub serves %s, this CLI is %s: not downgrading (--allow-downgrade to do it anyway)"
-                     % (clean(manifest.get("version")), VERSION))
+        notes.append("this CLI (%s) is newer than the hub's %s: not downgrading, nothing changed "
+                     "(--allow-downgrade installs the hub's files anyway)" % (VERSION, clean(manifest.get("version"))))
         return changes, notes
     for name, path in installed_paths().items():
         entry = files.get(name)
@@ -2853,7 +2857,7 @@ def plan_update(manifest: Dict[str, Any], allow_downgrade: bool = False) -> Tupl
         if have != want:
             changes.append({"file": name, "path": path, "sha256": want, "size": entry.get("size"),
                             "from": _stamp(path) if name != "needs-you" else VERSION,
-                            "to": entry.get("version") or "?"})
+                            "to": entry.get("version") or clean(manifest.get("version"))})
     # The hook's entries in ~/.claude/settings.json: re-merged when the hook or hooks.json
     # changed since the last update (install-hooks.sh is idempotent).
     settings = _home(".claude", "settings.json")
@@ -3491,7 +3495,8 @@ def _update(cfg: Config, check: bool, auto: bool, quiet: bool, as_json: bool, al
     if got is None:
         result["errors"] = errors
         if not quiet:
-            warn("no update: %s" % "; ".join(errors))
+            warn("no update: %s.%s" % ("; ".join(errors), " Nothing changed. Try again once it's up (`needs-you health` "
+                                       "checks it)." if errors[-1].startswith("couldn't reach") else ""))
         return finish(1)
     hub, manifest = got
     result["hub"], result["hub_version"] = hub.url, manifest.get("version")
@@ -3500,16 +3505,21 @@ def _update(cfg: Config, check: bool, auto: bool, quiet: bool, as_json: bool, al
     except UpdateRefused as e:
         result["errors"].append(str(e))
         if not quiet:
-            warn("update refused: %s" % e)
+            warn("update refused: %s. Nothing changed." % e)
         return finish(1)
     result["notes"] = notes
     result["changes"] = [{k: c[k] for k in ("file", "from", "to")} for c in changes]
     for n in notes:
         say("needs-you update: %s" % n)
     if not changes:
-        say("needs-you %s is already up to date (%s)" % (VERSION, hub.url))
+        if not notes:
+            say("needs-you %s is already up to date (%s)" % (VERSION, hub.url))
         return finish(0)
-    say("from %s (hub %s, %s):" % (hub.url, clean(manifest.get("version")), hub.why))
+    hub_version = clean(manifest.get("version"))
+    if check:
+        say("The hub at %s serves %s; this CLI is %s. Would update:" % (hub.url, hub_version, VERSION))
+    else:
+        say("Updating to %s from %s (this CLI is %s):" % (hub_version, hub.url, VERSION))
     for c in changes:
         say("  %s %s (%s -> %s)" % ("would update" if check else "update", c.get("label") or c["file"], c["from"] or "?", c["to"]))
     try:
@@ -3522,9 +3532,10 @@ def _update(cfg: Config, check: bool, auto: bool, quiet: bool, as_json: bool, al
     except UpdateRefused as e:
         result["errors"].append(str(e))
         if not quiet:
-            warn("update refused: %s" % e)
+            warn("update refused: %s. Nothing changed." % e)
         return finish(1)
     if check:
+        say("Nothing changed (--check). Run `needs-you update` to install it.")
         return finish(0)
     failed = False
     timeout = max(cfg.timeout, 10)
@@ -3542,8 +3553,17 @@ def _update(cfg: Config, check: bool, auto: bool, quiet: bool, as_json: bool, al
             if not quiet:
                 warn("couldn't update %s" % result["errors"][-1])
     _write_state(last_update_at=int(time.time()), last_update_hub=hub.url)
-    if result["applied"]:
-        say("needs-you update --rollback puts the previous files back")
+    done, total = len(result["applied"]), len(changes)
+    files = lambda n: "1 file" if n == 1 else "%d files" % n  # noqa: E731
+    if not failed:
+        say("Updated %s to %s. If something misbehaves, `needs-you update --rollback` puts the previous files back."
+            % (files(done), hub_version))
+    elif not quiet:
+        missed = ", ".join(c["file"] for c in changes if c["file"] not in result["applied"])
+        warn("Updated %d of %s to %s; %s wasn't. Run `needs-you update` again later%s." % (
+            done, files(total), hub_version, missed,
+            ", or `needs-you update --rollback` to put the %s back" % ("1 updated file" if done == 1 else
+                                                                        "%d updated files" % done) if done else ""))
     return finish(1 if failed else 0)
 
 
