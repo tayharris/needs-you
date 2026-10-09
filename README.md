@@ -174,6 +174,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [App, hubs and senders](docs/guides/concepts.md) | The three parts and where each runs, roles, invite links, tailnet, and the Settings page for each |
 | [Set it up with an agent](docs/guides/setup-with-an-agent.md) | One prompt for Claude Code or another agent: it installs the app, connects the agents it finds, and asks you at every choice |
 | [Mac app](docs/guides/mac-app.md) | Installing and using `NeedsYou.app` |
+| [Help us test](docs/guides/help-us-test.md) | Which AI tools have been run for real, what to try with yours, and how to report back |
 | [Add a sender](docs/guides/add-a-sender.md) | Invite links, the installer's options, CI and cron |
 | [MCP server](docs/guides/mcp.md) | Agents with MCP but no shell: post, resolve and check the setup as tool calls |
 | [Custom connector](docs/guides/custom-connector.md) | Connect any agent, tool or service: the item format, mapping its events to cards, examples, testing |
@@ -181,7 +182,8 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Claude Code everywhere](docs/guides/claude-code-everywhere.md) | Alerts from local, SSH, tmux, VS Code Remote-SSH and Orca sessions |
 | [Tailscale](docs/guides/tailscale.md) | Putting the Mac and servers on one tailnet, checking reachability |
 | [Orca](docs/guides/orca.md) | Orca agents and automations on one or many servers: the Terminal button, keys, a hand-off example |
-| [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, from one poller |
+| [GitHub](docs/guides/github.md) | Review requests, deploy approvals, failed CI and your PRs' state, plus opt-in GitHub Projects statuses and Dependabot alerts, from one poller |
+| [Expiry dates](docs/guides/expiry.md) | A card before a TLS certificate, a domain or an API key expires, from one daily poller |
 | [Linear](docs/guides/linear.md) | Assignments, comments, mentions and status changes from your Linear inbox, from one poller |
 | [Jira](docs/guides/jira.md) | Status changes, comments, mentions and assignments on your Jira issues (Cloud or Data Center), from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |

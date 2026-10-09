@@ -146,7 +146,7 @@ Nothing is kept in the Keychain. Everything is in two places:
 
 - If `tokens.json` doesn't parse, it's moved aside to `tokens.json.corrupt-<time>` and the app starts with no remote tokens (re-connect with a link). Nothing is deleted.
 - Prefs carry a `prefsVersion`. Migrations only move forward and never delete keys, so rolling back to an older build loses nothing.
-- **Upgrading from a build that used the Keychain:** remote hub tokens used to be in the login Keychain. This build deliberately never reads it (on a Mac whose login keychain password is out of sync, every access prompts, endlessly). Re-connect each remote hub once with a Mac link from its owner (Settings → **Join a hub**), or paste its token under **Hubs (manual)**; Settings points out which hubs need it. The hub on this Mac needs nothing: its token was already file-only. The old Keychain items are harmless; delete them in Keychain Access (search "NeedsYou") if you like.
+- **Upgrading from a build that used the Keychain:** remote hub tokens used to be in the login Keychain. This build deliberately never reads it (on a Mac whose login keychain password is out of sync, every access prompts, endlessly). Re-connect each remote hub once with a Mac link from its owner (Settings → **Other hubs** → **Join a hub with a link**), or paste its token under **Hubs by URL and token**; Settings points out which hubs need it. The hub on this Mac needs nothing: its token was already file-only. The old Keychain items are harmless; delete them in Keychain Access (search "NeedsYou") if you like.
 
 ## Updating
 
