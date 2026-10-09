@@ -1,7 +1,7 @@
 """Redaction of token-shaped text before untrusted text reaches a card.
 
 One block of code (between the "needs-you redaction" markers) does it, byte for byte the same in
-the agent hook, the CLI (`needs-you run`'s output), the MCP server and the GitHub poller. These
+the agent hook, the CLI (`needs-you run`'s output), the MCP server and the GitHub and Linear pollers. These
 tests check the copies match, what the block catches and keeps, and that it runs in linear time
 on input built to make regular expressions backtrack.
 """
@@ -17,7 +17,8 @@ from support import ROOT, hubmod
 BEGIN = "# --- needs-you redaction (begin) ---\n"
 END = "# --- needs-you redaction (end) ---\n"
 COPIES = ("integrations/claude-code/needs-you-hook.sh", "cli/needs-you",
-          "integrations/mcp/needs_you_mcp.py", "integrations/github/needs-you-github")
+          "integrations/mcp/needs_you_mcp.py", "integrations/github/needs-you-github",
+          "integrations/linear/needs-you-linear")
 
 
 def block(rel):
