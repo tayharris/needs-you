@@ -35,7 +35,7 @@ struct UsageSettingsSection: View {
         } header: {
             Text("Meters")
         } footer: {
-            Text("The numbers come from the agents' own hooks (Claude Code's status line helper, the Codex hook) through your hub. Nothing reads a login, token or cookie, and no email is ever sent. Meters never count as waiting, animate or notify.")
+            Text("The numbers come through your hub from the agents' own hooks (Claude Code's status line helper, the Codex hook) or from Orca's accounts (`needs-you orca usage`). Nothing reads a login, token or cookie, and no email is ever sent. Meters never count as waiting, animate or notify.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section {
@@ -73,9 +73,30 @@ private struct UsagePreview: View {
 
     var body: some View {
         let now = model.now
-        let statuses = UsageMeters.providers(model.statuses, now: now).isEmpty
-            ? DemoFeed.statusFixture(now: now) : model.statuses
+        let noNumbers = UsageMeters.providers(model.statuses, now: now).isEmpty
+        let statuses = noNumbers ? DemoFeed.statusFixture(now: now) : model.statuses
         let rows = UsageMeters.rows(statuses, prefs: settings.usage, now: now)
+        VStack(alignment: .leading, spacing: 8) {
+            if noNumbers {
+                // The examples below look like real meters: say plainly that the pill and panel
+                // stay empty until a machine sends numbers, and how to start that.
+                Text("Example meters: no usage numbers have reached your hub yet, so the pill and panel show none.")
+                    .font(.callout.weight(.semibold))
+                Text("On a machine with Orca, run `needs-you orca usage --enable`. Without Orca, install with `--usage`, which wraps Claude Code's status line. The Codex hook reports Codex on its own.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            preview(rows)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.surface))
+        .environment(\.colorScheme, Theme.colorScheme)
+    }
+
+    @ViewBuilder private func preview(_ rows: [UsageRow]) -> some View {
         Group {
             if rows.isEmpty {
                 Text("Nothing to show with these settings.")
@@ -85,9 +106,5 @@ private struct UsagePreview: View {
                 UsageSection(rows: rows, metrics: settings.ui.metrics, bodyFont: settings.ui.bodyFont)
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.surface))
-        .environment(\.colorScheme, Theme.colorScheme)
     }
 }
