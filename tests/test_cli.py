@@ -647,6 +647,38 @@ def load_cli():
     return mod
 
 
+class TerminalText(unittest.TestCase):
+    """Text from a hub, an item, a release or a peer is printed with its control
+    characters shown, not acted on (ANSI, OSC 8 links, OSC 52 clipboard writes)."""
+
+    EVIL = "a\x1b]52;c;cHduZWQ=\x07b\x1b[2Jc\x1b]8;;https://x\x1b\\d\x9b2J\re\u202ef"
+
+    def test_clean_escapes_controls(self):
+        cli = load_cli()
+        out = cli.clean(self.EVIL + "\n\tg")
+        for raw in ("\x1b", "\x07", "\x9b", "\r", "\n", "\t", "\u202e"):
+            self.assertNotIn(raw, out)
+        self.assertEqual(cli.clean(out), out)  # idempotent: cleaning twice changes nothing
+        self.assertTrue(out.startswith("a\\x1b]52;c;cHduZWQ=\\x07b\\x1b[2Jc"), out)
+
+    def test_multiline_keeps_newlines_and_tabs_only(self):
+        out = load_cli().clean(self.EVIL + "\n\tg", multiline=True)
+        self.assertTrue(out.endswith("\n\tg"), out)
+        for raw in ("\x1b", "\x07", "\x9b", "\r", "\u202e"):
+            self.assertNotIn(raw, out)
+
+    def test_warn_cleans(self):
+        import contextlib
+        import io
+        cli = load_cli()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            cli.warn("hub said: " + self.EVIL)
+        self.assertNotIn("\x1b", err.getvalue())
+        self.assertNotIn("\x07", err.getvalue())
+        self.assertIn("\\x1b[2J", err.getvalue())
+
+
 class Steps(CliTestCase):
     def test_parse_step(self):
         parse = load_cli().parse_step
