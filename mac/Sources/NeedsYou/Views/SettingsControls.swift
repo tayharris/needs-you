@@ -122,7 +122,7 @@ struct AlertPreview: View {
         let real = settings.ui.previewSeconds
         let shown = holdSeconds > 0 ? String(format: "%.1f s", holdSeconds) : "a moment"
         let realText = real > 0 ? "\(real) s" : "until you click or point at it"
-        return "Shown for \(shown) here; on your screen the new item stays out \(realText) (Show new items for, below). Nothing is posted."
+        return "Shown for \(shown) here; on your screen the new item stays out \(realText) (Alerts → New items → Show new items for). Nothing is posted."
     }
 
     private var waiting: [Item] { ArrivalPreview.waitingBefore() }

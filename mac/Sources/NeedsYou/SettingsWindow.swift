@@ -95,7 +95,9 @@ final class SettingsWindowController {
         // The whole window, title bar included (the theme frame), else just the content.
         guard let content = w.contentView else { return }
         let frameView = content.superview ?? content
-        let scroll = Self.firstScrollView(in: content)
+        // The page's form: the widest scroll view that scrolls (the sidebar scrolls too now
+        // that it's taller than the window).
+        let scroll = Self.scrollViews(in: content).max { $0.frame.width < $1.frame.width }
         for screen in 0..<max(1, shots) {
             if screen > 0 {
                 guard let scroll, let doc = scroll.documentView else { break }
@@ -113,15 +115,15 @@ final class SettingsWindowController {
         }
     }
 
-    private static func firstScrollView(in view: NSView) -> NSScrollView? {
+    /// Every scroll view under `view` whose content is taller than it, so it can scroll.
+    private static func scrollViews(in view: NSView) -> [NSScrollView] {
+        var found: [NSScrollView] = []
         if let scroll = view as? NSScrollView, let doc = scroll.documentView,
            doc.frame.height > scroll.contentView.bounds.height + 1 {
-            return scroll
+            found.append(scroll)
         }
-        for sub in view.subviews {
-            if let found = firstScrollView(in: sub) { return found }
-        }
-        return nil
+        for sub in view.subviews { found += scrollViews(in: sub) }
+        return found
     }
 
     /// The preferred size, but never taller or wider than the screen's usable area (less a
