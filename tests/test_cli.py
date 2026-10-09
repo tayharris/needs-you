@@ -803,7 +803,8 @@ class AnswerWait(CliTestCase):
         q = {"id": "toolu_1", "answerable": True, "items": [
             {"text": "Which database?", "allow_other": True, "options": [{"label": "Postgres"}]}]}
         item = self.ask("typed", q)
-        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+        owner, _ = self.hub.store.add_token("mac", "owner")  # typed words come from the owner only
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], owner,
                            {"question_id": "toolu_1", "content_updated_at": item["content_updated_at"],
                             "answers": [{"selected": [], "text": "MySQL"}]})
         self.assertEqual(st, 200, body)
@@ -814,11 +815,11 @@ class AnswerWait(CliTestCase):
         q2 = dict(q, id="toolu_2")
         self.ask("typed2", q2)
         item = [i for i in self.items(self.hub, self.reader, "open") if i["key"] == "typed2"][0]
-        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], owner,
                            {"question_id": "toolu_2", "content_updated_at": item["content_updated_at"],
                             "answers": [{"selected": [], "text": "café \u2067rtl\u2069? no: \u2028 refused"}]})
         self.assertEqual((st, body.get("field")), (400, "answers[0].text"))
-        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], self.reader,
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % item["id"], owner,
                            {"question_id": "toolu_2", "content_updated_at": item["content_updated_at"],
                             "answers": [{"selected": [], "text": "café \U0001F600 ok"}]})
         self.assertEqual(st, 200, body)

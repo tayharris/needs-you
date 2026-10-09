@@ -1,6 +1,7 @@
 """Free-text answers ("Other", ADR 0009 amendment 2026-10-09): a question item's `allow_other`,
 an answer's `text` (only where allowed, one line, bounded, kept as typed), read back by the
-sender, and replicated (an older hub's shapes still work, a made-up text is dropped)."""
+sender, and replicated (an older hub's shapes still work, a made-up text is dropped). Typed
+text is taken only from an owner token; a reader token answers by picking options."""
 from __future__ import annotations
 
 import unittest
@@ -21,6 +22,7 @@ class OtherCase(HubTestCase):
         super().setUp()
         self.hub = self.make_hub("hub-a", clock=FakeClock(), answer_rate_limit=100)
         self.sender, self.reader = self.tokens(self.hub)
+        self.owner, _ = self.hub.store.add_token("mac", "owner")
         self.base = self.hub.url
 
     def ask(self, key="q", question=None):
@@ -29,10 +31,10 @@ class OtherCase(HubTestCase):
         self.assertIn(status, (200, 201), item)
         return item
 
-    def answer(self, item, answers):
+    def answer(self, item, answers, token=None):
         body = {"question_id": item["question"].get("id"),
                 "content_updated_at": item["content_updated_at"], "answers": answers}
-        return request("POST", self.base + "/v1/items/%s/answer" % item["id"], self.reader, body)
+        return request("POST", self.base + "/v1/items/%s/answer" % item["id"], token or self.owner, body)
 
 
 class AllowOther(OtherCase):
@@ -133,6 +135,37 @@ class TextAnswers(OtherCase):
         self.assertEqual((status, err["error"]), (409, "already_answered"))
 
 
+class OwnerOnly(OtherCase):
+    """The words an agent reads as "the user answered" come only from an owner token (the
+    person's own Mac); a reader token (another Mac, a dashboard) can still pick options."""
+
+    def test_a_reader_cannot_type(self):
+        item = self.ask()
+        status, err = self.answer(item, TextAnswers.GOOD, self.reader)
+        self.assertEqual((status, err.get("error")), (403, "forbidden"), err)
+        self.assertIn("owner token", err["message"])
+        self.assertIn("pick one of the listed options", err["message"])
+        self.assertNotIn("MySQL", str(err))
+        status, got = request("GET", self.base + "/v1/items/" + item["id"], self.reader)
+        self.assertIsNone(got["answer"])
+        self.assertEqual(self.answer(item, TextAnswers.GOOD)[0], 200)  # the owner still can
+
+    def test_a_reader_can_pick_options(self):
+        q = {"id": "p", "answerable": True, "items": QUESTION["items"][:2] + QUESTION["items"][3:]}
+        item = self.ask("picks", q)
+        status, got = self.answer(item, [{"selected": ["SQLite"]}, {"selected": ["Metrics", "Tracing"]},
+                                         {"selected": ["No"]}], self.reader)
+        self.assertEqual(status, 200, got)
+        self.assertEqual(got["answer"][1], {"selected": ["Metrics", "Tracing"]})
+        self.assertTrue(got["answered_by"].startswith("reader-"))
+
+    def test_a_readers_bad_answer_is_still_a_400(self):
+        # The labels are checked first: the 403 is only for text that would be taken.
+        item = self.ask()
+        status, err = self.answer(item, [{"text": "two\nlines"}] + TextAnswers.GOOD[1:], self.reader)
+        self.assertEqual((status, err.get("field")), (400, "answers[0].text"))
+
+
 class Replication(HubTestCase):
     def rec(self, **kw):
         base = {"id": "01BBBBBBBBBBBBBBBBBBBBBBBB", "key": "k", "context": "work", "kind": "needs",
@@ -144,6 +177,8 @@ class Replication(HubTestCase):
         return base
 
     def test_a_text_answer_round_trips(self):
+        # A peer hub took the text at its own edge (owner tokens only there): replication keeps
+        # it whatever the answering token's name says; the receiving hub can't check a role.
         st = self.make_hub("hub-x", start=False).store
         good = TextAnswers.GOOD[1:]
         answer = [{"selected": [], "text": "MySQL"}] + good[:1] + [{"selected": [], "text": "Keep it"}] + good[2:]

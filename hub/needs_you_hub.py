@@ -1652,9 +1652,10 @@ class Store:
             return rec
 
     def answer(self, item_id: str, question_id: Any, content_updated_at: int, answers: Any,
-               token_name: str) -> Dict[str, Any]:
+               token_name: str, may_type: bool = True) -> Dict[str, Any]:
         """POST /v1/items/{id}/answer: take the person's answer, if the item can take one
-        (docs/API.md: 404, then each 409 in order, then the labels). First answer wins."""
+        (docs/API.md: 404, then each 409 in order, then the labels, then 403 for typed text
+        from a token that may not type: `may_type` is false for a reader). First answer wins."""
         with self.tx():
             row = self.conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
             if not row:
@@ -1674,6 +1675,11 @@ class Store:
             if rec.get("answer"):
                 raise ApiError(409, "already_answered", "the question was already answered")
             checked = validate_answers(answers, question)
+            if not may_type and any("text" in a for a in checked):
+                # The agent reads these words as the person's: only the owner's own Mac types.
+                raise ApiError(403, "forbidden", "typed answers (Other...) need an owner token (this one "
+                               "is a reader): pick one of the listed options instead, or answer from "
+                               "the owner's Mac")
             stamp = self.bump(rec["updated_at"])
             rec.update({"answer": json.dumps(checked), "answered_at": now, "answered_by": token_name,
                         "updated_at": stamp, "updated_by": self.hub_id})
@@ -4079,7 +4085,8 @@ class Handler(BaseHTTPRequestHandler):
             seen = parse_ts(data.get("content_updated_at"))
         except ValueError:
             raise _invalid("content_updated_at", "content_updated_at must be the item's timestamp as shown")
-        rec = self.hub.store.answer(item_id, qid, seen, data.get("answers"), tok["name"])
+        rec = self.hub.store.answer(item_id, qid, seen, data.get("answers"), tok["name"],
+                                    may_type=tok["role"] == "owner")
         self.hub.notify()
         self._send(200, item_public(rec, self.hub.store.now_ms()))
 
