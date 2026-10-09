@@ -4,9 +4,17 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Choose how the pill's usage meters look.** **Settings → Usage** now has a **Style** (Bars, Thin bars, Rings, Percentages), a **Size** (Small, Medium, Large: bar thickness, ring size, the numbers' type), a **Layout** where it applies (bars stacked or side by side on one line; rings side by side or one inside the other) and **Show percentages** after the meters, with a live preview of the pill at several percentages and of the idle pill. Rings sit after the count and fill clockwise from the top. Every choice keeps the count and the "Nothing needs you" line clear, and the meters keep their colours (plain, amber past the warning line, red at 100 %) on a visible empty track. Thin bars chosen in an earlier build stay exactly as they were ([guide](docs/guides/mac-app.md#usage-meters)).
+
 ### Changed
 
-- **Usage on the pill, also when nothing is waiting, in the style you pick.** The idle "Nothing needs you" pill, which shows most of the day, had no usage meters at all; now it carries them too. The default style is **Bars**: two 3-point bars on a faint track under the count (session above weekly), clearly readable at 31 % and 10 %; the pill grows a few points taller while two show and never covers the count. **Settings → Usage → On the pill** switches to **Thin bars** (0.4.0's lines along the bottom edge; the pill keeps its size) or **Percentages** (`31% 10%` after the count, in a fixed-width slot so the pill doesn't resize as they change), with a preview of both pills. While the idle pill shows meters it rests at 60 % opacity instead of 35 %, so they can be read ([guide](docs/guides/mac-app.md#usage-meters)).
+- **Usage on the pill, also when nothing is waiting, in the style you pick.** The idle "Nothing needs you" pill, which shows most of the day, had no usage meters at all; now it carries them too. The default is large **Bars**: two 4.5-point bars on a faint track under the count (session above weekly), clearly readable at 31 % and 10 %; the pill grows a few points taller while two show and never covers the count. While the idle pill shows meters it rests at 60 % opacity instead of 35 %, so they can be read ([guide](docs/guides/mac-app.md#usage-meters)).
+
+### Fixed
+
+- The "Minimal dot" pill no longer grows taller on hover when usage meters are on, and a one-digit count with percentages no longer gets extra padding.
 
 ## [0.4.0] - 2026-10-09
 
