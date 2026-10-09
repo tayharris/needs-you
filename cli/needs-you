@@ -1885,7 +1885,13 @@ def _epoch(value: Any) -> Optional[float]:
     if not m:
         return None
     import calendar
-    return float(calendar.timegm(tuple(int(g) for g in m.groups()[:6]) + (0, 0, 0)))
+    import datetime
+    parts = tuple(int(g) for g in m.groups()[:6])
+    try:
+        datetime.datetime(*parts)  # a real date (timegm alone takes month 13 and hour 25)
+        return float(calendar.timegm(parts + (0, 0, 0)))
+    except (ValueError, OverflowError):
+        return None
 
 
 def build_status(args: argparse.Namespace, cfg: Config) -> Dict[str, Any]:
