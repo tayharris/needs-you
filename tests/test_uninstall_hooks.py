@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-from support import CLI, ROOT
+from support import CLI, ROOT, drop_python_cache
 
 BASH = shutil.which("bash") or "/bin/bash"
 INSTALL_HOOKS = os.path.join(ROOT, "integrations", "claude-code", "install-hooks.sh")
@@ -272,6 +272,7 @@ class UninstallHooks(unittest.TestCase):
             self.assertEqual(r.returncode, 0, script + r.stdout + r.stderr)
         r = self.cli()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        drop_python_cache(self.home)
         empty = [os.path.relpath(dp, self.home) for dp, dns, fns in os.walk(self.home)
                  if dp != self.home and not dns and not fns and not dp.endswith("mine")]
         self.assertEqual(empty, [])
