@@ -183,7 +183,7 @@ public enum UsageMeters {
             guard !bars.isEmpty else { return nil }
             let title = providerTitle(u.provider) + (u.account.isEmpty ? "" : " · " + u.account)
             return UsageRow(provider: u.provider, account: u.account, title: title, bars: bars,
-                            host: s.source?.host, updatedAt: s.updatedAt)
+                            host: s.source?.host.map { OrcaWorktrees.clean($0, limit: 64) }, updatedAt: s.updatedAt)
         }
         .sorted { ($0.provider, $0.account) < ($1.provider, $1.account) }
     }

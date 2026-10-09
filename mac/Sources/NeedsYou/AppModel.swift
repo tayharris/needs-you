@@ -598,7 +598,7 @@ final class AppModel: ObservableObject {
             if !isDemo, !senderObserved, !updated.items.isEmpty { senderObserved = true }
             recordSetupProgress()
             if isExpanded { markVisibleSeen() }
-            await refreshStatuses(generation: generation)
+            refreshStatusesInBackground(generation: generation)
         } catch {
             guard generation == feedGeneration else { return }
             let many = feedHubCount > 1
@@ -606,6 +606,19 @@ final class AppModel: ObservableObject {
             if (error as? URLError) != nil { lastError = many ? "No hub reachable" : "Hub unreachable" }
             activeHub = nil
             planner.forceFull()
+        }
+    }
+
+    private var statusRefreshing = false
+
+    /// The status fetch runs on its own (one at a time): a hub slow to answer it never holds
+    /// up the next items poll.
+    private func refreshStatusesInBackground(generation: Int) {
+        guard !statusRefreshing else { return }
+        statusRefreshing = true
+        Task { [weak self] in
+            await self?.refreshStatuses(generation: generation)
+            self?.statusRefreshing = false
         }
     }
 

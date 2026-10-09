@@ -39,12 +39,14 @@ status) and never waits on the hub: the post runs detached.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Dict, List, Optional
 
@@ -118,9 +120,9 @@ def write_state(path: str, state: Dict[str, dict]) -> None:
         except OSError:
             pass
         return
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = "%s.%d.tmp" % (path, os.getpid())
-    with open(tmp, "w", encoding="utf-8") as fh:
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".%s." % os.path.basename(path), suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:  # mkstemp: mode 600, a fresh name
         json.dump(state, fh)
     os.replace(tmp, path)
 
@@ -153,9 +155,13 @@ def windows(data: dict) -> Dict[str, dict]:
             pct = float(w.get("used_percentage"))
         except (TypeError, ValueError):
             continue
+        if not math.isfinite(pct):  # json.loads takes NaN and Infinity
+            continue
         try:
             resets = int(w.get("resets_at") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            resets = 0
+        if not 0 <= resets < 10 ** 11:  # a time before the year 5138, or none
             resets = 0
         out[short] = {"pct": max(0, min(100, int(pct))), "resets_at": resets}
     return out
@@ -298,7 +304,10 @@ def main(argv: List[str]) -> int:
         except Exception:
             rc = 0
     if show:
-        line = meter(data)
+        try:
+            line = meter(data)
+        except Exception:
+            line = ""  # never a traceback instead of the status line
         if line:
             sys.stdout.write(line + "\n")
     return rc

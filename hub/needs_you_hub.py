@@ -847,6 +847,9 @@ def validate_status_key(raw: str) -> str:
     key = raw.strip()
     if not key or len(key) > MAX_KEY or not KEY_RE.match(key):
         raise _invalid("key", "a status key is 1-%d letters, digits and . _ : - / @ # + =" % MAX_KEY)
+    if looks_secret(key):  # it's listed and replicated like the text
+        raise ApiError(400, "secret_in_text", "the status key looks like it contains a token or key; "
+                       "statuses never carry secrets", "key")
     return key
 
 
@@ -918,6 +921,9 @@ def validate_status_body(data: Any) -> Dict[str, Any]:
     for name, v in src.items():
         if _LINE_SEP_RE.search(v):
             raise _invalid("source." + name, "source.%s contains a line break (U+2028/U+2029)" % name)
+        if looks_secret(v):
+            raise ApiError(400, "secret_in_text", "source.%s looks like it contains a token or key; "
+                           "statuses never carry secrets" % name, "source." + name)
     out["source"] = src
     if typ == "progress":
         if not out["label"]:
@@ -3925,13 +3931,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(data)
 
+    def _hold_back(self, tok: Dict[str, Any], limiter: "RateLimiter", what: str) -> None:
+        """ADR 0010: a sender stuck in a loop is held back (`limiter` counts every write)."""
+        if limiter.blocked(tok["id"]):
+            raise ApiError(429, "rate_limited", "too many %s from this token; try again in a minute" % what,
+                           headers={"Retry-After": str(limiter.retry_after(tok["id"]))})
+        limiter.fail(tok["id"])
+
     def _post_item(self) -> None:
         tok = self._auth("sender")
-        # ADR 0010: a sender stuck in a loop is held back (every POST counts, re-posts too).
-        if self.hub.post_limiter.blocked(tok["id"]):
-            raise ApiError(429, "rate_limited", "too many posts from this token; try again in a minute",
-                           headers={"Retry-After": str(self.hub.post_limiter.retry_after(tok["id"]))})
-        self.hub.post_limiter.fail(tok["id"])
+        self._hold_back(tok, self.hub.post_limiter, "posts")  # re-posts too
         fields = validate_item_input(self._body())
         rec, created, changed = self.hub.store.upsert_item(
             fields, tok, int(self.hub.cfg["max_open_per_token"]),
@@ -3944,6 +3953,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _put_status(self, raw_key: str) -> None:
         tok = self._auth("sender")
+        # A set after a clear is never too fast and each new key is a new row: without this a
+        # sender could write statuses (and every peer store them) without end. Apart from posts.
+        self._hold_back(tok, self.hub.status_limiter, "status writes")
         key = validate_status_key(raw_key)
         st = self.hub.store
         fields = validate_status_input(self._body(), st.now_ms())
@@ -3953,6 +3965,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _clear_status(self, raw_key: str) -> None:
         tok = self._auth("sender")
+        # A set after a clear is never too fast and each new key is a new row: without this a
+        # sender could write statuses (and every peer store them) without end. Apart from posts.
+        self._hold_back(tok, self.hub.status_limiter, "status writes")
         cleared = self.hub.store.clear_status(tok["id"], validate_status_key(raw_key))
         if cleared:
             self.hub.notify()
@@ -4398,6 +4413,7 @@ class Hub:
         # for reads of an answer (GET /v1/items/answer), and their long polls open at once.
         self.answer_limiter = RateLimiter(int(cfg["answer_rate_limit"]), float(cfg["answer_rate_window_seconds"]))
         self.post_limiter = RateLimiter(int(cfg["post_rate_limit"]), float(cfg["post_rate_window_seconds"]))
+        self.status_limiter = RateLimiter(int(cfg["post_rate_limit"]), float(cfg["post_rate_window_seconds"]))
         self.answer_read_limiter = RateLimiter(int(cfg["answer_read_rate_limit"]),
                                                float(cfg["answer_rate_window_seconds"]))
         self.answer_waits = WaitCounter(int(cfg["answer_waits_per_token"]))

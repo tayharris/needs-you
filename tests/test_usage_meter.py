@@ -134,6 +134,28 @@ class UsageMeterTest(UsageCase):
         self.assertEqual((r.returncode, r.stderr), (3, ""))
         self.assertEqual(self.calls(), [])
 
+    def test_numbers_that_arent_finite_never_break_the_line(self):
+        """json.loads takes NaN, Infinity and 1e999: the status line still prints, exit 0."""
+        for five, week_resets in ((float("nan"), None), (float("inf"), None), (51, 1e999), (51, float("nan"))):
+            data = self.payload(five, 41)
+            if week_resets is not None:
+                data["rate_limits"]["seven_day"]["resets_at"] = week_resets
+            r = self.run_it(data, args=["--print"], NEEDS_YOU_USAGE_METER=None)
+            self.assertEqual((r.returncode, r.stderr), (0, ""), (five, week_resets))
+            self.assertIn("7d 41%", r.stdout)
+
+    def test_state_files_are_private(self):
+        old = os.umask(0o002)
+        try:
+            self.run_it(self.payload(90, 10), expect_calls=2, NEEDS_YOU_USAGE_METER=None,
+                        NEEDS_YOU_USAGE_ALERT_PCT="80")
+        finally:
+            os.umask(old)
+        d = os.path.dirname(self.state)
+        self.assertEqual(oct(os.stat(d).st_mode & 0o777), "0o700")
+        for n in os.listdir(d):
+            self.assertEqual(oct(os.stat(os.path.join(d, n)).st_mode & 0o777), "0o600", n)
+
     def test_python39_syntax_and_executable(self):
         self.assertTrue(os.access(SCRIPT, os.X_OK))
         with open(SCRIPT) as fh:

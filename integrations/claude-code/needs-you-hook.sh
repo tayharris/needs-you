@@ -1472,6 +1472,23 @@ def read_title_cache():
         return {}
 
 
+def write_private(path, text):
+    """Replace `path` with `text`: mode 600 under a 700 folder, through a fresh temp name."""
+    import tempfile
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".%s." % os.path.basename(path), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def write_title_cache(c):
     path = title_cache_path()
     if not path:
@@ -2248,16 +2265,12 @@ def context():
     body = "\n\n".join([msg] + where_lines())
     rc = post(base_args(key, title, body, "low"), make_links())
     if rc == 0:
-        os.makedirs(os.path.dirname(marker), exist_ok=True)
-        tmp = "%s.%d.tmp" % (marker, os.getpid())
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write("key=%s\n" % key)
-            if os.environ.get("NY_PID") and os.environ.get("NY_START"):
-                fh.write("pid=%s\nstart=%s\n" % (os.environ["NY_PID"], os.environ["NY_START"]))
-                if os.environ.get("NY_START_UTC"):
-                    fh.write("start_utc=%s\n" % os.environ["NY_START_UTC"])
-            fh.write("pct=%d\n" % pct)
-        os.replace(tmp, marker)
+        text = "key=%s\n" % key
+        if os.environ.get("NY_PID") and os.environ.get("NY_START"):
+            text += "pid=%s\nstart=%s\n" % (os.environ["NY_PID"], os.environ["NY_START"])
+            if os.environ.get("NY_START_UTC"):
+                text += "start_utc=%s\n" % os.environ["NY_START_UTC"]
+        write_private(marker, text + "pct=%d\n" % pct)
     return rc
 
 
@@ -2295,20 +2308,16 @@ def codex_meter(seen, account, now):
         prior, age = {}, now
     if age < METER_MIN_SECONDS or (prior.get("sig") == sig and age < METER_REFRESH_SECONDS):
         return
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = "%s.%d.tmp" % (path, os.getpid())
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump({"sent": now, "sig": sig}, fh)
-    os.replace(tmp, path)
+    write_private(path, json.dumps({"sent": now, "sig": sig}))
     args = [os.environ["NY_CLI"], "-q", "status", "set", "--key", "usage:codex" + (":" + account if account else ""),
             "--provider", "codex", "--label", "Codex", "--agent", AGENT_ID]
     if account:
         args += ["--account", account]
     for w in wins:
         args += ["--window", w]
-    try:
-        subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       timeout=15)
+    try:  # detached, as needs-you-usage does: a slow hub never holds up Codex's Stop
+        subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         close_fds=True, start_new_session=True)
     except Exception:
         pass
 
@@ -2359,9 +2368,13 @@ def usage_windows(rl):
             pct = float(w.get("used_percent"))
         except (TypeError, ValueError):
             continue
+        if pct != pct or pct in (float("inf"), float("-inf")):  # json.loads takes NaN and Infinity
+            continue
         try:
             resets = int(w.get("resets_at") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            resets = 0
+        if not 0 <= resets < 10 ** 11:  # a time before the year 5138, or none
             resets = 0
         out[short] = {"pct": max(0, min(100, int(pct))), "resets_at": resets}
     return out
@@ -2450,11 +2463,7 @@ def codex_usage():
             changed = True
     if changed:
         if state:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            tmp = "%s.%d.tmp" % (path, os.getpid())
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(state, fh)
-            os.replace(tmp, path)
+            write_private(path, json.dumps(state))
         else:
             try:
                 os.remove(path)

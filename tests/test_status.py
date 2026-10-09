@@ -105,6 +105,11 @@ class Validation(HubTestCase):
         self.check(dict(usage_body(), usage={"provider": "claude", "account": "nyp_" + "x" * 20,
                                              "windows": [{"name": "5h", "used_pct": 1}]}),
                    "usage.account", "secret_in_text")
+        self.check(dict(usage_body(), source={"host": "ghp_" + "a" * 20}), "source.host", "secret_in_text")
+        with self.assertRaises(hubmod.ApiError) as cm:
+            hubmod.validate_status_key("usage:ny_" + "A1b2C3d4e5F6g7H8")
+        self.assertEqual((cm.exception.code, cm.exception.field), ("secret_in_text", "key"))
+        self.assertNotIn("A1b2C3d4", cm.exception.message)
 
     def test_ordinary_text_is_not_a_secret(self):
         for text in ("nightly-import-of-the-acme-customer-data", "Claude (team-2)",
@@ -185,6 +190,23 @@ class StatusApi(HubTestCase):
         self.assertEqual(rec["usage"]["windows"][0]["used_pct"], 60)
         self.assertEqual(self.clear("usage:claude")[1]["cleared"], True)  # a clear is never too fast
         self.assertEqual(self.put("usage:claude", usage_body())[0], 200)  # nor a set after a clear
+
+    def test_writes_per_token_are_rate_limited(self):
+        """A set after a clear is never too fast, and every new key is a new row, so without a
+        per-token limit a sender could write (and every peer store) statuses without end. Sets
+        and clears have their own limit (post_rate_limit a minute), apart from posts."""
+        limit = int(self.hub.cfg["post_rate_limit"])
+        codes = []
+        for i in range(limit + 10):
+            codes.append(self.put("loop", usage_body())[0])
+            codes.append(self.clear("loop")[0])
+        self.assertIn(429, codes)
+        self.assertLessEqual(codes.count(200), limit)
+        status, body = self.put("loop-%d" % len(codes), usage_body())
+        self.assertEqual((status, body["error"]), (429, "rate_limited"))
+        self.assertGreaterEqual(body["retry_after"], 1)
+        self.assertEqual(request("POST", self.base + "/v1/items", self.sender,
+                                 {"key": "k", "title": "still posts"})[0], 201)  # items aren't held
 
     def test_live_status_limits(self):
         for i in range(hubmod.STATUS_MAX_PER_TOKEN):

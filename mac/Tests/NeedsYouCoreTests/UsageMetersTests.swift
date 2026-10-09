@@ -12,11 +12,47 @@ final class StatusRecordTests: XCTestCase {
         ("testDecodesUsageRecord", testDecodesUsageRecord),
         ("testLenientDecoding", testLenientDecoding),
         ("testStatusRequestAndOutcomes", testStatusRequestAndOutcomes),
+        ("testAHostileHubIsBounded", testAHostileHubIsBounded),
     ]
     static var asyncTests = [
         ("testFailoverSendsETagOnlyToTheSameHub", testFailoverSendsETagOnlyToTheSameHub),
         ("testDemoFeedHasUsage", testDemoFeedHasUsage),
     ]
+
+    /// The hub bounds statuses (64 of its own, 4 windows with distinct names, short clean
+    /// strings); a hub or peer that doesn't can't make the panel draw thousands of rows, rows
+    /// with duplicate ids, or text that hides or reorders itself.
+    func testAHostileHubIsBounded() throws {
+        let long = String(repeating: "w", count: 500)
+        var records: [String] = []
+        for i in 0..<300 {
+            let windows = (0..<6).map { j in
+                #"{"name": "\#(j < 3 ? "5h" : long + String(j))", "used_pct": \#(j * 40)}"#
+            }.joined(separator: ",")
+            records.append(#"""
+            {"id": "st_\#(i)", "key": "k\#(i)", "type": "usage", "label": "L\u202e\u0007\#(long)",
+             "detail": "\#(long)", "usage": {"provider": "claude\u200b", "account": "a\#(i)\u2066\#(long)",
+             "windows": [\#(windows)]}, "source": {"host": "dev\u202ebox"},
+             "updated_at": "2026-10-08T09:41:10.000Z", "expires_at": "2099-10-14T09:00:00.000Z"}
+            """#)
+        }
+        let list = try StatusRecord.decodeList(Data(#"{"statuses": [\#(records.joined(separator: ","))]}"#.utf8))
+        XCTAssertEqual(list.count, StatusRecord.maxRecords)
+        let s = list[0]
+        XCTAssertTrue(s.label.count <= 60)
+        XCTAssertTrue(s.detail.count <= 120)
+        XCTAssertFalse(s.label.unicodeScalars.contains { $0.value == 0x202e || $0.value == 0x07 })
+        XCTAssertEqual(s.usage?.provider, "claude")
+        XCTAssertTrue((s.usage?.account.count ?? 99) <= 40)
+        XCTAssertFalse((s.usage?.account ?? "").unicodeScalars.contains { $0.value == 0x2066 })
+        let names = s.usage?.windows.map(\.name) ?? []
+        XCTAssertTrue(names.count <= 4)
+        XCTAssertEqual(Set(names).count, names.count)
+        XCTAssertTrue(names.allSatisfy { $0.count <= 20 })
+        let rows = UsageMeters.rows(list, prefs: UsagePrefs(), now: Date(timeIntervalSince1970: 1_790_000_000))
+        XCTAssertTrue(rows.count <= StatusRecord.maxRecords)
+        XCTAssertFalse((rows.first?.host ?? "").unicodeScalars.contains { $0.value == 0x202e })
+    }
 
     func testDecodesUsageRecord() throws {
         let json = #"""

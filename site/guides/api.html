@@ -112,8 +112,9 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB (8 MiB for <code>/v1/replicate</code>)</td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>The token already has 60 open items (the volume guard)</td></tr>
 <tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds)</td></tr>
-<tr><td>400</td><td><code>secret_in_text</code></td><td>A status label, detail or account looks like a token or key (<a href="#status-records-usage-meters">status records</a>)</td></tr>
+<tr><td>400</td><td><code>secret_in_text</code></td><td>A status key, label, detail, account or source field looks like a token or key (<a href="#status-records-usage-meters">status records</a>)</td></tr>
 <tr><td>429</td><td><code>too_many_status</code>, <code>too_fast</code></td><td>A status write over the live-status limits, or a second write to one status key within 10 s (with <code>Retry-After</code>)</td></tr>
+<tr><td>429</td><td><code>rate_limited</code></td><td>Too many status sets and clears from one token (120 a minute by default, apart from posts; with <code>Retry-After</code>)</td></tr>
 <tr><td>500</td><td><code>internal</code></td><td>Bug; details are in the hub's log</td></tr>
 </tbody>
 </table></div></li>
@@ -555,15 +556,19 @@ times, plus a required <code>expires_at</code>:</p>
 </tbody>
 </table></div>
 <p>Text fields refuse control, bidi and line-separator characters like item text, and
-token-shaped text (<code>400 secret_in_text</code>, with <code>field</code>). <code>@</code> in <code>account</code> is refused (no emails).</p>
+token-shaped text (<code>400 secret_in_text</code>, with <code>field</code>), as do the key and the <code>source</code> fields
+(a status is listed and replicated whole). <code>@</code> in <code>account</code> is refused (no emails).</p>
 <p>Response <code>200</code> with the stored record. A write to an existing key replaces it entirely.</p>
 <p>Limits: at most 20 live (unexpired) statuses per token and 64 per hub (<code>429 too_many_status</code>),
 and one write per key every 10 s (<code>429 too_fast</code>, with <code>Retry-After</code> and <code>retry_after</code>).
-Statuses never count toward the item volume guard or the item post rate limit.</p>
+Sets and clears together have their own per-token rate, the same size as the post rate
+(<code>post_rate_limit</code> per <code>post_rate_window_seconds</code>): past it, <code>429 rate_limited</code> with
+<code>Retry-After</code>. Statuses never count toward the item volume guard or the item post rate limit.</p>
 <h3 id="delete-v1statuskey-sender"><code>DELETE /v1/status/&lt;key&gt;</code> (sender) <a class="anchor" href="#delete-v1statuskey-sender" aria-label="Link to this section">#</a></h3>
 <p>Clears the calling token's status <code>&lt;key&gt;</code>: <code>200 {"ok": true, "cleared": true}</code>, or
 <code>"cleared": false</code> when there was none (or it had expired). A clear is a write (it sets
-<code>expires_at</code> to now and replicates); it is never refused by <code>too_fast</code>.</p>
+<code>expires_at</code> to now and replicates); it is never refused by <code>too_fast</code>, but it counts toward
+the status write rate (<code>429 rate_limited</code>).</p>
 <h3 id="get-v1status-reader"><code>GET /v1/status</code> (reader) <a class="anchor" href="#get-v1status-reader" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"statuses": [ ...status records, newest updated_at first... ], "server_time": "2026-10-08T09:41:12.000Z"}</code></pre></div>
 <p>Every unexpired status on this hub, except those of a revoked token. The response carries an
