@@ -31,6 +31,21 @@ EOF
 
 Prefer a systemd user timer or, on a Mac, a LaunchAgent? Use the files in [integrations/expiry](../../integrations/expiry/README.md) instead of step 4.
 
+## Or let an agent set it up
+
+On your Mac, **Settings → Integrations → Cards from your tools → Expiring certificates, domains and keys** has the same commands with Copy buttons, and **Copy agent prompt**. Paste the prompt into Claude Code (or another agent) on the machine that will run the poller. The agent asks you what to watch and writes the list; a key line holds only a name and a date.
+
+```text
+Set up needs-you cards for expiring certificates, domains and keys on this machine. The guide is https://github.com/tayharris/needs-you/blob/main/docs/guides/expiry.md.
+This machine must already send needs-you alerts: if ~/.local/bin/needs-you is missing or ~/.local/bin/needs-you doctor shows a FAIL, stop and ask me for an invite link (Needs You on my Mac: Settings → Connect a machine).
+Install the poller: `gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/contents/integrations/expiry/needs-you-expiry > ~/.local/bin/needs-you-expiry && chmod 755 ~/.local/bin/needs-you-expiry`.
+Settings go in ~/.config/needs-you/env, which also holds this machine's needs-you token: only append lines to it (`echo 'NAME=value' >> ~/.config/needs-you/env`), never print, read out or rewrite it.
+Ask me what to watch: hosts whose TLS certificate matters, domains I own, and keys or tokens with the date each stops working. Write them to ~/.config/needs-you/expiry.conf, one per line: `tls example.com`, `domain example.com`, `key "Figma PAT" 2026-12-31 renew=https://www.figma.com/settings`. A key line holds only the key's name and date, never the key itself.
+Run `~/.local/bin/needs-you-expiry --dry-run -v` and tell me what it says.
+Schedule it. On Linux add the cron line: `(crontab -l 2>/dev/null; echo '17 9 * * * $HOME/.local/bin/needs-you-expiry >/dev/null  # needs-you-expiry') | crontab -`. On macOS use the LaunchAgent integrations/expiry/io.needs-you.expiry.plist from the repo instead (replace /Users/me with my home directory).
+If a run prints an error, fix what it names, or tell me if it needs me.
+```
+
 ## What to put in the list
 
 One thing per line:

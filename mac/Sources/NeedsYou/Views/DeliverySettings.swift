@@ -4,6 +4,7 @@ import SwiftUI
 // Settings → Alerts: delivery tiers and bypass rules (docs/roadmap/focus-tiers.md). Lives in
 // the Settings window only (which may take focus), never in the floating panel.
 
+// settings-section: delivery
 /// The tier per priority and kind with no focus, the "urgent breaks through Focus" switch,
 /// and a read-only table of what each focus level does.
 struct DeliverySection: View {
@@ -86,7 +87,9 @@ struct TierPreviewTable: View {
     }
 }
 
-/// Where an arrival shows: the display you're working on, and the optional urgent edge glow.
+// settings-section: workScreen
+/// Where an arrival shows: the display you're working on. (The urgent edge glow is look:
+/// Appearance → Alert style, EdgeGlowSection.)
 struct WorkScreenSection: View {
     @ObservedObject var settings: AppSettings
 
@@ -99,20 +102,16 @@ struct WorkScreenSection: View {
                                 ? "Always where the pill is, whichever display you're using."
                                 : "The display with the app you're using (else the pointer's). The pill goes back home after.")
             }
-            Picker(selection: $settings.edgeGlow) {
-                ForEach(EdgeGlowMode.allCases, id: \.self) { Text($0.title).tag($0) }
-            } label: {
-                LabelWithDetail("Edge glow", "A few seconds of red glow around that display's edge when an urgent item arrives. Clicks go through it.")
-            }
         } header: {
             Text("On the work screen")
         } footer: {
-            Text("Uses only window positions, no Screen Recording or Accessibility permission. Neither takes focus from what you're typing.")
+            Text("Uses only window positions, no Screen Recording or Accessibility permission, and never takes focus from what you're typing. The red edge glow for urgent arrivals is in Appearance → Alert style.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 }
 
+// settings-section: bypassRules
 /// The bypass list: per key prefix, session, sender agent or host, optionally only for one
 /// `source.event`; checked top to bottom. Agent cards' "…" menu adds rules here too.
 struct BypassRulesSection: View {

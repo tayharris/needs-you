@@ -45,7 +45,7 @@ Everything that posts is a sender, and all of it is built on one file, the `need
 - **The `needs-you` CLI**: `needs-you add`, `resolve`, `run` (alert when a long job fails or finishes), `doctor`, `update`. It keeps the hub URLs and its token in `~/.config/needs-you/env`.
 - **Agent hooks**: Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Kimi Code, Grok Build, Cursor, Cline and Aider post "agent is waiting" cards and clear them when you answer ([Claude Code](claude-code.md) and the other guides).
 - **The MCP server**, for agents with MCP but no shell ([MCP server](mcp.md)).
-- **CI, cron and scripts** ([Add a sender](add-a-sender.md#cron-systemd-ci)), **Orca** automations ([Orca](orca.md)) and the **GitHub** and **Linear pollers** ([GitHub](github.md), [Linear](linear.md)).
+- **CI, cron and scripts** ([Add a sender](add-a-sender.md#cron-systemd-ci)), **Orca** automations ([Orca](orca.md)) and the **pollers** for GitHub, Linear, Jira and expiry dates, each run on one machine ([GitHub](github.md), [Linear](linear.md), [Jira](jira.md), [Expiry dates](expiry.md)).
 
 One invite link installs the CLI and, with the options you pick, the hooks, the skill or the MCP server.
 
@@ -72,5 +72,7 @@ The sidebar group **Hubs and machines** has four pages:
 | Set up a sender (a server or agent machine) or another Mac | **Connect a machine** (menu: **Connect a Machine…**) |
 | See which senders and Macs are connected, revoke one or a link | **Machines** (only with an owner token) |
 | Use a server hub or someone else's hub, or add a hub by URL and token | **Other hubs (advanced)** |
+
+Everything about how the pill and the cards look is in the **Appearance** group (Theme, Pill, Panel and cards, Alert style, Usage meters), and what shows and what may interrupt you under **Needs You** (Panel, Alerts): [Mac app → Make it yours](mac-app.md#make-it-yours).
 
 Older builds called these pages Your inbox (before that, This Mac), Invite a machine, Access, and Join a hub plus Hubs (manual), under a group called Inbox and machines.

@@ -1,6 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: opacity
 /// Settings → Appearance → Panel and cards → Opacity: the collapsed pill and the open panel, each with the pointer
 /// away and over it. The open panel's values also apply to the arrival preview. Glass only:
 /// Theme → Background → Solid is always opaque, so these are dimmed then.

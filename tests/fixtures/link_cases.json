@@ -122,6 +122,10 @@
    "allowed": true
   },
   {
+   "url": "cursor://anthropic.claude-code/open?session=0f8e6c4a-1b2c-4d5e-8f90-123456789abc",
+   "allowed": true
+  },
+  {
    "url": "needsyou://orca/terminal?handle=term_4f261ae3-041a-47c6-872a-cf02e1e40804",
    "allowed": true
   },
@@ -499,6 +503,10 @@
   },
   {
    "url": "vscode://anthropic.claude-code/open?session=sess-1234-abcd#x",
+   "allowed": false
+  },
+  {
+   "url": "cursor://anthropic.claude-code/open?prompt=rm%20-rf",
    "allowed": false
   },
   {

@@ -35,7 +35,7 @@ crontab -e
 0 3 * * *     /home/me/needs-you/integrations/ci/run-or-alert.sh --key personal:my-server:backup --priority urgent --title "my-server nightly backup failed" -- /usr/local/bin/backup.sh
 ```
 
-The invite installer doesn't install `run-or-alert.sh`; copy it from a checkout of this repo (the path above is an example). `run-or-alert.sh` never puts the command's output in the item (output is where secrets leak). Link to your logs with `--link "Logs=https://..."` instead. Its context defaults to `personal` for `personal:*` keys and `work` otherwise.
+The invite installer doesn't install `run-or-alert.sh`; copy it from a checkout of this repo (the path above is an example). `run-or-alert.sh` never puts the command's output in the item (output is where secrets leak). Link to your logs with `--link "Logs=https://..."` instead. Its context defaults to `personal` for `personal:*` keys and `work` otherwise. It runs `needs-you` from `PATH`, else `~/.local/bin/needs-you`; set `NEEDS_YOU_BIN` to the CLI's path if cron's `PATH` finds neither.
 
 ## systemd
 

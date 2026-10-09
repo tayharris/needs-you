@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
         if let phase3 {
-            settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
+            settingsWindow.extraSettings = [.schedule: { phase3.scheduleSection }, .liveUpdates: { phase3.streamSection }]
         }
         // Self-update (docs/roadmap/rollout-updates.md). Checks and installs never activate
         // the app; Settings → Updates has the detail, the open panel's footer one quiet line.
@@ -346,7 +346,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("16m-usage-pill-bars-small", { Self.meters($0, .bars, size: .small) }),
             ("16n-usage-pill-bars-numbers", { Self.meters($0, .bars, numbers: true) }),
             ("16o-usage-pill-rings-numbers", { Self.meters($0, .rings, .row, numbers: true) }),
+            // "Minimal dot" (Settings → Appearance → Pill): no meters at rest or on hover, so the dot
+            // never changes height; the hovered pill shows the count. Then the hovered count pill.
+            ("16s-usage-pill-dot", { model in
+                Self.meters(model, .bars)
+                model.settings.ui.pillDetail = .dot
+            }),
+            ("16t-usage-pill-dot-hover", { $0.hovering = true }),
+            ("16u-usage-pill-hover", { $0.settings.ui.pillDetail = .count }),
             ("16d-usage-pill-warning", { model in
+                model.hovering = false
                 Self.meters(model, .bars)
                 Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
             }),
@@ -362,9 +371,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("16g-usage-idle-percent", { Self.meters($0, .percent, size: .medium) }),
             ("16q-usage-idle-rings", { Self.meters($0, .rings, .row) }),
             ("16r-usage-idle-bars-row", { Self.meters($0, .bars, .row) }),
+            // The idle pill keeps its meters with "Minimal dot" (it has no dot), on hover too.
+            ("16v-usage-idle-dot-hover", { model in
+                Self.meters(model, .bars)
+                model.settings.ui.pillDetail = .dot
+                model.hovering = true
+            }),
             ("16h-usage-off", { model in
+                model.hovering = false
+                model.settings.ui.pillDetail = .count
                 Self.meters(model, .bars)
                 model.settings.usage.onPill = false
+            }),
+            // A setup tip (they never show in demo mode, so the tour asks for one): the
+            // integrations tip, whose button opens Settings → Integrations.
+            ("17-setup-tip-integrations", { model in
+                model.settings.usage.onPill = true
+                model.snapshotSetupTips = [.integrations]
+                model.expand()
+                model.scrollTarget = nil
             }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
@@ -372,7 +397,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
                                            (.theme, 3), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
-                                           (.panel, 6), (.alerts, 4)]
+                                           (.panel, 7), (.alerts, 4), (.integrations, 5)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
@@ -389,6 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             // The pages show the out-of-the-box look and alerts settings.
+            model.snapshotSetupTips = nil
             model.collapse()
             settings.ui = UIPrefs()
             settings.usage = UsagePrefs()

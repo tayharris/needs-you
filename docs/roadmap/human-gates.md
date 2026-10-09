@@ -11,7 +11,7 @@ needs-you exists to interrupt a person only when an agent or a job actually need
 | Claude Code `PermissionRequest` with specific titles (plan approval, a question, the program a command runs, the file an edit changes), `StopFailure`, `quota_auto_resume_disabled` | [Claude Code](../guides/claude-code.md) (the same shape for Codex, Copilot, Kimi and Grok in their guides) |
 | GitHub notifications poller and the my-PRs pass (review requested, deployment approval, failed CI on your branches, PRs ready to merge, changes requested, conflicts, failing checks) | [GitHub](../guides/github.md) |
 | Long jobs: `needs-you run -- <cmd>` (a card on failure, a `done` FYI after a long success) | [Add a sender](../guides/add-a-sender.md#cron-systemd-ci), [AGENT-GUIDE](../AGENT-GUIDE.md#wrapping-a-command-needs-you-run) |
-| Previews on the display you're working on, and an edge glow for urgent arrivals | [Mac app](../guides/mac-app.md) (Settings → Alerts → On the work screen) |
+| Previews on the display you're working on, and an edge glow for urgent arrivals | [Mac app](../guides/mac-app.md) (Settings → Alerts → On the work screen; the glow: Appearance → Alert style → Edge glow) |
 
 Decisions made while building: plan approval is `normal` priority like every agent card (`NEEDS_YOU_AGENT_PRIORITY` changes all of them); the GitHub poller runs on **one** always-on machine; a `ci_activity` card is skipped for the head branch of one of your open PRs, which the PR's checks card covers.
 

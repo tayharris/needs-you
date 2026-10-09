@@ -2,6 +2,7 @@ import AppKit
 import NeedsYouCore
 import SwiftUI
 
+// settings-section: theme
 /// Settings → Appearance → Theme: the theme (PanelTheme), an accent colour (ThemeAccent) and
 /// the background (PanelBackground), with a live sample of the pill and the open panel.
 /// Lives in the Settings window only; the panel never takes focus.

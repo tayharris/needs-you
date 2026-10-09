@@ -75,6 +75,7 @@ In `~/.config/needs-you/env` (or the environment). All optional.
 | `NEEDS_YOU_EXPIRY_INTERVAL` | `24` | Hours between runs; cards expire after 3x this. Match your schedule |
 | `NEEDS_YOU_EXPIRY_MAX_CARDS` | `20` | Cap on open expiry cards |
 | `NEEDS_YOU_EXPIRY_TIMEOUT` | `10` | Seconds per check |
+| `NEEDS_YOU_EXPIRY_RDAP_BOOTSTRAP` | `https://data.iana.org/rdap/dns.json` | Where to find each domain's RDAP server (IANA's list, cached for a week). Only for a mirror: `https`, or `http` on loopback |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | Path to the CLI |
 
 Run it on **one** machine per list. Keys dedupe, but two machines with different lists would resolve each other's cards.

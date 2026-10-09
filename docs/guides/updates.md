@@ -75,7 +75,7 @@ Machines set up before this was the default have it off. `needs-you doctor` warn
 
 Why it's on: an update is code, but every file must match both the hub's manifest and the GitHub release built by the release workflow, so a hub can't push files of its own. Without `gh` the remaining gap is build provenance (that the release's files came from the release workflow, not from someone with write access to the release); install `gh` on the sender to close it.
 
-**Asked from the Mac (Request update).** In **Settings → Access** (the machine list), a sender
+**Asked from the Mac (Request update).** In **Settings → Machines** (the machine list), a sender
 whose CLI is older than the Mac app, or hasn't reported a version, has a **Request update**
 button. It marks that machine's token "update requested" on each of your owner hubs, and the
 machine's next post, resolve, flush or token-checked health call gets `"update_requested": true`

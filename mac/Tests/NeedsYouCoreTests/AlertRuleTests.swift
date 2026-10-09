@@ -338,6 +338,13 @@ final class AlertRuleMenuTests: XCTestCase {
         XCTAssertEqual(RuleScope.scopes(for: agentItem("d", agent: "  ")), [.session("agent:devbox:s1")])
         XCTAssertEqual(RuleScope.scopes(for: agentItem("e", key: "work:ACME-1:deploy")), [], "not an agent card")
         XCTAssertEqual(RuleScope.scopes(for: agentItem("f", key: "agent:devbox")), [])
+        // Usage-limit cards are the machine's, not a session's: no "Alerts for This Session".
+        for key in ["agent:devbox:claude-usage:5h", "agent:devbox:claude-usage:work:7d", "agent:devbox:codex-usage:5h"] {
+            XCTAssertEqual(RuleScope.scopes(for: agentItem("u", key: key)), [.agent("claude-code")], key)
+            XCTAssertEqual(RuleScope.scopes(for: agentItem("v", key: key, agent: nil)), [], key)
+        }
+        XCTAssertEqual(RuleScope.scopes(for: agentItem("w", key: "agent:devbox:usage-review")),
+                       [.session("agent:devbox:usage-review"), .agent("claude-code")])
         XCTAssertEqual(RuleScope.agent("codex").menuTitle, "Alerts for All codex Sessions")
         XCTAssertEqual(RuleScope.session("agent:devbox:s1").menuTitle, "Alerts for This Session")
     }

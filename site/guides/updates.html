@@ -85,7 +85,7 @@ needs-you update --rollback  # put back the files the last update replaced</code
 needs-you update --disable-auto   # turn it off (NEEDS_YOU_AUTO_UPDATE=0); changes nothing else</code></pre></div>
 <p>Machines set up before this was the default have it off. <code>needs-you doctor</code> warns when such a machine is older than its hub ("nothing updates this machine on its own") and prints <code>needs-you update --enable-auto</code> as the fix; re-running the invite one-liner turns it on too, and adds the flush schedule if it's missing.</p>
 <p>Why it's on: an update is code, but every file must match both the hub's manifest and the GitHub release built by the release workflow, so a hub can't push files of its own. Without <code>gh</code> the remaining gap is build provenance (that the release's files came from the release workflow, not from someone with write access to the release); install <code>gh</code> on the sender to close it.</p>
-<p><strong>Asked from the Mac (Request update).</strong> In <strong>Settings → Access</strong> (the machine list), a sender
+<p><strong>Asked from the Mac (Request update).</strong> In <strong>Settings → Machines</strong> (the machine list), a sender
 whose CLI is older than the Mac app, or hasn't reported a version, has a <strong>Request update</strong>
 button. It marks that machine's token "update requested" on each of your owner hubs, and the
 machine's next post, resolve, flush or token-checked health call gets <code>"update_requested": true</code>
