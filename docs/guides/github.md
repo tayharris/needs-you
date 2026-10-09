@@ -52,6 +52,37 @@ NEEDS_YOU_GITHUB_SECURITY_SEVERITIES=critical,high                   # optional:
 - **Projects:** when an open issue or PR assigned to you moves to a status you named in a GitHub project (for example **Blocked**), you get "acme/app#30 is Blocked in Roadmap: *title*" at the priority you gave it. It clears when the status moves on, the issue closes or you're unassigned. The first run only notes where everything is, so turning it on doesn't post what was already blocked. It needs one more `gh` scope: `gh auth refresh -s read:project`. If your projects call the field something other than `Status`, set `NEEDS_YOU_GITHUB_PROJECT_FIELD`.
 - **Dependabot:** when GitHub sends you a security alert notification, the poller reads that repo's open Dependabot alerts and posts one low card per critical alert: "Critical security alert in acme/app: lodash: *summary*", linking the alert. It clears when the alert is fixed or dismissed, or you read the notification. It needs `gh auth refresh -s security_events`.
 
+**Let an agent set it up.** On your Mac, **Settings → Integrations → Cards from your tools** lists both, each with its commands and **Copy agent prompt**. Paste the prompt into Claude Code (or another agent) on the machine that runs the poller; it installs the poller if it isn't there yet. It holds no token: the agent asks you to run `gh auth refresh -s ...` in your own terminal.
+
+For Projects statuses:
+
+```text
+Set up needs-you cards for GitHub Projects statuses on this machine. The guide is https://github.com/tayharris/needs-you/blob/main/docs/guides/github.md#projects-statuses-and-dependabot-alerts-opt-in.
+This machine must already send needs-you alerts: if ~/.local/bin/needs-you is missing or ~/.local/bin/needs-you doctor shows a FAIL, stop and ask me for an invite link (Needs You on my Mac: Settings → Connect a machine).
+If ~/.local/bin/needs-you-github isn't there yet, install it: `gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/contents/integrations/github/needs-you-github > ~/.local/bin/needs-you-github && chmod 755 ~/.local/bin/needs-you-github`. It also posts cards for review requests, deploys waiting for approval, failed CI and my own pull requests (NEEDS_YOU_GITHUB_REASONS turns some off).
+needs-you-github uses this machine's gh login (`gh auth status` must say Logged in) and needs gh's read:project scope. Ask me to run `gh auth refresh -s read:project` in my own terminal (it signs in in the browser), and wait until I say it's done. Never ask me for a GitHub token and never print one.
+Settings go in ~/.config/needs-you/env, which also holds this machine's needs-you token: only append lines to it (`echo 'NAME=value' >> ~/.config/needs-you/env`), never print, read out or rewrite it.
+Ask me which project statuses need me and how urgent each is, and append them like NEEDS_YOU_GITHUB_PROJECT_STATUSES=Blocked=urgent,In Review=normal. If my projects call the field something other than Status, also append NEEDS_YOU_GITHUB_PROJECT_FIELD with its name.
+Its first run only notes where everything is and posts no status cards.
+Run `~/.local/bin/needs-you-github --dry-run -v` and tell me what it says.
+Schedule it. On Linux add the cron line: `(crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/.local/bin/needs-you-github >/dev/null  # needs-you-github') | crontab -`. On macOS use the LaunchAgent integrations/github/io.needs-you.github.plist from the repo instead (replace /Users/me with my home directory). If `crontab -l` already lists needs-you-github, it's scheduled: skip this.
+If a run prints an error, fix what it names, or tell me if it needs me.
+```
+
+For Dependabot alerts:
+
+```text
+Set up needs-you cards for Dependabot alerts on this machine. The guide is https://github.com/tayharris/needs-you/blob/main/docs/guides/github.md#projects-statuses-and-dependabot-alerts-opt-in.
+This machine must already send needs-you alerts: if ~/.local/bin/needs-you is missing or ~/.local/bin/needs-you doctor shows a FAIL, stop and ask me for an invite link (Needs You on my Mac: Settings → Connect a machine).
+If ~/.local/bin/needs-you-github isn't there yet, install it: `gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/contents/integrations/github/needs-you-github > ~/.local/bin/needs-you-github && chmod 755 ~/.local/bin/needs-you-github`. It also posts cards for review requests, deploys waiting for approval, failed CI and my own pull requests (NEEDS_YOU_GITHUB_REASONS turns some off).
+needs-you-github uses this machine's gh login (`gh auth status` must say Logged in) and needs gh's security_events scope. Ask me to run `gh auth refresh -s security_events` in my own terminal (it signs in in the browser), and wait until I say it's done. Never ask me for a GitHub token and never print one.
+Settings go in ~/.config/needs-you/env, which also holds this machine's needs-you token: only append lines to it (`echo 'NAME=value' >> ~/.config/needs-you/env`), never print, read out or rewrite it.
+Append NEEDS_YOU_GITHUB_SECURITY=1. Ask me whether high alerts should count too; if so, also append NEEDS_YOU_GITHUB_SECURITY_SEVERITIES=critical,high.
+Run `~/.local/bin/needs-you-github --dry-run -v` and tell me what it says.
+Schedule it. On Linux add the cron line: `(crontab -l 2>/dev/null; echo '*/5 * * * * $HOME/.local/bin/needs-you-github >/dev/null  # needs-you-github') | crontab -`. On macOS use the LaunchAgent integrations/github/io.needs-you.github.plist from the repo instead (replace /Users/me with my home directory). If `crontab -l` already lists needs-you-github, it's scheduled: skip this.
+If a run prints an error, fix what it names, or tell me if it needs me.
+```
+
 If the scope is missing, the poller says so once, with one low card ("GitHub Projects cards on devbox need gh's read:project scope"), and everything else keeps working. These cards say what happened in `source.event` (`status`, `security`), so a Mac alert rule can single them out; they need the `needs-you` CLI 0.4.0 or later (`needs-you update`).
 
 The full list of cards, keys and settings is in [integrations/github/README.md](../../integrations/github/README.md). If you have many open PRs, `NEEDS_YOU_GITHUB_PR_DAYS` (default 14) skips the ones nobody has touched lately, and at most 20 cards are open at once (`NEEDS_YOU_GITHUB_MAX_CARDS`).

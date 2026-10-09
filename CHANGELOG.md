@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Set up Linear, Jira, GitHub Projects, Dependabot and expiry cards from the Mac app.** **Settings → Integrations → Cards from your tools** lists each poller with a sentence on what it sends; open one for what it needs, its settings in `~/.config/needs-you/env`, the install, try and schedule commands with **Copy** buttons, and **Copy agent prompt**, which you paste into Claude Code (or another agent) on the machine that will run it. The prompt never holds a token: it names the mode-600 file the poller reads and has you paste the token in yourself, or has you run `gh auth refresh -s <scope>`. A new setup tip, **Get cards from Linear, Jira and GitHub**, points there once something is sending and goes for good when a poller's first card arrives. Each guide carries the same prompt ([Mac app](docs/guides/mac-app.md#cards-from-your-tools)).
+
 ### Changed
 
 - **The site and the guides cover everything through 0.5.0.** needsyou.app lists Jira and expiry dates under Works with, GitHub's Projects and Dependabot cards, the usage meters and the Appearance settings, and that a server hub now pairs with the app's built-in hub ([Server hubs](docs/HUB.md#with-the-apps-built-in-hub)). [Add a sender](docs/guides/add-a-sender.md#the-senders-config) documents every line of the sender's `env` file (`NEEDS_YOU_HOST`, `NEEDS_YOU_OUTBOX`, `NEEDS_YOU_CONFIG`, ...), and pages renamed in Settings (Access, Invite a machine, Join a hub) have their current names everywhere. Tests now fail when a guide names a Settings page, an env var or an image that doesn't exist.
