@@ -13,6 +13,7 @@ final class OrcaWorktreesTests: XCTestCase {
         ("testRejectsAnswersThatArentOK", testRejectsAnswersThatArentOK),
         ("testVisibleOrderAndCap", testVisibleOrderAndCap),
         ("testArgumentsAndHeader", testArgumentsAndHeader),
+        ("testDemoFixtureShowsActiveFirstAndFitsTheStrip", testDemoFixtureShowsActiveFirstAndFitsTheStrip),
     ]
 
     func answer(_ rows: [[String: Any]]) -> Data {
