@@ -97,4 +97,11 @@ final class OrcaWorktreesTests: XCTestCase {
         XCTAssertEqual(OrcaWorktrees.header(rows), "ORCA · 1 active of 2")
         XCTAssertEqual(OrcaWorktrees.header([rows[1]]), "ORCA · 1")
     }
+
+    func testDemoFixtureShowsActiveFirstAndFitsTheStrip() {
+        let rows = DemoFeed.orcaFixture()
+        XCTAssertEqual(OrcaWorktrees.header(rows), "ORCA · 2 active of 4")
+        XCTAssertEqual(OrcaWorktrees.visible(rows).map { $0.id }, ["|demo-w1", "|demo-w2", "devbox|demo-w3", "|demo-w4"])
+        XCTAssertEqual(Set(rows.map { $0.id }).count, rows.count, "ids are unique for ForEach")
+    }
 }

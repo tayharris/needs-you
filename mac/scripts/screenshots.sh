@@ -15,7 +15,8 @@
 # with one agent card (preview-agent.png). Demo mode also shows example usage meters
 # (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-*.png (each pill meter style, layout
 # and size at 31 % / 10 %, waiting and idle; pill-idle.png is 16e) and settings-usageMeters*.png
-# (Settings → Appearance → Usage meters).
+# (Settings → Appearance → Usage meters). 17-orca-panel.png is the open panel's ORCA section
+# from example worktrees (DemoFeed.orcaFixture): a snapshot run never reads the real Orca.
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
 #

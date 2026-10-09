@@ -362,6 +362,12 @@ final class AppModel: ObservableObject {
     /// thread; nothing it returns is ever a link or an action.
     func refreshOrca(force: Bool = false) {
         guard settings.showOrcaWorktrees, !isDemo else {
+            if settings.showOrcaWorktrees, isDemo, showcase {
+                // Snapshot runs draw example worktrees; demo mode never runs the real `orca`.
+                let all = DemoFeed.orcaFixture()
+                if all.map(\.id) != orcaTotal.map(\.id) { orcaTotal = all; orcaRows = OrcaWorktrees.visible(all) }
+                return
+            }
             if !orcaRows.isEmpty { orcaRows = []; orcaTotal = [] }
             return
         }
