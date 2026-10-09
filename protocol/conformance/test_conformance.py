@@ -512,7 +512,9 @@ class Answers(HubCase):
             {"selected": ["Yes"], "text": "After the demo"}, {"text": "Otter"}])), 400, "invalid")
         self.assertError(call("POST", path, Env.reader, dict(good, answers=[
             {"text": "two\nlines"}, {"text": "Otter"}])), 400, "invalid")
-        status, b = call("POST", path, Env.reader, good)
+        # Typed words only from an owner token (ADR 0009 rule 7): a reader picks options.
+        self.assertError(call("POST", path, Env.reader, good), 403, "forbidden")
+        status, b = call("POST", path, Env.owner, good)
         self.assertEqual(status, 200, b)
         want = [{"selected": [], "text": "After the demo"}, {"selected": [], "text": "Otter"}]
         self.assertEqual(b["answer"], want)

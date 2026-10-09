@@ -1,7 +1,8 @@
 # 0009. Questions and choices on cards
 
 - Status: Accepted (2026-10-08): phases A, B1, B2 and B3 (Claude Code, after the live check) built;
-  amended 2026-10-09 (typed "Other" answers from an answer window, rule 6)
+  amended 2026-10-09 (typed "Other" answers from an answer window, rule 6; typed words from
+  owner tokens only, rule 7)
 - Date: 2026-10-08
 
 ## Context
@@ -264,6 +265,31 @@ As built:
   the hub refuses words holding one (`400 secret_in_text`), and a replicated answer with one
   is dropped. They live on the item like the
   rest of the answer and are purged with its text.
+
+## Amendment (2026-10-09): typed words from owner tokens only (rule 7)
+
+A security review found that any reader token could send free words the agent reads as "The
+user answered" (Claude's own wording for a typed "Other"). Picking a listed option is bounded
+by what the agent offered; typed words aren't. Rule 7 now reads:
+
+7. **Which token may answer:** any `reader` or `owner` token of the inbox picks options.
+   Typed words (`text`) only from an `owner` token: the person's own Mac (the app's built-in
+   hub mints it an owner token; a Mac joined to a server hub has one from an owner invite).
+   A reader's answer with `text` gets `403 forbidden` after the labels check, and nothing is
+   taken. Sender tokens can't answer at all, so one compromised agent machine can't answer
+   another agent's question. The answer endpoint is rate-limited like PATCH.
+
+- **Replication.** A replicated answer's `text` is kept whatever token answered. Peers are
+  trusted hubs (a shared secret per pair) that enforced the rule at their own edge; the
+  record carries only the token's name, not its role, and refusing it would make hubs
+  disagree about one answer. A hub before this change still takes typed words from a reader
+  and replicates them: upgrade every hub to close that.
+- **A Mac with a reader token** (joined with a `reader` invite) keeps option buttons; its
+  Other… gets the 403 and the card shows its generic "Not sent" line (the app treats any 403
+  as a token problem; a clearer line, or hiding Other… on a reader hub, is a Mac follow-up).
+  Its owner can connect it with an owner invite instead.
+- Chosen as the stricter of two options (the other: a per-token "may type answers" switch);
+  the owner may still veto before the release.
 
 ## Amendment (2026-10-09): an answer belongs to its question, across hubs too
 

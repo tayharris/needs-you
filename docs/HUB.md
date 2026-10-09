@@ -261,8 +261,9 @@ needs-you-admin peer list                              # peers: config and invit
 needs-you-admin peer remove hub-b                      # by hub id, URL or name (invite peers)
 ```
 
-Roles: `sender` posts and resolves; `reader` reads, resolves and dismisses; `owner` is a reader
-that can also create invites (the Mac app). Codes and tokens are stored as sha256 hashes and
+Roles: `sender` posts and resolves; `reader` reads, resolves, dismisses and answers a card's
+question by picking its options; `owner` is a reader that can also create invites and type an
+answer's own words ("Other…") (the Mac app). Codes and tokens are stored as sha256 hashes and
 printed once. Revoking an invite doesn't revoke tokens it already minted. A `peer` invite is
 for another hub, not a machine: it stays on this hub (it isn't replicated) and mints no token.
 

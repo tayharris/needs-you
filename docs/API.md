@@ -56,7 +56,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   |---|---|---|
   | 400 | `invalid` | Validation failed, bad JSON, bad query parameter |
   | 401 | `unauthorized` | Missing, unknown or revoked token (or bad peer secret) |
-  | 403 | `forbidden` | Valid token, wrong role for the endpoint |
+  | 403 | `forbidden` | Valid token, wrong role for the endpoint, or typed answer `text` from a reader token ([answers](#post-v1itemsidanswer-reader)) |
   | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
   | 409 | `self` | A hub tried to replicate to itself, or to redeem its own peer invite |
   | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer |
@@ -370,7 +370,9 @@ the item, or `404` for an unknown id. Patching an already-closed item is allowed
 
 The person's answer to the item's `question`, from an explicit click on one of its options, or
 the words they typed after an explicit click on "Other…" (reader or owner token; sender tokens get `403`, so one agent machine can't answer another
-agent's question).
+agent's question). Typed `text` is taken only from an **owner** token (the person's own Mac):
+the agent reads those words as the person's, so a reader token (another Mac, a dashboard)
+answers by picking options only, and an answer with `text` from it gets `403 forbidden`.
 
 ```json
 {"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",
@@ -403,7 +405,8 @@ and unexpired (`409 not_open`), has a question with `answerable: true` (`409 not
 whose `expires_at` hasn't passed (`409 question_expired`), `question_id` and
 `content_updated_at` match the item's (`409 question_changed`: the question changed under the
 person), and it has no answer yet (`409 already_answered`: the first answer wins). Then
-`answers` is checked (`400 invalid`, with `field` such as `answers[0].selected[1]`). A token
+`answers` is checked (`400 invalid`, with `field` such as `answers[0].selected[1]`), then a
+`text` from a token that isn't an owner (`403 forbidden`; nothing is taken). A token
 may send at most 30 answer requests a minute (`answer_rate_limit` per
 `answer_rate_window_seconds`, see [HUB.md](HUB.md)); past that, `429 rate_limited`.
 
@@ -990,7 +993,9 @@ replicated like any other), so every hub ends up with the answer. A record with 
 question, or from another token, decides by LWW as usual. A replicated answer is kept only if
 this hub would have taken it: the record's question is answerable and the answer names
 offered labels (or `text` where the question has `allow_other`), one entry per question, one
-label or the text for a single choice. Otherwise it is
+label or the text for a single choice. A replicated `text` is kept whichever token
+answered: a peer is a trusted hub that took it at its own edge (from an owner token, on a hub
+with this rule; an older hub took it from a reader too). Otherwise it is
 dropped with its `answered_at` and `answered_by` (the item stays). Hubs before 0.3.0 don't
 know `allow_other` or `text`: they drop the field from the question (and a question with an
 answerable item that has no options), and they drop an answer that has only `text` or keep only

@@ -7,6 +7,9 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Added
 
 - **Usage meters for every account Orca manages.** On a machine where Orca holds several Claude or Codex logins, `needs-you orca usage --enable` (or the invite installer's `--orca-usage`) makes the 5-minute flush send a meter row for each one to the Mac, from `orca account list --json` and nothing else: no login files, tokens or cookies. An account shows as `Claude · orca-1a2b3c4d` (a short hash of Orca's account id), never its email. Orca's own default login shares the local hooks' row rather than adding a second one, accounts removed from Orca lose their row, and an absent or broken Orca only means no rows. `--dry-run` shows what it would send; `--disable` stops it and clears its rows ([Orca guide](docs/guides/orca.md#usage-meters-for-every-orca-account)).
+### Security
+
+- **Typed answers ("Other…") come only from owner tokens.** The words the agent reads as the person's own answer are now taken only from an `owner` token (the person's own Mac; the app's built-in hub has one). A `reader` token still answers by picking the listed options; an answer with typed words from it gets `403` ([API](docs/API.md#post-v1itemsidanswer-reader), [ADR 0009](docs/adr/0009-questions-on-cards.md)). Answers that come from another hub by replication are kept as before. Upgrade every hub: an older one still takes typed words from a reader.
 
 ## [0.3.1] - 2026-10-09
 

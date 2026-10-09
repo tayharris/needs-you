@@ -423,7 +423,8 @@ class EndToEnd(HubTestCase):
         self.assertTrue(wait_until(self.waiting, timeout=15))
         it = self.item()
         self.assertTrue(all(q.get("allow_other") for q in it["question"]["items"]))
-        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % it["id"], self.reader, {
+        owner, _ = self.hub.store.add_token("mac", "owner")  # typed words come from the owner only
+        st, body = request("POST", self.hub.url + "/v1/items/%s/answer" % it["id"], owner, {
             "question_id": it["question"]["id"], "content_updated_at": it["content_updated_at"],
             "answers": [{"selected": [], "text": "DuckDB for now"}, {"selected": ["Auth"], "text": "Audit log"}]})
         self.assertEqual(st, 200, body)
