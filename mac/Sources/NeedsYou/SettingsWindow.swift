@@ -984,6 +984,16 @@ struct SettingsView: View {
             Text("Reset")
         }
         Section {
+            Toggle(isOn: $settings.developerMode) {
+                LabelWithDetail("Developer mode", "Adds copy and debug actions to cards, for bug reports and contributing.")
+            }
+        } header: {
+            Text("Developer")
+        } footer: {
+            Text("A card's … menu gets Copy Item JSON, Copy Key, Copy ID, Copy Debug Report and Copy as needs-you add Command, and each card shows its key. Nothing copied includes a token.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Section {
             HStack {
                 LabelWithDetail("Data folder", Self.abbreviated(LocalHubController.supportDirectory))
                 Spacer()
