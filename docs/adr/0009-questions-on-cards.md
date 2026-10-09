@@ -259,5 +259,8 @@ As built:
   Send. [CLAUDE.md](../../CLAUDE.md) rule 2 names this as the second explicit-click
   exception.
 - **Privacy.** The words are the person's, typed for the agent, so they are not redacted
-  (a token-shaped word in them goes to the agent as typed). They live on the item like the
+  (a token-shaped word in them goes to the agent as typed). The one exception is needs-you's
+  own secrets (hard rule 3: tokens, invite codes and peer secrets never go into item text):
+  the hub refuses words holding one (`400 secret_in_text`), and a replicated answer with one
+  is dropped. They live on the item like the
   rest of the answer and are purged with its text.

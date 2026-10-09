@@ -382,7 +382,9 @@ agent's question).
   bidi or line-separator characters, typed by the person in the Mac's answer window. A
   single-choice item takes exactly one label **or** `text` (then `selected` is `[]` or absent);
   a `multi_select` item takes any labels plus `text`, at least one of them. An item without
-  `allow_other` takes no `text` (`400`, `answers[i].text`).
+  `allow_other` takes no `text` (`400`, `answers[i].text`). Words holding a needs-you token,
+  invite code or peer secret (`ny_…`, `nyi_…`, `nyp_…`) are refused (`400 secret_in_text`,
+  `answers[i].text`); other token-shaped words go to the agent as typed.
 
 ```json
 {"question_id": "toolu_01ABC", "content_updated_at": "2026-10-06T17:04:05.123Z",

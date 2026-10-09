@@ -158,6 +158,7 @@ final class AnswerPolicyTests: XCTestCase {
         XCTAssertEqual(AnswerPolicy.failureText(code: "already_answered"), "Already answered (another click got there first).")
         XCTAssertTrue(AnswerPolicy.failureText(code: nil).contains("answer in the terminal"))
         XCTAssertTrue(AnswerPolicy.failureText(code: "question_expired").contains("terminal"))
+        XCTAssertTrue(AnswerPolicy.failureText(code: "secret_in_text").contains("token"))
         XCTAssertTrue(AnswerPolicy.failureText(code: "weird").contains("weird"))
     }
 

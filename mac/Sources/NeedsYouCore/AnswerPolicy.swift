@@ -175,6 +175,7 @@ public enum AnswerPolicy {
         case "not_open"?: return "This card is closed."
         case "not_answerable"?: return "This question can only be answered in the terminal."
         case "rate_limited"?: return "Too many answers just now: wait a moment."
+        case "secret_in_text"?: return "Not sent: your words hold a needs-you token or invite code. Never send those."
         default: return "Not taken (\(code ?? "error")): answer in the terminal."
         }
     }
