@@ -7,7 +7,10 @@ import Foundation
 // The defaults (medium, count only, no split) are the original "3 · 1 +2" pill, and
 // PillContentTests pins that.
 
-/// How big the collapsed pill is, on top of the panel size (Settings → Appearance → Panel and cards → Size).
+/// How big the pill is, on top of the panel size (Settings → Appearance → Panel and cards →
+/// Size). It scales the waiting pill and the idle "Nothing needs you" pill together: their
+/// height, type and corners, and so the usage meters drawn on them (PillMeterLayout takes
+/// the pill's height and font). Stored as its raw value; medium is the original look.
 public enum PillSize: String, CaseIterable, Codable, Sendable {
     case small, medium, large
 
@@ -65,7 +68,7 @@ public enum PillSplit: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// The collapsed pill's sizes, in points: the panel size's count-pill numbers scaled by
+/// The pill's sizes, in points: the panel size's count-pill and idle-pill numbers scaled by
 /// the pill size. `.medium` is exactly the panel size's numbers.
 public struct PillMetrics: Equatable, Sendable {
     public var font: CGFloat
@@ -85,13 +88,29 @@ public struct PillMetrics: Equatable, Sendable {
     /// The pill never grows wider than this (a long title is truncated).
     public var maxWidth: CGFloat
 
+    // The idle "Nothing needs <you>" pill: faint at rest, taller on hover.
+    public var idleFont: CGFloat
+    public var idleHeight: CGFloat
+    public var idleHoverHeight: CGFloat
+    public var idleMaxWidth: CGFloat
+    /// Added to the text width (dot, gaps, padding).
+    public var idleExtraWidth: CGFloat
+    /// The idle pill's corners at rest and on hover (Rounded; PanelCorners).
+    public var idleCornerRadius: CGFloat
+    public var idleHoverCornerRadius: CGFloat
+
     /// The original count pill's corner radius (RootView, PanelController).
     public static let baseCornerRadius: CGFloat = 11
+    /// The original idle pill's corner radius at rest and on hover.
+    public static let baseIdleCornerRadius: CGFloat = 9
+    public static let baseIdleHoverCornerRadius: CGFloat = 11
 
     public static func make(_ m: PanelMetrics, size: PillSize) -> PillMetrics {
         let s = size.scale
         func r(_ v: CGFloat) -> CGFloat { size == .medium ? v : (v * s * 2).rounded() / 2 }
         let height = r(m.countHeight)
+        let idleHeight = r(m.idleHeight)
+        let idleHoverHeight = r(m.idleHoverHeight)
         return PillMetrics(
             font: r(m.countFont),
             smallFont: r(m.countFont - 2),
@@ -103,9 +122,26 @@ public struct PillMetrics: Equatable, Sendable {
             cornerRadius: size == .medium ? baseCornerRadius : min(r(baseCornerRadius), height / 2),
             dotSize: r(8),
             titleGap: r(6),
-            maxWidth: r(m.idleMaxWidth)
+            maxWidth: r(m.idleMaxWidth),
+            idleFont: r(m.idleFont),
+            idleHeight: idleHeight,
+            idleHoverHeight: idleHoverHeight,
+            idleMaxWidth: r(m.idleMaxWidth),
+            idleExtraWidth: r(m.idleExtraWidth),
+            idleCornerRadius: size == .medium ? baseIdleCornerRadius : min(r(baseIdleCornerRadius), idleHeight / 2),
+            idleHoverCornerRadius: size == .medium ? baseIdleHoverCornerRadius
+                : min(r(baseIdleHoverCornerRadius), idleHoverHeight / 2)
         )
     }
+
+    /// The idle pill's width for a line of text `textWidth` points wide
+    /// (`PanelMetrics.idleWidth` at medium).
+    public func idleWidth(textWidth: CGFloat) -> CGFloat {
+        min(idleMaxWidth, ceil(textWidth) + idleExtraWidth)
+    }
+
+    /// The idle pill's height at rest or on hover.
+    public func idlePillHeight(hovering: Bool) -> CGFloat { hovering ? idleHoverHeight : idleHeight }
 
     /// The pill's width for `units` digit-widths of counts, plus a title `titleWidth`
     /// points wide (measured by the app), capped at `maxWidth`. With no title this is

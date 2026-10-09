@@ -38,6 +38,8 @@ public struct UIPrefs: Equatable, Sendable {
         public static let arrivalRepeats = "arrivalRepeats"
         public static let arrivalSpeed = "arrivalSpeed"
         public static let urgentReminderMinutes = "urgentReminderMinutes"
+        public static let panelShape = "panelShape"
+        public static let cardDensity = "cardDensity"
     }
 
     public var panelSize: PanelSize = .regular
@@ -87,6 +89,11 @@ public struct UIPrefs: Equatable, Sendable {
     public var arrivalSpeed: PulseSpeed = .normal
     /// Play urgent's arrival again every N minutes while it's unseen (UrgentReminder; 0 = off).
     public var urgentReminderMinutes: Int = UrgentReminder.off
+    /// Settings → Appearance → Pill → Shape: the corners of the pill, the preview and the
+    /// open panel together (PanelCorners). Rounded is the original.
+    public var panelShape: PanelShape = .rounded
+    /// Settings → Appearance → Panel and cards → Density: how tightly cards are packed.
+    public var cardDensity: CardDensity = .comfortable
 
     public init() {}
 
@@ -126,6 +133,8 @@ public struct UIPrefs: Equatable, Sendable {
         if let v = store.object(forKey: Key.urgentReminderMinutes) as? NSNumber {
             p.urgentReminderMinutes = UrgentReminder.sanitized(v.intValue)
         }
+        if let raw = store.string(forKey: Key.panelShape), let v = PanelShape(rawValue: raw) { p.panelShape = v }
+        if let raw = store.string(forKey: Key.cardDensity), let v = CardDensity(rawValue: raw) { p.cardDensity = v }
         return p
     }
 
@@ -159,9 +168,12 @@ public struct UIPrefs: Equatable, Sendable {
         if previous?.urgentReminderMinutes != urgentReminderMinutes {
             store.set(urgentReminderMinutes, forKey: Key.urgentReminderMinutes)
         }
+        if previous?.panelShape != panelShape { store.set(panelShape.rawValue, forKey: Key.panelShape) }
+        if previous?.cardDensity != cardDensity { store.set(cardDensity.rawValue, forKey: Key.cardDensity) }
     }
 
-    public var metrics: PanelMetrics { PanelStyle.metrics(panelSize) }
+    /// The panel size's numbers with the cards at the chosen density.
+    public var metrics: PanelMetrics { PanelStyle.metrics(panelSize).with(density: cardDensity) }
     /// The panel's colours for the theme, the accent override and macOS's appearance.
     public func palette(systemIsDark: Bool) -> PanelPalette {
         theme.palette(systemIsDark: systemIsDark, accent: accent)
@@ -172,6 +184,11 @@ public struct UIPrefs: Equatable, Sendable {
     }
     /// The collapsed pill's sizes: the panel size's, scaled by the pill size.
     public var pillMetrics: PillMetrics { PillMetrics.make(metrics, size: pillSize) }
+
+    /// The corner radius of `surface` drawn `height` points tall, in the chosen shape.
+    public func cornerRadius(_ surface: PanelSurface, height: CGFloat) -> CGFloat {
+        PanelCorners.radius(panelShape, surface, height: height, pill: pillMetrics)
+    }
 
     /// The chosen alert intensity for a priority (before the urgent floor).
     public func alertIntensity(for priority: ItemPriority) -> AlertIntensity {
