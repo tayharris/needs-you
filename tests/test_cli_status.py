@@ -8,11 +8,36 @@ import time
 import os
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from support import CLI, ROOT, garbage_server, request, wait_until
+from support import CLI, ROOT, request, wait_until
 from test_cli import CliTestCase
 
 USAGE = os.path.join(ROOT, "integrations", "claude-code", "needs-you-usage")
+
+
+def old_hub(test):
+    """A hub that predates statuses: 404 not_found for every request, after reading the body
+    (a canned reply that hangs up unread can reset the connection instead)."""
+    class Old(BaseHTTPRequestHandler):
+        def do_PUT(self):
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            data = b'{"error": "not_found", "message": "no such endpoint"}'
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Old)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    test.addCleanup(srv.server_close)
+    test.addCleanup(srv.shutdown)
+    return "http://127.0.0.1:%d" % srv.server_address[1]
 
 
 class CliStatus(CliTestCase):
@@ -61,8 +86,7 @@ class CliStatus(CliTestCase):
         self.assertEqual(self.queued(), [])
 
     def test_fails_over_and_tolerates_an_old_hub(self):
-        old = garbage_server(self, b"HTTP/1.0 404 Not Found\r\nContent-Type: application/json\r\n\r\n"
-                                   b'{"error": "not_found", "message": "no such endpoint"}')
+        old = old_hub(self)
         args = ("status", "set", "--key", "usage:claude", "--provider", "claude", "--window", "5h=5")
         r = self.run_cli(*args, urls=[old], token=self.sender)
         self.assertEqual(r.returncode, 0, r.stderr)
