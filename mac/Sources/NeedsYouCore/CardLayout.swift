@@ -113,12 +113,13 @@ public enum LinkRowPolicy {
         return String(text.prefix(maxLength - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
 
-    /// The button name for one of the app's own actions: "Orca", or the terminal app
-    /// ("iTerm2", "tmux"). nil for any other link.
+    /// The button name for one of the app's own actions: "Orca", the terminal app
+    /// ("iTerm2", "tmux"), or the app brought forward ("kitty", "Zed"). nil for any other link.
     public static func actionName(_ url: String) -> String? {
         switch AppAction.parse(url) {
         case .orca?: return "Orca"
         case .terminal(let jump)?: return jump.app.displayName
+        case .activate(let app)?: return app.displayName
         case nil: return nil
         }
     }

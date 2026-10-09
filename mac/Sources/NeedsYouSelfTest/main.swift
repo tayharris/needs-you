@@ -32,6 +32,7 @@ let entries =
     + testEntries(OrcaJumpTests.self, OrcaJumpTests.allTests)
     + testEntries(OrcaWorktreesTests.self, OrcaWorktreesTests.allTests)
     + testEntries(TerminalJumpTests.self, TerminalJumpTests.allTests)
+    + testEntries(AppActivationTests.self, AppActivationTests.allTests)
     + testEntries(PanelStyleTests.self, PanelStyleTests.allTests)
     + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
     + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)

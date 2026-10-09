@@ -222,13 +222,14 @@ parameters on the Claude link. `orca://` was dropped: Orca's only link
 jump is the app action below.
 
 One exception: the Mac app's own scheme, for a fixed set of **app actions** (the card's
-**Terminal** button). The hub accepts `needsyou://<host>/<path>?<query>` only for these
+"go there" button: Orca, the terminal, or the app the session runs in). The hub accepts `needsyou://<host>/<path>?<query>` only for these
 `<host>/<path>` pairs (case-insensitive), and nothing else under `needsyou://`:
 
 | Action | Link | What the app does |
 |---|---|---|
 | `orca/terminal` | `needsyou://orca/terminal?handle=term_<uuid>[&environment=<name>]` | `orca terminal switch`. The handle is `term_` plus 8–64 lowercase hex or `-`; the environment name is letters, digits, space, `.`, `_`, `-`, ≤ 64 |
 | `terminal/focus` | `needsyou://terminal/focus?app=<app>&<id>` | Focuses one terminal tab or pane on the Mac (below) |
+| `app/activate` | `needsyou://app/activate?bundle=<id>` | Brings that app forward when the sender knows the app the session runs in but no window jump exists for it (kitty, Warp, Zed, a JetBrains IDE). Exactly one parameter, `bundle`, matched exactly against a fixed list of terminals and editors built into the app (below); only an app that is already running comes forward, it is never launched, and Needs You itself is never on the list |
 
 `terminal/focus` takes `app` and exactly the parameters for that app, each at most once:
 
@@ -240,12 +241,28 @@ One exception: the Mac app's own scheme, for a fixed set of **app actions** (the
 | `terminal` | `tty=/dev/ttys<n>` (1–4 digits) | AppleScript (opt-in on the Mac): selects the Terminal.app tab with that tty |
 | `ghostty` | none | Ghostty comes forward (no tab selection yet) |
 
+`app/activate` brings forward only these bundle ids (`AppActivation.allowedApps` in the Mac
+app, mirrored by the Claude Code hook; any other id, a different case, a second parameter or
+an extra character does nothing):
+
+- Terminals: `com.apple.Terminal`, `com.googlecode.iterm2`, `com.github.wez.wezterm`,
+  `com.mitchellh.ghostty`, `net.kovidgoyal.kitty`, `org.alacritty`, `dev.warp.Warp-Stable`,
+  `co.zeit.hyper`, `org.tabby`.
+- Editors: `com.microsoft.VSCode`, `com.microsoft.VSCodeInsiders`,
+  `com.todesktop.230313mzl4w4u92` (Cursor), `com.exafunction.windsurf`, `com.vscodium`,
+  `dev.zed.Zed`, `com.jetbrains.intellij`, `com.jetbrains.intellij.ce`, `com.jetbrains.pycharm`,
+  `com.jetbrains.pycharm.ce`, `com.jetbrains.goland`, `com.jetbrains.WebStorm`,
+  `com.jetbrains.CLion`, `com.jetbrains.rider`, `com.jetbrains.rubymine`,
+  `com.jetbrains.PhpStorm`, `com.google.android.studio`.
+
+Opened from outside the panel (a web page, `open`), an `app/activate` link does nothing.
+
 The hub checks only the action prefix; the app parses every link into a typed value and
 refuses anything else (an unknown parameter, a repeated one, a value outside its pattern, a
 value starting with `-`, user, port or fragment), and then does nothing. It runs only fixed
 executables from fixed paths with argument arrays, never a shell, and AppleScript only as
 fixed handlers called with the validated value as a typed parameter. Worst case for a
-sender: the Mac shows a different terminal tab. A hub older than an action rejects the item
+sender: the Mac shows a different terminal tab, or brings a different listed app forward. A hub older than an action rejects the item
 with 400; senders that add one (the Claude Code hook) retry without their `needsyou://` links.
 
 Control characters are refused in every text field (`title`, `body` except newline and tab,

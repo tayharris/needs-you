@@ -519,6 +519,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if ok { model.run(.terminal(jump)) }
             return
         }
+        if url.host?.lowercased() == AppActivation.host {
+            // needsyou://app/activate is for a card's button only: from outside the panel it
+            // does nothing (a web page has no reason to bring a terminal or editor forward).
+            NSLog("NeedsYou: ignored a needsyou://app link opened from outside the panel")
+            yieldActivation()
+            return
+        }
         if url.host?.lowercased() == FocusLink.host {
             // needsyou://focus?level=…&minutes=… from Shortcuts or a script: set the focus,
             // never show a window. Anything that doesn't parse does nothing.

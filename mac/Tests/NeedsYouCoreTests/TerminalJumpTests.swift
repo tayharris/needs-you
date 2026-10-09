@@ -196,9 +196,10 @@ final class TerminalJumpTests: XCTestCase {
 
     func testActionTableMatchesParsers() {
         // Every path in the table (mirrored by the hub, tests/test_link_mirror.py) has a parser.
-        XCTAssertEqual(LinkPolicy.appActionPaths, ["orca/terminal", "terminal/focus"])
+        XCTAssertEqual(LinkPolicy.appActionPaths, ["orca/terminal", "terminal/focus", "app/activate"])
         XCTAssertEqual("\(OrcaJump.host)\(OrcaJump.path)", LinkPolicy.appActionPaths[0])
         XCTAssertEqual("\(TerminalJump.host)\(TerminalJump.path)", LinkPolicy.appActionPaths[1])
+        XCTAssertEqual("\(AppActivation.host)\(AppActivation.path)", LinkPolicy.appActionPaths[2])
     }
 
     func testScriptIsFixedAndHasEachHandler() {
