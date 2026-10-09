@@ -47,6 +47,7 @@ If no hub answers, the CLI queues the item and still exits 0: don't retry in a l
 - **Body:** why, the options, and where the question already lives (a PR thread, a ticket comment). At most 2,000 characters. The card renders **bold**, *italic*, `code`, ~~strike~~, [links](https://example.com), `- ` lists and line breaks; a `#` heading shows as a bold line. Tables, block quotes, HTML and images show as plain text.
 - **Links:** where they act, as deep as possible, that place first (the hotkey opens the first link): a PR's `/pull/<n>/files`, a check run, a Slack permalink, a Jira `/browse/<KEY>`. At most 6. Schemes `https`, `slack`, `vscode`, `cursor`, `figma`, `msteams`, `discord`, `linear`; `vscode://`/`cursor://` only as `file/<abs path>[:line[:col]]`, `vscode-remote/ssh-remote+<host>[/<path>]` or `anthropic.claude-code/open?session=<id>`.
 - **Priority:** `urgent` = broken now or someone is blocked today (breaks through snooze; rare). `normal` = today (the default). `low` = this week.
+- **Event (optional):** `--event question` when you ask them something, `approval` when you need permission, `finished`, `failed`, or `context`. The person's alert rules can treat these differently (every agent question urgent, say). Leave it out when none fits.
 - **Context:** `work` or `personal`; it decides when the card is prominent. Follow `NEEDS_YOU_AGENT_CONTEXT` if it's set; without `--context` the CLI uses this machine's default.
 
 ### Steps: several things to do, in order
