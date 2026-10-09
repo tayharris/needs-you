@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Projects status cards (opt-in).** Name the statuses that need you, `NEEDS_YOU_GITHUB_PROJECT_STATUSES=Blocked=urgent,In Review=normal`, and the GitHub poller posts a card when an open issue or PR assigned to you moves to one ("acme/app#30 is Blocked in Roadmap"), clearing it when the status moves on, the issue closes or you're unassigned. Needs `gh auth refresh -s read:project`; without it the poller says so once, with one low card ([guide](docs/guides/github.md#projects-statuses-and-dependabot-alerts-opt-in)).
+- **Dependabot security alert cards (opt-in).** With `NEEDS_YOU_GITHUB_SECURITY=1`, a repo's GitHub security alert notification becomes one low card per open critical Dependabot alert (`NEEDS_YOU_GITHUB_SECURITY_SEVERITIES=critical,high` adds high), clearing when the alert is fixed or dismissed. Needs `gh auth refresh -s security_events`. Both kinds set `source.event` (`status`, `security`) for alert rules.
+
 ## [0.4.0] - 2026-10-09
 
 A pre-release: copy commands and text from a card, per-session alert rules (make one agent session urgent and the rest quiet, or only when it asks, needs approval, finishes or fails), an Orca button on Orca cards, and Developer mode for bug reports. Senders may now say what happened in a new optional `source.event` field. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. **Upgrade every hub** to keep `source.event`: an older hub drops it.
