@@ -1045,15 +1045,21 @@ def one_line(value, limit):
     return clamp(" ".join(redact(_BAD_CHARS.sub(" ", value)).split()), limit)
 
 
+# [label](url) and ![alt](url): agent text is data (prompt injection can write it), so a link in
+# it shows its URL instead of a label over it.
+_MD_LINK = re.compile(r"!?\[([^\[\]\n]*)\]\(\s*<?([^()\s<>]*)>?(?:\s+\"[^\"]*\")?\s*\)")
+
+
 def text_block(value, limit, max_lines=8):
     """Agent text for the body: up to max_lines non-blank lines, cleaned, redacted, clamped.
-    Markdown headings become bold lines and code fences go (the card renders inline markdown
-    only)."""
+    Markdown headings become bold lines, code fences go (the card renders inline markdown
+    only) and links show their URL."""
     if not isinstance(value, str):
         return ""
     lines, more = [], False
     for raw in redact(value.replace("\r\n", "\n").replace("\t", "    ")).split("\n"):
-        line = " ".join(_BAD_CHARS.sub(" ", raw).split())
+        line = _MD_LINK.sub(lambda m: "%s (%s)" % (m.group(1), m.group(2)) if m.group(1) else m.group(2),
+                            " ".join(_BAD_CHARS.sub(" ", raw).split()))
         if not line or re.match(r"^(```|~~~)", line):
             continue
         if len(lines) == max_lines:
