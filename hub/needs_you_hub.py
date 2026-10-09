@@ -787,6 +787,10 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     if cfg.get("peer_secret_file") and not cfg.get("peer_secret"):
         with open(cfg["peer_secret_file"], "r", encoding="utf-8") as fh:
             cfg["peer_secret"] = fh.read().strip()
+            mode = os.fstat(fh.fileno()).st_mode & 0o777
+        if mode & 0o077:  # the secret lets anyone replicate as a peer
+            sys.stderr.write("warning: peer_secret_file %s can be read by other users (mode %03o); "
+                             "chmod 600 it\n" % (cfg["peer_secret_file"], mode))
     cfg.setdefault("bind", "127.0.0.1")
     cfg["bind"] = normalise_binds(cfg["bind"])
     cfg.setdefault("port", DEFAULT_PORT)

@@ -544,6 +544,28 @@ class DatabaseFileModes(HubTestCase):
             os.umask(old)
 
 
+class PeerSecretFileMode(unittest.TestCase):
+    def test_a_secret_file_others_can_read_is_warned_about(self):
+        """The mesh secret lets anyone replicate as a peer (read every item, write tokens): a
+        peer_secret_file readable by other users is named on stderr, without the secret."""
+        import tempfile
+        from contextlib import redirect_stderr
+        d = tempfile.mkdtemp(prefix="needs-you-test-")
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, True))
+        path = os.path.join(d, "peer-secret")
+        secret = "mesh-secret-0123456789abcdef"
+        with open(path, "w") as fh:
+            fh.write(secret + "\n")
+        for mode, warned in ((0o644, True), (0o640, True), (0o600, False), (0o400, False)):
+            os.chmod(path, mode)
+            err = io.StringIO()
+            with redirect_stderr(err):
+                cfg = hubmod.load_config(None, {"peer_secret_file": path, "db": os.path.join(d, "x.db")})
+            self.assertEqual(cfg["peer_secret"], secret)
+            self.assertEqual("chmod 600" in err.getvalue(), warned, (oct(mode), err.getvalue()))
+            self.assertNotIn(secret, err.getvalue())
+
+
 class CliOutput(unittest.TestCase):
     def test_clean_neutralises_terminal_escapes(self):
         cli = load_cli()

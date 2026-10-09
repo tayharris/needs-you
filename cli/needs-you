@@ -200,17 +200,26 @@ class Config:
         return bool(self.urls and self.token)
 
 
-def warn(msg: str) -> None:
-    sys.stderr.write("needs-you: %s\n" % msg)
+def warn(msg: Any) -> None:
+    sys.stderr.write("needs-you: %s\n" % clean(msg, multiline=True))
 
 
-def clean(value: Any) -> str:
+def say_clean(msg: Any) -> None:
+    """print() for a line that may carry text from a hub, an item, a release or a peer."""
+    print(clean(msg, multiline=True))
+
+
+def clean(value: Any, multiline: bool = False) -> str:
     """Text a hub sent us, made safe to print: control characters (terminal escape
-    sequences included) and bidi overrides shown as \\x.. / \\u.... instead of acting."""
+    sequences included) and bidi overrides shown as \\x.. / \\u.... instead of acting.
+    `multiline` keeps \\n and \\t. Cleaning twice changes nothing, so warn() and
+    say_clean() clean again whatever their callers already cleaned."""
     out = []
     for c in str(value):
         o = ord(c)
-        if o < 0x20 or 0x7f <= o < 0xa0:
+        if multiline and c in "\n\t":
+            out.append(c)
+        elif o < 0x20 or 0x7f <= o < 0xa0:
             out.append("\\x%02x" % o)
         elif 0x202a <= o <= 0x202e or 0x2066 <= o <= 0x2069:
             out.append("\\u%04x" % o)
@@ -518,7 +527,7 @@ def uninstall_hooks(user: bool, project: Optional[str], agents: Sequence[str], d
     CLI, Cursor, Cline, Aider, Kimi Code and Grok Build installs. --user, --project and one
     flag per agent pick some. Exit 1 if a file couldn't be changed (unreadable JSON, a symlink
     where needs-you would write)."""
-    say = (lambda msg: None) if quiet else print  # noqa: E731
+    say = (lambda msg: None) if quiet else say_clean  # noqa: E731
     everything = not (user or project is not None or agents)
     dirs: List[str] = []
     if user or everything:
@@ -3228,7 +3237,7 @@ def _rollback(quiet: bool, as_json: bool) -> int:
             _write_atomic(info["path"], data, int(info.get("mode") or 0o644))
             restored.append(name)
             if not quiet and not as_json:
-                print("restored %s (%s)" % (_tilde(info["path"]), info.get("version") or "?"))
+                say_clean("restored %s (%s)" % (_tilde(info["path"]), info.get("version") or "?"))
         except (OSError, KeyError, ValueError) as e:
             errors.append("%s: %s" % (name, e))
     if restored:
@@ -3308,7 +3317,7 @@ def _update(cfg: Config, check: bool, auto: bool, quiet: bool, as_json: bool, al
             from_flush: bool) -> int:
     result: Dict[str, Any] = {"ok": False, "cli": VERSION, "hub": None, "hub_version": None,
                               "changes": [], "applied": [], "notes": [], "errors": []}
-    say = (lambda msg: None) if quiet or as_json else print  # noqa: E731
+    say = (lambda msg: None) if quiet or as_json else say_clean  # noqa: E731
 
     def finish(code: int) -> int:
         result["ok"] = code == 0
@@ -3456,7 +3465,7 @@ def health(cfg: Config, queued: int) -> int:
         try:
             status, body = _call(url, cfg.token, "GET", "/v1/health", None, cfg.timeout)
         except (OSError, ValueError) as e:
-            print("%s  DOWN  %s" % (url, getattr(e, "reason", e)))
+            say_clean("%s  DOWN  %s" % (url, getattr(e, "reason", e)))
             continue
         if status == 200 and not cfg.token:
             # The hub is up, but nothing could be posted to it: say so, don't count it healthy.
@@ -5012,7 +5021,7 @@ def _mcp_remove_one(agent: str, dry_run: bool, say: Any) -> Optional[bool]:
 def install_mcp(raw_agents: str, dry_run: bool, quiet: bool) -> int:
     """`needs-you install-mcp AGENTS`: register the needs-you-mcp next to this CLI with each
     agent. Exit 0 when every one is registered, 1 when one was skipped, 2 for a bad name."""
-    say = (lambda msg: None) if quiet else print  # noqa: E731
+    say = (lambda msg: None) if quiet else say_clean  # noqa: E731
     try:
         agents = _agent_list(raw_agents, MCP_AGENTS)
     except ValueError as e:
@@ -5082,7 +5091,7 @@ def _instructions_one(agent: str, content: str, dry_run: bool, say: Any) -> Opti
 def install_instructions(raw_agents: str, source: str, dry_run: bool, quiet: bool) -> int:
     """`needs-you install-instructions --from FILE AGENTS`: FILE (the hub's
     /dl/agent-instructions.md) as a marked block in each agent's user instructions file."""
-    say = (lambda msg: None) if quiet else print  # noqa: E731
+    say = (lambda msg: None) if quiet else say_clean  # noqa: E731
     try:
         agents = _agent_list(raw_agents, INSTR_AGENTS)
     except ValueError as e:
@@ -5296,9 +5305,9 @@ def doctor(cfg: Config, as_json: bool) -> int:
         print("needs-you doctor (CLI %s)" % VERSION)
         width = max(len(c["check"]) for c in checks)
         for c in checks:
-            print("%-4s  %-*s  %s" % (c["status"], width, c["check"], c["detail"]))
+            say_clean("%-4s  %-*s  %s" % (c["status"], width, c["check"], c["detail"]))
             if c["hint"]:
-                print("      %-*s  -> %s" % (width, "", c["hint"]))
+                say_clean("      %-*s  -> %s" % (width, "", c["hint"]))
         warns = sum(1 for c in checks if c["status"] == "WARN")
         if not ok:
             print("problems found (FAIL above)")
@@ -5452,16 +5461,16 @@ def orca_summary(environments: List[str], all_envs: bool, include_archived: bool
         if r["pr"]:
             bits.append("PR #%d" % r["pr"])
         where = (r["environment"] + "/" if r["environment"] else "") + (r["host"] or "?")
-        print("%s  %s%s  %s" % (where, r["name"] or "?",
-                                " (%s)" % r["branch"] if r["branch"] and r["branch"] != r["name"] else "",
-                                " · ".join(bits)))
+        say_clean("%s  %s%s  %s" % (where, r["name"] or "?",
+                                    " (%s)" % r["branch"] if r["branch"] and r["branch"] != r["name"] else "",
+                                    " · ".join(bits)))
     for env, s in scopes.items():
         line = "scope %s: %s" % (env, ", ".join(s["hosts"]) or "-")
         if s["not_covered"]:
             line += "; not covered: %s" % ", ".join(s["not_covered"])
         if s["truncated"]:
             line += "; more rows than shown (--limit)"
-        print(line)
+        say_clean(line)
     return 0
 
 

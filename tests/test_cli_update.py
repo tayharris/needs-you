@@ -37,6 +37,7 @@ class FakeHub:
         self.manifest = manifest
         self.bad = set(bad)
         self.bad_shape = False
+        self.file_version = None  # a "version" for every file entry in the manifest
         self.redirect = False
         self.update_requested = False
         self.headers = []
@@ -65,6 +66,8 @@ class FakeHub:
                         if name in owner.bad:
                             digest = "0" * 64
                         files[name] = {"sha256": digest, "size": len(data)}
+                        if owner.file_version is not None:
+                            files[name]["version"] = owner.file_version
                         if owner.bad_shape and name == "needs-you":
                             del files[name]["sha256"]
                     return self.reply(200, json.dumps({"version": owner.version, "files": files}).encode())
@@ -208,6 +211,18 @@ class Update(UpdateCase):
         self.assertEqual(out["applied"], [])
         self.assertEqual(read(self.cli), self.old_cli)
         self.assertEqual(read(skill), b"old\n# needs-you-version: 0.0.1\n")
+
+    def test_hub_text_never_reaches_the_terminal_raw(self):
+        # A file's "version" in the manifest is the hub's text: printed as is, an OSC 52
+        # sequence would write the clipboard and CSI 2J clear the screen.
+        h = self.hub()
+        h.file_version = "1.2.3\x1b]52;c;cHduZWQ=\x07\x1b[2J\x9b2J\u202e"
+        self.install(".claude/skills/needs-you/SKILL.md")
+        r = self.run_cli("update", "--check", urls=[h.url])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for raw in ("\x1b", "\x07", "\x9b", "\u202e"):
+            self.assertNotIn(raw, r.stdout + r.stderr)
+        self.assertIn("1.2.3\\x1b]52;c;cHduZWQ=\\x07\\x1b[2J", r.stdout)
 
     def test_bad_checksum_replaces_nothing(self):
         h = self.hub(bad={"needs-you", "SKILL.md"})

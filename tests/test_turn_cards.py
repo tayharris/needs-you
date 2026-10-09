@@ -142,6 +142,16 @@ class ClaudeTurns(HookCase):
             for part in (t, t[:12], t[-12:]):
                 self.assertNotIn(part, title + body)
 
+    def test_a_link_in_agent_text_shows_where_it_goes(self):
+        """Agent text is shown, never trusted (prompt injection can write it): a markdown link
+        in it can't put a label over a destination, so the card shows the URL itself."""
+        argv = self.idle(entry("assistant", "Ready. [Approve the deploy](https://evil.example/x) or "
+                                            "![logo](https://evil.example/i.png) - should I go ahead?"))
+        body = opt(argv, "--body")
+        self.assertNotIn("](", body)
+        self.assertIn("Approve the deploy (https://evil.example/x)", body)
+        self.assertIn("logo (https://evil.example/i.png)", body)
+
     def test_token_straddling_the_clamp(self):
         # The token starts just before the title's cut: redacted first, then cut, so no prefix of
         # it survives in the title or the body.
