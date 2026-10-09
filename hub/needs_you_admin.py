@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import sys
 import urllib.error
@@ -130,6 +131,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         store.close()
 
 
+# A token, invite code or peer secret pasted where a name belongs (hard rule 3).
+_SECRET_SHAPE = re.compile(r"ny[ip]?_[A-Za-z0-9_-]{16,}")
+
+
+def shown(value: str) -> str:
+    """`value` quoted for an error message, unless it looks like a secret: someone who pasted
+    a token instead of its name doesn't get it echoed into their terminal's or ssh's log."""
+    return "(a secret, not shown: use its name or id)" if _SECRET_SHAPE.search(value) else repr(value)
+
+
 def token_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
     if args.cmd == "add":
         try:
@@ -171,7 +182,7 @@ def token_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
             sys.stderr.write("error: %s\n" % e.message)
             return 1
         if rec is None:
-            sys.stderr.write("no active token named or with id %r\n" % args.name_or_id)
+            sys.stderr.write("no active token named or with id %s\n" % shown(args.name_or_id))
             return 1
         if args.json:
             print(json.dumps({"id": rec["id"], "name": rec["name"],
@@ -184,7 +195,7 @@ def token_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
     if args.cmd == "revoke":
         recs = store.revoke_token(args.name_or_id)
         if not recs:
-            sys.stderr.write("no active token named or with id %r\n" % args.name_or_id)
+            sys.stderr.write("no active token named or with id %s\n" % shown(args.name_or_id))
             return 1
         for r in recs:
             print("revoked %s (%s)" % (r["name"], r["id"]))
@@ -255,7 +266,7 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
     if args.cmd == "revoke":
         recs = store.revoke_invite(args.name_or_id)
         if not recs:
-            sys.stderr.write("no live invite named or with id %r\n" % args.name_or_id)
+            sys.stderr.write("no live invite named or with id %s\n" % shown(args.name_or_id))
             return 1
         for r in recs:
             print("revoked invite %s (%s); tokens it already minted stay valid" % (r["name"], r["id"]))
@@ -409,7 +420,7 @@ def peer_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
                 sys.stderr.write("%s is in the config's peers; remove it there (install-hub.sh --peer ...) "
                                  "and restart the hub\n" % args.which)
             else:
-                sys.stderr.write("no peer with hub id, URL or name %r\n" % args.which)
+                sys.stderr.write("no peer with hub id, URL or name %s\n" % shown(args.which))
             return 1
         for r in removed:
             print("removed %s (%s); its secret is gone, so remove this hub on that side too"
