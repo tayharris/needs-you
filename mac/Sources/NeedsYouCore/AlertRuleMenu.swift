@@ -35,15 +35,23 @@ public enum RuleScope: Hashable, Sendable {
     }
 
     /// The scopes a card offers: an agent card (`agent:` key) its session, and a card with a
-    /// `source.agent` that agent. Neither for anything else.
+    /// `source.agent` that agent. Neither for anything else. A usage-limit card
+    /// (`agent:<host>:claude-usage:5h`) is the machine's, not a session's: only its agent.
     public static func scopes(for item: Item) -> [RuleScope] {
         guard let key = sessionKey(item.key) else { return [] }
-        var out: [RuleScope] = [.session(key)]
+        var out: [RuleScope] = isUsageCard(key) ? [] : [.session(key)]
         if let agent = item.source?.agent?.trimmingCharacters(in: .whitespacesAndNewlines),
            BypassRule.isValidValue(agent) {
             out.append(.agent(agent))
         }
         return out
+    }
+
+    /// The usage-limit cards' "session" part (needs-you-usage, the Codex hook):
+    /// `agent:<host>:claude-usage[:<account>]:5h|7d`, `agent:<host>:codex-usage…`.
+    static func isUsageCard(_ sessionKey: String) -> Bool {
+        let session = sessionKey.split(separator: ":", omittingEmptySubsequences: false).last ?? ""
+        return session.hasSuffix("-usage")
     }
 
     /// `agent:<host>:<session>` for any card of that session (the context card is

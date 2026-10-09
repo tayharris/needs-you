@@ -314,7 +314,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("16m-usage-pill-bars-small", { Self.meters($0, .bars, size: .small) }),
             ("16n-usage-pill-bars-numbers", { Self.meters($0, .bars, numbers: true) }),
             ("16o-usage-pill-rings-numbers", { Self.meters($0, .rings, .row, numbers: true) }),
+            // "Minimal dot" (Settings → Appearance → Pill): no meters at rest or on hover, so the dot
+            // never changes height; the hovered pill shows the count. Then the hovered count pill.
+            ("16s-usage-pill-dot", { model in
+                Self.meters(model, .bars)
+                model.settings.ui.pillDetail = .dot
+            }),
+            ("16t-usage-pill-dot-hover", { $0.hovering = true }),
+            ("16u-usage-pill-hover", { $0.settings.ui.pillDetail = .count }),
             ("16d-usage-pill-warning", { model in
+                model.hovering = false
                 Self.meters(model, .bars)
                 Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
             }),
@@ -330,7 +339,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("16g-usage-idle-percent", { Self.meters($0, .percent, size: .medium) }),
             ("16q-usage-idle-rings", { Self.meters($0, .rings, .row) }),
             ("16r-usage-idle-bars-row", { Self.meters($0, .bars, .row) }),
+            // The idle pill keeps its meters with "Minimal dot" (it has no dot), on hover too.
+            ("16v-usage-idle-dot-hover", { model in
+                Self.meters(model, .bars)
+                model.settings.ui.pillDetail = .dot
+                model.hovering = true
+            }),
             ("16h-usage-off", { model in
+                model.hovering = false
+                model.settings.ui.pillDetail = .count
                 Self.meters(model, .bars)
                 model.settings.usage.onPill = false
             }),
