@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # Screenshots for the site and the guides, from demo data, next to a running real app.
 #
-#   mac/scripts/screenshots.sh [out-dir]      # default: dist/screenshots
+#   mac/scripts/screenshots.sh [out-dir]              # default: dist/screenshots
+#   mac/scripts/screenshots.sh --formats [out-dir]    # default: dist/screenshots/formats
+#
+# --formats draws every shape a sender can post (tests/format_cases.py, posted to a throwaway
+# hub by format-fixtures.py) card by card instead: each card in the three card text modes,
+# its arrival preview, picks and answers on the answerable questions, and the cards again
+# after the catalog's re-posts (AppDelegate.runFormatTour). Look at every one.
 #
 # Builds a throwaway copy and runs it three times with the snapshot tour (NEEDS_YOU_SNAPSHOT_DIR,
 # see AppDelegate.runSnapshotTour): once with no items (the idle pill), once with the
@@ -16,12 +22,14 @@
 #   - a snapshot run registers no global shortcut, and the update checker is off for a
 #     bundle id other than the real one
 #
-# The test copy's pill shows on screen for about 30 s per run, then it's quit (SIGTERM).
+# The test copy's pill shows on screen for about 30 s per run (the format tour: a few minutes), then it's quit (SIGTERM).
 # Check every image before it's committed: no personal names, hosts or tokens.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OUT="${1:-dist/screenshots}"
+FORMATS=0
+if [[ "${1:-}" == "--formats" ]]; then FORMATS=1; shift; fi
+if [[ $FORMATS == 1 ]]; then OUT="${1:-dist/screenshots/formats}"; else OUT="${1:-dist/screenshots}"; fi
 ID=app.needsyou.mac.screenshots
 SUITE="$ID.$$"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}"/needsyou-shots.XXXXXX)" && pwd -P)"
@@ -155,13 +163,16 @@ defaults write "$SUITE" expandedListHeight -float 840
 defaults write "$SUITE" collapseOnClickOutside -bool false
 
 mkdir -p "$OUT"
-run() {   # run <fixture> <snapshot dir>
-  mkdir -p "$2" "$T/support"
-  NEEDS_YOU_DEMO=1 NEEDS_YOU_DEMO_INJECT_SECONDS=0 NEEDS_YOU_DEMO_FIXTURE="$1" NEEDS_YOU_SNAPSHOT_DIR="$2" \
+WAIT=120   # half-seconds a tour may take
+run() {   # run <fixture> <snapshot dir> [extra env...]
+  local fixture="$1" dir="$2"
+  shift 2
+  mkdir -p "$dir" "$T/support"
+  env "$@" NEEDS_YOU_DEMO=1 NEEDS_YOU_DEMO_INJECT_SECONDS=0 NEEDS_YOU_DEMO_FIXTURE="$fixture" NEEDS_YOU_SNAPSHOT_DIR="$dir" \
   NEEDS_YOU_SUPPORT_DIR="$T/support" NEEDS_YOU_DEFAULTS_SUITE="$SUITE" NEEDS_YOU_HUB_LOOPBACK_ONLY=1 \
     "$APP/Contents/MacOS/NeedsYou" > "$T/run.log" 2>&1 &
   PID=$!
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "$WAIT"); do
     grep -q "snapshots written" "$T/run.log" && break
     sleep 0.5
   done
@@ -169,6 +180,17 @@ run() {   # run <fixture> <snapshot dir>
   PID=""
   grep -q "snapshots written" "$T/run.log" || { echo "error: the snapshot tour didn't finish" >&2; tail -20 "$T/run.log"; exit 1; }
 }
+
+if [[ $FORMATS == 1 ]]; then
+  echo "==> format fixtures"
+  /usr/bin/python3 scripts/format-fixtures.py "$T/formats"
+  echo "==> format tour"
+  WAIT=600
+  run "$T/formats/formats.json" "$T/shots" NEEDS_YOU_SNAPSHOT_TOUR=formats NEEDS_YOU_DEMO_REPOST="$T/formats/formats-repost.json"
+  cp "$T/shots/"*.png "$OUT/"
+  echo "==> wrote $(ls "$T/shots" | wc -l | tr -d ' ') PNGs to $OUT"
+  exit 0
+fi
 
 echo "==> idle run"
 run "$T/empty.json" "$T/idle"

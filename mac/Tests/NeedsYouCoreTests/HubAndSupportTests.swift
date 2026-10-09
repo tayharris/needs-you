@@ -234,6 +234,7 @@ final class DemoFeedTests: XCTestCase {
     static var allTests: [(String, (DemoFeedTests) -> () throws -> Void)] = []
     static var asyncTests = [
         ("testDemoFeedBehavesLikeHub", testDemoFeedBehavesLikeHub),
+        ("testDemoFeedRepost", testDemoFeedRepost),
     ]
 
     func testDemoFeedBehavesLikeHub() async throws {
@@ -254,5 +255,19 @@ final class DemoFeedTests: XCTestCase {
         let full = try await feed.fetchOpen(since: nil)
         let r2 = store.merge(full, isFullSnapshot: true, now: now)
         XCTAssertEqual(r2.removed.map(\.id), [injected.id])
+    }
+
+    /// The format tour's re-posts (NEEDS_YOU_DEMO_REPOST): same id, new content, and a poll
+    /// since the last one sees it, as a hub serves a sender's re-post.
+    func testDemoFeedRepost() async throws {
+        let then = Date(timeIntervalSince1970: 1_000)
+        let feed = DemoFeed(items: [Item(id: "01A", key: "k", title: "Old", createdAt: then)])
+        let before = Date()
+        await feed.upsert([Item(id: "01A", key: "k", priority: .urgent, title: "New", createdAt: then),
+                           Item(id: "01B", key: "k2", title: "Added", createdAt: then)])
+        let delta = try await feed.fetchOpen(since: before)
+        XCTAssertEqual(Set(delta.map(\.id)), ["01A", "01B"])
+        XCTAssertEqual(delta.first { $0.id == "01A" }?.title, "New")
+        XCTAssertEqual(delta.first { $0.id == "01A" }?.createdAt, then)
     }
 }
