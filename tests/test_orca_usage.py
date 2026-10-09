@@ -184,6 +184,44 @@ class OrcaUsage(CliTestCase):
         self.assertEqual(items["items"], [])  # meters, never cards
         self.assertEqual(self.queued(), [])  # and never queued
 
+    def test_the_shape_orca_reports_on_a_mac_with_two_claude_accounts(self):
+        # As seen on a Mac (values made up): activeAccountId stays null with two managed
+        # accounts, the active one is rateLimits.claude, the other is an inactive entry. Extra
+        # windows (fableWeekly, monthly, buckets) and providers (cursor, opencode, devin) are ignored.
+        now = time.time()
+        data = account_list(claude_active=None, claude_ids=(A, B), rate_limits={
+            "claude": provider("claude", window(23, 3600, now=now), window(61, 4 * 86400, 10080, now=now),
+                               fableWeekly=window(88, 4 * 86400, 10080, now=now), extraUsage=None, error=None,
+                               usageMetadata={"source": "api"}),
+            "codex": provider("codex", None, None, status="error", error="not logged in"),
+            "opencodeGo": provider("opencode-go", None, None, status="unavailable"),
+            "zcode": provider("zcode", None, None, status="unavailable"),
+            "cursor": provider("cursor", None, None, planType="pro",
+                               monthly=window(40, 20 * 86400, 44640, now=now),
+                               buckets=[dict(window(10, 20 * 86400, 44640, now=now), name="auto")]),
+            "zcodePlanApiKeyConfigured": False, "opencodeGoApiKeyConfigured": False, "cursorAuthConfigured": True,
+            "inactiveClaudeAccounts": [{"accountId": B, "rateLimits": provider("claude", window(4, 3600, now=now),
+                                                                              window(17, 86400, 10080, now=now)),
+                                        "updatedAt": int(now * 1000), "isFetching": False}]})
+        for a in data["result"]["claude"]["accounts"]:
+            a.update({"managedAuthRuntime": "host", "wslDistro": None, "authMethod": "subscription-oauth",
+                      "organizationUuid": "0f0f0f0f-aaaa-4bbb-8ccc-dddddddddddd", "createdAt": 1, "updatedAt": 2,
+                      "lastAuthenticatedAt": 3})
+        data["result"]["opencode"] = {"accounts": [], "activeAccountId": None}
+        data["result"]["devin"] = {"accounts": [], "activeAccountId": None}
+        self.write(data)
+        r = self.usage()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        got = self.by_key()
+        self.assertEqual(sorted(got), ["usage:claude", "usage:claude:" + label(B)])
+        self.assertEqual([(w["name"], w["used_pct"]) for w in got["usage:claude"]["usage"]["windows"]],
+                         [("5h", 23), ("7d", 61)])
+        self.assertEqual(got["usage:claude"]["usage"]["account"], "")
+        self.assertEqual([(w["name"], w["used_pct"]) for w in got["usage:claude:" + label(B)]["usage"]["windows"]],
+                         [("5h", 4), ("7d", 17)])
+        self.assertNoLeak(json.dumps(self.statuses()) + r.stdout + r.stderr)
+        self.assertNotIn("0f0f0f0f", json.dumps(self.statuses()))
+
     def test_windows_are_cleaned(self):
         now = time.time()
         e = "e0e0e0e0-1111-4222-8333-444455556666"
