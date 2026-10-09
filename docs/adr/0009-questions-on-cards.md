@@ -236,11 +236,18 @@ As built:
 - **Senders.** The Claude Code `ask` hook marks every question of an answerable card
   `allow_other` (Claude's dialog always takes "Other") and puts the words into
   `updatedInput.answers` as Claude's TUI does: in place of a single choice's label, after a
-  multi-select's labels joined with ", ". Claude Code 2.1.295's bundled code takes any string
-  there (up to 8,192 characters; the tool result then says "The user answered: …", as for a
-  typed "Other" in the terminal) [bin]. The
+  multi-select's labels joined with ", ". Checked live on Claude Code 2.1.295 (fake model
+  server, temp HOME, the installed hooks, a real hub): the dialog showed its own "Type
+  something." row meanwhile; a click on the Mac's Send with `MySQL, the team knows it` for
+  the single choice and `Auth` plus `Audit log` for the multi-select showed "User answered
+  Claude's questions: · Which database should we use? → MySQL, the team knows it · Which
+  features? → Auth, Audit log … Allowed by PermissionRequest hook", and the model got "The
+  user answered: "Which database should we use?"="MySQL, the team knows it", …" (the wording
+  Claude uses for a typed "Other"). An answer in the terminal first still won and ended the
+  wait. The
   opencode plugin does the same for questions it answers (`custom` isn't `false`), adding the
-  words as one more entry of that question's reply. `needs-you answer-wait` prints `text`
+  words as one more entry of that question's reply, as opencode's own TUI does for "Type your
+  own answer" (checked against opencode 1.18.35's source; not run live). `needs-you answer-wait` prints `text`
   with the labels. Words that don't fit (blank, too long, control characters, a label and
   words for a single choice) answer nothing. Rule 5 holds: permission prompts and plans are
   never answerable, and nothing is ever answered without the person's click and Send.

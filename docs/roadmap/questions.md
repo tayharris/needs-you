@@ -91,6 +91,8 @@ skips the dialog; the transcript shows "User answered Claude's questions", and n
 - The `Notification` `permission_prompt` about 6 s later still comes [live, high]; the `ask` card's marker (kind `permission`) keeps it from replacing the card.
 - Built as the hook's `ask` mode (B3). End to end with the installed hooks, a real hub and the reader token's `POST /v1/items/{id}/answer` [live, high]: the card was answerable 0.9 s after the prompt, the click reached Claude ("Postgres", "Auth, Search"), and the card was resolved by the `PostToolUse` that followed; with an answer in the terminal instead, the wait ended in the same second.
 
+- Typed words (ADR 0009 amendment 2026-10-09), Claude Code 2.1.295 [live, high]: `answers` takes any string, not only a label. `{"Which database should we use?": "MySQL, the team knows it", "Which features?": "Auth, Audit log"}` from the hook showed "User answered Claude's questions: · Which database should we use? → MySQL, the team knows it · Which features? → Auth, Audit log", and the model got "The user answered: …" (labels only get "Your questions have been answered: …"). The bundled validator caps a string answer at 8,192 characters and a multi-select array at the option count + 1 [bin, medium].
+
 **Safe:** posting the card from `PermissionRequest` (async, prints nothing); waiting in a synchronous `PermissionRequest` hook for an answer from the card (the dialog stays usable; the first answer wins). **Unsafe:** a long synchronous `PreToolUse` wait; auto-approving `ExitPlanMode` (it also changes the permission mode).
 
 ## Codex CLI
