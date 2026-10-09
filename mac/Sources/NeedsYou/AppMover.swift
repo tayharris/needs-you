@@ -1,6 +1,7 @@
 import AppKit
 import NeedsYouCore
 import OSLog
+import Security
 import ServiceManagement
 import SwiftUI
 
@@ -67,14 +68,21 @@ final class AppMover: ObservableObject {
             phase = .failed("The copy in \(destinationName) is running (pid \(other.processIdentifier)). Quit it first, or quit this one and use that.")
             return
         }
+        // The copy must be exactly this running app (AppSignature), not just validly signed.
+        guard let cdhash = Self.runningCDHash() else {
+            phase = .failed("Can't read this copy's code signature, so the moved copy couldn't be checked. Drag Needs You to \(destinationName) in Finder instead.")
+            return
+        }
         phase = .moving
         let source = bundleURL, dir = destinationDir, clear = AppMovePlan.clearsQuarantine(from: location)
         Task.detached(priority: .userInitiated) {
             let result: Result<URL, Error>
             do {
                 result = .success(try AppCopier.copy(source: source, destinationDir: dir, replace: replace, clearQuarantine: clear) { staged in
-                    let r = UpdateController.runTool("/usr/bin/codesign", ["--verify", "--deep", "--strict", staged.path],
-                                                     timeout: 60, environment: nil)
+                    guard let args = AppSignature.verifyArguments(path: staged.path, cdhash: cdhash) else {
+                        return "no code directory hash to compare"
+                    }
+                    let r = UpdateController.runTool("/usr/bin/codesign", args, timeout: 60, environment: nil)
                     return r.status == 0 ? nil : String(r.output.prefix(200)).trimmingCharacters(in: .whitespacesAndNewlines)
                 })
             } catch {
@@ -82,6 +90,25 @@ final class AppMover: ObservableObject {
             }
             await MainActor.run { self.finish(result) }
         }
+    }
+
+    /// The running code's directory hash, as the kernel has it: read from the signature, then
+    /// checked against the running process (SecCodeCheckValidity on the dynamic code compares
+    /// the kernel's cdhash with the bundle on disk), so a bundle replaced on disk since launch
+    /// gives nil. Nil for unsigned code.
+    nonisolated static func runningCDHash() -> Data? {
+        var code: SecCode?
+        guard SecCodeCopySelf(SecCSFlags(), &code) == errSecSuccess, let code else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(unsafeBitCast(code, to: SecStaticCode.self),
+                                            SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any], let cdhash = dict[kSecCodeInfoUnique as String] as? Data,
+              let text = AppSignature.requirement(cdhash: cdhash) else { return nil }
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement) == errSecSuccess,
+              let requirement,
+              SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess else { return nil }
+        return cdhash
     }
 
     private func finish(_ result: Result<URL, Error>) {

@@ -28,6 +28,10 @@ LINKS = [
     "[Ap\u200bprove](https://evil.example/zw)",                        # invisible in the label
     "[Approve]\u200b(https://evil.example/zw2)",                       # invisible in the syntax
     "[Approve][r]\n\n[r]: https://evil.example/reference",            # a reference link
+    "[a]([b](https://evil.example/inner))",                           # a link as the URL
+    "![a](https://e.example/i.png)(https://evil.example/after)",      # an image, then parens
+    "[x]([y](z))(https://evil.example/overlap)",                       # overlapping
+    "[[[deep](https://a.example/1)](https://a.example/2)](https://evil.example/3)",
 ]
 
 

@@ -46,7 +46,15 @@ final class AlwaysOnHubController: ObservableObject {
             let invite = try await client.createPeerInvite(PeerInviteRequest(name: "always-on"),
                                                            hub: LocalHub.clientURL, token: token)
             // The link follows the script on stdin (--join -), so it stays out of sudo's log and ps.
-            command = invite.hubInstallCommand ?? "(curl -fsSL https://github.com/\(UpdateSource.defaultRepository)/releases/download/v\((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "X.Y.Z")/install-hub.sh && echo '\(invite.joinURL)') | sudo bash -s -- --join -"
+            // The command runs as root: built only from a join URL of the hub's shape, quoted.
+            guard let built = PeerJoinCommand.resolve(
+                joinURL: invite.joinURL, hubCommand: invite.hubInstallCommand,
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) else {
+                command = nil
+                message = "The hub's invite link isn't a join link (http(s)://<hub>/join/nyi_…), so there's no command to run. Try again, or restart Needs You."
+                return
+            }
+            command = built
             commandExpires = invite.expiresAt.flatMap(HubJSON.parseDate)
             message = nil
         } catch {

@@ -120,7 +120,8 @@ public enum AppMovePlan {
     /// translocates a quarantined app every launch until Finder moves it, and a copy made by
     /// the app itself doesn't count as moved, so the copy in Applications would run
     /// translocated again. The bundle is the one already running (it passed Gatekeeper)
-    /// and its signature is verified after the copy, as the updater does for its staged app.
+    /// and the copy must match it exactly after the copy (AppSignature), so nothing else
+    /// loses its quarantine this way.
     public static func clearsQuarantine(from location: AppLocation) -> Bool {
         location == .translocated
     }
@@ -191,6 +192,26 @@ public enum LoginItemPolicy {
         case .notRegistered, .requiresApproval:
             return .none
         }
+    }
+}
+
+/// The check on the copy Move to Applications makes: it must be exactly the running app.
+/// `codesign --verify` alone accepts any validly signed bundle (an ad-hoc re-signed one
+/// too), so the copy must also carry the running code's directory hash (cdhash), which the
+/// kernel took from the bundle that passed Gatekeeper: a bundle swapped on disk in between
+/// fails.
+public enum AppSignature {
+    /// The cdhash as the requirement language writes it, or nil unless it's 20 bytes.
+    public static func requirement(cdhash: Data) -> String? {
+        guard cdhash.count == 20 else { return nil }
+        return "cdhash H\"" + cdhash.map { String(format: "%02x", $0) }.joined() + "\""
+    }
+
+    /// `codesign` arguments that verify `path` and require that cdhash (`-R =<text>`: the
+    /// requirement as text). Nil without a usable cdhash: then nothing is moved.
+    public static func verifyArguments(path: String, cdhash: Data?) -> [String]? {
+        guard let cdhash, let req = requirement(cdhash: cdhash) else { return nil }
+        return ["--verify", "--deep", "--strict", "-R", "=" + req, path]
     }
 }
 
