@@ -1,7 +1,8 @@
 /* needs-you site. Plain CSS, no build step.
 
    Styled on the owner's shared design tokens: the two-layer split is kept here.
-   1. Primitives: the only place a hex appears. Ramps and the type scale.
+   1. Primitives: the only place a raw colour (hex, rgb(), hsl()) appears. Ramps, white and
+      black at an opacity, and the type scale.
    2. Semantic: what the rules below reference. Components never use a primitive
       directly, so a colour change is one line in one place.
 
@@ -11,8 +12,10 @@
    decoration. No gradients, no shadows, one border weight. The one exception is the
    demo pill's arrival ring (.pv.is-arriving), which copies the app's own glow.
 
-   The pill preview (.pv) and the live demo (.demo) use the Mac app's priority colours
-   and link-button look (mac/Sources/NeedsYou/Views/Theme.swift), always dark. */
+   The pill preview (.pv) and the live demo (.demo) use the Mac app's default theme, always
+   dark: its priority colours and text, hairline and card opacities (standardPalette in
+   mac/Sources/NeedsYouCore/PanelTheme.swift) and its link-button look
+   (mac/Sources/NeedsYou/Views/Theme.swift). tests/test_site.py checks they still match. */
 
 /* IBM Plex, bundled (SIL OFL 1.1, fonts/OFL.txt): the Latin1 subsets from IBM's
    @ibm/plex-sans 1.1.0 and @ibm/plex-mono 2.5.0 packages. Characters outside
@@ -57,11 +60,26 @@
   --amber-300: #f5cd72;
   --amber-400: #e8b13c;
   --amber-600: #a87513;
-  /* The Mac app's priority colours (mac/Sources/NeedsYou/Views/Theme.swift). */
+  /* The Mac app's priority colours (PanelTheme.swift, standardPalette). */
   --red-400: #f87171;
   --yellow-300: #fcd34d;
   --slate-400: #94a3b8;
   --green-400: #4ade80;
+  /* White and black at an opacity: the app draws the HUD's text, hairlines and link chips as
+     its text colour at these opacities (Theme.swift, PanelTheme.swift standardPalette). */
+  --white-a04: rgba(255, 255, 255, 0.04);
+  --white-a05: rgba(255, 255, 255, 0.05);
+  --white-a06: rgba(255, 255, 255, 0.06);
+  --white-a08: rgba(255, 255, 255, 0.08);
+  --white-a14: rgba(255, 255, 255, 0.14);
+  --white-a18: rgba(255, 255, 255, 0.18);
+  --white-a24: rgba(255, 255, 255, 0.24);
+  --white-a35: rgba(255, 255, 255, 0.35);
+  --white-a50: rgba(255, 255, 255, 0.5);
+  --white-a55: rgba(255, 255, 255, 0.55);
+  --white-a62: rgba(255, 255, 255, 0.62);
+  --black-a06: rgba(0, 0, 0, 0.06);
+  --black-a08: rgba(0, 0, 0, 0.08);
 
   --font-sans: "IBM Plex Sans", "Roboto", "Helvetica", "Arial", sans-serif;
   --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
@@ -96,7 +114,7 @@
   --surface-raised: var(--neutral-900);
   --surface-hover: var(--neutral-800);
   --surface-sunken: var(--neutral-950);
-  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-subtle: var(--white-a06);
   --border-strong: var(--neutral-700);
   --text-primary: var(--neutral-50);
   --text-secondary: var(--neutral-300);
@@ -107,7 +125,7 @@
 
   /* Where screenshots and the demo sit: a quiet "desktop" the dark app reads against. */
   --stage-bg: var(--neutral-900);
-  --stage-border: rgba(255, 255, 255, 0.06);
+  --stage-border: var(--white-a06);
   --desk-bar: var(--neutral-800);
   --desk-text: var(--neutral-300);
 
@@ -115,16 +133,20 @@
   --hud-surface: var(--neutral-950);
   --hud-fill: var(--neutral-700);
   --hud-idle: var(--neutral-800);
-  --hud-border: rgba(255, 255, 255, 0.08);
+  --hud-border: var(--white-a08);         /* hairlineOpacity */
   --hud-text: var(--neutral-0);
   --hud-secondary: var(--neutral-300);
-  --hud-muted: rgba(255, 255, 255, 0.55);
-  --hud-faint: rgba(255, 255, 255, 0.35);
-  --hud-link-fill: rgba(255, 255, 255, 0.14);
-  --hud-link-fill-hover: rgba(255, 255, 255, 0.26);
-  --hud-link-stroke: rgba(255, 255, 255, 0.18);
-  --hud-link-stroke-hover: rgba(255, 255, 255, 0.5);
-  --hud-link-dest: rgba(255, 255, 255, 0.62);
+  --hud-muted: var(--white-a55);          /* mutedOpacity */
+  --hud-faint: var(--white-a35);          /* faintOpacity */
+  --hud-card-fill: var(--white-a05);      /* cardFillOpacity */
+  --hud-hit-hover: var(--white-a04);
+  --hud-link-fill: var(--white-a14);      /* Theme.linkFill */
+  --hud-link-fill-hover: var(--white-a24);
+  --hud-link-stroke: var(--white-a18);
+  --hud-link-stroke-hover: var(--white-a50);
+  --hud-link-dest: var(--white-a62);
+  --cursor-fill: var(--neutral-0);
+  --cursor-stroke: var(--neutral-1000);
   --prio-urgent: var(--red-400);
   --prio-normal: var(--yellow-300);
   --prio-low: var(--slate-400);
@@ -139,14 +161,14 @@
     --surface-raised: var(--neutral-0);
     --surface-hover: var(--neutral-100);
     --surface-sunken: var(--neutral-100);
-    --border-subtle: rgba(0, 0, 0, 0.08);
+    --border-subtle: var(--black-a08);
     --border-strong: var(--neutral-200);
     --text-primary: var(--neutral-900);
     --text-secondary: var(--neutral-600);
     --text-muted: var(--neutral-500);
     --brand-focus: var(--amber-600);
     --stage-bg: var(--neutral-200);
-    --stage-border: rgba(0, 0, 0, 0.06);
+    --stage-border: var(--black-a06);
     --desk-bar: var(--neutral-100);
     --desk-text: var(--neutral-600);
   }
@@ -503,7 +525,7 @@ button.pv-link { margin: 0; cursor: pointer; }
   background: transparent; border: 0; border-radius: 12px;
   cursor: pointer;
 }
-.demo.is-live .pv-hit:hover { background: rgba(255, 255, 255, 0.04); }
+.demo.is-live .pv-hit:hover { background: var(--hud-hit-hover); }
 .demo.is-live .pv-hit:focus-visible { outline-offset: -3px; border-radius: 12px; }
 .demo.is-live .pv-body { z-index: 2; pointer-events: none; }
 .demo.is-live .pv-link { position: relative; pointer-events: auto; }
@@ -577,7 +599,7 @@ button.pv-link { margin: 0; cursor: pointer; }
   transform-origin: 2px 2px;
   transition: translate 0.9s cubic-bezier(0.5, 0, 0.25, 1), opacity 0.3s ease, scale 0.12s ease;
 }
-.demo-cursor path { fill: var(--neutral-0); stroke: var(--neutral-1000); stroke-width: 1.2; stroke-linejoin: round; }
+.demo-cursor path { fill: var(--cursor-fill); stroke: var(--cursor-stroke); stroke-width: 1.2; stroke-linejoin: round; }
 .demo.is-live .demo-cursor.is-shown { opacity: 1; }
 .demo.is-live .demo-cursor.no-move { transition: none; }
 .demo.is-live .demo-cursor.is-down { scale: 0.86; }
@@ -644,7 +666,7 @@ button.pv-link { margin: 0; cursor: pointer; }
   position: relative;
   display: grid; justify-items: start; gap: 2px;
   padding: 8px 10px 4px 18px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--hud-card-fill);
   border: 1px solid var(--hud-border);
   border-radius: 10px;
 }

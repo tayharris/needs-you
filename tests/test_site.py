@@ -108,6 +108,72 @@ def read_site(name):
         return fh.read()
 
 
+def read_repo(rel):
+    with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+        return fh.read()
+
+
+RAW_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}\b|(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(")
+NAMED_COLOUR = re.compile(r":[^;{]*\b(?:white|black|red|green|blue|yellow|orange|purple|pink|gr[ae]y|silver)\b"
+                          r"(?![\w-])", re.I)
+
+
+class CssTokens:
+    """site/styles.css's custom properties: which are primitives, which lines are in a :root
+    block, and each token resolved through var() to its raw value."""
+
+    def __init__(self):
+        # Comments blanked (line numbers kept), so prose about colours isn't a colour.
+        css = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), read_site("styles.css"), flags=re.S)
+        self.lines = css.split("\n")
+        raw = read_site("styles.css").split("\n")
+        self.primitive_lines, self.root_lines = set(), set()
+        self.primitives, self.defined = set(), {}
+        depth, in_root, in_prims, root_depth = 0, False, False, 0
+        for n, line in enumerate(self.lines, 1):
+            if re.match(r"\s*:root\s*\{", line):
+                in_root, root_depth = True, depth
+            if in_root:
+                self.root_lines.add(n)
+                if "---- Primitives" in raw[n - 1]:
+                    in_prims = True
+                elif "---- Semantic" in raw[n - 1]:
+                    in_prims = False
+                m = re.match(r"\s*(--[\w-]+):\s*([^;]+);", line)
+                if m:
+                    self.defined.setdefault(m.group(1), m.group(2).strip())
+                    if in_prims:
+                        self.primitives.add(m.group(1))
+                        self.primitive_lines.add(n)
+            else:
+                m = re.match(r"\s*(--[\w-]+):\s*([^;]+);", line)
+                if m:
+                    self.defined.setdefault(m.group(1), m.group(2).strip())
+            depth += line.count("{") - line.count("}")
+            if in_root and depth <= root_depth:
+                in_root, in_prims = False, False
+
+    def resolve(self, token):
+        value = self.defined[token]
+        for _ in range(10):
+            m = re.fullmatch(r"var\((--[\w-]+)\)", value)
+            if not m:
+                return value
+            value = self.defined[m.group(1)]
+        raise AssertionError("var() loop at " + token)
+
+
+def swift_standard_palette():
+    """The Mac app's default theme (PanelTheme.standardPalette): colours as #rrggbb, the rest raw."""
+    src = read_repo("mac/Sources/NeedsYouCore/PanelTheme.swift")
+    body = re.search(r"static let standardPalette = PanelPalette\((.*?)\n    \)", src, re.S).group(1)
+    out = {}
+    for key, value in re.findall(r"(\w+): ([^,\n]+(?:\([^)]*\))?)", body):
+        hexm = re.match(r"ThemeRGB\(hex: 0x([0-9A-Fa-f]{6})\)", value.strip())
+        out[key] = "#" + hexm.group(1).lower() if hexm else value.strip()
+    return out
+
+
 def repo_url():
     m = re.search(r'^var REPO_URL = "([^"]+)";$', read_site("site.js"), re.M)
     return m.group(1) if m else None
@@ -203,13 +269,58 @@ class SiteTests(unittest.TestCase):
         self.assertIn('<link rel="canonical" href="%s">' % SITE_ORIGIN, html)
         self.assertIn('<meta property="og:url" content="%s">' % SITE_ORIGIN, html)
 
-    def test_css_hex_only_in_primitives(self):
-        # Like the design tokens it follows: a hex appears only as a primitive
-        # (--name: #hex; at the top of :root); every rule references a variable.
-        for n, line in enumerate(read_site("styles.css").splitlines(), 1):
-            if re.search(r"#[0-9a-fA-F]{3,8}\b", line):
-                with self.subTest(line=n):
-                    self.assertRegex(line, r"^\s*--[\w-]+: #[0-9a-fA-F]{3,8};", line.strip())
+    def test_css_raw_colours_only_in_primitives(self):
+        # Like the design tokens it follows: a raw colour (hex, rgb(), hsl(), a named colour)
+        # appears only as a primitive (--name: <colour>; in the Primitives block at the top of
+        # :root); every rule references a variable.
+        tokens = CssTokens()
+        for n, line in enumerate(tokens.lines, 1):
+            if RAW_COLOUR.search(line) or NAMED_COLOUR.search(line):
+                with self.subTest(line=n, text=line.strip()[:70]):
+                    self.assertIn(n, tokens.primitive_lines, "a raw colour outside the primitives")
+                    self.assertRegex(line, r"^\s*--[\w-]+: (?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\));")
+        self.assertTrue(RAW_COLOUR.search("a { color: hsl(0 0% 100%); }"))
+        self.assertTrue(RAW_COLOUR.search("a { color: rgb(1, 2, 3); }"))
+        self.assertFalse(RAW_COLOUR.search("a { color: color-mix(in srgb, var(--x) 9%, transparent); }"))
+        self.assertTrue(NAMED_COLOUR.search("a { border: 1px solid white; }"))
+
+    def test_components_use_semantic_tokens_only(self):
+        # Colour primitives are referenced only by the semantic tokens (the :root blocks), never
+        # by a component rule, so a colour change is one line in one place. (The type and space
+        # scales have one layer: rules use them directly.)
+        tokens = CssTokens()
+        colours = {p for p in tokens.primitives if RAW_COLOUR.match(tokens.defined[p])}
+        self.assertGreater(len(colours), 20)
+        for n, line in enumerate(tokens.lines, 1):
+            if n in tokens.root_lines:
+                continue
+            for name in re.findall(r"var\((--[\w-]+)", line):
+                with self.subTest(line=n, var=name):
+                    self.assertNotIn(name, colours, "use a semantic colour token")
+
+    def test_pill_colours_mirror_the_app(self):
+        # The pill preview and the demo copy the Mac app's default theme: its priority colours
+        # and the opacities it draws text, hairlines, cards and link chips at.
+        tokens = CssTokens()
+        palette = swift_standard_palette()
+        for token, key in (("--prio-urgent", "urgent"), ("--prio-normal", "normal"), ("--prio-low", "low")):
+            with self.subTest(token=token):
+                self.assertEqual(tokens.resolve(token).lower(), palette[key], "Theme: standardPalette.%s" % key)
+        self.assertEqual(palette["text"], ".white")
+        theme = read_repo("mac/Sources/NeedsYou/Views/Theme.swift")
+        opacities = {
+            "--hud-muted": palette["mutedOpacity"], "--hud-faint": palette["faintOpacity"],
+            "--hud-border": palette["hairlineOpacity"], "--hud-card-fill": palette["cardFillOpacity"],
+        }
+        for token, name in (("--hud-link-fill", "linkFill"), ("--hud-link-fill-hover", "linkFillHover"),
+                            ("--hud-link-stroke", "linkStroke"), ("--hud-link-stroke-hover", "linkStrokeHover"),
+                            ("--hud-link-dest", "linkDestination")):
+            opacities[token] = re.search(r"static var %s: Color \{ text\.opacity\(([\d.]+)\) \}" % name, theme).group(1)
+        for token, alpha in opacities.items():
+            with self.subTest(token=token):
+                m = re.match(r"rgba\(255, 255, 255, ([\d.]+)\)$", tokens.resolve(token))
+                self.assertIsNotNone(m, "%s should be white at an opacity" % token)
+                self.assertEqual(float(m.group(1)), float(alpha))
 
     def test_no_personal_hostnames(self):
         # Only the documented placeholders: hub-a.example.ts.net, <tailnet>, devbox.
