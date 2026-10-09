@@ -1,0 +1,14 @@
+{"acme/app": [
+  {"number": 5, "state": "open", "html_url": "https://github.com/acme/app/security/dependabot/5",
+   "dependency": {"package": {"ecosystem": "npm", "name": "lodash"}, "manifest_path": "package-lock.json"},
+   "security_advisory": {"ghsa_id": "GHSA-xxxx-xxxx-xxxx", "severity": "critical",
+                         "summary": "Prototype pollution in lodash‮", "description": "Never copied to a card"},
+   "security_vulnerability": {"package": {"ecosystem": "npm", "name": "lodash"}, "severity": "critical"}},
+  {"number": 6, "state": "open", "html_url": "https://github.com/acme/app/security/dependabot/6",
+   "dependency": {"package": {"ecosystem": "pip", "name": "requests"}, "manifest_path": "requirements.txt"},
+   "security_advisory": {"severity": "high", "summary": "Leaked proxy credentials in requests"},
+   "security_vulnerability": {"package": {"ecosystem": "pip", "name": "requests"}, "severity": "high"}},
+  {"number": 7, "state": "fixed", "html_url": "https://github.com/acme/app/security/dependabot/7",
+   "security_advisory": {"severity": "critical", "summary": "Already fixed"},
+   "security_vulnerability": {"package": {"name": "minimist"}, "severity": "critical"}}
+]}

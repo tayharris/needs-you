@@ -1,0 +1,20 @@
+{"data": {
+  "assigned": {"nodes": [
+    {"number": 30, "title": "Fix the login redirect", "url": "https://github.com/acme/app/issues/30",
+     "repository": {"nameWithOwner": "acme/app"},
+     "projectItems": {"nodes": [
+       {"project": {"id": "PVT_kwDOAAAAAA3", "title": "Roadmap", "url": "https://github.com/orgs/acme/projects/3"},
+        "fieldValueByName": {"name": "In Progress"}}]}},
+    {"number": 31, "title": "Flaky upload", "url": "https://github.com/acme/web/issues/31",
+     "repository": {"nameWithOwner": "acme/web"},
+     "projectItems": {"nodes": [
+       {"project": {"id": "PVT_kwDOAAAAAA3", "title": "Roadmap", "url": "https://github.com/orgs/acme/projects/3"},
+        "fieldValueByName": {"name": "Blocked"}},
+       {"project": {"id": "PVT_kwHOAAAAAA1", "title": "Mine", "url": "https://github.com/users/example-user/projects/1"},
+        "fieldValueByName": null}]}},
+    {"number": 20, "title": "Cache the session store", "url": "https://github.com/acme/app/pull/20",
+     "repository": {"nameWithOwner": "acme/app"},
+     "projectItems": {"nodes": []}},
+    {}
+  ]}
+}}

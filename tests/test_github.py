@@ -52,6 +52,26 @@ FAKE_GH = textwrap.dedent('''\
             i += 1
         sys.stdout.write(json.dumps({"data": data}))
         sys.exit(1 if None in data.values() else 0)
+    if args[:2] == ["api", "graphql"] and any("projectItems" in a for a in args):
+        if os.path.exists(os.path.join(d, "project_scope")):
+            sys.stdout.write(json.dumps({"data": None, "errors": [{"type": "INSUFFICIENT_SCOPES",
+                "message": "Your token has not been granted the required scopes to execute this query. "
+                           "The 'projectItems' field requires one of the following scopes: ['read:project']"}]}))
+            sys.stderr.write("gh: Your token has not been granted the required scopes ['read:project']\\n")
+            sys.exit(1)
+        sys.stdout.write(read("projects.json"))
+        sys.exit(0)
+    if args[:1] == ["api"] and any("/dependabot/alerts" in a for a in args):
+        if os.path.exists(os.path.join(d, "alerts_403")):
+            sys.stderr.write("gh: Resource not accessible by personal access token (HTTP 403)\\n")
+            sys.exit(1)
+        repo = "/".join(args[1].split("/")[2:4])
+        alerts = json.loads(read("alerts.json")).get(repo)
+        if alerts is None:
+            sys.stderr.write("gh: Not Found (HTTP 404)\\n")
+            sys.exit(1)
+        sys.stdout.write(json.dumps(alerts))
+        sys.exit(0)
     if args[:2] == ["api", "graphql"]:
         sys.stdout.write(read("prs.json"))
         sys.exit(0)
@@ -80,7 +100,7 @@ class GithubPoller(HubTestCase):
         with open(self.gh, "w") as fh:
             fh.write(FAKE_GH)
         os.chmod(self.gh, 0o755)
-        for name in ("notifications.json", "prs.json"):
+        for name in ("notifications.json", "prs.json", "projects.json", "alerts.json"):
             shutil.copy(os.path.join(FIXTURES, name), os.path.join(self.ghdir, name))
         self.state = os.path.join(self.home, ".local", "state", "needs-you", "github.json")
         self.hub = self.make_hub("hub-a")
@@ -404,6 +424,188 @@ class GithubPoller(HubTestCase):
         self.assertEqual(len(self.open_items()), 3)
         outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
         self.assertGreater(len([f for f in os.listdir(outbox) if f.endswith(".json")]), 3)
+
+    # --- Projects status cards (opt-in) ---------------------------------
+
+    PROJECTS = {"NEEDS_YOU_GITHUB_PROJECT_STATUSES": "Blocked=urgent, In Review"}
+    KEY_30 = "work:gh:acme/app#30:project:acme/3"
+
+    def set_status(self, number, status, project=0):
+        def fn(d):
+            for n in d["data"]["assigned"]["nodes"]:
+                if n.get("number") == number:
+                    n["projectItems"]["nodes"][project]["fieldValueByName"] = {"name": status}
+        self.edit("projects.json", fn)
+
+    def project_calls(self):
+        return [c for c in self.calls() if any("projectItems" in a for a in c)]
+
+    def test_projects_off_by_default(self):
+        self.poll()
+        self.assertEqual(self.project_calls(), [])
+        self.assertFalse([k for k in self.open_items() if ":project:" in k])
+        with open(self.state) as fh:
+            self.assertNotIn("projects", json.load(fh))
+
+    def test_project_status_moves_post_and_clear(self):
+        self.poll(self.PROJECTS)
+        # First run records only: acme/web#31 is already Blocked, but it didn't move.
+        self.assertFalse([k for k in self.open_items() if ":project:" in k])
+        self.assertEqual(len(self.project_calls()), 1)
+        self.assertIn("field=Status", self.project_calls()[0])
+
+        self.set_status(30, "Blocked")
+        self.poll(self.PROJECTS)
+        items = self.open_items()
+        self.assertEqual([k for k in items if ":project:" in k], [self.KEY_30])
+        c = items[self.KEY_30]
+        self.assertEqual(c["title"], "acme/app#30 is Blocked in Roadmap: Fix the login redirect")
+        self.assertEqual(c["priority"], "urgent")
+        self.assertEqual(c["source"]["event"], "status")
+        self.assertEqual(c["source"]["agent"], "github")
+        self.assertIsNotNone(c["expires_at"])
+        self.assertEqual(c["links"], [{"label": "Open", "url": "https://github.com/acme/app/issues/30"},
+                                      {"label": "Project", "url": "https://github.com/orgs/acme/projects/3"}])
+
+        self.poll(self.PROJECTS)  # holds: renewed, same item
+        again = self.open_items()[self.KEY_30]
+        self.assertEqual((again["id"], again["content_updated_at"]), (c["id"], c["content_updated_at"]))
+
+        self.set_status(30, "in review")  # another watched status (matched case-insensitively): default normal
+        self.poll(self.PROJECTS)
+        c = self.open_items()[self.KEY_30]
+        self.assertEqual((c["title"], c["priority"]), ("acme/app#30 is In Review in Roadmap: Fix the login redirect",
+                                                       "normal"))
+
+        self.set_status(30, "Done")
+        self.poll(self.PROJECTS)
+        self.assertNotIn(self.KEY_30, self.open_items())
+        self.assertIn(self.KEY_30, {i["key"] for i in self.all_items() if i["status"] == "resolved"})
+
+    def test_project_newly_assigned_counts_as_a_move_and_unassign_resolves(self):
+        self.poll(self.PROJECTS)
+
+        def assign(d):
+            d["data"]["assigned"]["nodes"].append(
+                {"number": 32, "title": "Rotate the signing key", "url": "https://github.com/acme/app/issues/32",
+                 "repository": {"nameWithOwner": "acme/app"},
+                 "projectItems": {"nodes": [{"project": {"id": "PVT_x", "title": "Roadmap",
+                                                         "url": "https://github.com/orgs/acme/projects/3"},
+                                             "fieldValueByName": {"name": "Blocked"}}]}})
+        self.edit("projects.json", assign)
+        self.poll(self.PROJECTS)
+        key = "work:gh:acme/app#32:project:acme/3"
+        self.assertIn(key, self.open_items())
+
+        def unassign(d):
+            d["data"]["assigned"]["nodes"] = [n for n in d["data"]["assigned"]["nodes"] if n.get("number") != 32]
+        self.edit("projects.json", unassign)  # closed or unassigned: it leaves the assigned list
+        self.poll(self.PROJECTS)
+        self.assertNotIn(key, self.open_items())
+        # Excluded repos never get one.
+        self.set_status(30, "Blocked")
+        self.poll(dict(self.PROJECTS, NEEDS_YOU_GITHUB_EXCLUDE="acme/app"))
+        self.assertFalse([k for k in self.open_items() if ":project:" in k])
+
+    def test_project_scope_missing_said_once(self):
+        open(os.path.join(self.ghdir, "project_scope"), "w").close()
+        r = self.poll(self.PROJECTS)
+        self.assertIn("gh auth refresh -s read:project", r.stderr)
+        scope_key = "work:gh:devbox:scope:read-project"
+        card = self.open_items()[scope_key]
+        self.assertEqual(card["priority"], "low")
+        self.assertIn("gh auth refresh -s read:project", card["body"])
+        self.assertIsNone(card["expires_at"])
+        self.assertIn("work:gh:acme/app#20:merge", self.open_items())  # the rest still works
+        for _ in range(3):
+            self.force_notification_poll()
+            r = self.poll(self.PROJECTS)
+            self.assertNotIn("read:project", r.stderr)  # said once
+        self.assertEqual(len(self.project_calls()), 1)  # asked again only hourly
+        self.assertFalse([k for k in self.open_items() if k.endswith(":poller-failing")])
+        self.assertEqual(len([i for i in self.all_items() if i["key"] == scope_key]), 1)
+        # Scope granted and the hour is up: the card resolves and statuses are recorded.
+        os.remove(os.path.join(self.ghdir, "project_scope"))
+        with open(self.state) as fh:
+            st = json.load(fh)
+        st["scopes"]["read:project"] = 1.0
+        with open(self.state, "w") as fh:
+            json.dump(st, fh)
+        self.poll(self.PROJECTS)
+        self.assertNotIn(scope_key, self.open_items())
+        with open(self.state) as fh:
+            self.assertIn("acme/app#30:project:acme/3", json.load(fh)["projects"])
+
+    def test_turning_projects_off_resolves_their_cards(self):
+        self.poll(self.PROJECTS)
+        self.set_status(30, "Blocked")
+        self.poll(self.PROJECTS)
+        self.assertIn(self.KEY_30, self.open_items())
+        self.poll()
+        self.assertNotIn(self.KEY_30, self.open_items())
+
+    # --- Dependabot security alerts (opt-in) -------------------------------
+
+    SECURITY = {"NEEDS_YOU_GITHUB_SECURITY": "1"}
+
+    def alert_calls(self):
+        return [c for c in self.calls() if any("/dependabot/alerts" in a for a in c)]
+
+    def test_security_off_by_default(self):
+        self.poll()
+        self.assertEqual(self.alert_calls(), [])
+        self.assertFalse([k for k in self.open_items() if ":security:" in k])
+
+    def test_security_alert_cards(self):
+        r = self.poll(self.SECURITY)
+        items = self.open_items()
+        self.assertEqual(sorted(k for k in items if ":security:" in k), ["work:gh:acme/app:security:5"])
+        c = items["work:gh:acme/app:security:5"]
+        self.assertEqual(c["title"], "Critical security alert in acme/app: lodash: Prototype pollution in lodash")
+        self.assertEqual(c["priority"], "low")
+        self.assertEqual(c["source"]["event"], "security")
+        self.assertEqual(c["links"], [{"label": "Alert", "url": "https://github.com/acme/app/security/dependabot/5"},
+                                      {"label": "Dependabot", "url": "https://github.com/acme/app/security/dependabot"}])
+        self.assertNotIn("Never copied", c.get("body") or "")
+        self.assertEqual(sorted(c[1] for c in self.alert_calls()),
+                         ["/repos/acme/app/dependabot/alerts?state=open&per_page=30&severity=critical",
+                          "/repos/acme/web/dependabot/alerts?state=open&per_page=30&severity=critical"])
+        self.assertNotIn("404", r.stderr)  # acme/web has alerts off: no card, no error
+        self.assertFalse([k for k in items if k.endswith(":poller-failing")])
+
+        # High too, at normal priority.
+        env = dict(self.SECURITY, NEEDS_YOU_GITHUB_SECURITY_SEVERITIES="high,critical",
+                   NEEDS_YOU_GITHUB_SECURITY_PRIORITY="normal")
+        self.poll(env)
+        items = self.open_items()
+        self.assertEqual(sorted(k for k in items if ":security:" in k),
+                         ["work:gh:acme/app:security:5", "work:gh:acme/app:security:6"])
+        self.assertEqual(items["work:gh:acme/app:security:6"]["priority"], "normal")
+        self.assertIn("severity=critical,high", self.alert_calls()[-1][1])
+
+        # Alert 5 fixed: its card resolves. The threads read: the rest resolve.
+        def fix5(d):
+            d["acme/app"] = [a for a in d["acme/app"] if a["number"] != 5]
+        self.edit("alerts.json", fix5)
+        self.poll(env)
+        self.assertEqual(sorted(k for k in self.open_items() if ":security:" in k), ["work:gh:acme/app:security:6"])
+        self.edit("notifications.json", lambda d: [t for t in d if t["reason"] != "security_alert"])
+        self.force_notification_poll()
+        self.poll(env)
+        self.assertFalse([k for k in self.open_items() if ":security:" in k])
+
+    def test_security_scope_missing_said_once(self):
+        open(os.path.join(self.ghdir, "alerts_403"), "w").close()
+        r = self.poll(self.SECURITY)
+        self.assertIn("security_events", r.stderr)
+        key = "work:gh:devbox:scope:security_events"
+        self.assertIn("gh auth refresh -s security_events", self.open_items()[key]["body"])
+        n = len(self.alert_calls())
+        r = self.poll(self.SECURITY)
+        self.assertNotIn("security_events", r.stderr)
+        self.assertEqual(len(self.alert_calls()), n)
+        self.poll()  # turned off: the scope card goes
+        self.assertNotIn(key, self.open_items())
 
     def test_dry_run_changes_nothing(self):
         r = self.poll(None, "--dry-run")
