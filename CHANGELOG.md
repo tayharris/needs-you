@@ -8,6 +8,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **A card's alert rules no longer hide each other.** Every rule made from a card's menu went to the top of the list, and the first match wins, so choosing **Always Interrupt** (or any rule for everything) after **Only When It Asks → Treat as Urgent** stopped questions being urgent while the menu still showed both. Card-made rules now go in by how specific they are: a session's above its agent's, an "Only When It…" rule above the same menu's rule for everything, the latest first among equals, all above the rules made in Settings. The menu's checkmarks and summary show only the rules that apply, in the order they do ([guide](docs/guides/mac-app.md#focus-heads-down-except-what-you-choose)).
 - **Developer mode's copies show what the sender sent.** The item JSON, the debug report and **Copy as needs-you add Command** gave the priority a bypass rule turned it into (a card made urgent by a rule copied as `--priority=urgent`); they now give the sender's. The `needs-you add` command also carries the card's `source.event` as `--event`, so the copy matches the same event rules.
+- **The custom connector guide documents `source.event`.** Its field table still said `source` keys other than `host`, `agent` and `project` are ignored, but the hub refuses an `event` that isn't a short slug with a 400. It now gives the event's format, its values and the CLI's `--event` ([guide](docs/guides/custom-connector.md#3-the-item-format)).
 
 ## [0.4.0] - 2026-10-09
 
