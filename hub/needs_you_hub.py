@@ -1822,7 +1822,7 @@ class Store:
             row = self.conn.execute("SELECT * FROM items WHERE id = ?", (rec["id"],)).fetchone()
             if row is not None and not self.newer(rec["updated_at"], rec["updated_by"],
                                                   row["updated_at"], row["updated_by"]):
-                return False
+                return self._adopt_answer(rec, row)
             if rec["purged_at"] is None and self._stays_dead(rec, row):
                 rec.update(TOMBSTONE_TEXT_COLS)  # its metadata, never its text
                 rec["purged_at"] = (row["purged_at"] if row is not None and row["purged_at"] is not None
@@ -1839,6 +1839,11 @@ class Store:
                     and row["content_updated_at"] == rec["content_updated_at"]):
                 for c in ("answer", "answered_at", "answered_by"):  # from a hub older than answers
                     rec[c] = row[c]
+            if row is not None and not rec["answer"] and row["answer"] and self._same_question(rec, row):
+                # Written by a hub that hadn't heard of the answer yet (a re-post of the same
+                # question by the same token keeps it on any one hub): keep it.
+                for c in ("answer", "answered_at", "answered_by"):
+                    rec[c] = row[c]
             self._write_item(rec)
             now = self.now_ms()
             if rec["status"] == "open" and (rec["expires_at"] is None or rec["expires_at"] > now):
@@ -1848,6 +1853,28 @@ class Store:
                     return True
             self._settle_content(rec["superseded_by"] or rec["id"])
             return True
+
+    @staticmethod
+    def _same_question(a: Any, b: Any) -> bool:
+        """Would a re-post of `b` as `a` on one hub keep `b`'s answer? The same question, from
+        the same token (upsert_item)."""
+        return (a["question"] is not None and a["token_id"] == b["token_id"]
+                and _json_val(a["question"], None) == _json_val(b["question"], None))
+
+    def _adopt_answer(self, rec: Dict[str, Any], row: Any) -> bool:
+        """A replicated version that lost LWW but carries an answer ours lacks to the same
+        question: ours was written by a hub that hadn't heard of the answer yet, so take the
+        answer as a new write (every hub then converges on it). Inside a transaction."""
+        if (not rec["answer"] or row["answer"] or row["purged_at"] is not None
+                or not self._same_question(rec, row)):
+            return False
+        mine = dict(row)
+        mine.update({"answer": rec["answer"], "answered_at": rec["answered_at"],
+                     "answered_by": rec["answered_by"],
+                     "updated_at": self.bump(row["updated_at"]), "updated_by": self.hub_id})
+        self._write_item(mine)
+        self.enqueue("item", mine["id"])
+        return True
 
     def _stays_dead(self, rec: Dict[str, Any], row: Any) -> bool:
         """A replicated version that must arrive as a tombstone: it is closed (or expired) and
