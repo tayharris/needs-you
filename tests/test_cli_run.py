@@ -120,16 +120,36 @@ class RunCommand(CliTestCase):
         # wait, while the command blocked writing to the full pipe.
         import signal
         import subprocess
-        script = "import sys, time; time.sleep(1); sys.stderr.write('x' * 700000); print('child-done')"
+        # The SIGINT has to land while the wrapper waits on the command, and the big write has
+        # to come after it: the command announces itself on stderr (seeing that through the
+        # wrapper means its reader is running and it's at the wait), then holds the write until
+        # the test says the signal went out.
+        go = os.path.join(self.home, "go")
+        script = ("import os, sys, time; sys.stderr.write('child-ready\\n'); sys.stderr.flush(); "
+                  "end = time.monotonic() + 60\n"
+                  "while not os.path.exists(%r) and time.monotonic() < end: time.sleep(0.01)\n"
+                  "sys.stderr.write('x' * 700000); print('child-done')" % go)
         env = {"HOME": self.home, "PATH": os.environ.get("PATH", ""), "NEEDS_YOU_URL": self.dead,
                "NEEDS_YOU_TOKEN": "t", "NEEDS_YOU_TIMEOUT": "1"}
         p = subprocess.Popen([PY, CLI, "run", "--", PY, "-c", script], env=env, stdout=subprocess.PIPE,
-                             stderr=subprocess.DEVNULL, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+                             stderr=subprocess.PIPE, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        import select
         import time
-        time.sleep(0.5)
+        seen, deadline = b"", time.monotonic() + 30
+        while b"child-ready" not in seen:
+            left = deadline - time.monotonic()
+            if left <= 0 or not select.select([p.stderr], [], [], left)[0]:
+                p.kill()
+                p.communicate()
+                self.fail("the command never started under the wrapper")
+            chunk = os.read(p.stderr.fileno(), 65536)
+            if not chunk:
+                break
+            seen += chunk
         p.send_signal(signal.SIGINT)
+        open(go, "w").close()
         try:
-            out, _ = p.communicate(timeout=15)
+            out, _ = p.communicate(timeout=30)
         except subprocess.TimeoutExpired:
             p.kill()
             p.communicate()
