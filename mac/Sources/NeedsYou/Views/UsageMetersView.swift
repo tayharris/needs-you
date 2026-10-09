@@ -83,7 +83,7 @@ private struct UsageBarRow: View {
                 .frame(width: 34, alignment: .trailing)
                 .foregroundStyle(bar.level == .normal ? Theme.text.opacity(0.8) : bar.level.color)
             Text(verbatim: bar.resetText ?? "")
-                .frame(width: 92, alignment: .leading)
+                .frame(width: 108, alignment: .leading)
                 .foregroundStyle(Theme.faint)
                 .lineLimit(1)
         }
@@ -116,14 +116,16 @@ struct PillUsageMeter: View {
     let metrics: PillMetrics
 
     var body: some View {
-        VStack(spacing: 1.5) {
+        // At most 2 pt above the bottom edge plus two 1 pt lines: below the digits, which
+        // sit centred in the pill (PillMetrics.height).
+        VStack(spacing: 1) {
             ForEach(bars) { bar in
                 UsageTrack(pct: bar.pct, color: bar.level == .normal ? Theme.text.opacity(0.45) : bar.level.color,
-                           height: 1.5)
+                           height: 1)
             }
         }
-        .padding(.horizontal, max(6, metrics.cornerRadius * 0.8))
-        .padding(.bottom, 3)
+        .padding(.horizontal, max(8, metrics.cornerRadius))
+        .padding(.bottom, 2)
         .allowsHitTesting(false)
     }
 }
