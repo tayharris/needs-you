@@ -42,6 +42,13 @@ certificate fields come from GitHub's OIDC token, so a workflow can't forge them
 exit, empty or invalid JSON, a timeout or any mismatch refuses the update, like the
 release-match check.
 
+**Without gh, or with one too old:** the CLI fetches the same release files from github.com
+over https and checks them against `SHA256SUMS` and `release-manifest.json`, but can't check
+provenance, and says so. A `gh` whose `gh attestation verify --help` lacks `--source-ref` or
+`--deny-self-hosted-runners` (Ubuntu 24.04's packaged gh 2.45 has no `attestation` command at
+all) counts as no `gh`: it can't run the check whatever the release, and someone who can put
+an old `gh` first on `PATH` could as well take `gh` off it. `needs-you doctor` names the case.
+
 **What this covers:** the CLI verifies provenance of the manifest only, and binds every file
 it installs to it through checksums: each file from the hub must equal its copy in the
 release's server tarball, and the tarball's sha256 must equal both its `SHA256SUMS` line and

@@ -506,10 +506,11 @@ class ReleaseCrossCheck(UpdateCase):
     tarball, itself checked against SHA256SUMS). The fake gh builds that release."""
 
     def fake_gh(self, files, version, tamper=False, fail=False, attest="ok", private="false",
-                manifest_tarball_sha=None):
+                manifest_tarball_sha=None, attests=True):
         """tamper: True (the CLI) or a file name the release has a different copy of;
         attest: "ok" (gh attestation verify passes) or "fail"; private: what
-        `gh api repos/... --jq .private` prints."""
+        `gh api repos/... --jq .private` prints; attests: False is a gh too old to have
+        `attestation verify --source-ref` (Ubuntu 24.04's 2.45 has no `attestation` at all)."""
         import io
         import tarfile
         rel = os.path.join(self.tmp, "release")
@@ -551,6 +552,11 @@ class ReleaseCrossCheck(UpdateCase):
             attest_cmd = "cat %s; exit 0" % out
         with open(gh, "w") as fh:
             fh.write("#!/bin/sh\necho \"$*\" >> %s\n" % log)
+            if attests:
+                fh.write('[ "$*" = "attestation verify --help" ] && { echo "  --source-ref string"; '
+                         'echo "  --deny-self-hosted-runners"; exit 0; }\n')
+            else:
+                fh.write('[ "$1" = attestation ] && { echo \'unknown command "attestation" for "gh"\' >&2; exit 1; }\n')
             fh.write('[ "$1" = attestation ] && { %s; }\n' % attest_cmd)
             fh.write('[ "$1" = api ] && { echo %s; exit 0; }\n' % private)
             if fail:
@@ -964,6 +970,20 @@ class ReleaseOverHttps(UpdateCase):
         self.assertIn("build provenance not checked", note)
         self.assertEqual(fetched, ["https://github.com/tayharris/needs-you/releases/download/v9.8.7/" + n
                                    for n in ("SHA256SUMS", "needs-you-server-9.8.7.tar.gz", "release-manifest.json")])
+
+    def test_a_gh_too_old_to_attest_counts_as_no_gh(self):
+        # gh 2.45 (Ubuntu 24.04) has no `attestation`: every update was refused as if the
+        # release had no provenance. It's checked like a machine without gh, and says why.
+        version = "9.8.7"
+        gh, log = self.fake_gh(current_files(), version, attests=False)
+        mod, fetched = self.load(os.path.join(self.tmp, "release"))
+        mod._gh = lambda: gh
+        digests, note = mod.release_digests(version, ["needs-you"])
+        self.assertEqual(digests["needs-you"], hashlib.sha256(read(CLI)).hexdigest())
+        self.assertIn("build provenance not checked: this gh is too old", note)
+        self.assertEqual(len(fetched), 3)
+        with open(log) as fh:
+            self.assertNotIn("release download", fh.read())
 
     def test_tampered_tarball_refuses(self):
         version = "9.8.7"

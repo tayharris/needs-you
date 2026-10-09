@@ -2990,6 +2990,20 @@ def _gh() -> Optional[str]:
     return shutil.which("gh")
 
 
+def _gh_attests(gh: str) -> bool:
+    """Whether this gh can run the provenance check: `gh attestation verify` came in gh 2.49
+    and --source-ref later, so an older gh (Ubuntu 24.04 ships 2.45) can't, whatever the
+    release. Such a gh counts as no gh: a machine without gh is checked the same way."""
+    import subprocess
+    try:
+        r = subprocess.run([gh, "attestation", "verify", "--help"], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    text = r.stdout + r.stderr
+    return r.returncode == 0 and "--source-ref" in text and "--deny-self-hosted-runners" in text
+
+
 RELEASE_WORKFLOW = RELEASE_REPO + "/.github/workflows/release.yml"
 SLSA_PREDICATE = "https://slsa.dev/provenance/v1"
 
@@ -3173,6 +3187,9 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
     gh = _gh()
     if not gh and os.environ.get("NEEDS_YOU_GH"):
         return None, "gh isn't installed"  # NEEDS_YOU_GH=none: no cross-check at all (tests)
+    no_gh = "gh isn't installed"
+    if gh and not _gh_attests(gh):
+        gh, no_gh = None, "this gh is too old to check build provenance (upgrade gh to check it)"
     if _vtuple(version) is None:
         raise UpdateRefused("the hub's version %s isn't X.Y.Z" % clean(version))
     v = "%d.%d.%d" % _vtuple(version)  # type: ignore[str-format]
@@ -3191,7 +3208,7 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
             try:
                 _release_fetch_https(v, ["SHA256SUMS", tarball, "release-manifest.json"], tmp)
             except _ReleaseUnreachable as e:
-                return None, "gh isn't installed, and github.com couldn't be reached (%s)" % e
+                return None, "%s, and github.com couldn't be reached (%s)" % (no_gh, e)
         sums: Dict[str, str] = {}
         try:
             with open(os.path.join(tmp, "SHA256SUMS"), "r", encoding="utf-8") as fh:
@@ -3206,7 +3223,9 @@ def release_digests(version: str, names: List[str]) -> Tuple[Optional[Dict[str, 
                 note = release_provenance(gh, v, tarball, sums.get(tarball, ""), tmp)
             else:
                 _check_release_manifest(os.path.join(tmp, "release-manifest.json"), v, tarball, sums.get(tarball, ""))
-                note = "downloaded from github.com without gh; build provenance not checked (install gh to check it)"
+                note = ("downloaded from github.com without gh; build provenance not checked (install gh to check it)"
+                        if no_gh == "gh isn't installed" else
+                        "downloaded from github.com; build provenance not checked: " + no_gh)
             out: Dict[str, str] = {}
             with tarfile.open(tar_path, "r:gz") as tf:
                 for name in names:
@@ -4777,8 +4796,13 @@ def _doctor_update(self: "Doctor") -> None:
     st = _read_state()
     when = st.get("auto_ok_at") or st.get("last_update_at")
     tail = "; daily auto-update %s" % ("on (NEEDS_YOU_AUTO_UPDATE=1)" if auto else "off")
-    if auto and not os.environ.get("NEEDS_YOU_GH") and not _gh():
-        tail += ", checked against the GitHub release over https (no gh: no build-provenance check)"
+    if auto and not os.environ.get("NEEDS_YOU_GH"):
+        gh = _gh()
+        if not gh:
+            tail += ", checked against the GitHub release over https (no gh: no build-provenance check)"
+        elif not _gh_attests(gh):
+            tail += (", checked against the GitHub release over https (this gh is too old for the "
+                     "build-provenance check: upgrade gh)")
     if when:
         tail += ", last %s ago" % _age(time.time() - float(when))
     if not self.cfg.urls:
