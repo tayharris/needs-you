@@ -967,7 +967,7 @@ class InstallHubJoin(HubTestCase):
         self.port = free_port()
 
     def fake_release(self, version=None, tar_version=None, manifest_version=None, tamper_sums=False,
-                     private=True):
+                     private=True, old_gh=False):
         """A stand-in GitHub release (SHA256SUMS, the server tarball, release-manifest.json)
         built from this checkout, and a fake `gh` that serves it and logs each call to
         self.gh_log. `tar_version`/`manifest_version`: what the tarball's top directory and the
@@ -1003,11 +1003,14 @@ case "$1 $2" in
   "release download")
     dir=""; while [ $# -gt 0 ]; do [ "$1" = --dir ] && dir=$2; shift; done
     cp "%s"/* "$dir"/ ;;
-  "attestation verify") echo "no attestations found" >&2; exit 1 ;;
+  "attestation verify")
+    [ "$3" = --help ] && [ -z "%s" ] && { echo "  --source-ref string"; echo "  --deny-self-hosted-runners"; exit 0; }
+    [ -n "%s" ] && { echo 'unknown command "attestation" for "gh"' >&2; exit 1; }
+    echo "no attestations found" >&2; exit 1 ;;
   "api repos/tayharris/needs-you") echo %s ;;
   *) exit 2 ;;
 esac
-""" % (self.gh_log, rel, "true" if private else "false"))
+""" % (self.gh_log, rel, "1" if old_gh else "", "1" if old_gh else "", "true" if private else "false"))
         os.chmod(gh, 0o755)
         return dict(self.env, NEEDS_YOU_GH=gh)
 
@@ -1214,6 +1217,15 @@ esac
         r = self.piped(self._script(), "--join", link, env=self.fake_release(private=False))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("no valid build provenance", r.stderr)
+
+    def test_a_gh_too_old_to_attest_installs_with_a_note(self):
+        # Ubuntu 24.04's gh 2.45 has no `attestation`: every release was refused as having no
+        # provenance. It counts as no gh: checksums and the manifest still bind the files.
+        link = self.peer_link()
+        r = self.piped(self._script(), "--join", link, env=self.fake_release(private=False, old_gh=True))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("this gh is too old", r.stdout + r.stderr)
+        self.assertEqual([l["hub_id"] for l in self.mac.store.peer_links()], ["srv"])
 
     def test_a_checkout_with_a_symlink_is_refused_as_root(self):
         src = self._checkout_copy()
