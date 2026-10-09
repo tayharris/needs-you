@@ -829,9 +829,13 @@ def make_links():
     return links
 
 
-def base_args(key, title, body, priority):
+def base_args(key, title, body, priority, event=""):
+    """`needs-you add` for a card. `event` is source.event (question, approval, finished,
+    failed, context): what the person's alert rules on the Mac can match."""
     context = os.environ.get("NEEDS_YOU_AGENT_CONTEXT") or ""
     args = [os.environ["NY_CLI"], "add", "--key", key]
+    if event:
+        args += ["--event", event]
     if context in ("work", "personal"):  # else the CLI's NEEDS_YOU_DEFAULT_CONTEXT, else work
         args += ["--context", context]
     # --opt=value: a title, body or project starting with "-" isn't taken for an option
@@ -850,6 +854,20 @@ def base_args(key, title, body, priority):
 
 
 QUESTION_POSTED = [None]  # the `question` field the last post carried (None: the steps form)
+NO_EVENT = [False]  # the CLI refused --event (older than it): post without it
+
+
+def without_event(args):
+    out = []
+    skip = False
+    for a in args:
+        if skip:
+            skip = False
+        elif a == "--event":
+            skip = True
+        elif not a.startswith("--event="):
+            out.append(a)
+    return out
 
 # The variables by which the CLI tells it runs inside an agent's session (its agent_session),
 # and notes a `needs` item it posts as that agent's own blocker. The hook's card isn't one:
@@ -917,13 +935,25 @@ def post(args, links, steps=None, asked=None, steps_body=None):
     if steps:
         args = args + ["--steps-json=" + json.dumps(steps[:MAX_STEPS], ensure_ascii=False)]
 
-    def run(ls):
+    def call(a, ls):
         try:
-            return subprocess.run([inert_arg(a) for a in args] + [a for l in ls for a in ("--link", l)],
-                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, timeout=15, env=cli_env()).returncode
+            p = subprocess.run([inert_arg(x) for x in a] + [x for l in ls for x in ("--link", l)],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, timeout=15, env=cli_env())
+            return p.returncode, p.stderr or b""
         except Exception:
-            return 1
+            return 1, b""
+
+    def run(ls):
+        rc, err = call(without_event(args) if NO_EVENT[0] else args, ls)
+        # A CLI older than --event refuses it (argparse: "unrecognized arguments: --event
+        # ..."). The card matters more than its event: post without it, here and for the
+        # rest of this hook.
+        if rc == 2 and not NO_EVENT[0] and "--event" in args and b"unrecognized arguments" in err \
+                and b"--event" in err:
+            NO_EVENT[0] = True
+            rc, err = call(without_event(args), ls)
+        return rc
     rc = run(links)
     # A hub older than one of the app's needsyou:// actions rejects the item (400, exit 2);
     # post again without them so the card still arrives.
@@ -1941,6 +1971,30 @@ def notify():
     return rc
 
 
+# source.event for Claude Code's Notification types (docs/API.md): what the alert rules match.
+NOTIFICATION_EVENTS = {
+    "permission_prompt": "approval",
+    "idle_prompt": "finished",
+    "elicitation_dialog": "question",
+    "elicitation_url_dialog": "failed",  # an MCP server needs a sign-in
+    "agent_needs_input": "question",
+    "quota_auto_resume_disabled": "failed",
+}
+
+
+def card_event(kind, what):
+    """source.event for a card from its kind: a permission prompt or plan is `approval`, a
+    question `question`, an error, rate limit or sign-in `failed`; a turn that ended is
+    `question` when it ended on one (turn_card's "<Agent> asks"), else `finished`."""
+    if kind == "permission":
+        return "approval"
+    if kind == "question":
+        return "question"
+    if kind == "failure":
+        return "failed"
+    return "question" if what.endswith(" asks") else "finished"
+
+
 # Set by ask(): the id and answerability of the AskUserQuestion card it posts.
 ASK = {"qid": "", "answerable": False}
 
@@ -1949,6 +2003,7 @@ def notify_card():
     """(rc, kind): post the card for this hook event (rc 3: no card for it)."""
     priority = agent_priority()
     kind = "notify"
+    ev = ""
     steps = []
     asked = None
     if AGENT in ("codex", "gemini", "opencode", "copilot", "grok", "kimi", "cursor", "cline", "aider"):
@@ -1961,11 +2016,13 @@ def notify_card():
         steps = card[3] if len(card) > 3 else []
         if isinstance(steps, Asked):
             asked, steps = steps, []
+        ev = card_event(kind, what)
     elif event == "PermissionRequest":
         if data.get("requires_user_approval") is False:
             return 3, kind
         kind = "permission"
         tool = field("tool_name")
+        ev = "question" if tool == "AskUserQuestion" else "approval"
         ti = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
         if tool == "ExitPlanMode":
             what, msg = plan_card("Claude", ti.get("plan"))
@@ -1988,6 +2045,7 @@ def notify_card():
             msg = "Claude is asking to use %s." % tool_label(tool)
     elif event == "StopFailure":
         kind = "failure"
+        ev = "failed"
         et = field("error_type")
         what = {
             "rate_limit": "Claude hit a rate limit",
@@ -2016,16 +2074,18 @@ def notify_card():
             "quota_auto_resume_disabled": "Claude hit its usage limit",
         }.get(ntype, "Claude needs you")
         msg = one_line(data.get("message"), 400)
+        ev = NOTIFICATION_EVENTS.get(ntype, "")
         if ntype == "quota_auto_resume_disabled":
             kind = "failure"
         elif ntype == "idle_prompt" and turn_text_on():
             # About a minute after any turn ended: finished, or a question it ended on (the
             # transcript's last assistant text; the notification itself has none).
             kind, what, msg = turn_card("Claude", claude_last_text(field("transcript_path")), what, msg)
+            ev = card_event(kind, what)
     title = TITLE[0] or card_title(what)
     body = "\n\n".join(([msg] if msg else []) + where_lines())
     steps_body = "\n\n".join(([asked.steps_msg] if asked else []) + where_lines())
-    rc = post(base_args(os.environ["NY_KEY"], title, body, priority), make_links(), steps, asked, steps_body)
+    rc = post(base_args(os.environ["NY_KEY"], title, body, priority, ev), make_links(), steps, asked, steps_body)
     return rc, kind
 
 
@@ -2263,7 +2323,7 @@ def context():
            "summarize and keep going, or `/clear` to start fresh if the next task is unrelated."
            % (used // 1000, window // 1000, pct))
     body = "\n\n".join([msg] + where_lines())
-    rc = post(base_args(key, title, body, "low"), make_links())
+    rc = post(base_args(key, title, body, "low", "context"), make_links())
     if rc == 0:
         text = "key=%s\n" % key
         if os.environ.get("NY_PID") and os.environ.get("NY_START"):
