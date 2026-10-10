@@ -92,6 +92,49 @@ def settings_model():
     return page_group, by_group
 
 
+SETTINGS_LAYOUT = os.path.join(ROOT, "mac", "Sources", "NeedsYouCore", "SettingsLayout.swift")
+SECTION_TAG = re.compile(r"^\s*//\s*settings-section:\s*(\w+)\s*$")
+STRING = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
+
+
+def literal_variants(s):
+    s = re.sub(r"\\\(.*?\)", "", s).strip()
+    return {s, s.rstrip("….").strip()} if len(s) >= 3 else set()
+
+
+def page_strings():
+    """{page title: strings its sections show}. SettingsSection (SettingsLayout.swift) says
+    which page each section is on; the app tags each section's view
+    `// settings-section: <case>`, and a section's strings are those from its tag to the next."""
+    pages = read(os.path.relpath(SETTINGS_PAGES, ROOT))
+    body = re.search(r"public var title: String \{\s*switch self \{(.*?)\n        \}", pages, re.S).group(1)
+    title = dict(re.findall(r'case \.(\w+): return "([^"]*)"', body))
+    layout = read(os.path.relpath(SETTINGS_LAYOUT, ROOT))
+    tab_body = re.search(r"public var tab: SettingsTab \{\s*switch self \{(.*?)\n        \}", layout, re.S).group(1)
+    section_tab = {}
+    for cases, tab in re.findall(r"case ([.\w, ]+): return \.(\w+)", tab_body):
+        for case in re.findall(r"\.(\w+)", cases):
+            section_tab[case] = tab
+    out = {}
+    for dirpath, _, files in os.walk(SWIFT_DIRS[0]):
+        for f in files:
+            if not f.endswith(".swift"):
+                continue
+            with open(os.path.join(dirpath, f), encoding="utf-8") as fh:
+                current = None
+                for line in fh:
+                    m = SECTION_TAG.match(line)
+                    if m and m.group(1) in section_tab:
+                        current = title[section_tab[m.group(1)]]
+                        continue
+                    if current:
+                        for lit in STRING.findall(line):
+                            out.setdefault(current, set()).update(literal_variants(lit))
+    for t in list(out):   # "Other hubs (advanced)" may be named without its parenthesis.
+        out.setdefault(re.sub(r"\s*\([^)]*\)$", "", t), out[t])
+    return out
+
+
 def swift_strings():
     """Every string literal in the app's Swift sources (labels, headers, buttons, menu items)."""
     out = set()
@@ -149,6 +192,7 @@ class SettingsPathTests(unittest.TestCase):
     def setUpClass(cls):
         cls.page_group, cls.by_group = settings_model()
         cls.strings = swift_strings()
+        cls.by_page = page_strings()
 
     def check(self, segs):
         """None if the path is real, else why not."""
@@ -163,7 +207,15 @@ class SettingsPathTests(unittest.TestCase):
             page = starts_with_one_of(rest[0], self.by_group[first])
             if page is None:
                 return "%r is not a page under %s (%s)" % (rest[0], first, ", ".join(self.by_group[first]))
-            rest = rest[1:]
+            first, rest = page, rest[1:]
+        if rest and first in self.by_page:
+            # The first thing on a page must be on that page, not on another one.
+            seg = rest[0]
+            here = starts_with_one_of(seg, self.by_page[first])
+            elsewhere = sorted(p for p, strings in self.by_page.items()
+                               if p != first and starts_with_one_of(seg, strings))
+            if here is None and elsewhere:
+                return "%r is on %s, not %s" % (seg, " / ".join(elsewhere), first)
         for seg in rest:
             # A path is cut at a comma, so "Expiring certificates" stands for the app's
             # "Expiring certificates, domains and keys".
@@ -199,6 +251,71 @@ class SettingsPathTests(unittest.TestCase):
         self.assertEqual(list(settings_paths("System Settings → Privacy & Security")), [])
         self.assertEqual(list(settings_paths("in Linear, Settings → Account → API")), [])
         self.assertIsNone(self.check(next(settings_paths("**Settings → Appearance → Usage meters** has"))[1]))
+        # Moved sections are caught: the edge glow is on Alert style, not Alerts.
+        self.assertIn("Edge glow", self.by_page["Alert style"])
+        self.assertIsNotNone(self.check(next(settings_paths("Settings → Alerts → Edge glow"))[1]))
+        self.assertIsNone(self.check(next(settings_paths("Settings → Appearance → Alert style → Edge glow"))[1]))
+
+
+# ---------------------------------------------------------------------------------------------
+# mac/README.md's list of stored keys
+# ---------------------------------------------------------------------------------------------
+
+def swift_key_value(ref):
+    """`UIPrefs.Key.theme` or `EdgeGlowMode.defaultsKey` or `AppPrefKey.userName.rawValue`:
+    the UserDefaults key it names, read from the Swift source."""
+    sources = {}
+    for d in SWIFT_DIRS:
+        for dirpath, _, files in os.walk(d):
+            for f in files:
+                if f.endswith(".swift"):
+                    with open(os.path.join(dirpath, f), encoding="utf-8") as fh:
+                        sources[f] = fh.read()
+    parts = ref.split(".")
+    owner = parts[0]
+    for src in sources.values():
+        m = re.search(r"(?:struct|enum|class|extension) %s\b" % re.escape(owner), src)
+        if not m:
+            continue
+        rest = src[m.start():]
+        if parts[-1] == "rawValue":       # an enum case: its raw value or its name
+            case = parts[1]
+            cm = re.search(r'\bcase %s = "([^"]+)"' % case, rest)
+            return cm.group(1) if cm else case
+        name = parts[-1]
+        km = re.search(r'static let %s = "([^"]+)"' % re.escape(name), rest)
+        if km:
+            return km.group(1)
+    return None
+
+
+class StoredKeysTests(unittest.TestCase):
+    def test_mac_readme_lists_every_look_key(self):
+        # Every look setting's stored key is in the `defaults read app.needsyou.mac` list.
+        layout = read(os.path.relpath(SETTINGS_LAYOUT, ROOT))
+        readme = read("mac/README.md")
+        para = next(p for p in readme.split("\n\n") if "defaults read app.needsyou.mac" in p and "Every default" in p)
+        refs = re.findall(r"\.look\((\w+\.[\w.]+),", layout)
+        self.assertGreater(len(refs), 20)
+        for ref in refs:
+            key = swift_key_value(ref)
+            with self.subTest(setting=ref):
+                self.assertIsNotNone(key, "can't resolve " + ref)
+                self.assertIn("`%s`" % key, para, "mac/README.md: add `%s` to the stored keys" % key)
+
+    def test_mac_readme_names_no_stale_key(self):
+        readme = read("mac/README.md")
+        para = next(p for p in readme.split("\n\n") if "defaults read app.needsyou.mac" in p and "Every default" in p)
+        sources = ""
+        for d in SWIFT_DIRS:
+            for dirpath, _, files in os.walk(d):
+                for f in files:
+                    if f.endswith(".swift"):
+                        with open(os.path.join(dirpath, f), encoding="utf-8") as fh:
+                            sources += fh.read()
+        for word in re.findall(r"`([a-z][A-Za-z]+)`", para):
+            with self.subTest(key=word):
+                self.assertRegex(sources, r"\b%s\b" % word, "mac/README.md names `%s`, which no Swift code uses" % word)
 
 
 # ---------------------------------------------------------------------------------------------

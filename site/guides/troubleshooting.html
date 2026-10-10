@@ -119,6 +119,7 @@ tailscale status | head                          # is this machine on the tailne
 <li><strong>Mac can't reach a server hub:</strong> the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.</li>
 <li><strong>Wrong hub:</strong> the sender's <code>NEEDS_YOU_URLS</code> must include the Mac's hub or a server hub peered with it.</li>
 <li><strong>Hubs out of sync:</strong> if the Mac polls <code>hub-a</code> and the sender wrote to <code>hub-b</code>, replication should copy it within seconds. If it doesn't, check the peer list and the replication outbox on <code>hub-b</code> (<a href="hub.html">Server hubs</a>).</li>
+<li><strong>The pill is there but hard to see</strong> over bright or busy windows: <strong>Settings → Appearance → Theme → Background → Solid</strong> draws it opaque, or raise <strong>Settings → Appearance → Panel and cards → Background darkness</strong> for the glass (<a href="mac-app.html#themes">Mac app → Themes</a>).</li>
 </ol>
 <h2 id="duplicate-or-stale-cards">Duplicate or stale cards <a class="anchor" href="#duplicate-or-stale-cards" aria-label="Link to this section">#</a></h2>
 <ul>
