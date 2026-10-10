@@ -80,7 +80,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .otherHubs:
             return "Optional. Join a hub someone else runs, or add one by URL. Always-on server hubs are added in Built-in hub."
         case .theme:
-            return "The pill's and cards' colours: a theme, light or dark, and an accent colour."
+            return "The pill's and cards' colours: a theme, light or dark, an accent colour, and glass or a solid background."
         case .pill:
             return "The collapsed pill: its size, what it says, how it splits the count, and the new badge."
         case .cards:

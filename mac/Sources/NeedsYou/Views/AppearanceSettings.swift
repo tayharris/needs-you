@@ -3,7 +3,8 @@ import NeedsYouCore
 import SwiftUI
 
 // settings-section: theme
-/// Settings → Appearance → Theme: the theme (PanelTheme) and an accent colour, with a live sample.
+/// Settings → Appearance → Theme: the theme (PanelTheme), an accent colour (ThemeAccent) and
+/// the background (PanelBackground), with a live sample of the pill and the open panel.
 /// Lives in the Settings window only; the panel never takes focus.
 struct AppearanceSettingsSection: View {
     @ObservedObject var model: AppModel
@@ -12,6 +13,14 @@ struct AppearanceSettingsSection: View {
     private let columns = [GridItem(.adaptive(minimum: 104, maximum: 140), spacing: 12)]
 
     var body: some View {
+        Section {
+            ThemeSample(model: model, settings: settings)
+        } header: {
+            Text("Preview")
+        } footer: {
+            Text("Urgent stays red and easy to read in every theme. With macOS's Increase Contrast on, secondary text and borders get stronger.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         Section {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                 ForEach(PanelTheme.allCases, id: \.self) { theme in
@@ -23,57 +32,44 @@ struct AppearanceSettingsSection: View {
             .padding(.vertical, 4)
             Text(settings.ui.theme.detail)
                 .font(.caption).foregroundStyle(.secondary)
-            ThemeSample(model: model, settings: settings)
         } header: {
             Text("Theme")
         } footer: {
-            Text("Urgent stays red and easy to read in every theme. Match system and High contrast switch between dark and light with macOS. Default is the original look.")
+            Text("Match system and High contrast switch between dark and light with macOS. Default is the original look.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section {
-            Picker(selection: accentChoice) {
-                Text("Theme's own").tag("")
-                ForEach(ThemeAccent.Preset.allCases, id: \.self) { preset in
-                    Label {
-                        Text(preset.title)
-                    } icon: {
-                        Image(nsImage: Self.dot(NSColor(preset.color)))
-                    }
-                    .tag(preset.rawValue)
-                }
-                Text("Custom").tag("custom")
-            } label: {
-                LabelWithDetail("Accent colour", "Ticked steps, links in card text and small badges. Priority colours don't change.")
-            }
+            AccentRow(settings: settings)
             if case .custom = settings.ui.accent {
                 ColorPicker(selection: customColor, supportsOpacity: false) {
-                    LabelWithDetail("Custom colour", "Made lighter or darker if it wouldn't read on the panel.")
+                    LabelWithDetail("Custom colour", customDetail)
                 }
             }
         } header: {
-            Text("Accent")
+            Text("Accent colour")
+        } footer: {
+            Text("Ticked steps, links in card text and small badges. Priority colours never change, and red is kept for urgent.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Section {
+            Picker(selection: $settings.ui.background) {
+                ForEach(PanelBackground.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: {
+                LabelWithDetail("Behind the pill and panel", settings.ui.background.detail)
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Background")
         }
     }
 
-    /// The accent picker's tag: "" (theme), a preset name, or "custom".
-    private var accentChoice: Binding<String> {
-        Binding(
-            get: {
-                switch settings.ui.accent {
-                case .theme: return ""
-                case .preset(let p): return p.rawValue
-                case .custom: return "custom"
-                }
-            },
-            set: { tag in
-                if tag == "custom" {
-                    if case .custom = settings.ui.accent { return }
-                    settings.ui.accent = .custom(Theme.palette.accent)
-                } else {
-                    settings.ui.accent = ThemeAccent(stored: tag)
-                }
-            }
-        )
+    /// What the custom colour does, and whether it's refused for looking like urgent.
+    private var customDetail: String {
+        let palette = settings.ui.theme.palette(systemIsDark: Theme.systemIsDark)
+        if let color = settings.ui.accent.color, palette.refusesAccent(color) {
+            return "Too close to urgent's red, so the theme's own accent is used. Pick another colour."
+        }
+        return "Made lighter or darker if it wouldn't read on the panel."
     }
 
     private var customColor: Binding<Color> {
@@ -85,16 +81,65 @@ struct AppearanceSettingsSection: View {
             }
         )
     }
+}
 
-    static func dot(_ color: NSColor) -> NSImage {
-        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
-            color.setFill()
-            NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill()
-            return true
+/// The accent swatches: the theme's own, the presets, then Custom, with the chosen one's
+/// name. Plain buttons in the Settings window.
+private struct AccentRow: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        let own = settings.ui.theme.palette(systemIsDark: Theme.systemIsDark).accent
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                swatch(.theme, fill: AnyShapeStyle(Color(own)), help: "The theme's own accent")
+                Divider().frame(height: 18)
+                ForEach(ThemeAccent.Preset.allCases, id: \.self) { preset in
+                    swatch(.preset(preset), fill: AnyShapeStyle(Color(preset.color)), help: preset.title)
+                }
+                Divider().frame(height: 18)
+                swatch(customChoice, fill: AnyShapeStyle(AngularGradient(
+                    colors: [.yellow, .green, .teal, .blue, .purple, .pink, .orange, .yellow], center: .center)),
+                       help: "Any colour")
+                Spacer(minLength: 0)
+            }
+            Text(settings.ui.accent.title)
+                .font(.caption).foregroundStyle(.secondary)
         }
-        return image
+        .padding(.vertical, 2)
+    }
+
+    /// Choosing Custom starts from the colour on the panel now.
+    private var customChoice: ThemeAccent {
+        if case .custom = settings.ui.accent { return settings.ui.accent }
+        return .custom(Theme.palette.accent)
+    }
+
+    private func isSelected(_ choice: ThemeAccent) -> Bool {
+        switch (choice, settings.ui.accent) {
+        case (.custom, .custom): return true
+        default: return choice == settings.ui.accent
+        }
+    }
+
+    private func swatch(_ choice: ThemeAccent, fill: AnyShapeStyle, help: String) -> some View {
+        let selected = isSelected(choice)
+        return Button { settings.ui.accent = choice } label: {
+            Circle()
+                .fill(fill)
+                .frame(width: 20, height: 20)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5))
+                .padding(3)
+                .overlay(Circle().strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(choice.title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
+
 
 /// One theme in the grid: its surface with a line of text and the three priority dots.
 private struct ThemeSwatch: View {
@@ -173,6 +218,18 @@ private struct ThemeSample: View {
              priority: priority, title: "Sample", createdAt: Date())
     }
 
+    /// A card with the accent on it: a ticked step and a link in its text.
+    private static func card(now: Date) -> Item {
+        Item(id: "theme-sample-card", key: "theme-sample-card", priority: .normal,
+             title: "Approve the prod deploy for ACME-4700",
+             body: "Canary is green. See the [runbook](https://example.com/runbook).",
+             links: [ItemLink(label: "Pull request", url: "https://example.com/pr/4700")],
+             steps: [ItemStep(text: "Check the canary dashboard", done: true),
+                     ItemStep(text: "Approve in the deploy channel")],
+             source: ItemSource(host: "devbox", agent: "claude"),
+             createdAt: now.addingTimeInterval(-26 * 3600))
+    }
+
     /// The open panel: its header, a card and the footer (ExpandedView's layout).
     private func panel(_ m: PanelMetrics) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -193,7 +250,7 @@ private struct ThemeSample: View {
             .padding(.horizontal, 12)
             .frame(height: m.headerHeight - 0.5)
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
-            CardView(item: PanelPreview.sample(now: model.now), model: model)
+            CardView(item: Self.card(now: model.now), model: model)
                 .frame(width: m.expandedWidth - 2 * m.listPadding)
                 .padding(m.listPadding)
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
@@ -205,9 +262,9 @@ private struct ThemeSample: View {
             .frame(height: m.footerHeight - 0.5)
         }
         .frame(width: m.expandedWidth)
-        .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop))
+        .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop, background: settings.ui.background))
         .clipShape(shape)
-        .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
-        .opacity(settings.ui.panelOpacity)
+        .overlay(shape.strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
+        .opacity(settings.ui.panelAlpha(hovering: false))
     }
 }

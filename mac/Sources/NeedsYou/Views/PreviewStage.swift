@@ -76,6 +76,8 @@ struct PanelGlass: View {
     let palette: PanelPalette
     /// Settings → Appearance → Panel and cards → Opacity → Background darkness.
     let backdrop: Double
+    /// Settings → Appearance → Theme → Background.
+    var background: PanelBackground = .glass
     /// The faint idle pill has no backdrop or tint (RootView).
     var idle = false
 
@@ -83,8 +85,12 @@ struct PanelGlass: View {
         ZStack {
             PanelMaterial(isDark: palette.isDark)
             if !idle {
-                Color(palette.backdrop).opacity(palette.backdropOpacity(backdrop))
-                if palette.tintOpacity > 0 { Color(palette.tint).opacity(palette.tintOpacity) }
+                if background == .solid {
+                    Color(palette.surface)
+                } else {
+                    Color(palette.backdrop).opacity(palette.backdropOpacity(backdrop))
+                    if palette.tintOpacity > 0 { Color(palette.tint).opacity(palette.tintOpacity) }
+                }
             }
         }
     }
@@ -134,10 +140,10 @@ struct SamplePill: View {
         PillContentView(content: content, metrics: pm)
             .frame(width: size.width, height: size.height)
             .background(look.fillOpacity > 0 && top != nil ? Theme.color(top).opacity(look.fillOpacity) : Color.clear)
-            .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop))
+            .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop, background: settings.ui.background))
             .clipShape(shape)
             .overlay(shape.strokeBorder(Theme.color(top).opacity(look.ringOpacity), lineWidth: look.ringWidth))
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
-            .opacity(settings.ui.pillOpacity)
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
+            .opacity(settings.ui.pillAlpha(hovering: false))
     }
 }

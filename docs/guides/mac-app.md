@@ -170,7 +170,8 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | Setting | Where | Choices (default first) |
 |---|---|---|
 | The panel's colours | Appearance → Theme → **Theme** | Default (the original dark glass), Match system (Default or Paper with macOS's light or dark), Graphite, Midnight, Paper (light), High contrast (dark or light with macOS), Ocean, Sunset |
-| Colour of ticked steps, links in card text and small badges | Appearance → Theme → **Accent colour** | Theme's own, Blue, Purple, Pink, Orange, Green, Teal, Graphite, Custom (any colour; made lighter or darker if it wouldn't read) |
+| Colour of ticked steps, links in card text and small badges | Appearance → Theme → **Accent colour** | Theme's own, Blue, Purple, Green, Teal, Graphite, Custom (any colour that isn't red; made lighter or darker if it wouldn't read) |
+| Behind the pill, previews and the open panel | Appearance → Theme → **Background** | Glass (see-through), Solid (opaque, in the theme's colour; the Opacity settings don't apply) |
 | Size of the collapsed pill only | Appearance → Pill → **Pill size** | Medium, Small, Large |
 | What the collapsed pill says | Appearance → Pill → **Shows** | Count only; Count and top item (the top card's title, truncated); Minimal dot (a dot in the top priority's colour, the count on hover) |
 | How the count is split | Appearance → Pill → **Split** | None (`3 · 1`); Work \| Personal (`W 3 \| P 1`, the current side brighter); By priority (urgent, normal and low counts in their colours, empty ones hidden) |
@@ -214,6 +215,12 @@ The Appearance pages show a sample as you change things: the pill on Pill, a car
 ### Themes
 
 Every theme keeps urgent red and easy to read: the text, the secondary text and the urgent colour are checked against each theme's background for contrast (WCAG 4.5:1 or better; 7:1 for urgent in High contrast), and urgent stays clearly different from normal and low. **Match system** and **High contrast** switch between dark and light glass when macOS does; the others always look the same. Light themes use a light layer behind the glass instead of a dark one, so **Background darkness** lightens it. High contrast keeps that layer at 60% or more.
+
+**Accent colour** is a row of swatches: the theme's own (the default), Blue, Purple, Green, Teal, Graphite, then **Custom** for any colour. The accent never touches the priority colours, and red is kept for urgent: a custom colour close to urgent's red isn't used (the theme's own accent stays, and Settings says so). Pink and Orange, offered before, came too close to it; if you had picked one, the theme's own accent shows instead.
+
+**Background → Solid** draws the pill, the new-item preview and the open panel on an opaque background in the theme's colour instead of see-through glass, for when the pill is hard to see over busy or bright windows. Solid is always fully opaque, so **Background darkness** and the **Opacity** percentages (Panel and cards → Opacity) apply to Glass only and are dimmed while Solid is on. The faint "Nothing needs you" pill stays faint either way. Text, priority colours and usage meters are checked for contrast against each theme's solid colour, in light and dark.
+
+With **Increase contrast** on (System Settings → Accessibility → Display), every theme gets stronger secondary text (7:1 or better), stronger hairlines and a 1-point border around the pill and panel, a layer behind the glass of at least 60%, and an accent of at least 4.5:1. The theme's colours stay the same. It follows the macOS setting as you change it.
 
 ### Arrival animations
 
@@ -269,7 +276,7 @@ Under **Hubs and machines**:
 - **Other hubs (advanced):** you don't need it with the built-in hub. **Join a hub with a link**: paste a `needsyou://connect?...` or `/join/...` link that someone made for this Mac, and it joins their hub. The link comes from another Mac's **Settings → Connect a machine** (*Another Mac that shows the same alerts*) or from a server hub's admin (`needs-you-admin invite create my-mac --role owner`). If the clipboard already holds such a link when the page opens, it's filled in for you; **Paste** does the same by hand. Opening a `needsyou://connect` link does all of this by itself, after asking. **Always-on server hubs** explains them, links to [HUB.md](../HUB.md) and to **Built-in hub**, where you add one. **Hubs by URL and token**: hubs added by hand, tried in order; the *This Mac (built-in hub)* row shows its Tailscale URL too.
 Under **Appearance** (how things look, nothing else):
 
-- **Theme:** the theme and the accent colour, with a sample ([Themes](#themes)).
+- **Theme:** the theme, the accent colour and the background (Glass or Solid), with a sample ([Themes](#themes)).
 - **Pill:** the collapsed pill's size, what it says, how it splits the count, and the `2 new` badge, with sample pills.
 - **Panel and cards:** the overall size, card text size, how much card text shows, compact links, cards before scrolling and the dragged height, background darkness and opacity, with a sample card.
 - **Alert style:** how loud a new item looks (glow and ring), its arrival animation, with **Preview on the pill**, and the edge glow for urgent arrivals.

@@ -144,7 +144,7 @@ final class PanelThemeTests: XCTestCase {
     func testAccentStorage() {
         XCTAssertEqual(ThemeAccent(stored: nil), .theme)
         XCTAssertEqual(ThemeAccent(stored: ""), .theme)
-        XCTAssertEqual(ThemeAccent(stored: "pink"), .preset(.pink))
+        XCTAssertEqual(ThemeAccent(stored: "purple"), .preset(.purple))
         XCTAssertEqual(ThemeAccent(stored: "#10B981"), .custom(ThemeRGB(hex: 0x10B981)))
         XCTAssertEqual(ThemeAccent(stored: "10B981"), .theme, "a bare hex isn't a stored custom colour")
         XCTAssertEqual(ThemeAccent(stored: "chartreuse"), .theme)
