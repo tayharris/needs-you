@@ -36,7 +36,7 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 
 ## Using it
 
-<img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze.">
+<img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: usage meters for Claude and Codex at the top, then an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, and a CI failure with copy chips and a link to the run, each with Done, Dismiss and Snooze.">
 
 | You see | It means |
 |---|---|
@@ -49,13 +49,13 @@ The exact settings and how the app passes options to its hub are in [mac/README.
 
 The pill when nothing needs you, with 4 work items and 1 personal one waiting (count only, then split work | personal and count and top item), and a new item springing out:
 
-<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: Nothing needs you, with session and weekly usage bars under it."> &nbsp; <img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal shown faintly, in a red ring."> &nbsp; <img src="../../site/img/pill-split.png" width="90" alt="The split pill: W 4, P 1."> &nbsp; <img src="../../site/img/pill-top-item.png" width="248" alt="The pill showing the count and the top item's title.">
+<img src="../../site/img/pill-idle.png" width="147" alt="The idle pill: Nothing needs you, with session and weekly usage bars under it."> &nbsp; <img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal shown faintly, in a red ring, with usage bars under it."> &nbsp; <img src="../../site/img/pill-split.png" width="90" alt="The split pill: W 4, P 1."> &nbsp; <img src="../../site/img/pill-top-item.png" width="248" alt="The pill showing the count and the top item's title.">
 
 <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
 
 The open panel shows one context at a time; the tab in its header switches (here, Personal):
 
-<img src="../../site/img/panel-personal.png" width="376" alt="The open panel on the Personal tab with one low-priority card: Renew example.org, it expires in 9 days, with a Registrar link.">
+<img src="../../site/img/panel-personal.png" width="376" alt="The open panel on the Personal tab: the usage meters, then one low-priority card: Renew example.org, it expires in 9 days, with a Registrar link.">
 
 - **Click** the pill to expand the cards. A click anywhere else closes it, as do **Escape**, the chevron, a double-click on the header bar and the shortcut. To keep it up while you read a card next to the page its link opened, turn off **Settings → Panel → Open panel → Collapse when clicking elsewhere**. If the glass is hard to read over bright windows, raise **Settings → Appearance → Panel and cards → Background darkness**.
 - Drag the open panel's free edge (the bottom, or the top when the panel sits in a bottom corner) to make the card list taller or shorter. It remembers the height; double-click the edge, or **Settings → Appearance → Panel and cards → Dragged height → Automatic**, to go back to fitting the cards.

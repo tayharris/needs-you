@@ -22,7 +22,7 @@ With the built-in hub there's nothing else to run: no server, no account, no clo
 
 <p>
 <img src="site/img/preview-agent.png" width="330" alt="A new card springing out of the pill: Claude needs permission: acme-api, from devbox, with a VS Code button.">
-<img src="site/img/panel.png" width="190" alt="The open panel: an urgent deploy approval with its links, Claude waiting for a decision with numbered steps, a failed CI run, and a low-priority cleanup.">
+<img src="site/img/panel.png" width="190" alt="The open panel: usage meters, an urgent deploy approval with its links, Claude waiting for a decision with numbered steps, and a failed CI run.">
 </p>
 
 ## Works with
