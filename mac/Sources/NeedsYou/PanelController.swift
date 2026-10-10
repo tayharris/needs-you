@@ -370,11 +370,11 @@ final class PanelController {
             return CGFloat(PillMeterLayout.idleAlpha(base, showsMeters: model.idleMeterLayout.count > 0))
         case .waiting:
             let ui = model.settings.ui
-            return CGFloat(PanelOpacity.alpha(rest: ui.pillOpacity, hover: ui.pillHoverOpacity, hovering: model.hovering))
+            return CGFloat(ui.pillAlpha(hovering: model.hovering))
         case .preview, .digest, .expanded:
-            // Settings → Appearance → Panel and cards → Opacity; hovering always shows it at full strength.
+            // Settings → Appearance → Panel and cards → Opacity (Theme → Background → Solid: always opaque).
             let ui = model.settings.ui
-            return CGFloat(PanelOpacity.alpha(rest: ui.panelOpacity, hover: ui.panelHoverOpacity, hovering: model.hovering))
+            return CGFloat(ui.panelAlpha(hovering: model.hovering))
         }
     }
 

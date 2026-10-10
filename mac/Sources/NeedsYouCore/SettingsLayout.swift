@@ -58,6 +58,7 @@ public enum SettingsRegistry {
         // Appearance → Theme
         .look(UIPrefs.Key.theme, "ui.theme", on: .theme),
         .look(UIPrefs.Key.accent, "ui.accent", on: .theme),
+        .look(UIPrefs.Key.background, "ui.background", on: .theme),
         // Appearance → Pill
         .look(UIPrefs.Key.panelShape, "ui.panelShape", on: .pill),
         .look(UIPrefs.Key.pillSize, "ui.pillSize", on: .pill),

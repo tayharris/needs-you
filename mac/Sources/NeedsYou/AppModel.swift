@@ -243,6 +243,11 @@ final class AppModel: ObservableObject {
         NSApplication.shared.publisher(for: \.effectiveAppearance)
             .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
             .store(in: &appearanceObservers)
+        // System Settings → Accessibility → Display → Increase contrast.
+        NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
+            .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
+            .store(in: &appearanceObservers)
         // A rule's "Treat as urgent"/"Treat as low" recolours and re-sorts the cards at once.
         settings.$bypassRules
             .removeDuplicates()
@@ -263,10 +268,17 @@ final class AppModel: ObservableObject {
         settings.bypassRules = rules
     }
 
-    /// Recomputes the palette from the settings and macOS's appearance.
+    /// The snapshot tour's stand-in for macOS's Increase Contrast (AppDelegate.runSnapshotTour
+    /// only, so screenshots can show it without changing the Mac's settings); nil = macOS's.
+    var increaseContrastOverride: Bool? {
+        didSet { refreshPalette() }
+    }
+
+    /// Recomputes the palette from the settings and macOS's appearance and Increase Contrast.
     func refreshPalette() {
         Theme.systemIsDark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let next = settings.ui.palette(systemIsDark: Theme.systemIsDark)
+        let increase = increaseContrastOverride ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        let next = settings.ui.palette(systemIsDark: Theme.systemIsDark, increaseContrast: increase)
         Theme.palette = next
         if next != palette { palette = next }
     }

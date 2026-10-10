@@ -138,6 +138,6 @@ struct UsageMeterPillPreview: View {
             .frame(width: width, height: height)
             .background(Theme.raised)
             .clipShape(shape)
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
     }
 }

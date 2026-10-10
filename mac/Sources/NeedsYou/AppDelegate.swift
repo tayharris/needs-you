@@ -294,8 +294,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
+            // Settings → Appearance → Theme → Background → Solid, dark (Default) and light (Paper),
+            // then macOS's Increase Contrast (stood in for by increaseContrastOverride, so the
+            // Mac's own setting is never touched) on glass and Solid, and an accent swatch.
+            ("13b-solid-dark-pill", { model in
+                model.settings.ui.theme = .standard
+                model.settings.ui.background = .solid
+            }),
+            ("13c-solid-dark-panel", { $0.expand() }),
+            ("13d-solid-light-panel", { $0.settings.ui.theme = .paper }),
+            ("13e-solid-light-pill", { $0.collapse() }),
+            ("13f-increase-contrast-light-solid", { model in
+                model.increaseContrastOverride = true
+                model.expand()
+            }),
+            ("13g-increase-contrast-light-glass", { $0.settings.ui.background = .glass }),
+            ("13h-increase-contrast-dark-glass", { $0.settings.ui.theme = .standard }),
+            ("13i-increase-contrast-dark-solid", { $0.settings.ui.background = .solid }),
+            ("13j-increase-contrast-pill", { $0.collapse() }),
+            ("13k-accent-teal", { model in
+                model.increaseContrastOverride = nil
+                model.settings.ui.background = .glass
+                model.settings.ui.accent = .preset(.teal)
+                model.expand()
+            }),
+            ("13l-accent-purple-paper-solid", { model in
+                model.settings.ui.theme = .paper
+                model.settings.ui.background = .solid
+                model.settings.ui.accent = .preset(.purple)
+            }),
             // Settings → Appearance → Alert style → Preview on the pill: a sample urgent item arriving.
             ("14-arrival-preview", { model in
+                model.collapse()
+                model.settings.ui.background = .glass
+                model.settings.ui.accent = .theme
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
             }),
@@ -370,7 +402,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
-                                           (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
+                                           (.theme, 3), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
                                            (.panel, 7), (.alerts, 4), (.integrations, 5)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -399,9 +431,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The Theme sample in a light and a colourful theme: the desktop stays put.
             for theme in [PanelTheme.paper, .sunset] {
                 settings.ui.theme = theme
-                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
                                                    into: dir, name: "settings-theme-\(theme.rawValue)")
             }
+            // Solid with an accent swatch, and the Opacity settings it turns off.
+            settings.ui.theme = .standard
+            settings.ui.background = .solid
+            settings.ui.accent = .preset(.teal)
+            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
+                                               into: dir, name: "settings-theme-solid-teal")
+            await settingsWindow.writeSnapshot(of: .cards, showcase: showcase, shots: 4,
+                                               into: dir, name: "settings-cards-solid")
+            settings.ui.accent = .custom(ThemeRGB(hex: 0xE11D48))
+            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
+                                               into: dir, name: "settings-theme-custom-red")
             settings.ui = savedUI
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
@@ -493,6 +536,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }))
         steps.append(("density-comfortable-expanded", 1.5, { $0.expand() }))
         steps.append(("density-compact-expanded", 1.5, { $0.settings.ui.cardDensity = .compact }))
+        // Theme → Background → Solid with Increase Contrast (the 1 pt border) in Square and
+        // Capsule: the solid fill, the border and the ring follow the shape.
+        for shape in [PanelShape.square, .capsule] {
+            let prefix = "solid-contrast-\(shape.rawValue)"
+            steps.append((prefix, 2.5, { model in
+                model.settings.ui = savedUI
+                model.settings.ui.panelShape = shape
+                model.settings.ui.background = .solid
+                model.increaseContrastOverride = true
+                restore(model)
+            }))
+            steps.append(("\(prefix)-1-waiting", 1.2, { model in
+                model.previewItem = nil
+                model.collapse()
+            }))
+            steps.append(("\(prefix)-4-preview", 1.5, { model in model.previewItem = urgent(model) }))
+            steps.append(("\(prefix)-6-expanded", 1.5, { model in
+                model.previewItem = nil
+                model.expand()
+            }))
+        }
+        steps.append(("solid-contrast-off", 0.5, { model in
+            model.increaseContrastOverride = nil
+            model.collapse()
+        }))
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         Task { @MainActor in

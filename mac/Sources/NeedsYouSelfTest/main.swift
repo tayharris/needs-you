@@ -70,6 +70,7 @@ let entries =
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
     + testEntries(IntegrationCatalogTests.self, IntegrationCatalogTests.allTests)
     + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
+    + testEntries(PanelColourTests.self, PanelColourTests.allTests)
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)
     + testEntries(AppLocationTests.self, AppLocationTests.allTests)
     + testEntries(LaunchBehaviorTests.self, LaunchBehaviorTests.allTests)

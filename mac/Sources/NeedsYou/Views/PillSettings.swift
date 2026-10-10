@@ -120,7 +120,7 @@ private struct PillSettingsPreview: View {
             .frame(width: m.idleWidth(textWidth: textWidth), height: m.idleHeight)
             .background(Theme.raised)
             .clipShape(shape)
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
             Text("Nothing waiting").font(.caption2).foregroundStyle(.secondary)
         }
     }
