@@ -191,6 +191,10 @@ EOF
 defaults write "$SUITE" expandedListHeight -float 840
 # Clicks elsewhere on the Mac (someone using it meanwhile) mustn't close the panel mid-tour.
 defaults write "$SUITE" collapseOnClickOutside -bool false
+# The work side, whatever the day and hour the tour runs (an evening or weekend run would
+# otherwise open on Personal, with the work count as the faint second number).
+defaults write "$SUITE" followSchedule -bool false
+defaults write "$SUITE" viewContext work
 
 mkdir -p "$OUT"
 # Half-seconds a tour may take. The default tour takes about a minute on an idle Mac (each
