@@ -172,11 +172,13 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | The panel's colours | Appearance → Theme → **Theme** | Default (the original dark glass), Match system (Default or Paper with macOS's light or dark), Graphite, Midnight, Paper (light), High contrast (dark or light with macOS), Ocean, Sunset |
 | Colour of ticked steps, links in card text and small badges | Appearance → Theme → **Accent colour** | Theme's own, Blue, Purple, Green, Teal, Graphite, Custom (any colour that isn't red; made lighter or darker if it wouldn't read) |
 | Behind the pill, previews and the open panel | Appearance → Theme → **Background** | Glass (see-through), Solid (opaque, in the theme's colour; the Opacity settings don't apply) |
-| Size of the collapsed pill only | Appearance → Pill → **Pill size** | Medium, Small, Large |
+| The corners of the pill, the new-item preview and the open panel, together | Appearance → Pill → **Shape** | Rounded (the original), Square (nearly square corners), Capsule (fully round ends on the pill and the preview; the open panel gets its roundest corners). The ring, glow and ripple follow the shape; the menu bar icon doesn't change |
+| Size of the pill, waiting or idle: its height, text and usage meters together | Appearance → Pill → **Pill size** | Medium, Small, Large |
 | What the collapsed pill says | Appearance → Pill → **Shows** | Count only; Count and top item (the top card's title, truncated); Minimal dot (a dot in the top priority's colour, the count on hover) |
 | How the count is split | Appearance → Pill → **Split** | None (`3 · 1`); Work \| Personal (`W 3 \| P 1`, the current side brighter); By priority (urgent, normal and low counts in their colours, empty ones hidden) |
 | The `2 new` badge | Appearance → Pill → **New since last opened** | On, Off |
 | Size of the pill, the cards' type and the open panel | Appearance → Panel and cards → **Size** | Regular, Compact, Large |
+| How tightly cards are packed | Appearance → Panel and cards → **Density** | Comfortable (the original), Compact (less padding and smaller gaps between and inside cards; the type stays the same) |
 | Card body text (agents' step-by-step instructions) | Appearance → Panel and cards → **Card text size** | Default, Small, Large, Extra large |
 | How much of each card's text shows | Appearance → Panel and cards → **Card text** | Full, First lines (3), Title only (click **Show details**) |
 | Links on one short row | Appearance → Panel and cards → **Compact links** | Off, On (3 links, `+N` shows the rest) |
@@ -277,8 +279,8 @@ Under **Hubs and machines**:
 Under **Appearance** (how things look, nothing else):
 
 - **Theme:** the theme, the accent colour and the background (Glass or Solid), with a sample ([Themes](#themes)).
-- **Pill:** the collapsed pill's size, what it says, how it splits the count, and the `2 new` badge, with sample pills.
-- **Panel and cards:** the overall size, card text size, how much card text shows, compact links, cards before scrolling and the dragged height, background darkness and opacity, with a sample card.
+- **Pill:** the shape (the pill's, the preview's and the open panel's corners), the pill's size (waiting or idle), what it says, how it splits the count, and the `2 new` badge, with sample pills.
+- **Panel and cards:** the overall size, density, card text size, how much card text shows, compact links, cards before scrolling and the dragged height, background darkness and opacity, with a sample card.
 - **Alert style:** how loud a new item looks (glow and ring), its arrival animation, with **Preview on the pill**, and the edge glow for urgent arrivals.
 - **Usage meters:** how the meters look: the warning colour and the pill's meter style, size, layout and percentages ([Usage meters](#usage-meters)). Before any numbers arrive it shows example meters.
 

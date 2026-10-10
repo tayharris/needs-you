@@ -60,12 +60,14 @@ public enum SettingsRegistry {
         .look(UIPrefs.Key.accent, "ui.accent", on: .theme),
         .look(UIPrefs.Key.background, "ui.background", on: .theme),
         // Appearance → Pill
+        .look(UIPrefs.Key.panelShape, "ui.panelShape", on: .pill),
         .look(UIPrefs.Key.pillSize, "ui.pillSize", on: .pill),
         .look(UIPrefs.Key.pillDetail, "ui.pillDetail", on: .pill),
         .look(UIPrefs.Key.pillSplit, "ui.pillSplit", on: .pill),
         .look(UIPrefs.Key.pillShowNew, "ui.pillShowNew", on: .pill),
         // Appearance → Panel and cards
         .look(UIPrefs.Key.panelSize, "ui.panelSize", on: .cards),
+        .look(UIPrefs.Key.cardDensity, "ui.cardDensity", on: .cards),
         .look(UIPrefs.Key.textSize, "ui.textSize", on: .cards),
         .look(UIPrefs.Key.cardBodies, "ui.cardBodies", on: .cards),
         .look(UIPrefs.Key.compactLinks, "ui.compactLinks", on: .cards),

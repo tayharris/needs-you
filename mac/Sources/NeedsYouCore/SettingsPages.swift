@@ -82,9 +82,9 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .theme:
             return "The pill's and cards' colours: a theme, light or dark, an accent colour, and glass or a solid background."
         case .pill:
-            return "The collapsed pill: its size, what it says, how it splits the count, and the new badge."
+            return "The pill's shape (the preview's and open panel's too), size, what it says, its split, and the new badge."
         case .cards:
-            return "The open panel's size and height, its cards' text and links, and how see-through it is."
+            return "The open panel's size and height, card density, text and links, and how see-through it is."
         case .alertStyle:
             return "How a new item looks as it arrives: the glow and ring, the animation on the pill, and the edge glow."
         case .usageMeters:

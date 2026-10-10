@@ -97,10 +97,11 @@ struct UsageMeterPillPreview: View {
                                        options: PillOptions(size: settings.ui.pillSize), hovering: false)
         let layout = PillMeterLayout.make(settings.usage.pillAppearance, count: bars.count, height: m.height, font: m.font)
         let trailing = PillMeterMetrics.trailingWidth(layout, base: m.smallFont)
+        let radius = settings.ui.cornerRadius(.pill, height: layout.height)
         let width = max(PillLayout.size(content, metrics: m, trailing: trailing).width,
-                        layout.minWidth(cornerRadius: m.cornerRadius))
-        return sample(width: width, height: layout.height, radius: m.cornerRadius) {
-            PillWithMeters(bars: bars, layout: layout, cornerRadius: m.cornerRadius, numberBase: m.smallFont) {
+                        layout.minWidth(cornerRadius: radius))
+        return sample(width: width, height: layout.height, surface: .pill) {
+            PillWithMeters(bars: bars, layout: layout, cornerRadius: radius, numberBase: m.smallFont) {
                 PillContentView(content: content, metrics: m)
             }
         }
@@ -108,15 +109,16 @@ struct UsageMeterPillPreview: View {
 
     /// The idle pill, as faint as it rests on the desktop.
     private func idle(_ bars: [UsageBar]) -> some View {
-        let panel = settings.ui.metrics
+        let panel = settings.ui.pillMetrics
         let layout = PillMeterLayout.make(settings.usage.pillAppearance, count: bars.count,
                                           height: panel.idleHeight, font: panel.idleFont)
         let text = "Nothing \(settings.needsLabel)"
         let textWidth = (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: panel.idleFont)]).width
+        let radius = settings.ui.cornerRadius(.idle(hovering: false), height: layout.height)
         let width = max(panel.idleWidth(textWidth: textWidth + PillMeterMetrics.trailingWidth(layout, base: panel.idleFont - 1)),
-                        layout.minWidth(cornerRadius: 9))
-        return sample(width: width, height: layout.height, radius: 9) {
-            PillWithMeters(bars: bars, layout: layout, cornerRadius: 9, numberBase: panel.idleFont - 1, trailing: 8) {
+                        layout.minWidth(cornerRadius: radius))
+        return sample(width: width, height: layout.height, surface: .idle(hovering: false)) {
+            PillWithMeters(bars: bars, layout: layout, cornerRadius: radius, numberBase: panel.idleFont - 1, trailing: 8) {
                 HStack(spacing: 6) {
                     Circle().fill(Color.green.opacity(0.8)).frame(width: 5, height: 5)
                     Text(verbatim: text).font(.system(size: panel.idleFont)).foregroundStyle(Theme.text.opacity(0.85))
@@ -129,9 +131,9 @@ struct UsageMeterPillPreview: View {
         .opacity(PillMeterLayout.idleAlpha(0.35, showsMeters: layout.count > 0))
     }
 
-    private func sample<V: View>(width: CGFloat, height: CGFloat, radius: CGFloat,
+    private func sample<V: View>(width: CGFloat, height: CGFloat, surface: PanelSurface,
                                  @ViewBuilder _ content: () -> V) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let shape = PanelOutline(settings.ui, surface)
         return content()
             .frame(width: width, height: height)
             .background(Theme.raised)

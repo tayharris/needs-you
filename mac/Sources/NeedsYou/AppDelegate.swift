@@ -112,7 +112,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Focus rule: nothing here opens a window or activates the app. With no hub set
         // up, the pill shows a "set up" state; clicking it is what opens Settings.
         if let dir = AppSettings.snapshotDirectory {
-            if AppSettings.formatTour { runFormatTour(into: dir) } else { runSnapshotTour(into: dir) }
+            if AppSettings.formatTour {
+                runFormatTour(into: dir)
+            } else if AppSettings.looksTour {
+                runLooksTour(into: dir)
+            } else {
+                runSnapshotTour(into: dir)
+            }
         }
         openPanelIfLaunchedByPerson()
     }
@@ -440,6 +446,147 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
                                                into: dir, name: "settings-theme-custom-red")
             settings.ui = savedUI
+            NSLog("NeedsYou: snapshots written to \(dir.path)")
+        }
+    }
+
+    /// Debug aid (NEEDS_YOU_SNAPSHOT_TOUR=looks, `mac/scripts/screenshots.sh --looks`): every
+    /// state of the panel in each Settings → Appearance → Pill → Shape (the waiting pill at
+    /// rest, on hover and mid-glow, the arrival preview at rest and mid-glow, the open panel,
+    /// the idle pill at rest and on hover), then each Pill size and the Compact density, and
+    /// the Pill and Panel and cards pages. The look settings are put back afterwards.
+    private func runLooksTour(into dir: URL) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let savedUI = settings.ui
+        // (name, seconds to wait before the snapshot, action)
+        var steps: [(String, Double, (AppModel) -> Void)] = []
+        let urgent: (AppModel) -> Item? = { model in model.needsItems.first { $0.priority == .urgent } }
+        func states(_ prefix: String) {
+            steps += [
+                ("\(prefix)-1-waiting", 1.2, { model in
+                    model.previewItem = nil
+                    model.collapse()
+                    model.hovering = false
+                }),
+                ("\(prefix)-2-waiting-hover", 1.0, { $0.hovering = true }),
+                ("\(prefix)-3-waiting-glow", 0.45, { model in
+                    model.hovering = false
+                    model.requestPulse(times: 2, priority: .urgent)
+                }),
+                ("\(prefix)-4-preview", 1.5, { model in model.previewItem = urgent(model) }),
+                ("\(prefix)-5-preview-glow", 0.45, { $0.requestPulse(times: 2, priority: .urgent) }),
+                ("\(prefix)-6-expanded", 1.5, { model in
+                    model.previewItem = nil
+                    model.expand()
+                }),
+            ]
+        }
+        func idle(_ prefix: String) {
+            steps += [
+                ("\(prefix)-7-idle", 1.5, { model in
+                    model.collapse()
+                    model.hovering = false
+                    Task { await model.applyDemoOpenSet([]) }
+                }),
+                ("\(prefix)-8-idle-hover", 1.0, { $0.hovering = true }),
+            ]
+        }
+        var items: [Item] = []
+        // The start-of-day summary would open the panel mid-tour (test copy's suite only).
+        let summaryWasOn = phase3?.morningSummaryEnabled ?? false
+        phase3?.morningSummaryEnabled = false
+        steps.append(("0-start", 1.0, { model in
+            items = model.needsItems
+            model.collapse()
+        }))
+        let restore: (AppModel) -> Void = { model in
+            model.hovering = false
+            let open = items
+            Task { await model.applyDemoOpenSet(open) }
+        }
+        for shape in PanelShape.allCases {
+            steps.append(("shape-\(shape.rawValue)", 2.5, { model in
+                model.settings.ui = savedUI
+                model.settings.ui.panelShape = shape
+                restore(model)
+            }))
+            states("shape-\(shape.rawValue)")
+            idle("shape-\(shape.rawValue)")
+        }
+        for shape in [PanelShape.rounded, .capsule] {
+            for size in [PillSize.small, .large] {
+                let prefix = "size-\(size.rawValue)-\(shape.rawValue)"
+                steps.append((prefix, 2.5, { model in
+                    model.settings.ui = savedUI
+                    model.settings.ui.panelShape = shape
+                    model.settings.ui.pillSize = size
+                    restore(model)
+                }))
+                steps.append(("\(prefix)-1-waiting", 1.2, { model in
+                    model.previewItem = nil
+                    model.collapse()
+                }))
+                steps.append(("\(prefix)-2-waiting-hover", 1.0, { $0.hovering = true }))
+                idle(prefix)
+            }
+        }
+        steps.append(("density", 2.5, { model in
+            model.settings.ui = savedUI
+            restore(model)
+        }))
+        steps.append(("density-comfortable-expanded", 1.5, { $0.expand() }))
+        steps.append(("density-compact-expanded", 1.5, { $0.settings.ui.cardDensity = .compact }))
+        // Theme → Background → Solid with Increase Contrast (the 1 pt border) in Square and
+        // Capsule: the solid fill, the border and the ring follow the shape.
+        for shape in [PanelShape.square, .capsule] {
+            let prefix = "solid-contrast-\(shape.rawValue)"
+            steps.append((prefix, 2.5, { model in
+                model.settings.ui = savedUI
+                model.settings.ui.panelShape = shape
+                model.settings.ui.background = .solid
+                model.increaseContrastOverride = true
+                restore(model)
+            }))
+            steps.append(("\(prefix)-1-waiting", 1.2, { model in
+                model.previewItem = nil
+                model.collapse()
+            }))
+            steps.append(("\(prefix)-4-preview", 1.5, { model in model.previewItem = urgent(model) }))
+            steps.append(("\(prefix)-6-expanded", 1.5, { model in
+                model.previewItem = nil
+                model.expand()
+            }))
+        }
+        steps.append(("solid-contrast-off", 0.5, { model in
+            model.increaseContrastOverride = nil
+            model.collapse()
+        }))
+        let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
+                                     tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            for (name, wait, action) in steps {
+                action(model)
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                // The setup steps (no dash-number suffix) only change settings.
+                guard name.range(of: #"-\d-"#, options: .regularExpression) != nil
+                        || name.hasPrefix("density-") else { continue }
+                panel.writeSnapshot(to: dir.appendingPathComponent("looks-\(name).png"))
+                NSLog("NeedsYou: snapshot \(name)")
+            }
+            model.collapse()
+            for shape in PanelShape.allCases {
+                settings.ui = UIPrefs()
+                settings.ui.panelShape = shape
+                await settingsWindow.writeSnapshot(of: .pill, showcase: showcase, shots: 1,
+                                                   into: dir, name: "looks-settings-pill-\(shape.rawValue)")
+            }
+            settings.ui = UIPrefs()
+            settings.ui.cardDensity = .compact
+            await settingsWindow.writeSnapshot(of: .cards, showcase: showcase, shots: 1,
+                                               into: dir, name: "looks-settings-cards-compact")
+            settings.ui = savedUI
+            phase3?.morningSummaryEnabled = summaryWasOn
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
     }

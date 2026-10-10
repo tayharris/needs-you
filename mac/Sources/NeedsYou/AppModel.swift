@@ -232,6 +232,14 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.refreshPalette() }
             }
             .store(in: &appearanceObservers)
+        // The panel's views observe the model, so a look change in Settings (Shape, Size,
+        // Pill size, Density, ...) redraws the open panel and the pill straight away, not on
+        // the next poll.
+        settings.$ui
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in Task { @MainActor in self?.objectWillChange.send() } }
+            .store(in: &appearanceObservers)
         NSApplication.shared.publisher(for: \.effectiveAppearance)
             .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
             .store(in: &appearanceObservers)

@@ -18,6 +18,19 @@ public enum PanelSize: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// How tightly the open panel packs its cards (Settings → Appearance → Panel and cards →
+/// Density), on top of the panel size. Stored as its raw value; comfortable is the original.
+public enum CardDensity: String, CaseIterable, Codable, Sendable {
+    case comfortable, compact
+
+    public var title: String {
+        switch self {
+        case .comfortable: return "Comfortable"
+        case .compact: return "Compact"
+        }
+    }
+}
+
 /// The size of card body text (agents' multi-step instructions), separate from the panel
 /// size. Stored as its raw value; `.standard` is stored as "default".
 public enum TextSize: String, CaseIterable, Codable, Sendable {
@@ -86,6 +99,12 @@ public struct PanelMetrics: Equatable, Sendable {
     public var cardPadding: CGFloat
     public var cardSpacing: CGFloat
     public var listPadding: CGFloat
+    /// Between a card's rows (title, meta line, body, links, actions).
+    public var cardLineSpacing: CGFloat = 5
+    /// Between the rows of a step list or a question's options group.
+    public var cardRowSpacing: CGFloat = 4
+    /// Between the priority bar and the card's text.
+    public var cardBarGap: CGFloat = 9
 
     /// The body size offset for this panel size (added to the text size's base).
     public var bodyOffset: CGFloat
@@ -98,6 +117,21 @@ public struct PanelMetrics: Equatable, Sendable {
     /// The idle pill's width for a line of text `textWidth` points wide.
     public func idleWidth(textWidth: CGFloat) -> CGFloat {
         min(idleMaxWidth, ceil(textWidth) + idleExtraWidth)
+    }
+
+    /// These sizes with the cards packed at `density`. Comfortable changes nothing;
+    /// compact tightens the cards' padding, the gaps between and inside them, and the
+    /// list's margin. Type sizes stay as they are (that's Size and Card text size).
+    public func with(density: CardDensity) -> PanelMetrics {
+        guard density == .compact else { return self }
+        var m = self
+        m.cardPadding = max(5, (cardPadding * 0.65).rounded())
+        m.cardSpacing = max(3, (cardSpacing * 0.5).rounded())
+        m.listPadding = max(5, listPadding - 3)
+        m.cardLineSpacing = max(2, cardLineSpacing - 3)
+        m.cardRowSpacing = max(1, cardRowSpacing - 2)
+        m.cardBarGap = max(5, cardBarGap - 3)
+        return m
     }
 }
 

@@ -16,6 +16,8 @@ import NeedsYouCore
 ///   NEEDS_YOU_SNAPSHOT_TOUR=formats  debug: instead, every demo card on its own, in each card
 ///                                    text mode, then after NEEDS_YOU_DEMO_REPOST=path.json's
 ///                                    re-posts (mac/scripts/format-fixtures.py writes both)
+///   NEEDS_YOU_SNAPSHOT_TOUR=looks    debug: instead, every panel state in each Shape, Pill
+///                                    size and Density (screenshots.sh --looks)
 ///   NEEDS_YOU_LAUNCH_SNAPSHOT_DIR=dir debug: PNGs of the panel just after launch and after
 ///                                    the launch open closes (no global shortcut either)
 ///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
@@ -158,6 +160,11 @@ final class AppSettings: ObservableObject {
     /// NEEDS_YOU_SNAPSHOT_TOUR=formats: the card-by-card format tour instead of the usual one.
     nonisolated static var formatTour: Bool {
         ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_TOUR"] == "formats"
+    }
+
+    /// NEEDS_YOU_SNAPSHOT_TOUR=looks: every panel state in each shape, pill size and density instead.
+    nonisolated static var looksTour: Bool {
+        ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_TOUR"] == "looks"
     }
 
     /// NEEDS_YOU_DEMO_REPOST: the format tour's re-posts (hub list shape).

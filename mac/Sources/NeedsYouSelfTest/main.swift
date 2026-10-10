@@ -34,6 +34,7 @@ let entries =
     + testEntries(TerminalJumpTests.self, TerminalJumpTests.allTests)
     + testEntries(AppActivationTests.self, AppActivationTests.allTests)
     + testEntries(PanelStyleTests.self, PanelStyleTests.allTests)
+    + testEntries(PanelShapeTests.self, PanelShapeTests.allTests)
     + testEntries(UIPrefsTests.self, UIPrefsTests.allTests)
     + testEntries(AlertStyleTests.self, AlertStyleTests.allTests)
     + testEntries(CardLayoutTests.self, CardLayoutTests.allTests)

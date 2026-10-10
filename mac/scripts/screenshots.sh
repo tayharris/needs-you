@@ -3,6 +3,12 @@
 #
 #   mac/scripts/screenshots.sh [out-dir]              # default: dist/screenshots
 #   mac/scripts/screenshots.sh --formats [out-dir]    # default: dist/screenshots/formats
+#   mac/scripts/screenshots.sh --looks [out-dir]      # default: dist/screenshots/looks
+#
+# --looks draws every state of the panel (waiting pill at rest, on hover and mid-glow, the
+# arrival preview at rest and mid-glow, the open panel, the idle pill at rest and on hover)
+# in each Settings → Appearance → Pill → Shape, then the small and large Pill size and the
+# Compact density, from the example items (AppDelegate.runLooksTour): looks-*.png.
 #
 # --formats draws every shape a sender can post (tests/format_cases.py, posted to a throwaway
 # hub by format-fixtures.py) card by card instead: each card in the three card text modes,
@@ -34,8 +40,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 FORMATS=0
+LOOKS=0
 if [[ "${1:-}" == "--formats" ]]; then FORMATS=1; shift; fi
-if [[ $FORMATS == 1 ]]; then OUT="${1:-dist/screenshots/formats}"; else OUT="${1:-dist/screenshots}"; fi
+if [[ "${1:-}" == "--looks" ]]; then LOOKS=1; shift; fi
+if [[ $FORMATS == 1 ]]; then OUT="${1:-dist/screenshots/formats}"
+elif [[ $LOOKS == 1 ]]; then OUT="${1:-dist/screenshots/looks}"
+else OUT="${1:-dist/screenshots}"; fi
 ID=app.needsyou.mac.screenshots
 SUITE="$ID.$$"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}"/needsyou-shots.XXXXXX)" && pwd -P)"
@@ -215,6 +225,14 @@ if [[ $FORMATS == 1 ]]; then
   run "$T/formats/formats.json" "$T/shots" NEEDS_YOU_SNAPSHOT_TOUR=formats NEEDS_YOU_DEMO_REPOST="$T/formats/formats-repost.json"
   cp "$T/shots/"*.png "$OUT/"
   echo "==> wrote $(ls "$T/shots" | wc -l | tr -d ' ') PNGs to $OUT"
+  exit 0
+fi
+
+if [[ $LOOKS == 1 ]]; then
+  echo "==> looks tour"
+  run "$T/items.json" "$T/looks" NEEDS_YOU_SNAPSHOT_TOUR=looks
+  cp "$T/looks/"*.png "$OUT/"
+  echo "==> wrote $(ls "$T/looks" | wc -l | tr -d ' ') PNGs to $OUT"
   exit 0
 fi
 
