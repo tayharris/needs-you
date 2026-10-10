@@ -49,6 +49,8 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 | Jira (Cloud, Data Center) | An issue assigned to you changes status, gets a comment or a mention, or is assigned to you | a poller on one machine | [Jira](docs/guides/jira.md) |
 | CI, cron, scripts | A job fails, or a long one finishes (`needs-you run`) | the CLI | [Add a sender](docs/guides/add-a-sender.md#cron-systemd-ci) |
 
+The pollers (Linear, Jira, GitHub Projects and Dependabot, expiry dates) run on one always-on machine; on the Mac, **Settings → Integrations → Cards from your tools** has each one's commands and an agent prompt that sets it up there ([Mac app](docs/guides/mac-app.md#cards-from-your-tools)).
+
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
 
 Open source, [Apache-2.0](LICENSE). **Status: early preview.** What each release changed: [CHANGELOG.md](CHANGELOG.md).
