@@ -124,9 +124,9 @@ Re-running the line on the same machine is safe: it keeps the token and doesn't 
 
 Tick off what you get to; anything that surprises you is worth a report. With a few items waiting, the pill shows a count, a new one springs out for a moment, and a click opens the cards (these are example items):
 
-<img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring."> &nbsp; <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
+<img src="../../site/img/pill-count.png" width="66" alt="The count pill: 4, with 1 personal item shown faintly, in a red ring, with usage bars under it."> &nbsp; <img src="../../site/img/preview.png" width="336" alt="An arrival preview: Approve the prod deploy of api v2.14, needs you, from build-box, with a button reading Approve, then ci.example.com in fainter text, then an arrow.">
 
-<img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, a CI failure with a link to the run, and a low-priority branch cleanup, each with Done, Dismiss and Snooze.">
+<img src="../../site/img/panel.png" width="376" alt="The open panel on the Work tab: usage meters for Claude and Codex at the top, then an urgent deploy approval with three links, a Claude is waiting card with a three-step checklist, and a CI failure with copy chips and a link to the run, each with Done, Dismiss and Snooze.">
 
 - [ ] **Post and resolve an item** from a connected machine:
 
@@ -142,7 +142,7 @@ Tick off what you get to; anything that surprises you is worth a report. With a 
 - [ ] **Never steals focus:** keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.
 - [ ] **Work and personal:** post one item with `--context work` and one with `--context personal`. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.
 - [ ] **Focus and snooze:** right-click the pill → **Focus** (Agents and urgent only, Urgent only, Everything later) and **Snooze**.
-- [ ] **Make it yours:** **Settings → Appearance** (theme, pill, size, card text, opacity, how loud alerts look), **Panel** (shortcut) and **Alerts** (what interrupts). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
+- [ ] **Make it yours:** **Settings → Appearance** (theme, accent, Glass or Solid background, the pill's shape and size, card density and text, opacity, how loud alerts look, usage meters), **Panel** (shortcut) and **Alerts** (what interrupts). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
 - [ ] **Mac asleep or app quit:** quit Needs You, post from another machine (the CLI says it queued and exits 0), reopen the app. The item arrives within about 5 minutes.
 - [ ] **Machines:** **Settings → Machines → Refresh** lists your machines (names, what they are and CLI versions, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
 - [ ] **Updates:** **Settings → Updates** shows the version and the last check. It checks GitHub Releases on its own (no login needed) and only installs published releases, never drafts.

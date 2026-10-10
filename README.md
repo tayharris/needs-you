@@ -22,7 +22,7 @@ With the built-in hub there's nothing else to run: no server, no account, no clo
 
 <p>
 <img src="site/img/preview-agent.png" width="330" alt="A new card springing out of the pill: Claude needs permission: acme-api, from devbox, with a VS Code button.">
-<img src="site/img/panel.png" width="190" alt="The open panel: an urgent deploy approval with its links, Claude waiting for a decision with numbered steps, a failed CI run, and a low-priority cleanup.">
+<img src="site/img/panel.png" width="190" alt="The open panel: usage meters, an urgent deploy approval with its links, Claude waiting for a decision with numbered steps, and a failed CI run.">
 </p>
 
 ## Works with
@@ -48,6 +48,8 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 | Linear | An issue assigned to you, a new comment, a mention or a status change; one card per issue, cleared when you read it in Linear | a poller on one machine, with a personal API key | [Linear](docs/guides/linear.md) |
 | Jira (Cloud, Data Center) | An issue assigned to you changes status, gets a comment or a mention, or is assigned to you | a poller on one machine | [Jira](docs/guides/jira.md) |
 | CI, cron, scripts | A job fails, or a long one finishes (`needs-you run`) | the CLI | [Add a sender](docs/guides/add-a-sender.md#cron-systemd-ci) |
+
+The pollers (Linear, Jira, GitHub Projects and Dependabot, expiry dates) run on one always-on machine; on the Mac, **Settings → Integrations → Cards from your tools** has each one's commands and an agent prompt that sets it up there ([Mac app](docs/guides/mac-app.md#cards-from-your-tools)).
 
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
 

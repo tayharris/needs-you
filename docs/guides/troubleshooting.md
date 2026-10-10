@@ -76,6 +76,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 4. **Mac can't reach a server hub:** the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.
 5. **Wrong hub:** the sender's `NEEDS_YOU_URLS` must include the Mac's hub or a server hub peered with it.
 6. **Hubs out of sync:** if the Mac polls `hub-a` and the sender wrote to `hub-b`, replication should copy it within seconds. If it doesn't, check the peer list and the replication outbox on `hub-b` ([HUB.md](../HUB.md)).
+7. **The pill is there but hard to see** over bright or busy windows: **Settings → Appearance → Theme → Background → Solid** draws it opaque, or raise **Settings → Appearance → Panel and cards → Background darkness** for the glass ([Mac app → Themes](mac-app.md#themes)).
 
 ## Duplicate or stale cards
 
