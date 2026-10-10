@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }
         if let phase3 {
-            settingsWindow.extraSettings = [.alerts: { phase3.scheduleSection }, .integrations: { phase3.streamSection }]
+            settingsWindow.extraSettings = [.schedule: { phase3.scheduleSection }, .liveUpdates: { phase3.streamSection }]
         }
         // Self-update (docs/roadmap/rollout-updates.md). Checks and installs never activate
         // the app; Settings → Updates has the detail, the open panel's footer one quiet line.
@@ -112,7 +112,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Focus rule: nothing here opens a window or activates the app. With no hub set
         // up, the pill shows a "set up" state; clicking it is what opens Settings.
         if let dir = AppSettings.snapshotDirectory {
-            if AppSettings.formatTour { runFormatTour(into: dir) } else { runSnapshotTour(into: dir) }
+            if AppSettings.formatTour {
+                runFormatTour(into: dir)
+            } else if AppSettings.looksTour {
+                runLooksTour(into: dir)
+            } else {
+                runSnapshotTour(into: dir)
+            }
         }
         openPanelIfLaunchedByPerson()
     }
@@ -288,8 +294,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.collapse()
                 model.settings.ui.theme = .sunset
             }),
+            // Settings → Appearance → Theme → Background → Solid, dark (Default) and light (Paper),
+            // then macOS's Increase Contrast (stood in for by increaseContrastOverride, so the
+            // Mac's own setting is never touched) on glass and Solid, and an accent swatch.
+            ("13b-solid-dark-pill", { model in
+                model.settings.ui.theme = .standard
+                model.settings.ui.background = .solid
+            }),
+            ("13c-solid-dark-panel", { $0.expand() }),
+            ("13d-solid-light-panel", { $0.settings.ui.theme = .paper }),
+            ("13e-solid-light-pill", { $0.collapse() }),
+            ("13f-increase-contrast-light-solid", { model in
+                model.increaseContrastOverride = true
+                model.expand()
+            }),
+            ("13g-increase-contrast-light-glass", { $0.settings.ui.background = .glass }),
+            ("13h-increase-contrast-dark-glass", { $0.settings.ui.theme = .standard }),
+            ("13i-increase-contrast-dark-solid", { $0.settings.ui.background = .solid }),
+            ("13j-increase-contrast-pill", { $0.collapse() }),
+            ("13k-accent-teal", { model in
+                model.increaseContrastOverride = nil
+                model.settings.ui.background = .glass
+                model.settings.ui.accent = .preset(.teal)
+                model.expand()
+            }),
+            ("13l-accent-purple-paper-solid", { model in
+                model.settings.ui.theme = .paper
+                model.settings.ui.background = .solid
+                model.settings.ui.accent = .preset(.purple)
+            }),
             // Settings → Appearance → Alert style → Preview on the pill: a sample urgent item arriving.
             ("14-arrival-preview", { model in
+                model.collapse()
+                model.settings.ui.background = .glass
+                model.settings.ui.accent = .theme
                 model.settings.ui.theme = .standard
                 model.previewArrival(.urgent)
             }),
@@ -314,7 +352,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("16m-usage-pill-bars-small", { Self.meters($0, .bars, size: .small) }),
             ("16n-usage-pill-bars-numbers", { Self.meters($0, .bars, numbers: true) }),
             ("16o-usage-pill-rings-numbers", { Self.meters($0, .rings, .row, numbers: true) }),
+            // "Minimal dot" (Settings → Appearance → Pill): no meters at rest or on hover, so the dot
+            // never changes height; the hovered pill shows the count. Then the hovered count pill.
+            ("16s-usage-pill-dot", { model in
+                Self.meters(model, .bars)
+                model.settings.ui.pillDetail = .dot
+            }),
+            ("16t-usage-pill-dot-hover", { $0.hovering = true }),
+            ("16u-usage-pill-hover", { $0.settings.ui.pillDetail = .count }),
             ("16d-usage-pill-warning", { model in
+                model.hovering = false
                 Self.meters(model, .bars)
                 Task { await model.applyDemoStatuses(DemoFeed.statusFixture()) }
             }),
@@ -330,14 +377,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("16g-usage-idle-percent", { Self.meters($0, .percent, size: .medium) }),
             ("16q-usage-idle-rings", { Self.meters($0, .rings, .row) }),
             ("16r-usage-idle-bars-row", { Self.meters($0, .bars, .row) }),
+            // The idle pill keeps its meters with "Minimal dot" (it has no dot), on hover too.
+            ("16v-usage-idle-dot-hover", { model in
+                Self.meters(model, .bars)
+                model.settings.ui.pillDetail = .dot
+                model.hovering = true
+            }),
             ("16h-usage-off", { model in
+                model.hovering = false
+                model.settings.ui.pillDetail = .count
                 Self.meters(model, .bars)
                 model.settings.usage.onPill = false
+            }),
+            // A setup tip (they never show in demo mode, so the tour asks for one): the
+            // integrations tip, whose button opens Settings → Integrations.
+            ("17-setup-tip-integrations", { model in
+                model.settings.usage.onPill = true
+                model.snapshotSetupTips = [.integrations]
+                model.expand()
+                model.scrollTarget = nil
             }),
             // The open panel's ORCA section (Settings → Panel → Orca), unfolded, with nothing
             // waiting so it's in view: DemoFeed.orcaFixture, as a snapshot run never reads Orca.
             ("17-orca-panel", { model in
                 model.settings.usage.onPill = true
+                model.snapshotSetupTips = nil
                 model.settings.showOrcaWorktrees = true
                 model.showOrca = true
                 model.expand()
@@ -349,8 +413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
                                      tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
         let pages: [(SettingsTab, Int)] = [(.inbox, 3), (.connect, 1),
-                                           (.theme, 2), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
-                                           (.panel, 6), (.alerts, 4)]
+                                           (.theme, 3), (.pill, 2), (.cards, 4), (.alertStyle, 3), (.usageMeters, 2),
+                                           (.panel, 7), (.alerts, 4), (.integrations, 5)]
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             for (name, action) in steps {
@@ -367,6 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             // The pages show the out-of-the-box look and alerts settings.
+            model.snapshotSetupTips = nil
             model.collapse()
             settings.ui = UIPrefs()
             settings.usage = UsagePrefs()
@@ -377,10 +442,162 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The Theme sample in a light and a colourful theme: the desktop stays put.
             for theme in [PanelTheme.paper, .sunset] {
                 settings.ui.theme = theme
-                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 2,
+                await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
                                                    into: dir, name: "settings-theme-\(theme.rawValue)")
             }
+            // Solid with an accent swatch, and the Opacity settings it turns off.
+            settings.ui.theme = .standard
+            settings.ui.background = .solid
+            settings.ui.accent = .preset(.teal)
+            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
+                                               into: dir, name: "settings-theme-solid-teal")
+            await settingsWindow.writeSnapshot(of: .cards, showcase: showcase, shots: 4,
+                                               into: dir, name: "settings-cards-solid")
+            settings.ui.accent = .custom(ThemeRGB(hex: 0xE11D48))
+            await settingsWindow.writeSnapshot(of: .theme, showcase: showcase, shots: 3,
+                                               into: dir, name: "settings-theme-custom-red")
             settings.ui = savedUI
+            NSLog("NeedsYou: snapshots written to \(dir.path)")
+        }
+    }
+
+    /// Debug aid (NEEDS_YOU_SNAPSHOT_TOUR=looks, `mac/scripts/screenshots.sh --looks`): every
+    /// state of the panel in each Settings → Appearance → Pill → Shape (the waiting pill at
+    /// rest, on hover and mid-glow, the arrival preview at rest and mid-glow, the open panel,
+    /// the idle pill at rest and on hover), then each Pill size and the Compact density, and
+    /// the Pill and Panel and cards pages. The look settings are put back afterwards.
+    private func runLooksTour(into dir: URL) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let savedUI = settings.ui
+        // (name, seconds to wait before the snapshot, action)
+        var steps: [(String, Double, (AppModel) -> Void)] = []
+        let urgent: (AppModel) -> Item? = { model in model.needsItems.first { $0.priority == .urgent } }
+        func states(_ prefix: String) {
+            steps += [
+                ("\(prefix)-1-waiting", 1.2, { model in
+                    model.previewItem = nil
+                    model.collapse()
+                    model.hovering = false
+                }),
+                ("\(prefix)-2-waiting-hover", 1.0, { $0.hovering = true }),
+                ("\(prefix)-3-waiting-glow", 0.45, { model in
+                    model.hovering = false
+                    model.requestPulse(times: 2, priority: .urgent)
+                }),
+                ("\(prefix)-4-preview", 1.5, { model in model.previewItem = urgent(model) }),
+                ("\(prefix)-5-preview-glow", 0.45, { $0.requestPulse(times: 2, priority: .urgent) }),
+                ("\(prefix)-6-expanded", 1.5, { model in
+                    model.previewItem = nil
+                    model.expand()
+                }),
+            ]
+        }
+        func idle(_ prefix: String) {
+            steps += [
+                ("\(prefix)-7-idle", 1.5, { model in
+                    model.collapse()
+                    model.hovering = false
+                    Task { await model.applyDemoOpenSet([]) }
+                }),
+                ("\(prefix)-8-idle-hover", 1.0, { $0.hovering = true }),
+            ]
+        }
+        var items: [Item] = []
+        // The start-of-day summary would open the panel mid-tour (test copy's suite only).
+        let summaryWasOn = phase3?.morningSummaryEnabled ?? false
+        phase3?.morningSummaryEnabled = false
+        steps.append(("0-start", 1.0, { model in
+            items = model.needsItems
+            model.collapse()
+        }))
+        let restore: (AppModel) -> Void = { model in
+            model.hovering = false
+            let open = items
+            Task { await model.applyDemoOpenSet(open) }
+        }
+        for shape in PanelShape.allCases {
+            steps.append(("shape-\(shape.rawValue)", 2.5, { model in
+                model.settings.ui = savedUI
+                model.settings.ui.panelShape = shape
+                restore(model)
+            }))
+            states("shape-\(shape.rawValue)")
+            idle("shape-\(shape.rawValue)")
+        }
+        for shape in [PanelShape.rounded, .capsule] {
+            for size in [PillSize.small, .large] {
+                let prefix = "size-\(size.rawValue)-\(shape.rawValue)"
+                steps.append((prefix, 2.5, { model in
+                    model.settings.ui = savedUI
+                    model.settings.ui.panelShape = shape
+                    model.settings.ui.pillSize = size
+                    restore(model)
+                }))
+                steps.append(("\(prefix)-1-waiting", 1.2, { model in
+                    model.previewItem = nil
+                    model.collapse()
+                }))
+                steps.append(("\(prefix)-2-waiting-hover", 1.0, { $0.hovering = true }))
+                idle(prefix)
+            }
+        }
+        steps.append(("density", 2.5, { model in
+            model.settings.ui = savedUI
+            restore(model)
+        }))
+        steps.append(("density-comfortable-expanded", 1.5, { $0.expand() }))
+        steps.append(("density-compact-expanded", 1.5, { $0.settings.ui.cardDensity = .compact }))
+        // Theme → Background → Solid with Increase Contrast (the 1 pt border) in Square and
+        // Capsule: the solid fill, the border and the ring follow the shape.
+        for shape in [PanelShape.square, .capsule] {
+            let prefix = "solid-contrast-\(shape.rawValue)"
+            steps.append((prefix, 2.5, { model in
+                model.settings.ui = savedUI
+                model.settings.ui.panelShape = shape
+                model.settings.ui.background = .solid
+                model.increaseContrastOverride = true
+                restore(model)
+            }))
+            steps.append(("\(prefix)-1-waiting", 1.2, { model in
+                model.previewItem = nil
+                model.collapse()
+            }))
+            steps.append(("\(prefix)-4-preview", 1.5, { model in model.previewItem = urgent(model) }))
+            steps.append(("\(prefix)-6-expanded", 1.5, { model in
+                model.previewItem = nil
+                model.expand()
+            }))
+        }
+        steps.append(("solid-contrast-off", 0.5, { model in
+            model.increaseContrastOverride = nil
+            model.collapse()
+        }))
+        let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
+                                     tailscaleInstalled: true, loopbackOnly: false, port: LocalHub.port)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            for (name, wait, action) in steps {
+                action(model)
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                // The setup steps (no dash-number suffix) only change settings.
+                guard name.range(of: #"-\d-"#, options: .regularExpression) != nil
+                        || name.hasPrefix("density-") else { continue }
+                panel.writeSnapshot(to: dir.appendingPathComponent("looks-\(name).png"))
+                NSLog("NeedsYou: snapshot \(name)")
+            }
+            model.collapse()
+            for shape in PanelShape.allCases {
+                settings.ui = UIPrefs()
+                settings.ui.panelShape = shape
+                await settingsWindow.writeSnapshot(of: .pill, showcase: showcase, shots: 1,
+                                                   into: dir, name: "looks-settings-pill-\(shape.rawValue)")
+            }
+            settings.ui = UIPrefs()
+            settings.ui.cardDensity = .compact
+            await settingsWindow.writeSnapshot(of: .cards, showcase: showcase, shots: 1,
+                                               into: dir, name: "looks-settings-cards-compact")
+            settings.ui = savedUI
+            phase3?.morningSummaryEnabled = summaryWasOn
             NSLog("NeedsYou: snapshots written to \(dir.path)")
         }
     }

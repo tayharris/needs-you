@@ -23,7 +23,7 @@ struct RootView: View {
             .background(backdrop(display))
             .clipShape(shape(display))
             .overlay(ring(display))
-            .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: 0.5))
+            .overlay(shape(display).strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
             .background(
                 // Soft glow outside the edge; only visible while a pulse runs.
                 GlowEdge(shape: shape(display), color: glowColor, glow: glow, look: glowLook)
@@ -77,12 +77,9 @@ struct RootView: View {
         }
     }
 
-    private func shape(_ display: PanelDisplay) -> RoundedRectangle {
-        switch display {
-        case .idle: return RoundedRectangle(cornerRadius: model.hovering ? 11 : 9, style: .continuous)
-        case .waiting: return RoundedRectangle(cornerRadius: model.pillCornerRadius, style: .continuous)
-        case .preview, .digest, .expanded: return RoundedRectangle(cornerRadius: 14, style: .continuous)
-        }
+    /// Settings → Appearance → Pill → Shape, for this state (PanelCorners).
+    private func shape(_ display: PanelDisplay) -> PanelOutline {
+        PanelOutline(model.settings.ui, model.surface(for: display))
     }
 
     @ViewBuilder
@@ -100,25 +97,31 @@ struct RootView: View {
     }
 
     /// Settings → Panel → Opacity → Background darkness: a dark layer behind the glass
-    /// (not the faint idle pill), so text reads over bright or busy windows.
+    /// (not the faint idle pill), so text reads over bright or busy windows. Theme →
+    /// Background → Solid covers the glass with the theme's surface colour instead.
     @ViewBuilder
     private func backdrop(_ display: PanelDisplay) -> some View {
         switch display {
         case .idle:
             EmptyView()
         default:
-            Theme.backdrop.opacity(model.palette.backdropOpacity(model.settings.ui.backdrop))
+            if model.settings.ui.background == .solid {
+                Theme.surface
+            } else {
+                Theme.backdrop.opacity(model.palette.backdropOpacity(model.settings.ui.backdrop))
+            }
         }
     }
 
-    /// Settings → Appearance → Theme: the theme's wash over the glass (none by default).
+    /// Settings → Appearance → Theme: the theme's wash over the glass (none by default; Solid
+    /// has it in its surface colour already).
     @ViewBuilder
     private func themeTint(_ display: PanelDisplay) -> some View {
         switch display {
         case .idle:
             EmptyView()
         default:
-            if model.palette.tintOpacity > 0 { Theme.tint }
+            if model.palette.tintOpacity > 0, model.settings.ui.background == .glass { Theme.tint }
         }
     }
 
@@ -205,7 +208,7 @@ struct IdlePill: View {
         // (PillMeterLayout.idleAlpha).
         let layout = model.idleMeterLayout
         PillWithMeters(bars: layout.count > 0 ? model.pillUsageBars : [], layout: layout,
-                       cornerRadius: model.hovering ? 11 : 9, numberBase: model.metrics.idleFont - 1,
+                       cornerRadius: model.idleCornerRadius(height: layout.height), numberBase: model.pillMetrics.idleFont - 1,
                        trailing: 8) {
             line(trailing: layout.showsTrailing ? 0 : 8)
         }
@@ -220,11 +223,11 @@ struct IdlePill: View {
             if model.isFocused {
                 // Focus is on (right-click → Focus); the link badge when a link set it.
                 Image(systemName: "moon.fill")
-                    .font(.system(size: model.metrics.idleFont - 1))
+                    .font(.system(size: model.pillMetrics.idleFont - 1))
                     .foregroundStyle(Theme.muted)
                 if model.focusSetByLink {
                     Image(systemName: "link")
-                        .font(.system(size: model.metrics.idleFont - 2, weight: .semibold))
+                        .font(.system(size: model.pillMetrics.idleFont - 2, weight: .semibold))
                         .foregroundStyle(Theme.accent.opacity(0.9))
                 }
             } else {
@@ -233,7 +236,7 @@ struct IdlePill: View {
                     .frame(width: 5, height: 5)
             }
             Text(model.hovering ? model.idleHoverLine : model.idleRestLine)
-                .font(.system(size: model.metrics.idleFont))
+                .font(.system(size: model.pillMetrics.idleFont))
                 .foregroundStyle(Theme.text.opacity(0.85))
                 .lineLimit(1)
         }

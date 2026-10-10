@@ -112,8 +112,21 @@ public struct PanelPalette: Hashable, Sendable {
     public var surface: ThemeRGB
     /// A raised surface (the Settings sample pills).
     public var raised: ThemeRGB
+    /// macOS's Increase Contrast is on (`withIncreasedContrast`).
+    public var increasedContrast = false
 
     public var isDark: Bool { appearance == .dark }
+
+    /// The panel's outline and card borders, in points.
+    public var borderWidth: Double { increasedContrast ? 1 : 0.5 }
+
+    /// A usage meter below its warning line: the text colour at this opacity.
+    public var quietMeterOpacity: Double { increasedContrast ? 0.8 : 0.55 }
+
+    /// The contrast an accent must reach on the surface.
+    public var accentMinimumContrast: Double {
+        increasedContrast ? ThemeAccent.increasedMinimumContrast : ThemeAccent.minimumContrast
+    }
 
     public func color(_ priority: ItemPriority?) -> ThemeRGB {
         switch priority {
@@ -131,18 +144,75 @@ public struct PanelPalette: Hashable, Sendable {
     public func backdropOpacity(_ chosen: Double) -> Double { max(chosen, backdropFloor) }
 
     /// The same palette with another accent, nudged toward the text colour until it reads
-    /// on the surface (at least `ThemeAccent.minimumContrast`). Priorities never change.
+    /// on the surface (at least `accentMinimumContrast`). Priorities never change, and an
+    /// accent that would pass for urgent's red (`ThemeAccent.looksUrgent`) is refused: the
+    /// theme's own accent stays.
     public func withAccent(_ color: ThemeRGB) -> PanelPalette {
+        guard !refusesAccent(color) else { return self }
         var p = self
+        p.accent = readableAccent(color)
+        return p
+    }
+
+    /// Whether `withAccent` refuses `color` as too close to urgent (as chosen, or once
+    /// made readable).
+    public func refusesAccent(_ color: ThemeRGB) -> Bool {
+        ThemeAccent.looksUrgent(color, urgent: urgent) || ThemeAccent.looksUrgent(readableAccent(color), urgent: urgent)
+    }
+
+    /// `color` nudged toward the text colour until it reads on the surface.
+    private func readableAccent(_ color: ThemeRGB) -> ThemeRGB {
         var c = color
         var step = 0
-        while c.contrast(with: surface) < ThemeAccent.minimumContrast && step < 20 {
+        while c.contrast(with: surface) < accentMinimumContrast && step < 30 {
             c = text.over(c, alpha: 0.1)
             step += 1
         }
-        p.accent = c
+        return c
+    }
+
+    /// macOS's Increase Contrast: secondary text, hairlines and borders get stronger, the
+    /// glass gets a backdrop of at least 60 %, and the accent must reach 4.5:1. The colours
+    /// and the surface stay the theme's.
+    public func withIncreasedContrast() -> PanelPalette {
+        var p = self
+        p.increasedContrast = true
+        p.mutedOpacity = max(mutedOpacity, 0.8)
+        p.faintOpacity = max(faintOpacity, 0.66)
+        p.hairlineOpacity = max(hairlineOpacity, 0.4)
+        p.cardFillOpacity = max(cardFillOpacity, 0.08)
+        p.backdropFloor = max(backdropFloor, 0.6)
+        p.accent = p.readableAccent(accent)
         return p
     }
+}
+
+/// Settings → Appearance → Theme → Background, for the pill, the arrival preview and the
+/// open panel. Stored as the raw value under `themeBackground`; unknown → glass.
+public enum PanelBackground: String, CaseIterable, Sendable {
+    /// The see-through material with Background darkness behind it (the original).
+    case glass
+    /// The theme's surface colour, opaque, whatever is behind the panel. Background
+    /// darkness and the Opacity percentages don't apply: it's always fully opaque.
+    case solid
+
+    public var title: String {
+        switch self {
+        case .glass: return "Glass"
+        case .solid: return "Solid"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .glass: return "See-through, with Background darkness and Opacity from Panel and cards. The original look."
+        case .solid: return "Opaque, in the theme's colour: the easiest to see over any window. Background darkness and Opacity don't apply."
+        }
+    }
+
+    /// The window alpha for a shape whose Opacity setting gives `glassAlpha`: Solid is
+    /// always fully opaque.
+    public func alpha(_ glassAlpha: Double) -> Double { self == .solid ? 1 : glassAlpha }
 }
 
 /// Settings → Appearance → Theme. Stored as the raw value under `theme`; unknown → standard.
@@ -199,9 +269,11 @@ public enum PanelTheme: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// The palette with the accent override (nil: the theme's own accent).
-    public func palette(systemIsDark: Bool = true, accent: ThemeAccent) -> PanelPalette {
-        let base = palette(systemIsDark: systemIsDark)
+    /// The palette with the accent override (nil: the theme's own accent), made stronger
+    /// when macOS's Increase Contrast is on.
+    public func palette(systemIsDark: Bool = true, accent: ThemeAccent, increaseContrast: Bool = false) -> PanelPalette {
+        var base = palette(systemIsDark: systemIsDark)
+        if increaseContrast { base = base.withIncreasedContrast() }
         guard let color = accent.color else { return base }
         return base.withAccent(color)
     }
@@ -282,7 +354,7 @@ public enum PanelTheme: String, CaseIterable, Codable, Sendable {
 
 /// Settings → Appearance → Theme → Accent colour: the theme's own, a preset, or any colour.
 /// Stored under `themeAccent` as "" (the theme's), a preset name, or "#RRGGBB"; anything
-/// else falls back to the theme's.
+/// else falls back to the theme's. Never red: urgent keeps red to itself (`looksUrgent`).
 public enum ThemeAccent: Hashable, Sendable {
     case theme
     case preset(Preset)
@@ -290,9 +362,26 @@ public enum ThemeAccent: Hashable, Sendable {
 
     /// Accents are nudged until they reach this contrast on the panel.
     public static let minimumContrast = 3.0
+    /// The same with macOS's Increase Contrast on.
+    public static let increasedMinimumContrast = 4.5
+    /// A colour (not a grey: at least `urgentSaturationFloor`) within this many degrees of
+    /// urgent's hue would pass for urgent, so it's never used as the accent.
+    public static let urgentHueMargin = 40.0
+    public static let urgentSaturationFloor = 0.2
 
+    /// Whether `color` would pass for `urgent`.
+    public static func looksUrgent(_ color: ThemeRGB, urgent: ThemeRGB) -> Bool {
+        let saturation = max(color.red, color.green, color.blue) - min(color.red, color.green, color.blue)
+        guard saturation >= urgentSaturationFloor else { return false }
+        let d = abs(color.hue - urgent.hue)
+        return min(d, 360 - d) < urgentHueMargin
+    }
+
+    /// The swatches, in order. Each reads in every theme, light or dark, and none is near
+    /// red. (Pink and Orange, offered up to 0.5, came too close to urgent; stored, they
+    /// fall back to the theme's accent.)
     public enum Preset: String, CaseIterable, Sendable {
-        case blue, purple, pink, orange, green, teal, graphite
+        case blue, purple, green, teal, graphite
 
         public var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 
@@ -300,8 +389,6 @@ public enum ThemeAccent: Hashable, Sendable {
             switch self {
             case .blue: return ThemeRGB(hex: 0x3B82F6)
             case .purple: return ThemeRGB(hex: 0xA855F7)
-            case .pink: return ThemeRGB(hex: 0xEC4899)
-            case .orange: return ThemeRGB(hex: 0xF97316)
             case .green: return ThemeRGB(hex: 0x22C55E)
             case .teal: return ThemeRGB(hex: 0x14B8A6)
             case .graphite: return ThemeRGB(hex: 0x8E8E93)

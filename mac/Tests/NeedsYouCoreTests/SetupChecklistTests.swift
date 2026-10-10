@@ -24,7 +24,45 @@ final class SetupChecklistTests: XCTestCase {
         ("testOtherHosts", testOtherHosts),
         ("testClaudeHookDetection", testClaudeHookDetection),
         ("testHubNotAnsweringOffersARestart", testHubNotAnsweringOffersARestart),
+        ("testIntegrationsTipAfterTheFirstSteps", testIntegrationsTipAfterTheFirstSteps),
+        ("testIntegrationItemsAreThePollers", testIntegrationItemsAreThePollers),
     ]
+
+    func testIntegrationsTipAfterTheFirstSteps() {
+        // Not before anything sends, nor while the hooks tip is up.
+        XCTAssertFalse(SetupChecklist.pending(freshHub()).contains(.integrations))
+        XCTAssertEqual(SetupChecklist.pending(freshHub { $0.senderSeen = true; $0.claudeCodeInstalled = true }), [.claudeHooks])
+        let connected = freshHub { $0.senderSeen = true }
+        XCTAssertEqual(SetupChecklist.pending(connected), [.integrations])
+        XCTAssertEqual(SetupChecklist.pending(freshHub { $0.senderSeen = true; $0.hubReachable = false }), [])
+        // Done for good once a poller's card arrives; dismissable like any tip.
+        var seen = connected
+        seen.integrationSeen = true
+        XCTAssertEqual(SetupChecklist.pending(seen), [])
+        XCTAssertTrue(SetupChecklist.satisfied(seen).contains(.integrations))
+        XCTAssertEqual(SetupChecklist.pending(freshHub { $0.senderSeen = true; $0.closed = [SetupTip.integrations.rawValue] }), [])
+        let card = SetupChecklist.card(.integrations, state: connected)
+        XCTAssertEqual(card.buttons.map(\.action), [.openSettings(.integrations)])
+        XCTAssertEqual(card.item.priority, .low)
+        XCTAssertTrue(card.dismissible)
+        // It names every tool the Integrations page lists.
+        let body = card.item.body ?? ""
+        for word in ["Linear", "Jira", "GitHub Projects", "Dependabot", "expiring"] {
+            XCTAssertTrue(body.contains(word), word)
+        }
+    }
+
+    func testIntegrationItemsAreThePollers() {
+        func item(_ agent: String?, id: String = "01ABC") -> Item {
+            Item(id: id, key: id, title: "x", source: ItemSource(host: "devbox", agent: agent), createdAt: Date())
+        }
+        XCTAssertFalse(SetupChecklist.hasIntegrationItems([]))
+        XCTAssertFalse(SetupChecklist.hasIntegrationItems([item("claude-code"), item(nil)]))
+        for agent in ["linear", "jira", "github", "expiry", "Linear"] {
+            XCTAssertTrue(SetupChecklist.hasIntegrationItems([item(agent)]), agent)
+        }
+        XCTAssertFalse(SetupChecklist.hasIntegrationItems([item("linear", id: SetupChecklist.idPrefix + SetupTip.integrations.rawValue)]))
+    }
 
     func testHubNotAnsweringOffersARestart() {
         let stuck = state { $0.hasHub = true; $0.localHub = .notAnswering }
@@ -74,7 +112,7 @@ final class SetupChecklistTests: XCTestCase {
 
     func testRunningHubWithoutSendersShowsConnect() {
         XCTAssertEqual(SetupChecklist.pending(freshHub()), [.connectSender])
-        XCTAssertEqual(SetupChecklist.pending(freshHub { $0.senderSeen = true }), [])
+        XCTAssertEqual(SetupChecklist.pending(freshHub { $0.senderSeen = true; $0.integrationSeen = true }), [])
     }
 
     func testConnectWaitsForAPollAndAnInviteToken() {
@@ -83,7 +121,7 @@ final class SetupChecklistTests: XCTestCase {
     }
 
     func testLoopbackOnlyWithOtherMachinesShowsTailscale() {
-        let lonely = freshHub { $0.senderSeen = true; $0.localHub = .running(loopbackOnly: true) }
+        let lonely = freshHub { $0.senderSeen = true; $0.integrationSeen = true; $0.localHub = .running(loopbackOnly: true) }
         XCTAssertEqual(SetupChecklist.pending(lonely), [])
         var others = lonely
         others.hasOtherMachines = true
@@ -98,7 +136,7 @@ final class SetupChecklistTests: XCTestCase {
 
     func testClaudeHooksAfterFirstSender() {
         XCTAssertEqual(SetupChecklist.pending(freshHub { $0.claudeCodeInstalled = true }), [.connectSender])
-        let connected = freshHub { $0.claudeCodeInstalled = true; $0.senderSeen = true }
+        let connected = freshHub { $0.claudeCodeInstalled = true; $0.senderSeen = true; $0.integrationSeen = true }
         XCTAssertEqual(SetupChecklist.pending(connected), [.claudeHooks])
         var hooked = connected
         hooked.claudeHooksInstalled = true

@@ -802,6 +802,18 @@ class TerminalLinkTests(HookHarness):
         self.assertEqual(self.links(calls[0]), [KITTY])
         self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file" + self.cwd])
 
+    def test_old_hub_retry_from_another_editor_has_no_claude_tab(self):
+        # The extension's tab link opens in VS Code or Cursor only: a Windsurf session's
+        # fallback mustn't send it to VS Code, where that session isn't.
+        with open(self.cli, "w") as fh:
+            fh.write(FAKE_CLI + "sys.exit(2 if any('=needsyou://' in a for a in sys.argv) else 0)\n")
+        self.terminal(NEEDS_YOU_HOOK_PLATFORM="darwin", __CFBundleIdentifier="com.exafunction.windsurf",
+                      TERM_PROGRAM="vscode", CLAUDE_CODE_ENTRYPOINT="claude-vscode", NEEDS_YOU_AGENT_LINK="")
+        calls = self.calls()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.links(calls[0]), ["Windsurf=needsyou://app/activate?bundle=com.exafunction.windsurf"])
+        self.assertEqual(self.links(calls[1]), ["VS Code=vscode://file" + self.cwd])
+
     def test_refused_template_link_still_posts_the_card(self):
         # security audit #14: the hub refuses extension handlers; the card arrives without links
         with open(self.cli, "w") as fh:

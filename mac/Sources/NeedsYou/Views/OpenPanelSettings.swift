@@ -1,8 +1,10 @@
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Panel → Open panel: whether it opens when the app starts, whether a click
-/// elsewhere closes it, and its dragged height.
+// settings-section: openPanel
+/// Settings → Panel → Open panel: whether it opens when the app starts and whether a click
+/// elsewhere closes it. Its height (dragged or Cards before scrolling) is look:
+/// Appearance → Panel and cards.
 struct OpenPanelSettingsSection: View {
     @ObservedObject var settings: AppSettings
 
@@ -14,18 +16,10 @@ struct OpenPanelSettingsSection: View {
             Toggle(isOn: $settings.ui.collapseOnClickOutside) {
                 LabelWithDetail("Collapse when clicking elsewhere", "On: a click anywhere else closes it. Off: it stays up, even after you open a card's link, so you can keep reading the card.")
             }
-            HStack {
-                LabelWithDetail("List height", settings.ui.expandedListHeight > 0
-                                ? "\(Int(settings.ui.expandedListHeight)) pt, set by dragging the panel's edge."
-                                : "Automatic. Drag the open panel's bottom (or top) edge to set it.")
-                Spacer()
-                Button("Automatic") { settings.ui.expandedListHeight = 0 }
-                    .disabled(settings.ui.expandedListHeight <= 0)
-            }
         } header: {
             Text("Open panel")
         } footer: {
-            Text("The chevron, a double-click on the header bar and the shortcut always close it. With the setting off, Esc does too, except right after you click in another app (point at the panel again first). A dragged height replaces Cards before scrolling (Appearance → Panel and cards); double-click the edge to go back.")
+            Text("The chevron, a double-click on the header bar and the shortcut always close it. With the setting off, Esc does too, except right after you click in another app (point at the panel again first). How tall it is: Appearance → Panel and cards.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

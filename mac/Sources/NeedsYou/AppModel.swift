@@ -205,6 +205,9 @@ final class AppModel: ObservableObject {
     private var setupProbed = false
     /// Something arrived from a hub (or the hub lists another token) since launch.
     @Published private(set) var senderObserved = false
+    /// A card from a tool poller (Linear, Jira, GitHub, expiry) has arrived: the
+    /// integrations setup tip is done.
+    @Published private(set) var integrationObserved = false
     @Published private(set) var claudeCodeInstalled = false
     @Published private(set) var claudeHooksInstalled = false
     /// A line under a setup card after its button ran ("Agent prompt copied…"). Never holds
@@ -229,7 +232,20 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.refreshPalette() }
             }
             .store(in: &appearanceObservers)
+        // The panel's views observe the model, so a look change in Settings (Shape, Size,
+        // Pill size, Density, ...) redraws the open panel and the pill straight away, not on
+        // the next poll.
+        settings.$ui
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in Task { @MainActor in self?.objectWillChange.send() } }
+            .store(in: &appearanceObservers)
         NSApplication.shared.publisher(for: \.effectiveAppearance)
+            .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
+            .store(in: &appearanceObservers)
+        // System Settings → Accessibility → Display → Increase contrast.
+        NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
             .sink { [weak self] _ in Task { @MainActor in self?.refreshPalette() } }
             .store(in: &appearanceObservers)
         // A rule's "Treat as urgent"/"Treat as low" recolours and re-sorts the cards at once.
@@ -252,10 +268,17 @@ final class AppModel: ObservableObject {
         settings.bypassRules = rules
     }
 
-    /// Recomputes the palette from the settings and macOS's appearance.
+    /// The snapshot tour's stand-in for macOS's Increase Contrast (AppDelegate.runSnapshotTour
+    /// only, so screenshots can show it without changing the Mac's settings); nil = macOS's.
+    var increaseContrastOverride: Bool? {
+        didSet { refreshPalette() }
+    }
+
+    /// Recomputes the palette from the settings and macOS's appearance and Increase Contrast.
     func refreshPalette() {
         Theme.systemIsDark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let next = settings.ui.palette(systemIsDark: Theme.systemIsDark)
+        let increase = increaseContrastOverride ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        let next = settings.ui.palette(systemIsDark: Theme.systemIsDark, increaseContrast: increase)
         Theme.palette = next
         if next != palette { palette = next }
     }
@@ -315,6 +338,8 @@ final class AppModel: ObservableObject {
             || SetupChecklist.hasOtherHosts(Array(store.items.values), localHost: localHost)
         s.claudeCodeInstalled = claudeCodeInstalled
         s.claudeHooksInstalled = claudeHooksInstalled
+        s.integrationSeen = integrationObserved
+            || settings.setupTipsDone.contains(SetupTip.integrations.rawValue)
         s.closed = settings.setupTipsDone.union(settings.setupTipsDismissed)
         s.context = context
         s.now = now
@@ -322,7 +347,17 @@ final class AppModel: ObservableObject {
     }
 
     /// The setup cards to show, in order. Not in the store, the count or the menu bar.
-    var setupCards: [SetupCard] { SetupChecklist.cards(state: setupState) }
+    var setupCards: [SetupCard] {
+        if let tips = snapshotSetupTips {
+            let state = setupState
+            return tips.map { SetupChecklist.card($0, state: state) }
+        }
+        return SetupChecklist.cards(state: setupState)
+    }
+
+    /// Snapshot tour only (mac/scripts/screenshots.sh): draw these setup cards whatever the
+    /// state (demo mode shows none). Never set in normal use.
+    @Published var snapshotSetupTips: [SetupTip]?
 
     /// The "set up" pill's click: straight to Settings, unless a setup card explains what
     /// to do (then it opens the panel, and the card's button opens Settings).
@@ -655,6 +690,9 @@ final class AppModel: ObservableObject {
             }
             hasSynced = true
             if !isDemo, !senderObserved, !updated.items.isEmpty { senderObserved = true }
+            if !isDemo, !integrationObserved, SetupChecklist.hasIntegrationItems(Array(updated.items.values)) {
+                integrationObserved = true
+            }
             recordSetupProgress()
             if isExpanded { markVisibleSeen() }
             refreshStatusesInBackground(generation: generation)

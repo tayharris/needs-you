@@ -6,14 +6,15 @@ struct CardView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
+        // Settings → Appearance → Panel and cards → Density sets the gaps (PanelMetrics.with(density:)).
         let m = model.metrics
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: m.cardBarGap) {
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(Theme.color(item.priority))
                 .frame(width: 3)
                 .frame(maxHeight: .infinity)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: m.cardLineSpacing) {
                 let badge = CardAge.badge(createdAt: item.createdAt, now: model.now)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(item.title)
@@ -124,7 +125,7 @@ struct CardView: View {
                 Color.clear.preference(key: CardBottomsKey.self, value: [proxy.frame(in: .named(CardBottomsKey.space)).maxY])
             }
         )
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
         // Opened at this card (the clicked preview, or the newest arrival): a brief outline.
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -255,7 +256,7 @@ struct StepList: View {
     var body: some View {
         let font = model.bodyFont
         let steps = StepsPolicy.visible(item)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: model.metrics.cardRowSpacing) {
             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                 let ticked = model.stepTicks.isTicked(item, index)
                 let toggles = model.stepTicks.canToggle(item, index)
@@ -328,7 +329,7 @@ struct QuestionList: View {
         let locked = state == .sending || state == .sent
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, q in
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: model.metrics.cardRowSpacing) {
                     Text(QuestionDisplay.heading(q, index: index, count: items.count, answering: answering))
                         .font(.system(size: model.metrics.metaFont, weight: .semibold))
                         .foregroundStyle(Theme.muted)

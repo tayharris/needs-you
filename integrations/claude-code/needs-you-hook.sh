@@ -887,8 +887,11 @@ def editor_links(ide):
     """The deepest editor links this machine can name, for `ide` (VS Code when None)."""
     links = []
     editor, scheme = ide if ide and ide[1] else ("VS Code", "vscode")
-    # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs).
+    # The VS Code extension's own tab (URI handler from the Claude Code VS Code docs), in the
+    # editor that hosts it: vscode:// or cursor://. Another editor (Windsurf, Insiders) has no
+    # allowed scheme, and a vscode:// link would open VS Code, where that session isn't.
     if (AGENT == "claude" and os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "claude-vscode"
+            and not (ide and not ide[1])
             and re.match(r"^[A-Za-z0-9-]{8,64}$", session)):
         links.append("Claude=%s://anthropic.claude-code/open?session=%s" % (scheme, session))
     if not cwd.startswith("/"):

@@ -33,6 +33,8 @@ enum Theme {
     static var text: Color { Color(palette.text) }
 
     static var hairline: Color { text.opacity(palette.hairlineOpacity) }
+    /// The panel's outline and card borders: thicker with macOS's Increase Contrast.
+    static var borderWidth: CGFloat { CGFloat(palette.borderWidth) }
     static var cardFill: Color { text.opacity(palette.cardFillOpacity) }
     static var muted: Color { text.opacity(palette.mutedOpacity) }
     static var faint: Color { text.opacity(palette.faintOpacity) }

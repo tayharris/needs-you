@@ -37,6 +37,7 @@
       <ul>
         <li><a href="#before-you-start">Before you start</a></li>
         <li><a href="#set-up-4-commands">Set up (4 commands)</a></li>
+        <li><a href="#or-let-an-agent-set-it-up">Or let an agent set it up</a></li>
         <li><a href="#what-to-put-in-the-list">What to put in the list</a></li>
         <li><a href="#check-it-works">Check it works</a></li>
         <li><a href="#tune-it">Tune it</a></li>
@@ -67,6 +68,16 @@ EOF
 # 4. Run it every day
 (crontab -l 2&gt;/dev/null; echo '17 9 * * * $HOME/.local/bin/needs-you-expiry &gt;/dev/null  # needs-you-expiry') | crontab -</code></pre></div>
 <p>Prefer a systemd user timer or, on a Mac, a LaunchAgent? Use the files in <a data-repo="/blob/main/integrations/expiry/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/expiry/README.md">integrations/expiry</a> instead of step 4.</p>
+<h2 id="or-let-an-agent-set-it-up">Or let an agent set it up <a class="anchor" href="#or-let-an-agent-set-it-up" aria-label="Link to this section">#</a></h2>
+<p>On your Mac, <strong>Settings → Integrations → Cards from your tools → Expiring certificates, domains and keys</strong> has the same commands with Copy buttons, and <strong>Copy agent prompt</strong>. Paste the prompt into Claude Code (or another agent) on the machine that will run the poller. The agent asks you what to watch and writes the list; a key line holds only a name and a date.</p>
+<div class="code"><pre><code class="language-text">Set up needs-you cards for expiring certificates, domains and keys on this machine. The guide is https://github.com/tayharris/needs-you/blob/main/docs/guides/expiry.md.
+This machine must already send needs-you alerts: if ~/.local/bin/needs-you is missing or ~/.local/bin/needs-you doctor shows a FAIL, stop and ask me for an invite link (Needs You on my Mac: Settings → Connect a machine).
+Install the poller: `gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/contents/integrations/expiry/needs-you-expiry &gt; ~/.local/bin/needs-you-expiry &amp;&amp; chmod 755 ~/.local/bin/needs-you-expiry`.
+Settings go in ~/.config/needs-you/env, which also holds this machine's needs-you token: only append lines to it (`echo 'NAME=value' &gt;&gt; ~/.config/needs-you/env`), never print, read out or rewrite it.
+Ask me what to watch: hosts whose TLS certificate matters, domains I own, and keys or tokens with the date each stops working. Write them to ~/.config/needs-you/expiry.conf, one per line: `tls example.com`, `domain example.com`, `key "Figma PAT" 2026-12-31 renew=https://www.figma.com/settings`. A key line holds only the key's name and date, never the key itself.
+Run `~/.local/bin/needs-you-expiry --dry-run -v` and tell me what it says.
+Schedule it. On Linux add the cron line: `(crontab -l 2&gt;/dev/null; echo '17 9 * * * $HOME/.local/bin/needs-you-expiry &gt;/dev/null  # needs-you-expiry') | crontab -`. On macOS use the LaunchAgent integrations/expiry/io.needs-you.expiry.plist from the repo instead (replace /Users/me with my home directory).
+If a run prints an error, fix what it names, or tell me if it needs me.</code></pre></div>
 <h2 id="what-to-put-in-the-list">What to put in the list <a class="anchor" href="#what-to-put-in-the-list" aria-label="Link to this section">#</a></h2>
 <p>One thing per line:</p>
 <ul>

@@ -37,6 +37,7 @@
       <ul>
         <li><a href="#before-you-start">Before you start</a></li>
         <li><a href="#set-up-4-commands">Set up (4 commands)</a></li>
+        <li><a href="#or-let-an-agent-set-it-up">Or let an agent set it up</a></li>
         <li><a href="#check-it-works">Check it works</a></li>
         <li><a href="#tune-it">Tune it</a></li>
         <li><a href="#when-it-doesnt-post">When it doesn't post</a></li>
@@ -64,6 +65,17 @@ curl -fsSL https://raw.githubusercontent.com/tayharris/needs-you/main/integratio
 (crontab -l 2&gt;/dev/null; echo '*/5 * * * * $HOME/.local/bin/needs-you-linear &gt;/dev/null  # needs-you-linear') | crontab -</code></pre></div>
 <p>The key file must be yours and mode 600 (step 2 does that). The poller refuses a key file that group or others can read, and a symlink. Keep the key out of <code>~/.config/needs-you/env</code> and out of the cron line.</p>
 <p>Prefer a systemd user timer or, on a Mac, a LaunchAgent? Use the files in <a data-repo="/blob/main/integrations/linear/README.md" href="https://github.com/tayharris/needs-you/blob/main/integrations/linear/README.md">integrations/linear</a> instead of step 4.</p>
+<h2 id="or-let-an-agent-set-it-up">Or let an agent set it up <a class="anchor" href="#or-let-an-agent-set-it-up" aria-label="Link to this section">#</a></h2>
+<p>On your Mac, <strong>Settings → Integrations → Cards from your tools → Linear</strong> has the same commands with Copy buttons, and <strong>Copy agent prompt</strong>. Paste the prompt into Claude Code (or another agent) on the machine that will run the poller. It holds no key: the agent asks you to run step 2 in your own terminal and paste the key there yourself.</p>
+<div class="code"><pre><code class="language-text">Set up needs-you cards for Linear on this machine. The guide is https://github.com/tayharris/needs-you/blob/main/docs/guides/linear.md.
+This machine must already send needs-you alerts: if ~/.local/bin/needs-you is missing or ~/.local/bin/needs-you doctor shows a FAIL, stop and ask me for an invite link (Needs You on my Mac: Settings → Connect a machine).
+Install the poller: `curl -fsSL https://raw.githubusercontent.com/tayharris/needs-you/main/integrations/linear/needs-you-linear -o ~/.local/bin/needs-you-linear &amp;&amp; chmod 755 ~/.local/bin/needs-you-linear`.
+needs-you-linear reads my Linear personal API key from ~/.config/needs-you/linear-key, which must be mine and mode 600. Never ask me for the Linear personal API key in chat, never print it, and never put it in ~/.config/needs-you/env, a cron line, a command or any file you write. Ask me to run this in my own terminal and paste the Linear personal API key there myself (paste it, press Enter, then Ctrl-D), and wait until I say it's done: `(umask 077 &amp;&amp; mkdir -p ~/.config/needs-you &amp;&amp; cat &gt; ~/.config/needs-you/linear-key)`. Then check only the file's mode with `ls -l ~/.config/needs-you/linear-key`: never read the file.
+Settings go in ~/.config/needs-you/env, which also holds this machine's needs-you token: only append lines to it (`echo 'NAME=value' &gt;&gt; ~/.config/needs-you/env`), never print, read out or rewrite it.
+Ask me which Linear teams to watch. If I name some, append NEEDS_YOU_LINEAR_TEAMS with them, like NEEDS_YOU_LINEAR_TEAMS=ACME=work:normal; otherwise it watches every team.
+Run `~/.local/bin/needs-you-linear --dry-run -v` and tell me what it says.
+Schedule it. On Linux add the cron line: `(crontab -l 2&gt;/dev/null; echo '*/5 * * * * $HOME/.local/bin/needs-you-linear &gt;/dev/null  # needs-you-linear') | crontab -`. On macOS use the LaunchAgent integrations/linear/io.needs-you.linear.plist from the repo instead (replace /Users/me with my home directory).
+If a run prints an error, fix what it names, or tell me if it needs me.</code></pre></div>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <p>Within 5 minutes the cards from the dry run appear on your Mac, keyed <code>work:linear:ACME-123</code>. The title says what happened last ("New comment on ACME-123: <em>title</em>", "ACME-123 moved to Blocked: <em>title</em>"), the body counts what's waiting ("2 new comments, status In Review"), and the button opens the issue or the comment in Linear (in the desktop app if Linear's "Open links in desktop app" is on). Read the notification in Linear and the card goes away on the next run.</p>
 <h2 id="tune-it">Tune it <a class="anchor" href="#tune-it" aria-label="Link to this section">#</a></h2>

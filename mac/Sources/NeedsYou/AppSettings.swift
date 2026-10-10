@@ -16,6 +16,8 @@ import NeedsYouCore
 ///   NEEDS_YOU_SNAPSHOT_TOUR=formats  debug: instead, every demo card on its own, in each card
 ///                                    text mode, then after NEEDS_YOU_DEMO_REPOST=path.json's
 ///                                    re-posts (mac/scripts/format-fixtures.py writes both)
+///   NEEDS_YOU_SNAPSHOT_TOUR=looks    debug: instead, every panel state in each Shape, Pill
+///                                    size and Density (screenshots.sh --looks)
 ///   NEEDS_YOU_LAUNCH_SNAPSHOT_DIR=dir debug: PNGs of the panel just after launch and after
 ///                                    the launch open closes (no global shortcut either)
 ///   NEEDS_YOU_SUPPORT_DIR=dir        hub.db, owner.token and tokens.json here
@@ -26,29 +28,30 @@ final class AppSettings: ObservableObject {
     private let env = ProcessInfo.processInfo.environment
     let tokens: FileTokenStore
 
+    /// The stored keys: AppPrefKey in Core, so SettingsRegistry can place each one.
     private enum Key {
-        static let hubURLs = "hubURLs"
-        static let userName = "userName"
-        static let demoMode = "demoMode"
-        static let urgentBreaksSnooze = "urgentBreaksSnooze"
-        static let viewContext = "viewContext"
-        static let placements = "panelPlacements"
-        static let runLocalHub = "runLocalHub"
-        static let showMenuBarIcon = "showMenuBarIcon"
-        static let showMenuBarCount = "showMenuBarCount"
-        static let urgentShowsHiddenPanel = "urgentShowsHiddenPanel"
-        static let panelHidden = "panelHidden"
-        static let snapToCorners = "snapToCorners"
-        static let openPanelAtLaunch = "openPanelAtLaunch"
-        static let hotKey = "hotKey"
-        static let allowFocusLinks = "allowFocusLinks"
-        static let terminalAppleScript = "terminalAppleScript"
-        static let pillLastOpenedAt = "pillLastOpenedAt"
-        static let showSetupTips = "showSetupTips"
-        static let showOrcaWorktrees = "showOrcaWorktrees"
-        static let setupTipsDone = "setupTipsDone"
-        static let setupTipsDismissed = "setupTipsDismissed"
-        static let developerMode = "developerMode"
+        static let hubURLs = AppPrefKey.hubURLs.rawValue
+        static let userName = AppPrefKey.userName.rawValue
+        static let demoMode = AppPrefKey.demoMode.rawValue
+        static let urgentBreaksSnooze = AppPrefKey.urgentBreaksSnooze.rawValue
+        static let viewContext = AppPrefKey.viewContext.rawValue
+        static let placements = AppPrefKey.placements.rawValue
+        static let runLocalHub = AppPrefKey.runLocalHub.rawValue
+        static let showMenuBarIcon = AppPrefKey.showMenuBarIcon.rawValue
+        static let showMenuBarCount = AppPrefKey.showMenuBarCount.rawValue
+        static let urgentShowsHiddenPanel = AppPrefKey.urgentShowsHiddenPanel.rawValue
+        static let panelHidden = AppPrefKey.panelHidden.rawValue
+        static let snapToCorners = AppPrefKey.snapToCorners.rawValue
+        static let openPanelAtLaunch = AppPrefKey.openPanelAtLaunch.rawValue
+        static let hotKey = AppPrefKey.hotKey.rawValue
+        static let allowFocusLinks = AppPrefKey.allowFocusLinks.rawValue
+        static let terminalAppleScript = AppPrefKey.terminalAppleScript.rawValue
+        static let pillLastOpenedAt = AppPrefKey.pillLastOpenedAt.rawValue
+        static let showSetupTips = AppPrefKey.showSetupTips.rawValue
+        static let showOrcaWorktrees = AppPrefKey.showOrcaWorktrees.rawValue
+        static let setupTipsDone = AppPrefKey.setupTipsDone.rawValue
+        static let setupTipsDismissed = AppPrefKey.setupTipsDismissed.rawValue
+        static let developerMode = AppPrefKey.developerMode.rawValue
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -157,6 +160,11 @@ final class AppSettings: ObservableObject {
     /// NEEDS_YOU_SNAPSHOT_TOUR=formats: the card-by-card format tour instead of the usual one.
     nonisolated static var formatTour: Bool {
         ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_TOUR"] == "formats"
+    }
+
+    /// NEEDS_YOU_SNAPSHOT_TOUR=looks: every panel state in each shape, pill size and density instead.
+    nonisolated static var looksTour: Bool {
+        ProcessInfo.processInfo.environment["NEEDS_YOU_SNAPSHOT_TOUR"] == "looks"
     }
 
     /// NEEDS_YOU_DEMO_REPOST: the format tour's re-posts (hub list shape).

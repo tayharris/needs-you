@@ -3,6 +3,12 @@
 #
 #   mac/scripts/screenshots.sh [out-dir]              # default: dist/screenshots
 #   mac/scripts/screenshots.sh --formats [out-dir]    # default: dist/screenshots/formats
+#   mac/scripts/screenshots.sh --looks [out-dir]      # default: dist/screenshots/looks
+#
+# --looks draws every state of the panel (waiting pill at rest, on hover and mid-glow, the
+# arrival preview at rest and mid-glow, the open panel, the idle pill at rest and on hover)
+# in each Settings → Appearance → Pill → Shape, then the small and large Pill size and the
+# Compact density, from the example items (AppDelegate.runLooksTour): looks-*.png.
 #
 # --formats draws every shape a sender can post (tests/format_cases.py, posted to a throwaway
 # hub by format-fixtures.py) card by card instead: each card in the three card text modes,
@@ -15,7 +21,11 @@
 # with one agent card (preview-agent.png). Demo mode also shows example usage meters
 # (DemoFeed.statusFixture): 15-usage-panel.png, 16*-usage-*.png (each pill meter style, layout
 # and size at 31 % / 10 %, waiting and idle; pill-idle.png is 16e) and settings-usageMeters*.png
-# (Settings → Appearance → Usage meters). 17-orca-panel.png is the open panel's ORCA section
+# (Settings → Appearance → Usage meters).
+# Theme colours: 13b-13l (Solid, dark and light; Increase Contrast via an in-process override,
+# never the Mac's own setting; accent swatches), settings-theme-solid-teal, settings-cards-solid
+# (Opacity dimmed under Solid) and settings-theme-custom-red (a refused accent).
+# 17-orca-panel.png is the open panel's ORCA section
 # from example worktrees (DemoFeed.orcaFixture): a snapshot run never reads the real Orca.
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
@@ -32,8 +42,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 FORMATS=0
+LOOKS=0
 if [[ "${1:-}" == "--formats" ]]; then FORMATS=1; shift; fi
-if [[ $FORMATS == 1 ]]; then OUT="${1:-dist/screenshots/formats}"; else OUT="${1:-dist/screenshots}"; fi
+if [[ "${1:-}" == "--looks" ]]; then LOOKS=1; shift; fi
+if [[ $FORMATS == 1 ]]; then OUT="${1:-dist/screenshots/formats}"
+elif [[ $LOOKS == 1 ]]; then OUT="${1:-dist/screenshots/looks}"
+else OUT="${1:-dist/screenshots}"; fi
 ID=app.needsyou.mac.screenshots
 SUITE="$ID.$$"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}"/needsyou-shots.XXXXXX)" && pwd -P)"
@@ -179,6 +193,10 @@ EOF
 defaults write "$SUITE" expandedListHeight -float 840
 # Clicks elsewhere on the Mac (someone using it meanwhile) mustn't close the panel mid-tour.
 defaults write "$SUITE" collapseOnClickOutside -bool false
+# The work side, whatever the day and hour the tour runs (an evening or weekend run would
+# otherwise open on Personal, with the work count as the faint second number).
+defaults write "$SUITE" followSchedule -bool false
+defaults write "$SUITE" viewContext work
 
 mkdir -p "$OUT"
 # Half-seconds a tour may take. The default tour takes about a minute on an idle Mac (each
@@ -213,6 +231,14 @@ if [[ $FORMATS == 1 ]]; then
   run "$T/formats/formats.json" "$T/shots" NEEDS_YOU_SNAPSHOT_TOUR=formats NEEDS_YOU_DEMO_REPOST="$T/formats/formats-repost.json"
   cp "$T/shots/"*.png "$OUT/"
   echo "==> wrote $(ls "$T/shots" | wc -l | tr -d ' ') PNGs to $OUT"
+  exit 0
+fi
+
+if [[ $LOOKS == 1 ]]; then
+  echo "==> looks tour"
+  run "$T/items.json" "$T/looks" NEEDS_YOU_SNAPSHOT_TOUR=looks
+  cp "$T/looks/"*.png "$OUT/"
+  echo "==> wrote $(ls "$T/looks" | wc -l | tr -d ' ') PNGs to $OUT"
   exit 0
 fi
 

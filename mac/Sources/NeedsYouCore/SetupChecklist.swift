@@ -20,6 +20,8 @@ public enum SetupTip: String, CaseIterable, Sendable {
     /// The hub on this Mac started but doesn't answer. Not a tip but the hub's state: shown
     /// while it lasts (setup tips on or off), never done for good, never dismissed.
     case restartHub = "hub-restart"
+    /// Senders work, but no tool poller (Linear, Jira, GitHub, expiry) has posted yet.
+    case integrations = "integrations"
 
     /// Shown for as long as its condition holds, whatever was dismissed or turned off.
     public var isStatus: Bool { self == .restartHub }
@@ -30,6 +32,8 @@ public enum SetupTip: String, CaseIterable, Sendable {
 public enum SetupSettingsPage: Equatable, Sendable {
     /// The hub on this Mac (Run hub on this Mac, the URL other machines use).
     case thisMac
+    /// Integrations: the tools that can send cards (IntegrationCatalog).
+    case integrations
 }
 
 /// What a tip's button does. Guides are ordinary https links on the card, not actions.
@@ -98,6 +102,8 @@ public struct SetupState: Equatable, Sendable {
     public var claudeCodeInstalled: Bool = false
     /// ~/.claude/settings.json mentions the needs-you hook.
     public var claudeHooksInstalled: Bool = false
+    /// A card from one of the pollers in IntegrationCatalog has arrived.
+    public var integrationSeen: Bool = false
     /// Tips done (condition met) or dismissed, by raw value.
     public var closed: Set<String> = []
     /// The cards' context (they show in whichever one is on screen) and time.
@@ -130,6 +136,7 @@ public enum SetupChecklist {
         if s.senderSeen { done.insert(.connectSender) }
         if s.localHub == .running(loopbackOnly: false) { done.insert(.reachFromOtherMachines) }
         if s.claudeHooksInstalled { done.insert(.claudeHooks) }
+        if s.integrationSeen { done.insert(.integrations) }
         return done
     }
 
@@ -159,6 +166,10 @@ public enum SetupChecklist {
             return s.claudeCodeInstalled && !s.claudeHooksInstalled && s.senderSeen && s.hubReachable
         case .restartHub:
             return s.localHub == .notAnswering
+        case .integrations:
+            // Last: once something sends cards, and not while the first steps are still open.
+            return s.senderSeen && s.hubReachable && !s.integrationSeen
+                && !applies(.claudeHooks, s)
         }
     }
 
@@ -213,6 +224,12 @@ public enum SetupChecklist {
                 + "arrive. Restart it here; Settings shows what it last said."
             buttons = [SetupButton(title: "Restart hub", symbol: "arrow.clockwise", action: .restartLocalHub),
                        SetupButton(title: "Open Settings", symbol: "gearshape", action: .openSettings(.thisMac))]
+        case .integrations:
+            title = "Get cards from Linear, Jira and GitHub"
+            body = "Linear, Jira, GitHub Projects statuses, Dependabot alerts and expiring certificates or keys can "
+                + "each send you cards from one always-on machine. Settings → Integrations says what each does, "
+                + "with an agent prompt that sets it up."
+            buttons = [SetupButton(title: "Open Settings", symbol: "gearshape", action: .openSettings(.integrations))]
         }
         let id = idPrefix + tip.rawValue
         let item = Item(id: id, key: id, context: s.context, kind: .needs, priority: priority,
@@ -234,6 +251,15 @@ public enum SetupChecklist {
     }
 
     // MARK: Facts
+
+    /// Did a card come from one of the tool pollers (its source agent: linear, jira, github,
+    /// expiry)? Setup cards don't count.
+    public static func hasIntegrationItems(_ items: [Item]) -> Bool {
+        items.contains { item in
+            guard tip(forItemID: item.id) == nil, let agent = item.source?.agent?.lowercased() else { return false }
+            return IntegrationCatalog.sourceAgents.contains(agent)
+        }
+    }
 
     /// Is a hub URL loopback only ("http://127.0.0.1:8765")? Unparseable counts as not.
     public static func isLoopbackOnly(publicURL: String) -> Bool {

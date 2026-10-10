@@ -100,7 +100,7 @@
     <section id="how" aria-labelledby="how-title">
       <h2 id="how-title">How it works: app &middot; hub &middot; senders</h2>
       <ol class="how">
-        <li><strong>Senders post alerts.</strong> Install them anywhere you run AI agents or jobs: the one-file <code>needs-you</code> command, plus hooks for Claude Code and other agents, an MCP server, CI steps and a GitHub poller. One invite link sets a machine up. If no hub answers, the alert waits in a local outbox and goes out later.</li>
+        <li><strong>Senders post alerts.</strong> Install them anywhere you run AI agents or jobs: the one-file <code>needs-you</code> command, plus hooks for Claude Code and other agents, an MCP server, CI steps, and pollers for GitHub, Linear, Jira and expiry dates. One invite link sets a machine up. If no hub answers, the alert waits in a local outbox and goes out later.</li>
         <li><strong>A hub stores them.</strong> A small SQLite database behind a tiny web server, one Python file. The Mac app has one built in, on by default, so there's nothing else to install. Optionally, run a hub on an always-on server too, or instead.</li>
         <li><strong>The app shows them.</strong> The Needs You app on your Mac is the pill: it floats over everything and never takes focus, and each alert stays until it's handled. The sender clears it, or you click Done.</li>
       </ol>
@@ -145,7 +145,7 @@
         </div>
         <figcaption>The pill springs out with the card. Its button names the link and, fainter, where it really goes (vscode here, the site for a web link), so a label can't pass for somewhere else. One click opens it and marks the card done; a click anywhere else opens the panel at the card.</figcaption>
       </figure>
-      <p class="note">Hooks for <a href="guides/claude-code.html">Claude Code</a> and the other agents post these cards for you, and clear them once you answer. Agents posting on their own follow the <a href="guides/agent-guide.html">agent guide</a>: post when blocked, one key per thing, resolve it when it's handled.</p>
+      <p class="note">Hooks for <a href="guides/claude-code.html">Claude Code</a> and the other agents post these cards for you, and clear them once you answer. Each agent card gets one button back to where the session runs, named for it: its Orca terminal, tmux pane, iTerm2 tab or editor window (<a href="guides/claude-code-everywhere.html#buttons">which button</a>). Agents posting on their own follow the <a href="guides/agent-guide.html">agent guide</a>: post when blocked, one key per thing, resolve it when it's handled.</p>
     </section>
 
     <section id="see" aria-labelledby="see-title">
@@ -154,7 +154,7 @@
         <figure class="shot see-panel">
           <div class="stage">
             <img src="img/panel.png" width="376" height="926" loading="lazy" decoding="async"
-                 alt="The open panel on the Work tab with four cards. Urgent: Approve the prod deploy of api v2.14, from build-box, with Approve, Canary dashboard and Slack thread links. Normal: Claude is waiting for you on acme-web, with a three-step checklist whose first step is ticked; and CI failed on main for acme-web, with a link to the run. Low: a branch with 2 unpushed commits. Each card has Done, Dismiss and Snooze.">
+                 alt="The open panel on the Work tab. At the top, usage meters: Claude on devbox at 86% of its session (amber) and 41% weekly, Codex on build-box at 23% and 58%. Urgent: Approve the prod deploy of api v2.14, from build-box, with Approve, Canary dashboard and Slack thread links. Normal: Claude is waiting for you on acme-web, with a three-step checklist whose first step is ticked; and CI failed on main for acme-web, with copy chips for the failing test and file and a link to the run. Each card has Done, Dismiss and Snooze.">
           </div>
           <figcaption>Click the pill for the cards, most urgent first, each with its links, steps, and Done, Dismiss and Snooze.</figcaption>
         </figure>
@@ -164,14 +164,14 @@
               <img src="img/pill-idle.png" width="147" height="43" loading="lazy" decoding="async"
                    alt="The idle pill: a faint capsule with a green dot reading Nothing needs you, with usage bars under it.">
             </span>
-            <p><strong>Nothing waiting.</strong> A faint pill at the top of the screen. Drag it to any corner.</p>
+            <p><strong>Nothing waiting.</strong> A faint pill at the top of the screen. Drag it to any corner. The bars under it are your agents' session and weekly usage limits; draw them as bars, rings or numbers, or turn them off (<a href="guides/mac-app.html#usage-meters">usage meters</a>).</p>
           </li>
           <li>
             <span class="state-shot">
-              <img src="img/pill-count.png" width="66" height="38" loading="lazy" decoding="async"
-                   alt="The count pill with a red ring: 4 work items, and 1 personal shown faintly.">
-              <img src="img/pill-split.png" width="90" height="38" loading="lazy" decoding="async"
-                   alt="The same pill split by context: W 4, P 1.">
+              <img src="img/pill-count.png" width="66" height="46" loading="lazy" decoding="async"
+                   alt="The count pill with a red ring: 4 work items, and 1 personal shown faintly, with session and weekly usage bars under the count.">
+              <img src="img/pill-split.png" width="90" height="46" loading="lazy" decoding="async"
+                   alt="The same pill split by context: W 4, P 1, with its usage bars.">
             </span>
             <p><strong>Something waiting.</strong> A count, ringed in the top priority's colour: red is urgent, amber normal, slate low. It can split work and personal.</p>
           </li>
@@ -181,6 +181,7 @@
           </li>
         </ul>
       </div>
+      <p class="note">Make it yours under Settings &rarr; Appearance: a theme and accent colour on see-through glass or a solid background, the pill's shape (rounded, square or capsule), size and what it shows, roomy or compact cards, how loudly a new item arrives, and the usage meters (<a href="guides/mac-app.html#make-it-yours">Mac app guide</a>).</p>
     </section>
 
     <section id="inside" aria-labelledby="inside-title">
@@ -227,7 +228,7 @@
             <p class="arch-sub">the pill on your Mac; reads the first hub that answers</p>
           </div>
         </div>
-        <figcaption>Senders post to a hub. Server hubs copy every write to each other. The app reads from the first hub that answers, its built-in hub first.</figcaption>
+        <figcaption>Senders post to a hub. Hubs that are paired (the built-in hub and server hubs) copy every write to each other. The app reads from the first hub that answers, its built-in hub first.</figcaption>
       </figure>
 
       <p><strong>A hub is a small SQLite database behind a tiny web server.</strong> It's one Python file that needs only the standard library. The Mac app has one built in, so there's nothing to install or keep running.</p>
@@ -239,7 +240,7 @@
         <figcaption>Settings &rarr; Built-in hub: the hub inside the app, on by default.</figcaption>
       </figure>
       <p><strong>Senders are the one-file <code>needs-you</code> command.</strong> It tries each hub in turn. If none answers (your Mac is asleep, say), it keeps the alert in a local outbox, exits cleanly so the job carries on, and sends it later.</p>
-      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. Server hubs copy every write to each other; copying to and from the app's built-in hub is coming, and until then <a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a> says how to set one up. Most people don't need one.</p>
+      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. A server joins the app's built-in hub with a one-use link from Settings &rarr; Built-in hub, and from then on they copy every write to each other (<a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a>). Most people don't need one.</p>
       <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
       <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day, closed items are deleted after 7 days, and a sender's outbox keeps at most 500 alerts for 7 days.</p>
 
@@ -283,11 +284,14 @@
             <li><a href="guides/aider.html">Aider</a> <span>notifications, waiting only</span></li>
             <li><a href="guides/orca.html">Orca</a> <span>automation prompt blocks</span></li>
             <li><a href="guides/mcp.html">Any MCP agent</a> <span>MCP server</span></li>
-            <li><a href="guides/github.html">GitHub</a> <span>reviews, approvals, CI</span></li>
+            <li><a href="guides/github.html">GitHub</a> <span>reviews, approvals, CI, Projects, Dependabot</span></li>
             <li><a href="guides/linear.html">Linear</a> <span>assignments, comments, mentions</span></li>
+            <li><a href="guides/jira.html">Jira</a> <span>status changes, comments, mentions</span></li>
+            <li><a href="guides/expiry.html">Expiry dates</a> <span>certificates, domains, API keys</span></li>
           </ul>
         </div>
       </div>
+      <p class="note">The pollers for Linear, Jira, GitHub and expiry dates run on one always-on machine; in the app, Settings &rarr; Integrations &rarr; Cards from your tools gives each one's commands and an agent prompt that sets it up (<a href="guides/mac-app.html#cards-from-your-tools">how</a>).</p>
       <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>. For any other agent or tool with hooks, webhooks or a notification command, <a href="guides/custom-connector.html">build a custom connector</a>: the guide has the exact item format, which fields are required, and tested examples.</p>
       <p class="note">Most of these haven't been used with a real model yet. If you use one, <a href="#help-test">help us test it</a>.</p>
     </section>

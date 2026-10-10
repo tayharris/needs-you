@@ -55,8 +55,8 @@ struct PanelPreview: View {
                 .id(Theme.palette)
                 .frame(width: m.expandedWidth - 2 * m.listPadding)
                 .padding(m.listPadding)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface))
-                .opacity(settings.ui.panelOpacity)
+                .background(PanelOutline(settings.ui, .panel).fill(Theme.surface))
+                .opacity(settings.ui.panelAlpha(hovering: false))
                 .environment(\.colorScheme, Theme.colorScheme)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -116,6 +116,7 @@ struct AlertPreview: View {
         .onChange(of: settings.ui.arrivalSpeed) { _, _ in play(priority) }
         .onChange(of: settings.ui.arrivalRepeats) { _, _ in play(priority) }
         .onChange(of: settings.ui.panelSize) { _, _ in play(priority) }
+        .onChange(of: settings.ui.panelShape) { _, _ in play(priority) }
     }
 
     private var caption: String {
@@ -161,23 +162,22 @@ struct AlertPreview: View {
     /// The panel's shape, layered like RootView: content, Bright's tint, the glass, the
     /// ring in the top priority's colour, the hairline, then the glow and ripple outside.
     private func pill(_ m: PanelMetrics) -> some View {
-        let pm = settings.ui.pillMetrics
         let s = size(m)
         let dot = stage != .arrived && SamplePill.content(stage == .before ? waiting : after,
                                                           newCount: 0, settings: settings).isDot
-        let shape = RoundedRectangle(cornerRadius: stage == .arrived ? 14 : (dot ? pm.height / 2 : pm.cornerRadius),
-                                     style: .continuous)
+        // Settings → Appearance → Pill → Shape, as the panel draws it (PanelOutline).
+        let shape = PanelOutline(settings.ui, stage == .arrived ? .peek : (dot ? .dot : .pill))
         let top = (stage == .before ? waiting : after).map(\.priority).min() ?? .low
         let look = settings.ui.alertLook(for: top)
         let color = Theme.color(priority)
         return content(m)
             .frame(width: s.width, height: s.height)
             .background(look.fillOpacity > 0 ? Theme.color(top).opacity(look.fillOpacity) : Color.clear)
-            .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop))
+            .background(PanelGlass(palette: Theme.palette, backdrop: settings.ui.backdrop, background: settings.ui.background))
             .clipShape(shape)
             .overlay(shape.strokeBorder(Theme.color(top).opacity(look.ringOpacity), lineWidth: look.ringWidth))
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 0.5))
-            .opacity(stage == .arrived ? settings.ui.panelOpacity : settings.ui.pillOpacity)
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: Theme.borderWidth))
+            .opacity(stage == .arrived ? settings.ui.panelAlpha(hovering: false) : settings.ui.pillAlpha(hovering: false))
             .background(GlowEdge(shape: shape, color: color, glow: glow, look: active?.look ?? look))
             .background(RippleEdge(shape: shape, color: color, progress: ripple, plan: active ?? .idle(look)))
             .modifier(ArrivalMotionEffect(plan: active?.animation.movesPanel == true ? active : nil, value: motion))
