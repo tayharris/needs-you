@@ -25,6 +25,8 @@
 # Theme colours: 13b-13l (Solid, dark and light; Increase Contrast via an in-process override,
 # never the Mac's own setting; accent swatches), settings-theme-solid-teal, settings-cards-solid
 # (Opacity dimmed under Solid) and settings-theme-custom-red (a refused accent).
+# 17-orca-panel.png is the open panel's ORCA section
+# from example worktrees (DemoFeed.orcaFixture): a snapshot run never reads the real Orca.
 # Every PNG is drawn with cacheDisplay, so no Screen Recording permission is needed.
 # Isolated the way scripts/upgrade-test.sh is:
 #

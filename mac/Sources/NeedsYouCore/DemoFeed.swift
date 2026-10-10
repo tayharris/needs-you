@@ -276,6 +276,26 @@ extension DemoFeed: StatusFeed {
         statuses = records
     }
 
+    /// The panel's ORCA section for the snapshot tour (demo mode reads no real Orca): four
+    /// worktrees on this Mac and one in a paired environment, two with live terminals.
+    public static func orcaFixture(now: Date = Date()) -> [OrcaWorktreeRow] {
+        let ago = { (m: Double) in now.addingTimeInterval(-m * 60) }
+        return [
+            OrcaWorktreeRow(environment: nil, host: "local", name: "ACME-4170 migration fork", branch: "tay/ACME-4170-migration",
+                            workspaceStatus: "in-progress", status: "active", liveTerminals: 2, unread: true,
+                            lastActivity: ago(2), id: "|demo-w1"),
+            OrcaWorktreeRow(environment: nil, host: "local", name: "acme-web search", branch: "tay/search-v2",
+                            workspaceStatus: "in-review", status: "active", liveTerminals: 1, unread: false,
+                            lastActivity: ago(9), id: "|demo-w2"),
+            OrcaWorktreeRow(environment: "devbox", host: "devbox", name: "nightly import fix", branch: "tay/import-retry",
+                            workspaceStatus: "in-progress", status: "idle", liveTerminals: 0, unread: true,
+                            lastActivity: ago(40), id: "devbox|demo-w3"),
+            OrcaWorktreeRow(environment: nil, host: "local", name: "docs refresh", branch: "tay/docs-refresh",
+                            workspaceStatus: "done", status: "idle", liveTerminals: 0, unread: false,
+                            lastActivity: ago(300), id: "|demo-w4"),
+        ]
+    }
+
     /// One Claude account at 31 % of its session and 10 % of its week: the quiet,
     /// everyday case the pill's meters must still show plainly (the snapshot tour).
     public static func quietUsageFixture(now: Date = Date()) -> [StatusRecord] {
