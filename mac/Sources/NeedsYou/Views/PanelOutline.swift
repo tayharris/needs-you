@@ -22,8 +22,13 @@ struct PanelOutline: InsettableShape {
         let radius = PanelCorners.radius(shape, surface, height: rect.height, pill: pill)
         let r = rect.insetBy(dx: inset, dy: inset)
         guard r.width > 0, r.height > 0 else { return Path() }
-        let corner = min(max(0, radius - inset), min(r.width, r.height) / 2)
-        return RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: r)
+        let half = min(r.width, r.height) / 2
+        let corner = min(max(0, radius - inset), half)
+        // Capsule's fully round ends are circular: a continuous corner as big as half the
+        // height bends past the ends of a short pill, and the ring then shows flat spikes at
+        // its sides. Rounded keeps its original continuous corners.
+        let round = shape == .capsule && corner >= half - 0.5
+        return RoundedRectangle(cornerRadius: corner, style: round ? .circular : .continuous).path(in: r)
     }
 
     func inset(by amount: CGFloat) -> PanelOutline {
