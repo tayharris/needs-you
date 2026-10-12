@@ -327,7 +327,7 @@ class SiteTests(unittest.TestCase):
         names = sorted(os.listdir(SITE)) + ["guides/" + n for n in sorted(os.listdir(os.path.join(SITE, "guides")))]
         for name in names:
             path = os.path.join(SITE, name)
-            if not os.path.isfile(path) or name.endswith(".woff2"):
+            if not os.path.isfile(path) or name.endswith((".woff2", ".png")):
                 continue
             text = read_site(name)
             with self.subTest(file=name):

@@ -9,7 +9,18 @@
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="https://needsyou.app/guides/index.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="Guides · needs-you">
+  <meta property="og:description" content="Guides for needs-you: install the Mac app, connect machines and agents, run server hubs, and the sender contract.">
+  <meta property="og:url" content="https://needsyou.app/guides/index.html">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -31,7 +42,17 @@
 
   <main id="main" class="wrap doc">
     <h1>Guides</h1>
-    <p class="lede">Setting up needs-you and connecting the things that should alert you. New here? Start with the <a href="quickstart.html">quickstart</a>, or the <a href="testers.html">tester guide</a> if you were invited to try it.</p>
+    <p class="lede">Setting up needs-you and connecting the things that should alert you. New here? Start with the <a href="quickstart.html">quickstart</a>, or <a href="setup-with-an-agent.html">let an agent set it up</a>. Each guide links to the next, in this order.</p>
+    <nav class="toc toc-inline" aria-label="Sections">
+      <ul>
+        <li><a href="#start-here">Start here</a></li>
+        <li><a href="#agents">Agents</a></li>
+        <li><a href="#servers-and-ci">Servers and CI</a></li>
+        <li><a href="#cards-from-your-tools">Cards from your tools</a></li>
+        <li><a href="#run-it">Run it</a></li>
+        <li><a href="#reference">Reference</a></li>
+      </ul>
+    </nav>
     <section aria-labelledby="start-here">
       <h2 id="start-here">Start here</h2>
       <ul class="guide-list">
@@ -62,15 +83,20 @@
         <li><a href="custom-connector.html">Custom connector</a> <span>Connect any agent or tool: the exact item format, and which fields are required or optional.</span></li>
       </ul>
     </section>
-    <section aria-labelledby="servers-ci-and-tools">
-      <h2 id="servers-ci-and-tools">Servers, CI and tools</h2>
+    <section aria-labelledby="servers-and-ci">
+      <h2 id="servers-and-ci">Servers and CI</h2>
       <ul class="guide-list">
         <li><a href="add-a-sender.html">Add a sender</a> <span>Invite links, the installer&#x27;s options, CI and cron, removing a sender.</span></li>
         <li><a href="tailscale.html">Tailscale</a> <span>Putting the Mac and your servers on one tailnet, and checking they can reach each other.</span></li>
+      </ul>
+    </section>
+    <section aria-labelledby="cards-from-your-tools">
+      <h2 id="cards-from-your-tools">Cards from your tools</h2>
+      <ul class="guide-list">
         <li><a href="github.html">GitHub</a> <span>Review requests, deploy approvals, failed CI and your PRs&#x27; state, from one poller.</span></li>
-        <li><a href="expiry.html">Expiry dates</a> <span>A card before a TLS certificate, a domain or an API key expires, from one daily poller.</span></li>
         <li><a href="linear.html">Linear</a> <span>Assignments, comments, mentions and status changes from your Linear inbox, from one poller.</span></li>
         <li><a href="jira.html">Jira</a> <span>Status changes, comments, mentions and assignments on your Jira issues, Cloud or Data Center, from one poller.</span></li>
+        <li><a href="expiry.html">Expiry dates</a> <span>A card before a TLS certificate, a domain or an API key expires, from one daily poller.</span></li>
       </ul>
     </section>
     <section aria-labelledby="run-it">

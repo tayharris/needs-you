@@ -9,7 +9,18 @@
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="https://needsyou.app/guides/mcp.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="MCP server · needs-you guides">
+  <meta property="og:description" content="A stdlib-Python MCP server so agents without a shell can post, resolve and run doctor through MCP tools.">
+  <meta property="og:url" content="https://needsyou.app/guides/mcp.html">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -90,6 +101,10 @@ needs-you install-mcp claude,gemini          # the same registration the install
 <h2 id="remove-it">Remove it <a class="anchor" href="#remove-it" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you uninstall-hooks --mcp      # every registration needs-you added, and ~/.local/bin/needs-you-mcp</code></pre></div>
 <p>It removes only entries that run <code>needs-you-mcp</code>, restores each config file as it was otherwise (with a backup) and deletes a config file the installer created that is empty again. Claude Code's entry goes through <code>claude mcp remove needs-you --scope user</code>. A plain <code>needs-you uninstall-hooks</code>, or the installer's <code>--uninstall</code>, includes it.</p>
+    <nav class="pager" aria-label="Previous and next guide">
+      <a class="pager-prev" href="orca.html" rel="prev"><span>Previous</span> Orca</a>
+      <a class="pager-next" href="custom-connector.html" rel="next"><span>Next</span> Custom connector</a>
+    </nav>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/mcp.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/mcp.md">docs/guides/mcp.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 
