@@ -104,7 +104,7 @@ put() {  # put SRC DEST MODE NAME
 put "$HOOK_SRC" "$HOOK" 755 hook
 put "$SNIPPET" "$CONF" 644 needs-you.json
 
-ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"
+ENV_FILE="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
 echo ""
 echo "Next:"
 # Hooks can be switched off as a whole in Copilot's settings.

@@ -110,6 +110,8 @@ CURATED = [
      "The sender contract: when agents should post, keys, rules, and resolving what they posted."),
     (REFERENCE, "docs/API.md", "api", "API",
      "The hub's HTTP API (v1): every endpoint, field, status code and the replication format."),
+    (REFERENCE, "docs/guides/configuration.md", "configuration", "Configuration",
+     "Every setting on one page: the sender's env file, key and token files, a hub's hub.json and hub-update.json, installer flags, and what needs-you doctor checks."),
 ]
 
 

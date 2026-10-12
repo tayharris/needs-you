@@ -167,6 +167,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Server hubs](docs/HUB.md) | Optional always-on hubs: install, pairing with the app's built-in hub, automatic updates, backups |
 | [Keeping up to date](docs/guides/updates.md) | The Mac app updating itself, server hubs updating themselves, `needs-you update` on senders, `scripts/rollout.sh` |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
+| [Configuration](docs/guides/configuration.md) | Every setting on one page: the env file, key and token files, `hub.json`, `hub-update.json`, installer flags, and what `needs-you doctor` checks |
 
 Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 
@@ -183,6 +184,7 @@ Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/
 - **Hubs** are configured by a JSON text file (Python's standard library reads it; no YAML dependency) or entirely by command-line flags, plus the admin CLI `needs_you_admin.py` for tokens and invites.
 - **The Mac app** holds its own list of hubs and runs its built-in hub; you never edit a file on the Mac.
 - **Senders** keep `~/.config/needs-you/env` (hub URLs and a token), written for them by the invite installer.
+- **Every setting**, with its default and what it takes, is on one page: [Configuration](docs/guides/configuration.md). `needs-you doctor` checks a sender's names and values, and `needs_you_hub.py --check-config` a hub's.
 - **No hub web UI, by design.** The `/join/<code>` pages (Markdown for agents, plus an install script) are the only browser-friendly surface.
 - **Network:** Tailscale is recommended (hubs listen on loopback and the tailnet IP, never on all interfaces), but any `https` URL works. Plain `http` is only for tailnet names and local addresses.
 

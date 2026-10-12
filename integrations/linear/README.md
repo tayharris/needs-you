@@ -55,7 +55,7 @@ In `~/.config/needs-you/env` (or the environment).
 | Variable | Default | What |
 |---|---|---|
 | `NEEDS_YOU_LINEAR_KEY_FILE` | `linear-key` next to the env file (`~/.config/needs-you/linear-key`), if it exists | The file holding your personal API key. It must be a regular file (not a symlink), owned by you, with no group or other access (mode 600); otherwise the poller refuses it and posts nothing |
-| `NEEDS_YOU_LINEAR_KEY` | none | The key itself, read from the process environment only (never from the env file). Prefer the key file |
+| `NEEDS_YOU_LINEAR_KEY` | none | The key itself, read from the process environment only (never from the env file), and only when no key file is set or exists. Prefer the key file |
 | `NEEDS_YOU_LINEAR_CATEGORIES` | all | Events to post: `assigned,status,comment,mention` or Linear's names (`assignments,statusChanges,commentsAndReplies,mentions`); or turn some off: `-mention` |
 | `NEEDS_YOU_LINEAR_STATUSES` | `*=low` | Priority by the issue's current status: `Blocked=urgent,In Review=normal,*=low`. `Backlog=off` posts no status-change card for that status (comments and mentions still do) |
 | `NEEDS_YOU_LINEAR_TEAMS` | every team, `NEEDS_YOU_DEFAULT_CONTEXT` (else `work`), base `low` | Per team key: context and base priority, `ACME=work:normal,OPS=work:urgent`. When set, only these teams are watched |

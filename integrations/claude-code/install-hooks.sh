@@ -434,7 +434,7 @@ if [ "$ACTION" = "install" ]; then
     mv -f "$hook_tmp" "$HOOKS_DIR/needs-you-hook.sh"
     echo "hook: installed"
   fi
-  ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"
+  ENV_FILE="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
   echo ""
   echo "Next:"
   if grep -Eqs "^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_AGENT_ALERTS=['\"]?(1|true|yes|on)['\"]?[[:space:]]*$" "$ENV_FILE"; then

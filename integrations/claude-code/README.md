@@ -141,7 +141,7 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | A card expires this many hours after its last post; `0` never expires |
 | `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal. Without it, the Mac app's Orca button tries each paired environment in turn. |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
-| `NEEDS_YOU_HOOK_LOG` | unset | Append one debug line per call to this file |
+| `NEEDS_YOU_HOOK_LOG` | unset | Append one debug line per call to this file. Environment only: a line in the env file does nothing |
 
 Link examples:
 

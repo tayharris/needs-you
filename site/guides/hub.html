@@ -235,47 +235,13 @@ record in <code>/etc/needs-you/</code>; the code from before an update is kept i
 It needs <code>gh</code> 2.64 or later logged in as root. Its log: <code>journalctl -u needs-you-hub-update</code>.</p>
 <h2 id="config-reference">Config reference <a class="anchor" href="#config-reference" aria-label="Link to this section">#</a></h2>
 <p><code>hub.json</code> is plain JSON (see <code>deploy/hub.example.json</code>). Every key can also be set by a flag
-on <code>needs_you_hub.py</code>, so no file is required: the named flags below, or
-<code>--set KEY=VALUE</code> for anything else (VALUE is parsed as JSON when it can be).</p>
-<div class="table-wrap"><table class="doc-table">
-<thead><tr><th>Key</th><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
-<tbody>
-<tr><td><code>bind</code></td><td><code>--bind</code> (repeatable, or commas)</td><td><code>127.0.0.1</code></td><td>Listen addresses. <code>0.0.0.0</code>/<code>::</code> need <code>allow_any_interface</code>.</td></tr>
-<tr><td><code>port</code></td><td><code>--port</code></td><td>8765</td><td></td></tr>
-<tr><td><code>public_url</code></td><td><code>--public-url</code></td><td>first bind address</td><td>The URL others use. Put the MagicDNS name here.</td></tr>
-<tr><td><code>db</code></td><td><code>--db</code></td><td><code>needs-you-hub.db</code></td><td>SQLite path.</td></tr>
-<tr><td><code>hub_id</code></td><td><code>--hub-id</code></td><td>short hostname</td><td>Unique per hub; LWW tie-break and self-peer detection.</td></tr>
-<tr><td><code>peers</code></td><td><code>--peer</code> (repeatable)</td><td><code>[]</code></td><td>Peer public URLs: used for replication and handed to senders as <code>hub_urls</code>.</td></tr>
-<tr><td><code>peer_secret</code> / <code>peer_secret_file</code></td><td><code>--peer-secret-file</code></td><td></td><td>Required (16+ chars) when <code>peers</code> is set. Also <code>$NEEDS_YOU_PEER_SECRET</code>. A <code>peer_secret_file</code> that group or other users can read or write stops the hub at start with <code>chmod 600 &lt;path&gt;</code> (the secret lets anyone replicate as a peer).</td></tr>
-<tr><td><code>owner_token_file</code></td><td><code>--owner-token-file</code></td><td></td><td>On start, make sure an owner token with the secret in this file exists (the Mac app uses this).</td></tr>
-<tr><td><code>owner_token_name</code></td><td><code>--owner-token-name</code></td><td><code>this-mac</code></td><td>Its name. A changed secret replaces the old one.</td></tr>
-<tr><td><code>parent_pid</code></td><td><code>--parent-pid</code></td><td></td><td>Exit cleanly when that process is gone (checked every 2 s).</td></tr>
-<tr><td><code>install_dir</code></td><td><code>--install-dir</code></td><td>the directory above <code>hub/</code></td><td>Where <code>/dl/</code> files are read from (<code>cli/</code>, <code>integrations/</code>).</td></tr>
-<tr><td><code>text_retention_hours</code></td><td></td><td>24</td><td>A closed or expired item's text (title, body, links, steps, question, answer, source) is purged this long after it closed; a tombstone stays. 0 keeps the text until the item is deleted.</td></tr>
-<tr><td><code>retention_days</code></td><td><code>--retention-days</code></td><td>30</td><td>Closed and expired items (tombstones by then) older than this are deleted. 0 keeps them forever.</td></tr>
-<tr><td><code>freebind</code></td><td><code>--freebind</code></td><td>false</td><td>Linux: bind before tailscaled has the address. The installer sets it.</td></tr>
-<tr><td><code>allow_any_interface</code></td><td><code>--allow-any-interface</code></td><td>false</td><td>Allow <code>0.0.0.0</code> / <code>::</code>.</td></tr>
-<tr><td><code>allowed_hosts</code></td><td><code>--allowed-host</code> (repeatable)</td><td><code>[]</code></td><td>Extra <code>Host</code> names the hub answers to, besides IP literals, <code>localhost</code>, bind names, <code>public_url</code>, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, <a href="api.html#conventions">API</a>). Also <code>$NEEDS_YOU_HUB_ALLOWED_HOSTS</code> (comma-separated), which is how to set it for the Mac app's hub (<code>launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name</code>, then restart the app). <code>*</code> turns the check off.</td></tr>
-<tr><td><code>self_update_dir</code></td><td></td><td>the config file's directory</td><td>Where the <a href="#automatic-updates">updater's</a> <code>hub-update.json</code> and <code>hub-update-status.json</code> are, for <code>/v1/hub/update</code>. Without a config file (the Mac app's hub) there is none and the hub can't be asked to update.</td></tr>
-<tr><td><code>update_request_interval_seconds</code></td><td></td><td>900</td><td>At most one accepted <code>POST /v1/hub/update</code> per this many seconds (<code>429</code> with <code>Retry-After</code> otherwise).</td></tr>
-<tr><td><code>quiet</code></td><td><code>--quiet</code></td><td>false</td><td>No access log.</td></tr>
-<tr><td><code>access_log</code></td><td></td><td>true</td><td>One stderr line per request. Invite codes in <code>/join/</code> paths (and anything shaped like a code or token) are replaced with <code>&lt;code&gt;</code>/<code>&lt;redacted&gt;</code>, and control characters are escaped.</td></tr>
-<tr><td><code>max_open_per_token</code></td><td></td><td>60</td><td>Volume guard.</td></tr>
-<tr><td><code>max_connections</code> / <code>request_read_seconds</code></td><td></td><td>128 / 10</td><td>Connections served at once, across all binds (kept 64 under the file descriptor limit). When full, a connection open longer than <code>request_read_seconds</code> (a slow request, or an answer its client stopped reading; never a reader's <code>/v1/stream</code>) is closed to make room; otherwise new ones are closed at once.</td></tr>
-<tr><td><code>default_expiry_hours</code></td><td></td><td>24</td><td>Expiry for <code>done</code>/<code>info</code> items without <code>expires_at</code>.</td></tr>
-<tr><td><code>maintenance_seconds</code></td><td></td><td>600</td><td>Purge + WAL checkpoint + incremental vacuum interval.</td></tr>
-<tr><td><code>vacuum_hours</code></td><td></td><td>24</td><td>How often a full <code>VACUUM</code> may run (only when over 25% is free).</td></tr>
-<tr><td><code>redeem_fail_limit</code> / <code>redeem_fail_window_seconds</code></td><td></td><td>10 / 600</td><td>Failed invite redeems per client IP before <code>429</code>.</td></tr>
-<tr><td><code>answer_rate_limit</code> / <code>answer_rate_window_seconds</code></td><td></td><td>30 / 60</td><td>Answers (<code>POST /v1/items/{id}/answer</code>, counted whether taken or not) per token before <code>429</code>.</td></tr>
-<tr><td><code>answer_read_rate_limit</code></td><td></td><td>120</td><td>Reads of an answer (<code>GET /v1/items/answer</code>) per token per <code>answer_rate_window_seconds</code> before <code>429</code>.</td></tr>
-<tr><td><code>answer_waits_per_token</code></td><td></td><td>4</td><td>Long polls of <code>GET /v1/items/answer</code> one token may hold open at once.</td></tr>
-<tr><td><code>post_rate_limit</code> / <code>post_rate_window_seconds</code></td><td></td><td>120 / 60</td><td>Posts (<code>POST /v1/items</code>, re-posts included) per token before <code>429 rate_limited</code> with <code>Retry-After</code>; a sender stuck in a loop (ADR 0010). Status sets and clears get a limit of the same size, counted apart. 0 = off.</td></tr>
-<tr><td><code>anti_entropy_seconds</code></td><td></td><td>60</td><td>How often each peer is pulled.</td></tr>
-<tr><td><code>outbox_poll_seconds</code></td><td></td><td>2</td><td>Outbox check interval without a wake-up.</td></tr>
-<tr><td><code>retry_base_seconds</code> / <code>retry_max_seconds</code></td><td></td><td>1 / 300</td><td>Push backoff.</td></tr>
-<tr><td><code>peer_timeout_seconds</code></td><td></td><td>5</td><td>Per request to a peer.</td></tr>
-</tbody>
-</table></div>
+on <code>needs_you_hub.py</code>, so no file is required: the named flags, or <code>--set KEY=VALUE</code> for
+anything else (VALUE is parsed as JSON when it can be). Every key, with its flag, default and
+what it takes, is in <a href="configuration.html#hub-hubjson">Configuration → hub.json</a>, with
+<code>hub-update.json</code> and every environment variable. The hub refuses to start with a value of the
+wrong type or out of range (naming the key), and warns about a key it doesn't know. Check a
+config without starting anything:</p>
+<div class="code" data-copy><pre><code class="language-bash">python3 ~/.local/share/needs-you/hub/needs_you_hub.py --check-config --config ~/.config/needs-you/hub.json</code></pre></div>
 <p>Restart after editing: <code>systemctl --user restart needs-you-hub</code> (or <code>sudo systemctl restart needs-you-hub</code>).</p>
 <h3 id="use-the-magicdns-name-not-the-ip">Use the MagicDNS name, not the IP <a class="anchor" href="#use-the-magicdns-name-not-the-ip" aria-label="Link to this section">#</a></h3>
 <p>Everything that talks to a hub uses its <code>public_url</code>, a MagicDNS name over plain http such as

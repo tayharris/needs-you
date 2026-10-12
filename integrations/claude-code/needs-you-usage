@@ -69,7 +69,8 @@ def env_file() -> str:
 
 
 def load_settings(names: List[str]) -> Dict[str, str]:
-    out = {n: os.environ[n] for n in names if os.environ.get(n) is not None}
+    # Like the CLI and the hook: an empty value in the environment counts as unset.
+    out = {n: os.environ[n] for n in names if os.environ.get(n)}
     missing = [n for n in names if n not in out]
     if not missing:
         return out
@@ -79,7 +80,7 @@ def load_settings(names: List[str]) -> Dict[str, str]:
     except OSError:
         return out
     for line in lines:
-        m = re.match(r"^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$", line)
+        m = re.match(r"^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=(.*)$", line)
         if m and m.group(1) in missing:
             v = m.group(2).strip()
             if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":

@@ -96,7 +96,7 @@ If a run prints an error, fix what it names, or tell me if it needs me.</code></
 <li><code>domain example.com</code> reads the registration's expiry from RDAP.</li>
 <li><code>key "Figma PAT" 2026-12-31</code> is a date you know: the day it stops working. When you rotate the key, change the date.</li>
 </ul>
-<p>Add <code>renew=https://...</code> to give the card a <strong>Renew</strong> button that opens the page where you renew it, and <code>context=personal</code> for your own things (the default is <code>work</code>). For an internal host whose certificate comes from a private CA, add <code>verify=no</code>.</p>
+<p>Add <code>renew=https://...</code> to give the card a <strong>Renew</strong> button that opens the page where you renew it, and <code>context=personal</code> for your own things (the default is <code>NEEDS_YOU_EXPIRY_CONTEXT</code>, else <code>NEEDS_YOU_DEFAULT_CONTEXT</code>, else <code>work</code>). For an internal host whose certificate comes from a private CA, add <code>verify=no</code>.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <p>Step 3 prints every date it read (<code>-v</code>) and the cards it would post: anything within 30 days. Put a <code>key "Test key" &lt;a date 5 days from now&gt;</code> line in, run <code>needs-you-expiry</code> once, and a normal "Test key expires ..." card appears on your Mac. Take the line out, run it again, and the card clears.</p>
 <h2 id="tune-it">Tune it <a class="anchor" href="#tune-it" aria-label="Link to this section">#</a></h2>

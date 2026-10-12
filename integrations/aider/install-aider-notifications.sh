@@ -297,7 +297,7 @@ else
   echo "hook: installed"
 fi
 
-ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"
+ENV_FILE="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
 echo ""
 echo "Next:"
 cat <<'EOF'

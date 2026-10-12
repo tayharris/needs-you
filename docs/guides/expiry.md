@@ -54,7 +54,7 @@ One thing per line:
 - `domain example.com` reads the registration's expiry from RDAP.
 - `key "Figma PAT" 2026-12-31` is a date you know: the day it stops working. When you rotate the key, change the date.
 
-Add `renew=https://...` to give the card a **Renew** button that opens the page where you renew it, and `context=personal` for your own things (the default is `work`). For an internal host whose certificate comes from a private CA, add `verify=no`.
+Add `renew=https://...` to give the card a **Renew** button that opens the page where you renew it, and `context=personal` for your own things (the default is `NEEDS_YOU_EXPIRY_CONTEXT`, else `NEEDS_YOU_DEFAULT_CONTEXT`, else `work`). For an internal host whose certificate comes from a private CA, add `verify=no`.
 
 ## Check it works
 

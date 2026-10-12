@@ -165,14 +165,14 @@ bash needs-you-install.sh --yes --claude-hooks user --skill --alerts</code></pre
 <tr><td><code>NEEDS_YOU_DEFAULT_CONTEXT</code></td><td><code>work</code> or <code>personal</code>: the context when a sender doesn't give one (default <code>work</code>)</td></tr>
 <tr><td><code>NEEDS_YOU_HOST</code></td><td>The machine name on cards (default: the short hostname)</td></tr>
 <tr><td><code>NEEDS_YOU_TIMEOUT</code></td><td>Seconds to wait for each hub (default 3)</td></tr>
-<tr><td><code>NEEDS_YOU_OUTBOX_MAX</code></td><td>How many queued requests the outbox keeps (default 500; environment only)</td></tr>
-<tr><td><code>NEEDS_YOU_OUTBOX_MAX_DAYS</code></td><td>Queued requests older than this many days are dropped (default 7; environment only)</td></tr>
+<tr><td><code>NEEDS_YOU_OUTBOX_MAX</code></td><td>How many queued requests the outbox keeps (default 500)</td></tr>
+<tr><td><code>NEEDS_YOU_OUTBOX_MAX_DAYS</code></td><td>Queued requests older than this many days are dropped (default 7)</td></tr>
 <tr><td><code>NEEDS_YOU_CONFIG</code></td><td>Read another file instead of <code>~/.config/needs-you/env</code> (environment only)</td></tr>
-<tr><td><code>NEEDS_YOU_ENV_FILE</code></td><td>The same for the agent hooks and their installers only; <code>needs-you doctor</code> warns when it differs from the CLI's file</td></tr>
+<tr><td><code>NEEDS_YOU_ENV_FILE</code></td><td>The same for the agent hooks, their installers and the usage helper only (environment only); <code>needs-you doctor</code> warns when it differs from the CLI's file</td></tr>
 <tr><td><code>NEEDS_YOU_OUTBOX</code></td><td>Keep the outbox somewhere other than <code>~/.local/state/needs-you/outbox</code> (environment only)</td></tr>
 </tbody>
 </table></div>
-<p>Each integration's own settings (<code>NEEDS_YOU_AGENT_*</code>, <code>NEEDS_YOU_GITHUB_*</code>, ...) are in its guide.</p>
+<p>Each integration's own settings (<code>NEEDS_YOU_AGENT_*</code>, <code>NEEDS_YOU_GITHUB_*</code>, ...) are in its guide, and every setting, with its default and what it takes, is in <a href="configuration.html">Configuration</a>. A value a setting doesn't take is named on stderr (never shown) and the default is used; <code>needs-you doctor</code> checks every name and value in the env file.</p>
 <h2 id="without-the-cli">Without the CLI <a class="anchor" href="#without-the-cli" aria-label="Link to this section">#</a></h2>
 <p>Anything that can make an HTTP request can post; see <a href="agent-guide.html#with-curl">Agent guide → With curl</a>. The trade-off: no outbox and no failover, so loop over <code>NEEDS_YOU_URLS</code> yourself (the <a data-repo="/blob/main/integrations/ci/github-actions.yml" href="https://github.com/tayharris/needs-you/blob/main/integrations/ci/github-actions.yml">GitHub Actions example</a> does) or accept that an alert is lost while the hub is down.</p>
 <p>To connect an agent or tool that has hooks, webhooks, plugins or a notification command, see <a href="custom-connector.html">Custom connector</a>: the full item format, how to map its events to cards, and tested examples.</p>
