@@ -24,10 +24,16 @@
 #   --reconfigure          rebuild the config from defaults + flags (keeps the secret)
 #   --no-start             install files and config, don't start the service
 #   --no-invite            don't print an owner invite at the end
+#   --no-auto-update       turn automatic updates off (on by default: every 6 hours, the newest
+#                          release on the channel, checked like this installer checks it, after
+#                          the soak time; needs gh 2.64+ logged in). --auto-update turns them on
+#   --update-channel C     stable (default) or prerelease
+#   --update-soak-hours N  wait this long after a release is published (default 24)
+#   --update-gh PATH       the gh to check releases with (default: gh on PATH)
 #   -h, --help             this help
 #
-# Re-running upgrades the code in place, keeps the config (flags you pass are applied to it)
-# and the database, and restarts the service.
+# Re-running upgrades the code in place, keeps the config and the update settings (flags you
+# pass are applied to them) and the database, and restarts the service.
 
 # Everything is in one { } group, which bash reads whole before running any of it: piped, a
 # cut-off download runs nothing, and with --join - the line after the script (the link) is
@@ -47,10 +53,14 @@ RECONFIGURE=0
 START=1
 INVITE=1
 JOIN=""
+AUTO_UPDATE=""
+UPDATE_CHANNEL=""
+UPDATE_SOAK=""
+UPDATE_GH=""
 # The release this installer belongs to: piped, it installs exactly this version from GitHub.
 INSTALLER_VERSION=0.5.0  # needs-you-version: 0.5.0
 
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
@@ -69,10 +79,20 @@ while [ $# -gt 0 ]; do
     --reconfigure) RECONFIGURE=1; shift ;;
     --no-start) START=0; shift ;;
     --no-invite) INVITE=0; shift ;;
+    --auto-update) AUTO_UPDATE=1; shift ;;
+    --no-auto-update) AUTO_UPDATE=0; shift ;;
+    --update-channel) UPDATE_CHANNEL=${2:?--update-channel needs stable or prerelease}; shift 2 ;;
+    --update-soak-hours) UPDATE_SOAK=${2:?--update-soak-hours needs a number}; shift 2 ;;
+    --update-gh) UPDATE_GH=${2:?--update-gh needs a path}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
+case "$UPDATE_CHANNEL" in ""|stable|prerelease) ;; *) die "--update-channel takes stable or prerelease" ;; esac
+case "$UPDATE_SOAK" in ""|*[!0-9]*) [ -z "$UPDATE_SOAK" ] || die "--update-soak-hours takes whole hours (0-720)" ;; esac
+[ -z "$UPDATE_SOAK" ] || [ "$UPDATE_SOAK" -le 720 ] || die "--update-soak-hours takes whole hours (0-720)"
+case "$UPDATE_GH" in ""|/*) ;; *) die "--update-gh takes an absolute path" ;; esac
+[ -z "$UPDATE_GH" ] || [ -x "$UPDATE_GH" ] || die "--update-gh: $UPDATE_GH isn't an executable file"
 if [ "$JOIN" = - ]; then
   # First, before any command that might read stdin: the link is the line after the script
   # (or the whole of stdin when run from a checkout). It stays out of every command line.
@@ -350,8 +370,9 @@ finally:
     shutil.rmtree(tmp, ignore_errors=True)
 PY
   SRC=$STAGE
-  for f in hub/needs_you_hub.py hub/needs_you_admin.py hub/join-install.sh cli/needs-you \
-           deploy/needs-you-admin.sh deploy/needs-you-hub.service deploy/needs-you-hub.user.service; do
+  for f in hub/needs_you_hub.py hub/needs_you_admin.py hub/join-install.sh hub/needs_you_hub_update.py cli/needs-you \
+           deploy/needs-you-admin.sh deploy/needs-you-hub.service deploy/needs-you-hub.user.service \
+           deploy/needs-you-hub-update.service deploy/needs-you-hub-update.user.service deploy/needs-you-hub-update.timer; do
     [ -f "$SRC/$f" ] || die "release v$INSTALLER_VERSION has no $f; nothing installed"
   done
 fi
@@ -413,7 +434,8 @@ else
   install -d -m 0755 "$(dirname "$ADMIN_BIN")" "$UNIT_DIR"
 fi
 install -d -m 0755 "$PREFIX/hub" "$PREFIX/cli" "$PREFIX/integrations/claude-code/skill/needs-you"
-install -m 0644 "$SRC/hub/needs_you_hub.py" "$SRC/hub/needs_you_admin.py" "$SRC/hub/join-install.sh" "$PREFIX/hub/"
+install -m 0644 "$SRC/hub/needs_you_hub.py" "$SRC/hub/needs_you_admin.py" "$SRC/hub/join-install.sh" \
+  "$SRC/hub/needs_you_hub_update.py" "$PREFIX/hub/"
 install -m 0755 "$SRC/cli/needs-you" "$PREFIX/cli/needs-you"
 if [ -z "$OLD_VERSION" ]; then
   echo "Installed the needs-you hub ${NEW_VERSION:-?}."
@@ -504,6 +526,50 @@ if [ -f "$CONF" ] && cmp -s "$CONF" "$CONF.tmp"; then
 else
   mv "$CONF.tmp" "$CONF"; echo "wrote $CONF"
 fi
+# 2b. automatic update settings (hub-update.json, read by needs_you_hub_update.py): created on
+#     the first install with updates on, then only the flags passed change it.
+UPD="$CONF_DIR/hub-update.json"
+NY_UPD="$UPD" NY_AUTO="$AUTO_UPDATE" NY_CHANNEL="$UPDATE_CHANNEL" NY_SOAK="$UPDATE_SOAK" NY_GH="$UPDATE_GH" \
+"$PYTHON" - > "$UPD.tmp" <<'PY'
+import json, os
+e = os.environ
+import sys
+cfg = {}
+broken = False
+try:
+    with open(e["NY_UPD"]) as fh:
+        old = json.load(fh)
+    if isinstance(old, dict):
+        cfg = old
+    else:
+        broken = True
+except FileNotFoundError:
+    pass
+except (OSError, ValueError):
+    broken = True
+if broken:
+    # A file we can't read never turns updates on by itself (the updater reads it as off too).
+    sys.stderr.write("install-hub: %s couldn't be read; rewrote it with automatic updates off "
+                     "(turn them on with --auto-update)\n" % e["NY_UPD"])
+    cfg = {"auto_update": False}
+cfg.setdefault("auto_update", True)
+cfg.setdefault("channel", "stable")
+cfg.setdefault("soak_hours", 24)
+cfg.setdefault("gh", "")
+if e["NY_AUTO"]:
+    cfg["auto_update"] = e["NY_AUTO"] == "1"
+if e["NY_CHANNEL"]:
+    cfg["channel"] = e["NY_CHANNEL"]
+if e["NY_SOAK"]:
+    cfg["soak_hours"] = int(e["NY_SOAK"])
+if e["NY_GH"]:
+    cfg["gh"] = e["NY_GH"]
+print(json.dumps(cfg, indent=2))
+PY
+if [ "$MODE" = system ]; then chmod 0644 "$UPD.tmp"; else chmod 0600 "$UPD.tmp"; fi
+if [ -f "$UPD" ] && cmp -s "$UPD" "$UPD.tmp"; then rm -f "$UPD.tmp"; else mv "$UPD.tmp" "$UPD"; echo "wrote $UPD"; fi
+AUTO_ON=$("$PYTHON" -c 'import json,sys; print("1" if json.load(open(sys.argv[1])).get("auto_update") is True else "0")' "$UPD")
+
 cfg_get() { "$PYTHON" -c 'import json,sys; c=json.load(open(sys.argv[1])); v=c.get(sys.argv[2]); print(",".join(v) if isinstance(v, list) else ("" if v is None else v))' "$CONF" "$1"; }
 
 # 3. admin wrapper
@@ -541,10 +607,22 @@ with open(tmpl) as fh:
     sys.stdout.write(fh.read().replace("@PYTHON@", q(python)).replace("@HUB@", q(hub)).replace("@CONF@", q(conf)))
 PY
   mv -f "$UNIT_DIR/needs-you-hub.service.tmp" "$UNIT_DIR/needs-you-hub.service"
+  "$PYTHON" - "$SRC/deploy/needs-you-hub-update.user.service" "$PYTHON" "$PREFIX/hub/needs_you_hub_update.py" \
+    "$PREFIX" "$CONF_DIR" "$STATE_DIR" > "$UNIT_DIR/needs-you-hub-update.service.tmp" <<'PY'
+import sys
+tmpl, python, updater, prefix, conf_dir, state_dir = sys.argv[1:7]
+q = lambda p: '"%s"' % p.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")
+with open(tmpl) as fh:
+    sys.stdout.write(fh.read().replace("@PYTHON@", q(python)).replace("@UPDATER@", q(updater))
+                     .replace("@PREFIX@", q(prefix)).replace("@CONFDIR@", q(conf_dir)).replace("@STATEDIR@", q(state_dir)))
+PY
+  mv -f "$UNIT_DIR/needs-you-hub-update.service.tmp" "$UNIT_DIR/needs-you-hub-update.service"
+  install -m 0644 "$SRC/deploy/needs-you-hub-update.timer" "$UNIT_DIR/needs-you-hub-update.timer"
   SYSTEMCTL=(systemctl --user)
   JOURNAL="journalctl --user -u needs-you-hub"
 else
   install -m 0644 "$SRC/deploy/needs-you-hub.service" "$UNIT_DIR/needs-you-hub.service"
+  install -m 0644 "$SRC/deploy/needs-you-hub-update.service" "$SRC/deploy/needs-you-hub-update.timer" "$UNIT_DIR/"
   SYSTEMCTL=(systemctl)
   JOURNAL="journalctl -u needs-you-hub"
 fi
@@ -552,6 +630,12 @@ if [ "$START" -eq 1 ]; then
   "${SYSTEMCTL[@]}" daemon-reload
   "${SYSTEMCTL[@]}" enable needs-you-hub.service >/dev/null
   "${SYSTEMCTL[@]}" restart needs-you-hub.service
+  if [ "$AUTO_ON" = 1 ]; then
+    "${SYSTEMCTL[@]}" enable --now needs-you-hub-update.timer >/dev/null 2>&1 \
+      || echo "install-hub: couldn't start the automatic update timer (needs-you-hub-update.timer)" >&2
+  else
+    "${SYSTEMCTL[@]}" disable --now needs-you-hub-update.timer >/dev/null 2>&1 || true
+  fi
   first_bind=$(cfg_get bind | cut -d, -f1)
   port=$(cfg_get port)
   ok=0
@@ -605,10 +689,20 @@ Next:
   needs-you-admin invite list
   needs-you-admin token list
 EOF
-if [ -n "$CHECKOUT" ]; then
-  echo "Upgrade later with: git pull && $0 $([ "$MODE" = user ] && echo --user)"
+UPD_LOG="journalctl $([ "$MODE" = user ] && echo "--user ")-u needs-you-hub-update"
+if [ "$AUTO_ON" = 1 ]; then
+  echo "Automatic updates: on ($("$PYTHON" -c 'import json,sys; c=json.load(open(sys.argv[1])); print("%s channel, %s h after a release" % (c.get("channel"), c.get("soak_hours")))' "$UPD"); every 6 hours). They need gh 2.64+ logged in$([ "$MODE" = system ] && echo " as root")."
+  echo "  Log: $UPD_LOG   Off: re-run with --no-auto-update"
+  if [ -n "$CHECKOUT" ]; then
+    echo "  They install GitHub releases, replacing code installed from this checkout."
+  fi
 else
-  echo "Upgrade later: run a newer release's install-hub.sh the same way (without --join; the config and database are kept)."
+  echo "Automatic updates: off (turn on with --auto-update)."
+  if [ -n "$CHECKOUT" ]; then
+    echo "Upgrade later with: git pull && $0 $([ "$MODE" = user ] && echo --user)"
+  else
+    echo "Upgrade later: run a newer release's install-hub.sh the same way (without --join; the config and database are kept)."
+  fi
 fi
 exit 0
 }

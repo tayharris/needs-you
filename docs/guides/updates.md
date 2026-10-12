@@ -104,4 +104,4 @@ a server hub's shell: `needs-you-admin token request-update <name>` and `token c
 
 ## Server hubs
 
-A server hub serves its own checkout or tarball on `/dl`, so its senders follow it, not the Mac. Update it as in [docs/HUB.md](../HUB.md#upgrading). An automatic updater for server hubs is planned ([rollout-updates.md](../roadmap/rollout-updates.md), item 15).
+A server hub serves its own checkout or tarball on `/dl`, so its senders follow it, not the Mac. A hub installed by `install-hub.sh` (0.5.1 or later) **updates itself**: every 6 hours it installs the newest stable release, 24 hours after it's published, once its checksums and build provenance check out, and rolls back if the new version doesn't come up. It needs `gh` 2.64 or later, logged in. `--update-channel prerelease`, `--update-soak-hours N` and `--no-auto-update` change that ([docs/HUB.md](../HUB.md#automatic-updates)). A hub installed before 0.5.1 gets it the next time `install-hub.sh` is run on it.

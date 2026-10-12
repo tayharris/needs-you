@@ -1,0 +1,12 @@
+[Unit]
+Description=needs-you hub: install the newest checked release (hub-update.json)
+
+[Service]
+Type=oneshot
+# install-hub.sh --user fills these in with the paths it installed to.
+ExecStart=@PYTHON@ @UPDATER@ --mode user --prefix @PREFIX@ --conf-dir @CONFDIR@ --state-dir @STATEDIR@
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+UMask=0077
+NoNewPrivileges=true
+TimeoutStartSec=20min

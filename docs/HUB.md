@@ -155,6 +155,8 @@ pair the same hub again, or under a new URL, remove it first (**Remove** in Sett
 | `~/.local/state/needs-you/hub.db` | SQLite database (WAL, incremental auto-vacuum) |
 | `~/.config/systemd/user/needs-you-hub.service` | `systemctl --user` unit, `Restart=always` |
 | `~/.local/bin/needs-you-admin` | The admin tool, preset to this config |
+| `~/.config/needs-you/hub-update.json` | [Automatic update](#automatic-updates) settings, mode 600 |
+| `~/.config/systemd/user/needs-you-hub-update.{service,timer}` | The automatic updater, every 6 hours |
 
 Options:
 
@@ -173,6 +175,10 @@ Options:
 | `--reconfigure` | off | Rebuild the config from defaults + flags (keeps the secret). |
 | `--no-start` | off | Install files and config only. |
 | `--no-invite` | off | Don't print the first owner invite. |
+| `--no-auto-update` / `--auto-update` | on | Turn [automatic updates](#automatic-updates) off or on. |
+| `--update-channel C` | `stable` | `stable`, or `prerelease` to take pre-releases too. |
+| `--update-soak-hours N` | `24` | Wait this long after a release is published before installing it (0–720). |
+| `--update-gh PATH` | `gh` on `PATH` | The `gh` that checks each release (2.64 or later, logged in). |
 
 Re-running upgrades in place: the code and unit are replaced, the config is kept with only the
 flags you passed applied to it, the database is untouched, and the service restarts. The owner
@@ -313,7 +319,8 @@ token); a failover that waits on an unreachable (not refused) hub costs up to
 
 ## Upgrading
 
-Upgrades never lose config or data.
+Upgrades never lose config or data. A hub installed by `install-hub.sh` upgrades itself
+([automatic updates](#automatic-updates), on by default); to upgrade by hand:
 
 ```bash
 cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./scripts/install-hub.sh
@@ -360,6 +367,51 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
   A `hub.json` written by an older installer says `"retention_days": 7`: tombstones then go
   after 7 days; set 30 (or delete the line) to keep them as long as the new default. A hub up to
   0.2.1 skips the tombstones it receives (their title is empty) and keeps its own copy's text.
+
+### Automatic updates
+
+Every 6 hours (`needs-you-hub-update.timer`) the updater (`hub/needs_you_hub_update.py`) asks
+GitHub, through `gh`, for the newest release on the hub's channel. When one is newer than the
+installed hub and was published at least the soak time ago (24 hours by default), it:
+
+1. downloads that release's `install-hub.sh`, `SHA256SUMS` and `release-manifest.json`, and checks
+   the installer against both and its **build provenance**: built by this repo's release workflow,
+   from that tag, on a GitHub-hosted runner (`gh attestation verify --deny-self-hosted-runners`);
+2. runs that installer the way the hub was installed (`--user` or system-wide), which checks the
+   release's server tarball the same way, keeps `hub.json`, the update settings and the database,
+   and restarts the hub;
+3. waits up to a minute for `/v1/health` to answer with the new version. If it doesn't, it stops
+   the hub, puts the previous code back (it keeps a copy in `~/.local/share/needs-you.previous`),
+   restores the database from the hub's own pre-migration backup (`hub.db.bak-<schema>`) if the new
+   version had already migrated it, restarts the hub and checks it answers. A release that failed
+   is remembered (`hub-update-failed.json`) and not tried again; the next newer one is.
+
+Nothing is installed without build provenance, so automatic updates need **`gh` 2.64 or later,
+logged in** (`gh auth login`; system-wide installs: logged in as root, or `GH_TOKEN` in a
+drop-in). With no `gh`, or an older one (Ubuntu 24.04 ships 2.45), the updater installs nothing and
+says why in its log; point it at a newer one with `--update-gh PATH`. It never reads or prints a
+token, peer secret or invite code.
+
+The settings live in `hub-update.json` next to `hub.json`; change them by re-running the installer
+with the flags above (a re-run without them keeps them):
+
+```json
+{"auto_update": true, "channel": "stable", "soak_hours": 24, "gh": ""}
+```
+
+A file that can't be read, or has a value out of range, turns automatic updates off.
+
+```bash
+journalctl --user -u needs-you-hub-update          # what each run did (system: without --user)
+python3 ~/.local/share/needs-you/hub/needs_you_hub_update.py --mode user --check   # what it would install now
+systemctl --user start needs-you-hub-update.service                                 # update now (respects the soak)
+./scripts/install-hub.sh --user --no-auto-update                                    # off
+```
+
+A hub installed from a checkout updates from GitHub releases too, replacing the checkout's code
+at the next newer release; pass `--no-auto-update` to keep tracking the checkout. Peered hubs
+each update on their own schedule; keep them on the same channel so they stay a version apart at
+most (see the schema notes above).
 
 ## Operations
 - **Backup:** `sqlite3 ~/.local/state/needs-you/hub.db ".backup $HOME/hub-$(date +%F).db"`
