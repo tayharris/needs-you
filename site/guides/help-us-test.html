@@ -57,12 +57,12 @@
 <tr><td><a href="mcp.html">MCP server</a></td><td>Tested with a scripted MCP client</td><td>Registering it in real clients (<code>--mcp claude,codex,...</code>) and an agent calling its tools</td></tr>
 </tbody>
 </table></div>
-<p>Every integration's README under <a data-repo="/tree/main/integrations" href="https://github.com/tayharris/needs-you/tree/main/integrations">integrations/</a> says exactly what was run and how.</p>
+<p>The integration READMEs under <a data-repo="/tree/main/integrations" href="https://github.com/tayharris/needs-you/tree/main/integrations">integrations/</a> say what was run, where it's been run live.</p>
 <h2 id="how-to-test">How to test <a class="anchor" href="#how-to-test" aria-label="Link to this section">#</a></h2>
 <ol>
 <li>Install the Mac app and connect the machine your agent runs on: the <a href="testers.html">install guide for testers</a> takes about 15 minutes.</li>
 <li>Set up your agent with its guide (the links in the table above). Most agents need a restart after their hooks are installed.</li>
-<li>Turn on the hook log so a report can show what the hook saw: add <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> to <code>~/.config/needs-you/env</code> (or export it before starting the agent).</li>
+<li>Turn on the hook log so a report can show what the hook saw: export <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> in the shell you start the agent from (the hook doesn't read this one from <code>~/.config/needs-you/env</code>).</li>
 <li>Work as you normally would, and watch the pill. Things worth trying:
 <ul class="tasks">
 <li class="task"><input type="checkbox" disabled aria-label="to do"> Make the agent ask for approval (a shell command it won't run on its own). A card appears; approving in the agent clears it.</li>

@@ -85,7 +85,7 @@ tailscale status | head                          # is this machine on the tailne
 <tr><td>Times out only while the Mac sleeps</td><td>The Mac is asleep, and the app's built-in hub with it</td><td>Expected: items queue and the 5-minute flush sends them after it wakes. Add a <a href="hub.html">server hub</a> to avoid the wait.</td></tr>
 <tr><td>Times out from servers, works on the Mac</td><td>Tailscale is down on the Mac (the app's hub then listens only on <code>127.0.0.1</code>), or the macOS firewall blocks it</td><td>Bring Tailscale up on the Mac; the hub picks up the tailnet address by itself (Settings… → Built-in hub shows the URL). Allow <code>python3</code> in System Settings → Network → Firewall</td></tr>
 <tr><td><code>HTTP 400</code></td><td>Validation: title &gt; 100 chars, body &gt; 2,000, &gt; 6 links, a link scheme not on the allow-list, a bad <code>context</code>/<code>kind</code>/<code>priority</code></td><td>Fix the item; the response body says which field</td></tr>
-<tr><td><code>HTTP 429</code> or "too many open items"</td><td>The sender has 60 open items: something is looping</td><td>Stop the loop; resolve the stale keys</td></tr>
+<tr><td><code>HTTP 429</code> "already has 60 open items", or "too many posts from this token"</td><td>The sender has 60 open items, or posted more than 120 times in a minute: something is looping</td><td>Stop the loop; resolve the stale keys. Items queued in the outbox are sent later</td></tr>
 </tbody>
 </table></div>
 <p>The CLI never fails your job because of the hub. It queues to <code>~/.local/state/needs-you/outbox/</code> and sends on the next call or <code>needs-you flush</code> (the invite installer schedules one every 5 minutes). Items sitting in the outbox mean no hub has accepted them yet. The outbox keeps at most 500 requests and 7 days; older ones are dropped with a warning.</p>
@@ -113,7 +113,7 @@ tailscale status | head                          # is this machine on the tailne
 </ul>
 <h2 id="items-post-but-nothing-shows-on-the-mac">Items post, but nothing shows on the Mac <a class="anchor" href="#items-post-but-nothing-shows-on-the-mac" aria-label="Link to this section">#</a></h2>
 <ol>
-<li><strong>Context and hours:</strong> a <code>work</code> item at 21:00 shows only as the faint second number (<code>0 · 1</code>). Use the toggle in the expanded header, or check the work-hours setting.</li>
+<li><strong>Context and hours:</strong> a <code>work</code> item at 21:00 shows only as the faint second number (<code>0 · 1</code>). Use the toggle in the expanded header, or turn off <strong>Settings → Alerts → Switch work / personal on a schedule</strong> (the hours are fixed: weekdays 7:00–18:00).</li>
 <li><strong>Kind:</strong> <code>done</code> and <code>info</code> items never raise the count. They're in the collapsed <strong>Recent</strong> section.</li>
 <li><strong>Snoozed:</strong> press Control-Option-Space (⌃⌥Space, or your configured shortcut) to bring the panel back.</li>
 <li><strong>Mac can't reach a server hub:</strong> the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.</li>

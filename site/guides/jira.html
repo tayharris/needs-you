@@ -106,7 +106,7 @@ NEEDS_YOU_JIRA_WATCHING=1                                                       
 <li>Run <code>needs-you-jira -v</code>. It says how many issues changed and how many are open, and any Jira error. It always exits 0, so cron won't tell you.</li>
 <li>See <a href="troubleshooting.html#jira-poller">troubleshooting</a> for token, permission and JQL errors. After 3 failed runs in a row it posts one low card, "Jira alerts stopped on devbox", which clears on the next good run.</li>
 <li>Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see <a href="troubleshooting.html#a-sender-cant-reach-the-hub">troubleshooting</a>.</li>
-<li>To start over, delete <code>~/.local/state/needs-you/jira.json</code>. The next run records your issues again without posting, and cards it posted expire within 15 minutes on their own.</li>
+<li>To start over, delete <code>~/.local/state/needs-you/jira.json</code>. The next run records your issues again without posting, and cards it posted expire within 15 minutes on their own; a "Jira alerts stopped" card has no expiry, so dismiss it on the Mac.</li>
 </ul>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/jira.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/jira.md">docs/guides/jira.md</a> in the repo. View or edit it on GitHub.</p>
   </main>

@@ -47,7 +47,7 @@
         <li><a href="#9-remove-it">9. Remove it</a></li>
       </ul>
     </nav>
-<p>Thanks for trying needs-you before it's public. This page is everything you need: getting access, installing the Mac app, connecting a machine, what to try, and how to tell us what went wrong. It takes about 15 minutes, plus a few more per extra machine.</p>
+<p>Thanks for trying needs-you early. This page is everything you need: getting access, installing the Mac app, connecting a machine, what to try, and how to tell us what went wrong. It takes about 15 minutes, plus a few more per extra machine.</p>
 <p><strong>What it is.</strong> One inbox for "you have to do something". AI agents (Claude Code), servers, cron jobs and CI post a short item when they're blocked on you; your Mac shows it in a small floating pill with a link to where you act, and it goes away once it's handled.</p>
 <p>Words used on this page:</p>
 <div class="table-wrap"><table class="doc-table">
@@ -77,7 +77,7 @@
 <p>Download <code>NeedsYou-X.Y.Z.dmg</code> from the release (the <code>NeedsYou-X.Y.Z-macos.zip</code> is the same app). Optionally download <code>SHA256SUMS</code> too and check the file wasn't damaged on the way:</p>
 <div class="code" data-copy><pre><code class="language-bash">cd ~/Downloads
 shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK</code></pre></div>
-<p>Ignore the other assets (<code>needs-you-server-…</code>, <code>needs-you-cli-…</code>, <code>release-manifest.json</code>): they're for servers and for the app's updater.</p>
+<p>Ignore the other assets (<code>needs-you-server-…</code>, <code>needs-you-cli-…</code>, <code>install-hub.sh</code>, <code>release-manifest.json</code> and its <code>.sig</code>): they're for servers and for the app's updater.</p>
 <h2 id="3-install-and-first-launch">3. Install and first launch <a class="anchor" href="#3-install-and-first-launch" aria-label="Link to this section">#</a></h2>
 <ol>
 <li>Open the DMG and drag <code>NeedsYou.app</code> onto the <strong>Applications</strong> link in the same window. Eject the DMG. (If you open it straight from the DMG or Downloads instead, <strong>Settings → General → Move to Applications</strong> does the move for you, settings included; <a href="mac-app.html#opened-it-from-downloads-or-the-disk-image">details</a>.)</li>
@@ -166,7 +166,7 @@ needs-you resolve --key "personal:test:hello"</code></pre></div>
 <p>The pill springs out with the title, then goes back to idle after the resolve.</p></li>
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Re-post the same key</strong> with a different title: the card updates instead of duplicating.</p></li>
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Claude Code:</strong> in a Claude Code session on a connected machine, ask for something that needs a permission prompt (e.g. "run <code>ls</code> in a new folder"). A card "Claude wants to run …" appears; once you answer in Claude, it clears itself. Leave a session idle for about a minute after a turn: "Claude finished: &lt;session name&gt; (&lt;project&gt;)", or "Claude asks: &lt;question&gt;" when Claude's last message ended on a question; <code>/rename</code> the session and the next card uses the new name.</p></li>
-<li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Card buttons:</strong> <strong>Done</strong>, <strong>Dismiss</strong>, snooze, and the <strong>Terminal</strong> / <strong>VS Code</strong> buttons on agent cards (<a href="claude-code-everywhere.html#buttons">Claude Code everywhere</a>).</p></li>
+<li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Card buttons:</strong> <strong>Done</strong>, <strong>Dismiss</strong>, snooze, and the "go there" button on agent cards, named for the terminal or editor (<strong>iTerm2</strong>, <strong>tmux</strong>, <strong>VS Code</strong>, ...) (<a href="claude-code-everywhere.html#buttons">Claude Code everywhere</a>).</p></li>
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Never steals focus:</strong> keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.</p></li>
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Work and personal:</strong> post one item with <code>--context work</code> and one with <code>--context personal</code>. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.</p></li>
 <li class="task"><p><input type="checkbox" disabled aria-label="to do"> <strong>Focus and snooze:</strong> right-click the pill → <strong>Focus</strong> (Agents and urgent only, Urgent only, Everything later) and <strong>Snooze</strong>.</p></li>
@@ -186,13 +186,13 @@ needs-you resolve --key "personal:test:hello"</code></pre></div>
 <li><p><strong>What you did, what you expected, what happened.</strong> Screenshots of the pill or Settings help (crop out item text you'd rather not share).</p></li>
 <li><p><strong>Your setup:</strong> hub on this Mac or not, Tailscale or not, which machines you connected and how (one-liner or agent prompt).</p></li>
 <li><p><strong>On a sender:</strong> the output of <code>needs-you doctor</code> (it never prints the token).</p></li>
-<li><p><strong>The app's log</strong> from the last hour. This saves it to your Desktop with invite codes, tokens, tailnet names and tailnet addresses masked:</p>
+<li><p><strong>The app's log</strong> from the last hour. This saves it to your Desktop with invite codes, tokens, peer secrets, tailnet names and tailnet addresses masked:</p>
 <div class="code"><pre><code class="language-bash">log show --info --last 1h --style compact --predicate 'subsystem == "app.needsyou.mac"' |
-  sed -E 's/nyi?_[A-Za-z0-9_-]+/&lt;redacted&gt;/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/&lt;host&gt;.&lt;tailnet&gt;.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g' \
+  sed -E 's/ny[ip]?_[A-Za-z0-9_-]+/&lt;redacted&gt;/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/&lt;host&gt;.&lt;tailnet&gt;.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g; s/fd7a:115c:a1e0:[0-9a-f:]+/fd7a:x/g' \
   &gt; ~/Desktop/needs-you-log.txt</code></pre></div>
 <p>Skim it before attaching; it should hold nothing private, but you're the judge. Info lines don't stay in the log long, so run it soon after the problem. For a problem you can repeat, record it live instead: run <code>log stream --info --style compact --predicate 'subsystem == "app.needsyou.mac"'</code> (piped through the same <code>sed</code>), reproduce, then press Ctrl-C.</p></li>
 </ul>
-<p><strong>Never paste</strong> a token (<code>ny_…</code>), an invite link or code (<code>nyi_…</code>, <code>/join/…</code>), or the contents of <code>~/.config/needs-you/env</code> or <code>~/Library/Application Support/NeedsYou/</code>. If one slips into an issue, tell the owner: revoking it takes a click in <strong>Settings → Machines</strong>.</p>
+<p><strong>Never paste</strong> a token (<code>ny_…</code>), a peer secret (<code>nyp_…</code>), an invite link or code (<code>nyi_…</code>, <code>/join/…</code>), or the contents of <code>~/.config/needs-you/env</code> or <code>~/Library/Application Support/NeedsYou/</code>. If one slips into an issue, tell the owner: revoking it takes a click in <strong>Settings → Machines</strong>.</p>
 <p>Security problems: don't open an issue; tell the owner directly (<a data-repo="/blob/main/SECURITY.md" href="https://github.com/tayharris/needs-you/blob/main/SECURITY.md">SECURITY.md</a>).</p>
 <h2 id="9-remove-it">9. Remove it <a class="anchor" href="#9-remove-it" aria-label="Link to this section">#</a></h2>
 <ol>

@@ -47,7 +47,7 @@
 <h2 id="before-you-start">Before you start <a class="anchor" href="#before-you-start" aria-label="Link to this section">#</a></h2>
 <ul>
 <li>A sender machine that's always on, such as a devbox: run an invite link's installer there first (<a href="add-a-sender.html">Add a sender</a>). <code>needs-you doctor</code> should show no <code>FAIL</code>.</li>
-<li><a href="https://cli.github.com/">GitHub CLI</a> logged in on it: <code>gh auth status</code> says "Logged in". (<code>gh auth login</code> grants the <code>repo</code> and <code>notifications</code> scopes the poller needs.)</li>
+<li><a href="https://cli.github.com/">GitHub CLI</a> logged in on it: <code>gh auth status</code> says "Logged in". (<code>gh auth login</code> grants the <code>repo</code> scope, which covers the notifications and pull requests the poller reads.)</li>
 <li><code>python3</code> 3.9 or newer.</li>
 </ul>
 <h2 id="set-up-3-commands">Set up (3 commands) <a class="anchor" href="#set-up-3-commands" aria-label="Link to this section">#</a></h2>
@@ -106,7 +106,7 @@ If a run prints an error, fix what it names, or tell me if it needs me.</code></
 <li>A "need gh's ... scope" card: run the <code>gh auth refresh -s ...</code> command it names. The poller checks again within the hour, and the card goes.</li>
 <li><code>gh</code> errors (logged out, token expired): fix with <code>gh auth login</code>. After 3 failed runs in a row it posts one low card, "GitHub alerts stopped on devbox", which clears on the next good run.</li>
 <li>Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see <a href="troubleshooting.html#a-sender-cant-reach-the-hub">troubleshooting</a>.</li>
-<li>To start over, delete <code>~/.local/state/needs-you/github.json</code>. Cards it posted expire within 15 minutes on their own.</li>
+<li>To start over, delete <code>~/.local/state/needs-you/github.json</code>. Cards it posted expire within 15 minutes on their own (a merged-PR card after a day); a "GitHub alerts stopped" or "... cards need gh's ... scope" card has no expiry, so dismiss it on the Mac.</li>
 </ul>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/github.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/github.md">docs/guides/github.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
