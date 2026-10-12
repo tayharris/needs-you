@@ -4994,7 +4994,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--install-dir", dest="install_dir",
                    help="directory with cli/ and integrations/ for /dl (default: next to hub/)")
     p.add_argument("--retention-days", dest="retention_days", type=float,
-                   help="hard-delete closed items older than this (default 7)")
+                   help="hard-delete closed items older than this (default %g)" % DEFAULT_RETENTION_DAYS)
     p.add_argument("--allow-any-interface", action="store_true", default=None,
                    help="allow binding to 0.0.0.0 / :: (not recommended)")
     p.add_argument("--freebind", action="store_true", default=None,
