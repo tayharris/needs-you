@@ -82,7 +82,7 @@ the server redeems for the pair's own replication secret. Nothing to copy by han
 secret never shows on a screen ([ADR 0012](adr/0012-mac-hub-peers.md)).
 
 **1. On the Mac**, make the link: **Settings → Built-in hub → Always-on hub → Add an always-on
-hub** shows the command to run on the server (and copies it). The Mac must be on the tailnet;
+hub** shows the lines to run on the server and the link to paste, each with a copy button. The Mac must be on the tailnet;
 the link lasts an hour. From a terminal on the Mac instead:
 
 ```bash
@@ -106,8 +106,10 @@ key. Logged in as root, leave out `sudo`. The installer reads the link at its pr
 invite code is in no command line: not in `ps`, not in the command sudo logs, not in your shell
 history. It's saved in your home folder on purpose: run from a file, the installer treats the
 folder above it as a checkout when that holds hub code, and above a home folder only root can
-write. In a normal terminal the one line the hub's invite gives works too:
-`(curl -fsSL <install-hub.sh URL> && echo '<link>') | sudo bash -s -- --join -`.
+write. It ends with `needs-you-hub is up`; the Mac's Always-on hub list shows the server within
+a minute. The hub's invite carries the same lines (`install_steps`, also on the link's page and
+in `needs-you-admin invite create`), plus one line for scripts and agents, with no one to paste
+the link: `(curl -fsSL <install-hub.sh URL> && echo '<link>') | sudo bash -s -- --join -`.
 
 `vX.Y.Z` is the release the Mac app runs. The installer comes from that GitHub release, and so
 does all the code it installs: it downloads the release's server tarball for its own version,
@@ -121,12 +123,12 @@ GitHub releases, which needs `gh` 2.64 or later logged in as root (`sudo gh auth
 `GH_TOKEN` in a drop-in); until then each update run logs why it installed nothing. Add
 `--no-auto-update` after `--join -` to opt out. A development build of the app has no matching
 release: install from a checkout then. From a checkout (or the release's server tarball),
-`echo '<link>' | ./scripts/install-hub.sh --user --join -` does the same as your user (or run it
-without the `echo` and paste the link when it asks). Run as root, a
+`./scripts/install-hub.sh --user --join -` does the same as your user: paste the link when it
+asks (from a script, pipe the link in on stdin). Run as root, a
 checkout is first copied to a private directory, refusing symlinks and anything another user
 could write (the files or any directory above them), and only that copy is installed. On a server
 that already runs a hub (alone, or in a mesh with its own `peer_secret`), run
-`echo '<link>' | needs-you-admin peer join -` instead; the running hub picks it up within 5 seconds and
+`needs-you-admin peer join -` instead and paste the link when it asks; the running hub picks it up within 5 seconds and
 its other peers are left as they are.
 
 Then:
@@ -150,8 +152,8 @@ and the Mac's hub pulls it when it wakes. Only after 30 days away can an item re
 server stay open on the Mac until you close it.
 
 Joining one server to another works the same way: `needs-you-admin invite create hub-b --role
-peer` on one, the command it prints (`install-hub.sh --join -`, or `needs-you-admin peer join -`,
-with the link on stdin) on the other.
+peer` on one, the lines it prints (`install-hub.sh --join -`, or `needs-you-admin peer join -`,
+then the link when it asks) on the other.
 
 A pairing can't be taken over: a peer invite redeemed with the URL or hub id of a hub that is
 already paired is refused (`409`), and so is a join whose answer names another paired hub. To
@@ -285,7 +287,7 @@ needs-you-admin token list             # name, role, state, open items
 needs-you-admin token revoke my-server-build-1
 needs-you-admin token add ci-myrepo --role sender                          # a bare token, printed once
 needs-you-admin invite create hub-b --role peer       # another hub joins this one (one use, 1 h)
-echo '<peer invite link>' | needs-you-admin peer join -   # this hub joins another
+needs-you-admin peer join -                            # this hub joins another (paste the link)
 needs-you-admin peer list                              # peers: config and invite, never secrets
 needs-you-admin peer remove hub-b                      # by hub id, URL or name (invite peers)
 ```

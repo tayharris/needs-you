@@ -7,11 +7,20 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Connect a machine** (or **Connect a Machine…** in the menu bar menu), keep *A server or agent that sends alerts*, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
    - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`. The last three options set up Claude Code alerts; on a machine without Claude Code, drop them ([Options](#options)),
-   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp &lt;agents&gt; registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions &lt;agents&gt; adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."* ([Codex](codex.md))
-2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
-3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**). On the machine, open a new terminal and run `needs-you doctor`: every line should be `OK` or `INFO`.
+   - the same install as plain lines (**Plain lines** in the app), for a browser console that types a paste key by key and can drop a `|`:
 
-If the installer stops with *can't reach the hub*, nothing was installed and no use was spent: the machine can't reach the Mac (asleep, Tailscale off on one side, or macOS blocked `python3`). [tailscale.md → Check reachability](tailscale.md#4-check-reachability) has the checks.
+     ```bash
+     cd
+     curl -fsSLo needs-you-install.sh <join_url>/install.sh
+     bash needs-you-install.sh --yes --claude-hooks user --skill --alerts
+     ```
+
+     The saved installer holds the invite code, so it deletes itself as soon as it starts. Options go on the last line,
+   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp &lt;agents&gt; registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions &lt;agents&gt; adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."* ([Codex](codex.md))
+2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself (the plain lines in a browser console). The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
+3. **Check** the card that the installer posts, "needs-you is set up on &lt;host&gt;" (`setup:<host>:test`), under **Recent** in the panel; the installer's last lines say so. On the machine, open a new terminal and run `needs-you doctor`: every line should be `OK` or `INFO`, and each `WARN` or `FAIL` line has the command that fixes it under it.
+
+If `curl` prints *Failed to connect* or *Could not resolve host*, or the installer stops with *can't reach the hub*, nothing was installed and no use was spent: the machine can't reach the Mac (asleep, Tailscale off on one side, or macOS blocked `python3`). [tailscale.md → Check reachability](tailscale.md#4-check-reachability) has the checks; then run the same line again.
 
 The join URL is safe to open in a browser first: it's Markdown that explains what will happen. Opening it doesn't spend a use.
 
@@ -73,13 +82,13 @@ Notes:
 
 ## Manually (no invite link)
 
-Mint a token on a server hub (`needs-you-admin token add <name> --role sender`), then on the machine, from a checkout of this repo:
+Only when you can't use a link: the invite does all of this and needs no token. Mint a token on a server hub (`needs-you-admin token add <name> --role sender`; the Mac app doesn't hand out bare tokens), note the hub's URL (the Mac's is in **Settings → Built-in hub**), then on the machine, from a checkout of this repo:
 
 ```bash
 ./scripts/setup-sender.sh
 ```
 
-It installs the CLI, asks for the hub URLs and the token (hidden input), writes `~/.config/needs-you/env`, checks health, schedules the 5-minute `needs-you flush` (crontab on Linux, a LaunchAgent on macOS, like the installer), turns on daily updates (`NEEDS_YOU_AUTO_UPDATE=1`), puts `~/.local/bin` on `PATH` in your shell profile, and offers a test item. Re-running it is safe. Unattended:
+It installs the CLI, asks for the hub URLs and the token (hidden input), writes `~/.config/needs-you/env`, checks health, schedules the 5-minute `needs-you flush` (crontab on Linux, a LaunchAgent on macOS, like the installer), turns on daily updates (`NEEDS_YOU_AUTO_UPDATE=1`), puts `~/.local/bin` on `PATH` in your shell profile, and offers a test item. It ends with `needs-you doctor` and a test post to try. Re-running it is safe. Unattended:
 
 ```bash
 printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \

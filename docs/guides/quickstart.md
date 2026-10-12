@@ -24,7 +24,7 @@ A faint pill appears in a corner of the screen. That's the idle state. Until som
 
 ## 2. Local Claude Code as a sender (2 minutes)
 
-Make an invite: right-click the pill → **Settings…**, then on the **Connect a machine** page (under **Hubs and machines** in the sidebar; the menu bar menu's **Connect a Machine…** opens it too) keep *A server or agent that sends alerts*, enter a machine name, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and two copy buttons, **Agent prompt** and **Shell one-liner**. The agent prompt reads:
+Make an invite: right-click the pill → **Settings…**, then on the **Connect a machine** page (under **Hubs and machines** in the sidebar; the menu bar menu's **Connect a Machine…** opens it too) keep *A server or agent that sends alerts*, enter a machine name, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and three copy buttons, **Agent prompt**, **Shell one-liner** and **Plain lines** (the same install for a browser console, which can drop a pasted `|`). The agent prompt reads:
 
 ```
 Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. [...] Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one.
@@ -32,7 +32,7 @@ Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/
 
 The link uses the Mac's MagicDNS name while Tailscale is running, and `http://127.0.0.1:8765` when it isn't. Either works for an agent on the Mac itself.
 
-Paste that into Claude Code on the Mac. The agent reads the page, picks the options that fit (Claude Code hooks, the skill, Orca snippets), and runs the one-line installer. It installs the `needs-you` CLI in `~/.local/bin`, saves a token of its own in `~/.config/needs-you/env`, and posts a test `info` card (`setup:<host>:test`), which shows under **Recent** in the panel.
+Paste that into Claude Code on the Mac. The agent reads the page, picks the options that fit (Claude Code hooks, the skill, Orca snippets), and runs the one-line installer. It installs the `needs-you` CLI in `~/.local/bin`, saves a token of its own in `~/.config/needs-you/env`, and posts a test card, "needs-you is set up on &lt;host&gt;", which shows under **Recent** in the panel. That card is your sign it worked.
 
 To do it yourself instead, paste the **Shell one-liner** and add the options you want:
 
@@ -63,6 +63,8 @@ On each server, paste the agent prompt into its agent, or run:
 curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes
 ```
 
+In a browser console (a cloud provider's, or Tailscale's), which types a paste key by key and can drop the `|`, use **Plain lines** instead: `cd`, `curl -fsSLo needs-you-install.sh <join link>/install.sh`, `bash needs-you-install.sh --yes` ([add-a-sender.md](add-a-sender.md#with-an-invite-link-recommended)). If `curl` says *Failed to connect* or *Could not resolve host*, the server can't reach the Mac yet: check Tailscale on both ([tailscale.md](tailscale.md)).
+
 Each server gets its own token (named `<invite name>-<hostname>`), so you can revoke one without touching the others: **Settings… → Machines** in the app ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)).
 
 > **macOS firewall:** the first time a server connects, macOS may ask whether `python3` may accept incoming connections. Allow it; that's the app's built-in hub.
@@ -71,7 +73,15 @@ Each server gets its own token (named `<invite name>-<hostname>`), so you can re
 
 ## 4. Optional: a server hub
 
-If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). The Mac makes a one-use peer invite (**Settings… → Built-in hub → Always-on hub**) and the server runs the one command it shows (`(curl -fsSL https://github.com/…/install-hub.sh && echo '<link>') | sudo bash -s -- --join -`, the installer of the app's release). From then on the two hubs replicate every item both ways, and invites made on the Mac list the server too, so senders fail over to it while the Mac sleeps ([HUB.md](../HUB.md#with-the-apps-built-in-hub)). The server hub then updates itself from GitHub releases every 6 hours, once `gh` 2.64 or later is logged in on it ([automatic updates](../HUB.md#automatic-updates)).
+If you want alerts to land somewhere even while the Mac sleeps, or you run many servers, add one or two always-on hubs: [HUB.md](../HUB.md). The Mac makes a one-use peer invite (**Settings… → Built-in hub → Always-on hub → Add an always-on hub…**) and shows three plain lines to run on the server, with **Copy**:
+
+```bash
+cd
+curl -fsSLo install-hub.sh https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh
+sudo bash install-hub.sh --join -
+```
+
+They install the hub from the app's own release (`vX.Y.Z` is the app's version), and have no quote, bracket or pipe, so they work in a browser console too. When the installer asks *Paste the peer invite link*, paste the link Settings shows (**Copy link**); it's used once and never goes on a command line. It ends with `needs-you-hub is up`, and the server shows in **Always-on hub** within a minute. From then on the two hubs replicate every item both ways, and invites made on the Mac list the server too, so senders fail over to it while the Mac sleeps ([HUB.md](../HUB.md#with-the-apps-built-in-hub)). The server hub then updates itself from GitHub releases every 6 hours, once `gh` 2.64 or later is logged in on it ([automatic updates](../HUB.md#automatic-updates)).
 
 ## Done
 
