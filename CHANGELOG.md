@@ -25,7 +25,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [0.5.1] - 2026-10-12
 
-A pre-release: server hubs now update themselves, checked the same way the Mac app's updates are; the pill and panel get a Shape (Rounded, Square, Capsule), card Density, a Solid background and accent swatches; Pill size now sizes the idle pill too; and Settings → Appearance holds the whole look. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. To turn on automatic updates for a server hub, re-run `install-hub.sh` on it once (it needs `gh` 2.64 or later, logged in; add `--update-channel prerelease` to follow pre-releases), then run `needs-you update` on sender machines.
+The first stable release since 0.3.2, so it brings everything from the 0.4.0 and 0.5.0 pre-releases too: usage meters on the pill in the style you choose, one Appearance section with Shape (Rounded, Square, Capsule), card Density, a Solid background and accent swatches, opt-in cards from Linear, Jira, GitHub Projects, Dependabot and certificate, domain and key expiry, one "go there" button per agent card, and server hubs that update themselves, checked the same way the Mac app's updates are. Read the [0.5.0](#050---2026-10-09) and [0.4.0](#040---2026-10-09) notes for the details. **Upgrade every hub** (a server hub: re-run `install-hub.sh` on it once; from then on it updates itself, which needs `gh` 2.64 or later, logged in), then run `needs-you update` on sender machines for the new hooks.
 
 ### Added
 
