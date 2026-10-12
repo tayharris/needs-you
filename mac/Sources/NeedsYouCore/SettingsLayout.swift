@@ -132,13 +132,13 @@ public enum SettingsRegistry {
         .behaviour(AppPrefKey.morningSummary.rawValue, "phase3.morningSummaryEnabled", on: .alerts),
         // Integrations
         .behaviour(AppPrefKey.terminalAppleScript.rawValue, "terminalAppleScript", on: .integrations),
-        .behaviour(AppPrefKey.useStream.rawValue, "phase3.useStream", on: .integrations),
         // Updates
         .behaviour(UpdatePrefs.Key.check, "updates.prefs.checkAutomatically", on: .updates),
         .behaviour(UpdatePrefs.Key.install, "updates.prefs.installAutomatically", on: .updates),
         .behaviour(UpdatePrefs.Key.channel, "updates.prefs.channel", on: .updates),
         .behaviour(UpdatePrefs.Key.soakHours, "updates.prefs.soakHours", on: .updates),
         // Advanced
+        .behaviour(AppPrefKey.useStream.rawValue, "phase3.useStream", on: .advanced),
         .behaviour(AppPrefKey.developerMode.rawValue, "developerMode", on: .advanced),
     ]
 
@@ -212,11 +212,11 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     // Alerts
     case newItems, delivery, snoozedOrHidden, bypassRules, workScreen, schedule
     // Integrations
-    case toolCards, terminalButton, liveUpdates, usageSetup, senders
+    case toolCards, terminalButton, usageSetup, senders
     // Updates
     case updates
     // Advanced
-    case advanced
+    case liveUpdates, advanced
 
     /// The page that shows this section.
     public var tab: SettingsTab {
@@ -233,9 +233,9 @@ public enum SettingsSection: String, CaseIterable, Sendable {
         case .usageMeterLook: return .usageMeters
         case .panelAndMenuBar, .openPanel, .usageMeterContent, .setupTips, .orca, .keyboard: return .panel
         case .newItems, .delivery, .snoozedOrHidden, .bypassRules, .workScreen, .schedule: return .alerts
-        case .toolCards, .terminalButton, .liveUpdates, .usageSetup, .senders: return .integrations
+        case .toolCards, .terminalButton, .usageSetup, .senders: return .integrations
         case .updates: return .updates
-        case .advanced: return .advanced
+        case .liveUpdates, .advanced: return .advanced
         }
     }
 

@@ -237,6 +237,8 @@ final class SettingsLayoutTests: XCTestCase {
         XCTAssertEqual(SettingsRegistry.placement(forKey: UsagePrefs.Key.onPill)?.tab, .panel)
         XCTAssertEqual(SettingsRegistry.placement(forKey: UsagePrefs.Key.pillStyle)?.tab, .usageMeters)
         XCTAssertEqual(SettingsSection.usageSetup.tab, .integrations)
+        XCTAssertEqual(SettingsRegistry.placement(forKey: AppPrefKey.useStream.rawValue)?.tab, .advanced)
+        XCTAssertEqual(SettingsSection.liveUpdates.tab, .advanced)
         XCTAssertEqual(SettingsTab(name: "usage"), .usageMeters)
         XCTAssertEqual(SettingsTab(name: "appearance"), .theme)
         for tab in SettingsTab.allCases { XCTAssertEqual(SettingsTab(name: tab.rawValue), tab) }

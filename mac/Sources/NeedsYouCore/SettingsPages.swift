@@ -94,11 +94,11 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .alerts:
             return "What can interrupt you, and when: delivery, focus, snoozes, rules and reminders."
         case .integrations:
-            return "Cards from Linear, Jira, GitHub and expiry dates, the Terminal button, live updates, and sending usage meters."
+            return "Cards from Linear, Jira, GitHub and expiry dates, the Terminal button, and sending usage meters."
         case .updates:
             return "This app's version, automatic updates, and which machines and hubs are out of date, with Request update for each."
         case .advanced:
-            return "Reset the appearance and alerts, developer mode, and where settings and data are kept."
+            return "Live updates from the hub, resetting the appearance, developer mode, and where settings and data are kept."
         }
     }
 
