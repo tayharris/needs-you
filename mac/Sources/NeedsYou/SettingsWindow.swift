@@ -1305,7 +1305,7 @@ private struct ShortcutRecorder: View {
                             hotKeys.startRecording { message = $0 }
                         }
                         if hotKeys.combo != .standard {
-                            Button("Reset") { message = hotKeys.change(to: .standard) }
+                            Button("Reset to \(HotKeyCombo.standard.display)") { message = hotKeys.change(to: .standard) }
                                 .help("Back to \(HotKeyCombo.standard.spokenAndSymbols)")
                         }
                     }
@@ -1314,9 +1314,9 @@ private struct ShortcutRecorder: View {
             if hotKeys.isRecording {
                 EmptyView()
             } else if hotKeys.isRegistered {
-                Label("Registered", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                Label("Works in every app", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
             } else {
-                Label("Not registered: another app or macOS (input-source switching?) has \(hotKeys.combo.spokenAndSymbols). Pick another.",
+                Label("Not working: another app or macOS (often the switch between input sources) already uses \(hotKeys.combo.spokenAndSymbols). Press Change… and pick another.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
