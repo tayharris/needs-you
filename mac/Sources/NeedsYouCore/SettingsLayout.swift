@@ -132,13 +132,13 @@ public enum SettingsRegistry {
         .behaviour(AppPrefKey.morningSummary.rawValue, "phase3.morningSummaryEnabled", on: .alerts),
         // Integrations
         .behaviour(AppPrefKey.terminalAppleScript.rawValue, "terminalAppleScript", on: .integrations),
-        .behaviour(AppPrefKey.useStream.rawValue, "phase3.useStream", on: .integrations),
         // Updates
         .behaviour(UpdatePrefs.Key.check, "updates.prefs.checkAutomatically", on: .updates),
         .behaviour(UpdatePrefs.Key.install, "updates.prefs.installAutomatically", on: .updates),
         .behaviour(UpdatePrefs.Key.channel, "updates.prefs.channel", on: .updates),
         .behaviour(UpdatePrefs.Key.soakHours, "updates.prefs.soakHours", on: .updates),
         // Advanced
+        .behaviour(AppPrefKey.useStream.rawValue, "phase3.useStream", on: .advanced),
         .behaviour(AppPrefKey.developerMode.rawValue, "developerMode", on: .advanced),
     ]
 
@@ -210,13 +210,13 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     // Panel
     case panelAndMenuBar, openPanel, usageMeterContent, setupTips, orca, keyboard
     // Alerts
-    case newItems, delivery, snoozedOrHidden, bypassRules, workScreen, schedule
+    case newItems, workScreen, delivery, snoozedOrHidden, bypassRules, schedule
     // Integrations
-    case toolCards, terminalButton, liveUpdates, usageSetup, senders
+    case toolCards, terminalButton, usageSetup, senders
     // Updates
     case updates
     // Advanced
-    case advanced
+    case liveUpdates, advanced
 
     /// The page that shows this section.
     public var tab: SettingsTab {
@@ -232,15 +232,49 @@ public enum SettingsSection: String, CaseIterable, Sendable {
         case .glowAndRing, .arrivals, .edgeGlow: return .alertStyle
         case .usageMeterLook: return .usageMeters
         case .panelAndMenuBar, .openPanel, .usageMeterContent, .setupTips, .orca, .keyboard: return .panel
-        case .newItems, .delivery, .snoozedOrHidden, .bypassRules, .workScreen, .schedule: return .alerts
-        case .toolCards, .terminalButton, .liveUpdates, .usageSetup, .senders: return .integrations
+        case .newItems, .workScreen, .delivery, .snoozedOrHidden, .bypassRules, .schedule: return .alerts
+        case .toolCards, .terminalButton, .usageSetup, .senders: return .integrations
         case .updates: return .updates
-        case .advanced: return .advanced
+        case .liveUpdates, .advanced: return .advanced
         }
     }
 
     /// A page's sections, in order.
     public static func sections(on tab: SettingsTab) -> [SettingsSection] {
         allCases.filter { $0.tab == tab }
+    }
+}
+
+/// Advanced → Reset Appearance: every look setting (the `.look` lines in
+/// `SettingsRegistry.all`, on the Appearance pages) back to its default, and nothing else.
+/// Behaviour settings that share a value type with look ones (how long new items show, the
+/// urgent reminder, Collapse when clicking elsewhere; whether the usage meters show, which
+/// providers and windows) keep their values. SettingsLayoutTests checks this against the
+/// registry, key by key.
+public enum AppearanceReset {
+    public static func ui(_ prefs: UIPrefs) -> UIPrefs {
+        var reset = UIPrefs.defaults
+        reset.previewSeconds = prefs.previewSeconds
+        reset.urgentReminderMinutes = prefs.urgentReminderMinutes
+        reset.collapseOnClickOutside = prefs.collapseOnClickOutside
+        return reset
+    }
+
+    public static func usage(_ prefs: UsagePrefs) -> UsagePrefs {
+        let standard = UsagePrefs()
+        var reset = prefs
+        reset.pillStyle = standard.pillStyle
+        reset.pillSize = standard.pillSize
+        reset.pillArrangement = standard.pillArrangement
+        reset.pillNumbers = standard.pillNumbers
+        reset.warnPct = standard.warnPct
+        return reset
+    }
+
+    public static let edgeGlow = EdgeGlowMode.standard
+
+    /// Whether every look setting is already at its default (the button is then disabled).
+    public static func isDefault(ui: UIPrefs, usage: UsagePrefs, edgeGlow: EdgeGlowMode) -> Bool {
+        Self.ui(ui) == ui && Self.usage(usage) == usage && edgeGlow == Self.edgeGlow
     }
 }

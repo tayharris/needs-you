@@ -54,7 +54,7 @@ struct UpdatesSettingsView: View {
         } header: {
             Text("Version")
         } footer: {
-            Text("Source: \(updates.sourceDescription). Credential: \(updates.authSource). Only releases built by the release workflow after its tests passed, with matching SHA-256 checksums, are installed.")
+            Text("Source: \(updates.sourceDescription). GitHub sign-in: \(updates.authSource). Only releases built by the release workflow after its tests passed, with matching SHA-256 checksums, are installed.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -133,7 +133,7 @@ struct UpdatesSettingsView: View {
             Picker(selection: $updates.prefs.channel) {
                 ForEach(UpdateChannel.allCases, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("Channel", "Drafts are never installed.")
+                LabelWithDetail("Channel", "Releases only, or pre-releases too (newer, less tested). Drafts are never installed.")
             }
             Picker(selection: soakBinding) {
                 ForEach(UpdatePolicy.soakChoices, id: \.self) { seconds in
@@ -199,7 +199,8 @@ struct MachinesAndHubsSection: View {
     var body: some View {
         Section {
             if !connect.canInvite {
-                Text("Needs an owner token (the hub on this Mac has one).").font(.caption).foregroundStyle(.secondary)
+                Text("Listing machines and hubs needs an owner token. Turn on Run hub on this Mac (Built-in hub), which has one, or join a hub with an owner link (Other hubs).")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else {
                 let summary = FleetSummary(tokens: connect.accessTokens, senderTarget: senderTarget,
                                            hubs: fleet.hubs, hubTarget: hubTarget, now: now)
@@ -234,7 +235,7 @@ struct MachinesAndHubsSection: View {
         } header: {
             Text("Machines and hubs")
         } footer: {
-            Text("Senders update themselves from this Mac's hub once a day (needs-you update, run by the 5-minute flush); Request update asks one to do it on its next call. Server hubs update themselves from GitHub every 6 hours; Request update asks one to do it now, with every check and without the wait after a release. scripts/rollout.sh updates a list of SSH hosts at once.")
+            Text("Sender machines update themselves from this Mac's hub once a day (`needs-you update`); Request update asks one to update the next time it talks to the hub, or to remind whoever uses it if its automatic updates are off. Server hubs update themselves from GitHub every 6 hours; Request update asks one to update now, with every check, skipping only the wait after a release. To update many machines over SSH at once, use scripts/rollout.sh from the repository.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

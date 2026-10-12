@@ -444,7 +444,8 @@ struct SettingsView: View {
             }
             .disabled(settings.demoForcedByEnvironment)
             if settings.demoForcedByEnvironment {
-                Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
+                Text("On because the app was started with NEEDS_YOU_DEMO=1. Start it without that to turn demo mode off.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         } header: {
             Text("Demo")
@@ -755,8 +756,9 @@ struct SettingsView: View {
                 Button("Refresh") { connect.refreshAccess() }
                     .disabled(isWorking(connect.accessStatus))
             }
-            if connect.accessTokens.isEmpty {
-                Text("Press Refresh to list them.").font(.caption).foregroundStyle(.secondary)
+            if connect.accessTokens.isEmpty && !isWorking(connect.accessStatus) {
+                Text("Not listed yet. Press Refresh; if the hub can't be reached, the reason shows below.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(MachineRowText.ordered(connect.accessTokens)) { token in
                 MachineRow(token: token, connect: connect) { pendingRevoke = .token(token) }
@@ -1025,13 +1027,18 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             HStack {
-                LabelWithDetail("Appearance and alerts", "Theme, pill, panel and cards (with the open panel's height), opacity and alert style (not the edge glow or Usage meters), plus how long new items show, the urgent reminder and click-elsewhere, back to how they started.")
+                LabelWithDetail("Appearance", settings.appearanceIsDefault
+                                ? "Every setting under Appearance is at its default."
+                                : "Puts every setting under Appearance back to its default: Theme, Pill, Panel and cards (with the dragged height), Alert style (with the edge glow) and Usage meters.")
                 Spacer()
-                Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
-                    .disabled(settings.ui == UIPrefs.defaults)
+                Button("Reset Appearance") { settings.resetAppearance() }
+                    .disabled(settings.appearanceIsDefault)
             }
         } header: {
             Text("Reset")
+        } footer: {
+            Text("Nothing else changes: what shows, alerts, rules, hubs and machines keep their settings.")
+                .font(.caption).foregroundStyle(.secondary)
         }
         Section {
             Toggle(isOn: $settings.developerMode) {
@@ -1300,7 +1307,7 @@ private struct ShortcutRecorder: View {
                             hotKeys.startRecording { message = $0 }
                         }
                         if hotKeys.combo != .standard {
-                            Button("Reset") { message = hotKeys.change(to: .standard) }
+                            Button("Reset to \(HotKeyCombo.standard.display)") { message = hotKeys.change(to: .standard) }
                                 .help("Back to \(HotKeyCombo.standard.spokenAndSymbols)")
                         }
                     }
@@ -1309,9 +1316,9 @@ private struct ShortcutRecorder: View {
             if hotKeys.isRecording {
                 EmptyView()
             } else if hotKeys.isRegistered {
-                Label("Registered", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                Label("Works in every app", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
             } else {
-                Label("Not registered: another app or macOS (input-source switching?) has \(hotKeys.combo.spokenAndSymbols). Pick another.",
+                Label("Not working: another app or macOS (often the switch between input sources) already uses \(hotKeys.combo.spokenAndSymbols). Press Change… and pick another.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }

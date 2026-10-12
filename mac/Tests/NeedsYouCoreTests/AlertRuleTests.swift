@@ -289,7 +289,7 @@ final class AlertRuleMenuTests: XCTestCase {
     }
 
     /// Settings' one-click presets go to the top of the list, above rules made from a card:
-    /// "Agents Always Interrupt" (key prefix `agent:`) then takes every agent card first, so a
+    /// "Agents always interrupt" (key prefix `agent:`) then takes every agent card first, so a
     /// session's "Treat as Urgent" never applies. The menu mustn't check it, and choosing it
     /// again puts it back above the preset.
     func testBroaderSettingsRuleShadowsACardRule() {

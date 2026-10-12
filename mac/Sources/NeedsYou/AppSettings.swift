@@ -74,10 +74,22 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    /// Settings → Appearance → Usage meters: the usage meters in the panel and on the pill (UsagePrefs).
+    /// The usage meters (UsagePrefs): whether and which show is on Settings → Panel → Usage
+    /// meters, how they look on Settings → Appearance → Usage meters.
     @Published var usage: UsagePrefs {
         didSet { if usage != oldValue { usage.save(to: defaults, previous: oldValue) } }
     }
+
+    /// Settings → Advanced → Reset Appearance: every look setting back to its default
+    /// (AppearanceReset), nothing else.
+    func resetAppearance() {
+        ui = AppearanceReset.ui(ui)
+        usage = AppearanceReset.usage(usage)
+        edgeGlow = AppearanceReset.edgeGlow
+    }
+
+    /// Whether every look setting is at its default already.
+    var appearanceIsDefault: Bool { AppearanceReset.isDefault(ui: ui, usage: usage, edgeGlow: edgeGlow) }
 
     /// Settings → Alerts → Delivery: the tier per priority and kind with no focus, and
     /// whether urgent breaks through a focus (DeliveryDefaults keys).
@@ -91,11 +103,12 @@ final class AppSettings: ObservableObject {
             defaults.set(data, forKey: RuleBook.defaultsKey)
         }
     }
-    /// Where the arrival preview springs out: the display you're working on (default) or the pill's.
+    /// Where the arrival preview springs out: the pill's display (default) or the one you're working on.
     @Published var previewDisplay: PreviewDisplay {
         didSet { defaults.set(previewDisplay.rawValue, forKey: PreviewDisplay.defaultsKey) }
     }
-    /// A click-through glow around the work display's edge for urgent arrivals. Default off.
+    /// Settings → Appearance → Alert style → Edge glow: a click-through glow around the work
+    /// display's edge for urgent arrivals. Default off.
     @Published var edgeGlow: EdgeGlowMode {
         didSet { defaults.set(edgeGlow.rawValue, forKey: EdgeGlowMode.defaultsKey) }
     }
@@ -133,8 +146,8 @@ final class AppSettings: ObservableObject {
     }
     /// Settings → Advanced → Developer mode: a card's "…" menu gets a Developer section
     /// (item JSON, key, id, a debug report, a `needs-you add` command) and the meta line
-    /// shows the key. For bug reports and contributing. Default off; not part of the look
-    /// that Reset to defaults resets.
+    /// shows the key. For bug reports and contributing. Default off; Reset Appearance
+    /// leaves it alone.
     @Published var developerMode: Bool {
         didSet { defaults.set(developerMode, forKey: Key.developerMode) }
     }
