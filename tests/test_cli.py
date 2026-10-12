@@ -584,7 +584,8 @@ class PostRate(CliTestCase):
     0), held until the hub's retry_after, one per key, and sent by a later run. Resolves go."""
 
     def test_rate_limited_posts_are_queued_and_sent_later(self):
-        a = self.make_hub("hub-a", post_rate_limit=2, post_rate_window_seconds=2)
+        # A long window, so a slow box never sees it reset mid-test; the end clears it by hand.
+        a = self.make_hub("hub-a", post_rate_limit=2, post_rate_window_seconds=60)
         sender, reader = self.tokens(a)
         for key in ("a", "b"):
             r = self.run_cli("add", "--key", key, "--title", "t", urls=[a.url], token=sender)
@@ -604,7 +605,10 @@ class PostRate(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len(self.queued()), 1)
         self.assertEqual(sorted(i["key"] for i in self.items(a, reader, "open")), ["a", "b"])
-        time.sleep(2.5)  # the hub's retry_after
+        # The window passes: the hub forgets the posts, and the CLI's retry_after is over.
+        a.post_limiter = type(a.post_limiter)(2, 60)
+        with open(os.path.join(self.home, ".local", "state", "needs-you", "post-retry-after"), "w") as fh:
+            fh.write("0\n")
         r = self.run_cli("flush", urls=[a.url], token=sender)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.queued(), [])
@@ -616,7 +620,7 @@ class PostRate(CliTestCase):
         # The kept resolve is for the card before the held post: it goes to its hub while the
         # post waits, and the post, once it goes out, isn't closed by it.
         port = free_port()
-        a = self.make_hub("hub-a", post_rate_limit=1, post_rate_window_seconds=2)
+        a = self.make_hub("hub-a", post_rate_limit=1, post_rate_window_seconds=60)  # cleared by hand below
         sender, reader_a = self.tokens(a)
         b = self.make_hub("hub-b", port=port)
         b.store.ensure_token("sender-shared", "sender", sender)
@@ -634,7 +638,9 @@ class PostRate(CliTestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.items(b2, reader_b, "open"), [])  # the old card went
         self.assertEqual(len(self.queued()), 1)                  # the new one still waits
-        time.sleep(2.5)
+        a.post_limiter = type(a.post_limiter)(1, 60)  # the window passes
+        with open(os.path.join(self.home, ".local", "state", "needs-you", "post-retry-after"), "w") as fh:
+            fh.write("0\n")
         r = self.run_cli("flush", urls=[a.url, url_b], token=sender)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.queued(), [])
