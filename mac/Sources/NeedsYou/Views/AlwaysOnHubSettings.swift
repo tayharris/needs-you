@@ -109,7 +109,7 @@ struct AlwaysOnHubSection: View {
                 if let steps = controller.steps, let link = controller.joinLink {
                     let commands = steps.joined(separator: "\n")
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("On the server (Linux with systemd and Tailscale), it installs the hub from this app's GitHub release and pairs it with this Mac.")
+                        Text("On the server (Linux with systemd, python3 and Tailscale), it installs the hub from this app's GitHub release and pairs it with this Mac.")
                             .fixedSize(horizontal: false, vertical: true)
                         Text("1. Run these. They work in any terminal, a browser console too. Logged in as root? Leave out sudo.")
                             .fixedSize(horizontal: false, vertical: true)
@@ -127,6 +127,8 @@ struct AlwaysOnHubSection: View {
                             Spacer()
                             SettingsCopyButton(title: "Copy link", text: link)
                         }
+                        Text("3. It ends with \u{201C}needs-you-hub is up\u{201D}. The server then shows above within a minute, and links you make in Connect a machine list it too.")
+                            .fixedSize(horizontal: false, vertical: true)
                         Text("If curl stops with error 22 (404), this version has no release on GitHub (a development build, or one not published yet): install from a checkout instead, as the hub guide says.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Text(expiryNote)
@@ -176,7 +178,7 @@ struct AlwaysOnHubSection: View {
         let base = "The link works once"
         guard let expires = controller.commandExpires else { return base + "." }
         let minutes = max(0, Int(expires.timeIntervalSince(now) / 60))
-        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). The code comes from GitHub, never from this Mac (a development build has no release: use a checkout of needs-you on the server instead), and the pair's secret is never shown."
+        return base + ", for \(minutes) more minute\(minutes == 1 ? "" : "s"). The hub's code comes from GitHub, never from this Mac, and the pair's secret is never shown."
     }
 
     private func peerRow(_ peer: PeerSummary) -> some View {

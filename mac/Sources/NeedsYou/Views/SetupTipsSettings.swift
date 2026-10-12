@@ -17,7 +17,7 @@ struct SetupTipsSettingsSection: View {
                                 ? "None."
                                 : "\(settings.setupTipsDismissed.count) dismissed. They come back only if they still apply.")
                 Spacer()
-                Button("Show Again") { settings.setupTipsDismissed = [] }
+                Button("Show again") { settings.setupTipsDismissed = [] }
                     .disabled(settings.setupTipsDismissed.isEmpty)
             }
         } header: {
@@ -37,6 +37,7 @@ extension SettingsTab {
         switch setupPage {
         case .thisMac: self = .inbox
         case .integrations: self = .integrations
+        case .connect: self = .connect
         }
     }
 }

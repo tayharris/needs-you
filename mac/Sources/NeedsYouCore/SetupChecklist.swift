@@ -34,6 +34,8 @@ public enum SetupSettingsPage: Equatable, Sendable {
     case thisMac
     /// Integrations: the tools that can send cards (IntegrationCatalog).
     case integrations
+    /// Connect a machine: make an invite (agent prompt, shell command, Mac link).
+    case connect
 }
 
 /// What a tip's button does. Guides are ordinary https links on the card, not actions.
@@ -196,10 +198,15 @@ public enum SetupChecklist {
         case .connectSender:
             priority = .normal
             title = "Connect your first agent or machine"
-            body = "Nothing has posted here yet. Copy the agent prompt and paste it into Claude Code, "
-                + "on this Mac or on a server: it installs the `needs-you` CLI and sends a test card. "
-                + "The prompt holds a one-use invite that expires in \(inviteHours) hours."
-            buttons = [SetupButton(title: "Copy agent prompt", symbol: "doc.on.doc", action: .copyAgentPrompt)]
+            let whereTo = s.localHub == .running(loopbackOnly: true)
+                ? "on this Mac (servers need Tailscale first)"
+                : "on this Mac or on a server"
+            body = "Nothing has posted here yet. Copy the agent prompt and paste it into Claude Code "
+                + "\(whereTo): it installs the `needs-you` CLI and sends a test card, which shows here. "
+                + "The prompt holds a one-use invite that expires in \(inviteHours) hours. "
+                + "No Claude Code? Connect a machine in Settings has a shell command instead."
+            buttons = [SetupButton(title: "Copy agent prompt", symbol: "doc.on.doc", action: .copyAgentPrompt),
+                       SetupButton(title: "Open Settings", symbol: "gearshape", action: .openSettings(.connect))]
             links = [ItemLink(label: "Add a sender", url: guideURL("add-a-sender.md")),
                      ItemLink(label: "Claude Code", url: guideURL("claude-code.md"))]
         case .reachFromOtherMachines:
@@ -211,8 +218,10 @@ public enum SetupChecklist {
         case .claudeHooks:
             title = "Install the Claude Code hooks on this Mac"
             body = "Claude Code is set up here, but without the needs-you hooks, so a waiting session can't "
-                + "send you a card. Paste the agent prompt into Claude Code, or run "
-                + "`integrations/claude-code/install-hooks.sh`."
+                + "send you a card. "
+                + (s.canInvite
+                   ? "Copy the agent prompt and paste it into Claude Code on this Mac: it installs them."
+                   : "Re-run your invite link's installer with `--claude-hooks user --alerts` to install them.")
             if s.canInvite {
                 buttons = [SetupButton(title: "Copy agent prompt", symbol: "doc.on.doc", action: .copyAgentPrompt)]
             }

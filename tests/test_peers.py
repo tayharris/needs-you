@@ -663,3 +663,16 @@ class Redaction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlainLinesMirror(unittest.TestCase):
+    def test_the_mac_builds_the_hubs_peer_lines(self):
+        """Settings → Always-on hub shows its own PeerJoinCommand.steps; they must be the
+        hub's install_steps, line for line, so the join page and the Mac never disagree."""
+        from support import ROOT
+        with open(os.path.join(ROOT, "mac", "Sources", "NeedsYouCore", "Peers.swift")) as fh:
+            swift = fh.read()
+        lines = [hubmod.PEER_JOIN_STEPS[0],
+                 hubmod.PEER_JOIN_STEPS[1].replace(hubmod.RELEASE_REPO, "\\(repository)").replace("%s", "\\(version)"),
+                 hubmod.PEER_JOIN_STEPS[2]]
+        self.assertIn('return [%s]' % ",\n                ".join('"%s"' % l for l in lines), swift)

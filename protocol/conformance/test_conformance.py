@@ -593,6 +593,9 @@ class PeerInvites(HubCase):
         self.assertEqual((inv["role"], inv["uses"]), ("peer", 1))
         self.assertNotIn("mac_url", inv)
         self.assertIn("--join", inv["install_command"])
+        # The plain lines: strings, and none carries the invite code (the installer asks for it).
+        self.assertTrue(inv["install_steps"] and all(isinstance(l, str) for l in inv["install_steps"]))
+        self.assertFalse([l for l in inv["install_steps"] if inv["code"] in l])
         self.assertError(call("POST", "/v1/invites", Env.owner, {"name": "x", "role": "peer", "uses": 2}),
                          400, "invalid", "uses")
         self.assertError(call("POST", "/v1/invites/redeem", None, {"code": inv["code"], "host": "x"}),

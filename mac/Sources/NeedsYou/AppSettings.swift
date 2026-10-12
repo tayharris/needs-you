@@ -155,7 +155,7 @@ final class AppSettings: ObservableObject {
     @Published var setupTipsDone: Set<String> {
         didSet { if setupTipsDone != oldValue { defaults.set(setupTipsDone.sorted(), forKey: Key.setupTipsDone) } }
     }
-    /// Setup tips the user dismissed; "Show dismissed tips again" clears this.
+    /// Setup tips the user dismissed; Settings → Panel → Setup tips → "Show again" clears this.
     @Published var setupTipsDismissed: Set<String> {
         didSet { if setupTipsDismissed != oldValue { defaults.set(setupTipsDismissed.sorted(), forKey: Key.setupTipsDismissed) } }
     }

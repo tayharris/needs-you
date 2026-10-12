@@ -688,18 +688,27 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(invite.joinURL).font(.caption.monospaced()).textSelection(.enabled)
                     HStack {
-                        copyButton("Agent prompt", invite.agentPrompt)
-                        copyButton("Shell one-liner", invite.shellOneLiner)
+                        if connect.inviteRole == .sender {
+                            // A Mac's invite isn't for a sender: its installer and prompt only say "open the Mac link".
+                            copyButton("Agent prompt", invite.agentPrompt)
+                            copyButton("Shell one-liner", invite.shellOneLiner)
+                            copyButton("Plain lines", invite.shellSteps.joined(separator: "\n"))
+                                .help("The same install as three lines with no pipe or quote, for a browser console")
+                        }
                         if connect.inviteRole != .sender, let mac = invite.macURL {
                             copyButton("Mac link", mac)
                         }
+                    }
+                    if connect.inviteRole == .sender {
+                        Text("Next, on the new machine: paste the agent prompt into Claude Code (or another agent), or run the one-liner in a terminal (Plain lines in a browser console). When it's done, a test card, \u{201C}needs-you is set up on <machine>\u{201D}, shows in the panel under Recent, and Machines lists it.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
         } header: {
             Text("New invite")
         } footer: {
-            Text("Then, on the new machine: paste the agent prompt into Claude Code (or another agent), or run the shell one-liner in a terminal. For another Mac, open the Mac link there, or paste it into its Settings → Other hubs (advanced).")
+            Text("A sender gets an agent prompt and a shell command; another Mac gets a Mac link, to open there or paste into its Settings → Other hubs (advanced).")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -1107,9 +1116,9 @@ struct SettingsView: View {
                            test: { test(row.id) })
             }
             HStack {
-                Button("Add Hub") { rows.append(HubRow(url: "")) }
+                Button("Add hub") { rows.append(HubRow(url: "")) }
                 Spacer()
-                Button("Save & Connect") { save() }
+                Button("Save and connect") { save() }
                     .keyboardShortcut(.defaultAction)
             }
             if let message {
@@ -1348,10 +1357,13 @@ private struct HubRowView: View {
                 }
                 Button { move(-1) } label: { Image(systemName: "arrow.up") }
                     .disabled(index == 0).buttonStyle(.borderless).help("Try this hub earlier")
+                    .accessibilityLabel("Move hub \(index + 1) up")
                 Button { move(1) } label: { Image(systemName: "arrow.down") }
                     .disabled(index == count - 1).buttonStyle(.borderless).help("Try this hub later")
+                    .accessibilityLabel("Move hub \(index + 1) down")
                 Button(role: .destructive, action: remove) { Image(systemName: "minus.circle") }
                     .buttonStyle(.borderless).help("Remove this hub")
+                    .accessibilityLabel("Remove hub \(index + 1)")
             }
             HStack {
                 SecureField("Token", text: $row.tokenDraft,
