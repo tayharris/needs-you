@@ -98,6 +98,7 @@ The body holds Claude's notification text, the directory and host, and where the
 
 - **Keys:** `agent:<host>:<session>` for the session's card, `agent:<host>:<session>:context` for the context card. `<session>` is the Orca terminal handle in Orca, otherwise Claude's session id. Re-posting updates the card, so a session that asks five times shows one card.
 - **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, or the end of the session. A usage-limit card also clears when Claude resumes on its own after the limit, and a sign-in card when the sign-in completes. The context card clears once the context is back under the threshold, or when compaction finishes.
+- **Other agents that run these hooks.** Cursor, Grok Build and Continue's CLI (`cn`) also read the hooks in `~/.claude/settings.json`. The hook knows each of them and doesn't post "Claude" cards for their sessions or clear a Claude card from them: Cursor and Grok get cards from their own integrations, and in `cn` the hooks do nothing (needs-you has no Continue integration yet).
 - **Killed sessions** never send `SessionEnd`. The hook records the Claude process id in `~/.local/state/needs-you/claude-hooks/`; the 5-minute `needs-you flush` the installer schedules resolves the card once that process is gone. As a backstop, every card expires 48 hours after its last post ([details](claude-code-everywhere.md#when-a-session-dies)).
 
 ### One card for one wait

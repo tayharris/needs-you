@@ -165,6 +165,15 @@ if [ -n "${GROK_HOOK_EVENT:-}" ]; then
   [ "${2:-}" != grok ] && [ -f "${GROK_HOME:-$HOME/.grok}/hooks/needs-you.json" ] && exit 0
   agent=grok
 fi
+# Continue's CLI (cn) runs the Claude Code hooks from ~/.claude/settings.json too (its hook
+# runner, extensions/cli/src/hooks/, added 2026-03), with Claude-shaped payloads. It names
+# itself only in the environment: every hook it starts gets CONTINUE_PROJECT_DIR, which Claude
+# Code never sets. needs-you has no Continue integration, so these hooks step aside there: a
+# cn Stop or prompt would otherwise post "Claude" cards, or clear a Claude session's card.
+if [ "$agent" = claude ] && [ -n "${CONTINUE_PROJECT_DIR+x}" ]; then
+  exit 0
+fi
+
 # Cline's hook files name their event in a third argument (kept for the background copy).
 [ "$agent" = cline ] && { NY_EVENT=${NY_EVENT:-${3:-}}; export NY_EVENT; }
 

@@ -398,6 +398,32 @@ class PayloadEdgeTests(HookHarness):
                     self.fail("the hook hung with stdin closed")
                 self.assertEqual(p.returncode, 0, err)
 
+    def test_continue_cn_steps_aside(self):
+        # Continue's cn runs the hooks in ~/.claude/settings.json with Claude-shaped payloads
+        # (continuedev/continue extensions/cli/src/hooks/fireHook.ts: session_id, an empty
+        # transcript_path, cwd) and sets CONTINUE_PROJECT_DIR for every hook (hookRunner.ts).
+        os.makedirs(self.state)
+        with open(os.path.join(self.state, "sess-1234-abcd"), "w") as fh:
+            fh.write("key=agent:box:sess-1234-abcd\nkind=notify\n")
+        cn = {"CONTINUE_PROJECT_DIR": self.cwd, "CLAUDE_PROJECT_DIR": self.cwd}
+        for mode, data in (("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt",
+                                       "message": "waiting", "transcript_path": ""}),
+                           ("notify", {"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                       "tool_input": {"command": "ls"}, "transcript_path": ""}),
+                           ("stop", {"hook_event_name": "Stop", "stop_hook_active": True,
+                                     "last_assistant_message": "Shall I?", "transcript_path": ""}),
+                           ("resolve", {"hook_event_name": "UserPromptSubmit", "prompt": "hi"}),
+                           ("start", {"hook_event_name": "SessionStart", "source": "clear"}),
+                           ("end", {"hook_event_name": "SessionEnd", "reason": "other"})):
+            with self.subTest(mode=mode, event=data["hook_event_name"]):
+                self.run_hook(mode, data, **cn)
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(sorted(os.listdir(self.state)), ["sess-1234-abcd"])  # nothing touched
+        # Claude Code itself (no CONTINUE_PROJECT_DIR) still posts
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                      CLAUDE_PROJECT_DIR=self.cwd)
+        self.assertEqual(self.last()[0], "add")
+
     def test_tool_input_keys_are_not_the_payloads(self):
         # An MCP tool whose arguments are named like Cursor's or Claude's own fields: still
         # Claude's card, keyed by Claude's session.
