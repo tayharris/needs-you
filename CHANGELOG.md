@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-12
+
+A pre-release: easier to set up and to keep current. **Settings → Updates → Machines and hubs** lists every sender machine and server hub with its version, with **Request update** and **Update all**, and a server hub can now be asked to update at once (with every check its timer makes). Every install command also comes as plain lines that a browser console can't break, the installers and `needs-you doctor` say what comes next, every setting is on one [Configuration](docs/guides/configuration.md) page and a bad one is named instead of ignored, Settings pages say what each choice does, and Claude Code's error cards say which error. On the Mac, Settings → Updates → **Releases and pre-releases** picks it up; stable stays on 0.5.1 until it's promoted. Upgrade server hubs (they update themselves on the pre-release channel; on stable they wait for the promotion), then run `needs-you update` on sender machines for the new hooks.
+
 ### Added
 
 - **Invites carry their install as plain lines (`install_steps`).** A sender invite's response, its join page and `needs-you-admin invite create` now also give `cd`, `curl -fsSLo needs-you-install.sh <join_url>/install.sh`, `bash needs-you-install.sh --yes …`: no pipe, quote or bracket for a browser console to drop. The saved installer holds the invite code, so it deletes itself as soon as it starts. Settings → Connect a machine has them as **Plain lines**. A peer invite's response, join page and admin output give the same three lines Settings → Always-on hub shows, with no code in them; the installer asks for the link. `install_command` is unchanged ([API](docs/API.md#post-v1invites-owner), [add a sender](docs/guides/add-a-sender.md#with-an-invite-link-recommended)).
