@@ -24,6 +24,7 @@ Plans, and the record of plans that are built. Each file's status line says what
 | [sharing-checklist.md](sharing-checklist.md) | Public | Developer ID, self-hosted runners on a public repo, a fresh-user run |
 | [launch-prep.md](launch-prep.md) | Mostly built | A donate link, repo topics and a social preview image |
 | [fresh-user-test-plan.md](fresh-user-test-plan.md) | Not run yet | Install from a release on a second Mac or user account |
+| [hooks-research-2026-10.md](hooks-research-2026-10.md) | Research (2026-10-12) | Every agent's current hook surface against what we use; a ranked top 10 (Cline `Notification`, Antigravity CLI, unused Claude events, opencode retry/errors, Droid and Qwen, a hooks guard for Continue, Copilot/Cursor error cards, GitLab, Sentry and uptime, Stop-only agents) and the poller shortlist |
 | [questions.md](questions.md) | Phases A and B built | What each agent's hooks carry when it asks a question, and which can answer. [ADR 0009](../adr/0009-questions-on-cards.md) phase B (the `question` field, answering from the card, typed "Other" answers) is built; left: agents whose hooks can't take an answer |
 
 ## Done, kept for the record
