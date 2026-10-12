@@ -49,6 +49,7 @@
   --neutral-100: #e3e5e8;
   --neutral-200: #c5c9cf;
   --neutral-300: #9fa4ad;
+  --neutral-350: #858a93;  /* muted text on dark: 4.9:1 or better on every dark surface (AA) */
   --neutral-400: #777c85;
   --neutral-500: #565a62;
   --neutral-600: #3d4047;
@@ -118,7 +119,7 @@
   --border-strong: var(--neutral-700);
   --text-primary: var(--neutral-50);
   --text-secondary: var(--neutral-300);
-  --text-muted: var(--neutral-400);
+  --text-muted: var(--neutral-350);
   --brand-main: var(--amber-400);
   --brand-focus: var(--amber-400);
   --brand-contrast: var(--neutral-1000);
@@ -333,6 +334,26 @@ code, pre { font-family: var(--font-mono); }
   font-weight: var(--weight-semibold); text-decoration: none;
 }
 .button:hover { color: var(--brand-contrast); filter: brightness(1.08); }
+/* The second choice beside a .button: outlined, like the demo's Send a test alert. */
+.button-quiet {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--tap); padding: 0 var(--space-6);
+  background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  font-weight: var(--weight-medium); text-decoration: none;
+}
+.button-quiet:hover { color: var(--text-primary); background: var(--surface-hover); }
+
+/* The hero's two ways in, and the facts a visitor checks before downloading. */
+.home .intro .hero-cta { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-6); }
+.home .intro .hero-facts { margin-top: var(--space-3); }
+
+/* Install: three numbered steps, each a heading with its own short text. */
+.home section > h3.step { display: flex; align-items: baseline; gap: var(--space-3); margin-top: var(--space-8); }
+.step-n {
+  font-family: var(--font-mono); font-size: var(--size-h6); font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
 
 .code {
   position: relative;
@@ -909,7 +930,22 @@ button.pv-link { margin: 0; cursor: pointer; }
 .toc li { margin: 0; padding: 3px 0; break-inside: avoid; }
 .toc a { color: var(--text-secondary); text-decoration: none; }
 .toc a:hover { color: var(--text-primary); text-decoration: underline; }
-.doc-source { margin-top: var(--space-12); }
+.toc-inline ul { columns: auto; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-6); }
+.doc-source { margin-top: var(--space-6); }
+/* Previous and next guide, in the index's order. */
+.pager {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin-top: var(--space-12);
+}
+.pager a {
+  display: block; flex: 1 1 14rem; max-width: calc(50% - var(--space-1)); min-height: var(--tap); padding: var(--space-3) var(--space-4);
+  background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius);
+  color: var(--text-primary); font-weight: var(--weight-semibold); text-decoration: none;
+}
+.pager a:hover { background: var(--surface-hover); }
+.pager span { display: block; font-size: var(--size-h6); font-weight: var(--weight-regular); color: var(--text-muted); }
+.pager-next { text-align: right; margin-left: auto; }
+@media (max-width: 32rem) { .pager a { max-width: none; } }
 .doc .guide-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .guide-list li {
   margin: 0; padding: var(--space-3) var(--space-4);
