@@ -9,7 +9,18 @@
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="https://needsyou.app/guides/kimi.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="Kimi Code CLI · needs-you guides">
+  <meta property="og:description" content="Kimi Code CLI hooks: a card when Kimi asks for approval or a question, or finishes its turn, cleared when you answer.">
+  <meta property="og:url" content="https://needsyou.app/guides/kimi.html">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -79,6 +90,10 @@ echo '{"hook_event_name":"PermissionRequest","session_id":"session_test-1","cwd"
 echo '{"hook_event_name":"PermissionResult","session_id":"session_test-1"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.kimi-code/hooks/needs-you-hook.sh resolve kimi</code></pre></div>
 <p>The card arrives a moment after the first command returns: the hook hands its work to the background so Kimi never waits on it. (A "waiting for you" card from <code>Stop</code> takes two seconds more: the hook first checks that Kimi is still running.) No card from a real session? Restart Kimi after installing or updating, check that <code>NEEDS_YOU_AGENT_ALERTS=1</code> reaches it, and if you run Kimi with <code>KIMI_CODE_HOME</code> set, install with that same <code>KIMI_CODE_HOME</code>. <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> logs each hook call (<a href="troubleshooting.html#kimi-code-hooks">troubleshooting</a>).</p>
+    <nav class="pager" aria-label="Previous and next guide">
+      <a class="pager-prev" href="copilot.html" rel="prev"><span>Previous</span> Copilot CLI</a>
+      <a class="pager-next" href="grok.html" rel="next"><span>Next</span> Grok Build</a>
+    </nav>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/kimi.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/kimi.md">docs/guides/kimi.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

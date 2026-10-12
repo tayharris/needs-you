@@ -9,7 +9,18 @@
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="https://needsyou.app/guides/troubleshooting.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="Troubleshooting · needs-you guides">
+  <meta property="og:description" content="When an item doesn&#x27;t show up: needs-you doctor, reachability, hooks.">
+  <meta property="og:url" content="https://needsyou.app/guides/troubleshooting.html">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -259,6 +270,10 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li>A <code>vscode://</code> or <code>cursor://</code> link refused with 400, or shown as plain text on an older card: only <code>vscode://file/&lt;abs path&gt;[:line[:col]]</code>, <code>vscode://vscode-remote/ssh-remote+&lt;host&gt;[/&lt;path&gt;]</code> (or <code>tunnel+&lt;name&gt;</code>) and <code>vscode://anthropic.claude-code/open?session=&lt;id&gt;</code> are allowed, without a query string (<a href="api.html#post-v1items-sender">API</a>). The Claude Code hook posts its card again without links when the hub refuses a custom <code>NEEDS_YOU_AGENT_LINK</code>.</li>
 <li><code>orca terminal switch</code> says the terminal isn't found: the agent runs on a paired Orca server. Set <code>NEEDS_YOU_ORCA_ENVIRONMENT</code> in <code>~/.config/needs-you/env</code> on that server to the name <code>orca environment list</code> shows on the Mac.</li>
 </ul>
+    <nav class="pager" aria-label="Previous and next guide">
+      <a class="pager-prev" href="updates.html" rel="prev"><span>Previous</span> Keeping up to date</a>
+      <a class="pager-next" href="agent-guide.html" rel="next"><span>Next</span> Agent guide</a>
+    </nav>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/troubleshooting.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/troubleshooting.md">docs/guides/troubleshooting.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

@@ -32,12 +32,14 @@ OUT_DIR = "guides"  # under site/
 ORIGIN = "https://needsyou.app/"
 
 # The guides index, grouped and ordered for a first-time reader: what it is and how to set it
-# up, then one guide per agent, then servers, CI and other senders, then running hubs, then
-# the reference.
+# up, then one guide per agent, then connecting servers and CI, then the pollers that turn
+# your tools into cards (named as in the app's Settings → Integrations), then running and
+# configuring it, then the reference.
 # GROUPS is the order of the sections; MORE is where a guide not listed in CURATED goes.
-START, AGENTS, SENDERS, MORE, RUN, REFERENCE = (
-    "Start here", "Agents", "Servers, CI and tools", "More guides", "Run it", "Reference")
-GROUPS = [START, AGENTS, SENDERS, MORE, RUN, REFERENCE]
+START, AGENTS, SENDERS, TOOLS, MORE, RUN, REFERENCE = (
+    "Start here", "Agents", "Servers and CI", "Cards from your tools", "More guides", "Run it",
+    "Reference")
+GROUPS = [START, AGENTS, SENDERS, TOOLS, MORE, RUN, REFERENCE]
 
 # (group, markdown source, page name, short title, one-line summary), in order within each
 # group. An entry whose source doesn't exist yet is skipped. Every other docs/guides/*.md is
@@ -88,18 +90,20 @@ CURATED = [
      "Invite links, the installer's options, CI and cron, removing a sender."),
     (SENDERS, "docs/guides/tailscale.md", "tailscale", "Tailscale",
      "Putting the Mac and your servers on one tailnet, and checking they can reach each other."),
-    (SENDERS, "docs/guides/github.md", "github", "GitHub",
+    (TOOLS, "docs/guides/github.md", "github", "GitHub",
      "Review requests, deploy approvals, failed CI and your PRs' state, from one poller."),
-    (SENDERS, "docs/guides/expiry.md", "expiry", "Expiry dates",
-     "A card before a TLS certificate, a domain or an API key expires, from one daily poller."),
-    (SENDERS, "docs/guides/linear.md", "linear", "Linear",
+    (TOOLS, "docs/guides/linear.md", "linear", "Linear",
      "Assignments, comments, mentions and status changes from your Linear inbox, from one poller."),
-    (SENDERS, "docs/guides/jira.md", "jira", "Jira",
+    (TOOLS, "docs/guides/jira.md", "jira", "Jira",
      "Status changes, comments, mentions and assignments on your Jira issues, Cloud or Data Center, from one poller."),
+    (TOOLS, "docs/guides/expiry.md", "expiry", "Expiry dates",
+     "A card before a TLS certificate, a domain or an API key expires, from one daily poller."),
     (RUN, "docs/HUB.md", "hub", "Server hubs",
      "Optional always-on server hubs: install, two-hub setup, backups, upgrades, resource use."),
     (RUN, "docs/guides/updates.md", "updates", "Keeping up to date",
      "Keeping up to date: the Mac app updating itself, needs-you update on senders, rollouts."),
+    (RUN, "docs/guides/configuration.md", "configuration", "Configuration",
+     "Every setting in one place: the Mac app's Settings, a sender's ~/.config/needs-you/env, and a server hub's config."),
     (RUN, "docs/guides/troubleshooting.md", "troubleshooting", "Troubleshooting",
      "When an item doesn't show up: needs-you doctor, reachability, hooks."),
     (REFERENCE, "docs/AGENT-GUIDE.md", "agent-guide", "Agent guide",
@@ -566,7 +570,18 @@ HEAD = """<!doctype html>
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="{canonical}">
+  <meta property="og:type" content="{og_type}">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="{title}">
+  <meta property="og:description" content="{description}">
+  <meta property="og:url" content="{canonical}">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   {favicon}
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -606,6 +621,7 @@ class Builder:
         return HEAD.format(title=esc(title), description=esc(description),
                            canonical=esc(ORIGIN + OUT_DIR + "/" + page), favicon=self.favicon,
                            source=source, repo=esc(self.repo),
+                           og_type="website" if current else "article",
                            guides_current=' aria-current="page"' if current else "")
 
     def build(self):
@@ -639,11 +655,26 @@ class Builder:
                 parts.append('        <li><a href="#%s">%s</a></li>\n' % (hid, re.sub(r"</?a\b[^>]*>", "", body)))
             parts.append("      </ul>\n    </nav>\n")
         parts.append("\n".join(doc.body) + "\n")
+        parts.append(self.pager(name))
         parts.append('    <p class="doc-source note">This page is <a data-repo="/blob/main/{0}" href="{1}/blob/main/{0}">'
                      "{0}</a> in the repo. View or edit it on GitHub.</p>\n".format(doc.src, esc(self.repo)))
         parts.append("  </main>\n")
         parts.append(FOOT)
         return "".join(parts)
+
+    def pager(self, name):
+        """Previous and next guide, in the index's order, so a reader can go through them."""
+        names = [n for _, _, n, _, _ in GUIDES]
+        i = names.index(name)
+        links = []
+        if i > 0:
+            links.append('<a class="pager-prev" href="%s.html" rel="prev"><span>Previous</span> %s</a>'
+                         % (names[i - 1], esc(SHORT[names[i - 1]])))
+        if i + 1 < len(names):
+            links.append('<a class="pager-next" href="%s.html" rel="next"><span>Next</span> %s</a>'
+                         % (names[i + 1], esc(SHORT[names[i + 1]])))
+        return ('    <nav class="pager" aria-label="Previous and next guide">\n      %s\n    </nav>\n'
+                % "\n      ".join(links))
 
     def index(self, docs):
         parts = [self.head("Guides · needs-you",
@@ -652,10 +683,17 @@ class Builder:
                            "index.html", "the GUIDES list in scripts/build_site_guides.py", current=True)]
         parts.append('  <main id="main" class="wrap doc">\n    <h1>Guides</h1>\n')
         parts.append('    <p class="lede">Setting up needs-you and connecting the things that should alert you. '
-                     "New here? Start with the <a href=\"quickstart.html\">quickstart</a>, or the "
-                     "<a href=\"testers.html\">tester guide</a> if you were invited to try it.</p>\n")
-        for group in [g for g in GROUPS if any(e[0] == g for e in GUIDES)]:
-            gid = re.sub(r"[^a-z0-9]+", "-", group.lower()).strip("-")
+                     "New here? Start with the <a href=\"quickstart.html\">quickstart</a>, or "
+                     "<a href=\"setup-with-an-agent.html\">let an agent set it up</a>. Each guide links "
+                     "to the next, in this order.</p>\n")
+        groups = [g for g in GROUPS if any(e[0] == g for e in GUIDES)]
+        gids = {g: re.sub(r"[^a-z0-9]+", "-", g.lower()).strip("-") for g in groups}
+        parts.append('    <nav class="toc toc-inline" aria-label="Sections">\n      <ul>\n')
+        for group in groups:
+            parts.append('        <li><a href="#%s">%s</a></li>\n' % (gids[group], esc(group)))
+        parts.append("      </ul>\n    </nav>\n")
+        for group in groups:
+            gid = gids[group]
             parts.append('    <section aria-labelledby="%s">\n      <h2 id="%s">%s</h2>\n      <ul class="guide-list">\n'
                          % (gid, gid, esc(group)))
             for g, src, name, short, summary in GUIDES:

@@ -9,7 +9,18 @@
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="https://needsyou.app/guides/copilot.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="GitHub Copilot CLI · needs-you guides">
+  <meta property="og:description" content="GitHub Copilot CLI hooks: a card when Copilot asks for permission or finishes its turn, cleared when you answer.">
+  <meta property="og:url" content="https://needsyou.app/guides/copilot.html">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -75,6 +86,10 @@ echo '{"sessionId":"test-1","cwd":"'"$PWD"'","stopReason":"end_turn"}' |
   NEEDS_YOU_AGENT_ALERTS=1 ~/.copilot/hooks/needs-you-hook.sh notify copilot
 echo '{"sessionId":"test-1"}' | NEEDS_YOU_AGENT_ALERTS=1 ~/.copilot/hooks/needs-you-hook.sh resolve copilot</code></pre></div>
 <p>The card arrives a moment after the first command returns: the hook hands its work to the background so Copilot never waits on it. No card from a real session? Restart Copilot CLI after installing or updating, check that <code>NEEDS_YOU_AGENT_ALERTS=1</code> reaches it, and that no <code>"disableAllHooks": true</code> is set in <code>~/.copilot/settings.json</code> or <code>config.json</code> (<code>needs-you doctor</code> says so). If you run Copilot with <code>COPILOT_HOME</code> set, install with that same <code>COPILOT_HOME</code>. <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> logs each hook call (<a href="troubleshooting.html#claude-code-hooks">troubleshooting</a> explains the log lines).</p>
+    <nav class="pager" aria-label="Previous and next guide">
+      <a class="pager-prev" href="gemini.html" rel="prev"><span>Previous</span> Gemini CLI</a>
+      <a class="pager-next" href="kimi.html" rel="next"><span>Next</span> Kimi Code</a>
+    </nav>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/copilot.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/copilot.md">docs/guides/copilot.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 
