@@ -1,4 +1,4 @@
-<!-- needs-you-version: 0.5.2 -->
+<!-- needs-you-version: 0.5.3 -->
 
 ## needs-you: telling a person you need them
 
