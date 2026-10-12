@@ -442,6 +442,14 @@ esac
         with open(target) as fh:
             self.assertEqual(fh.read(), "keep")
 
+    def test_a_directory_request_is_removed_so_the_path_unit_stops(self):
+        self.install()
+        self.set_installed(OLD)
+        os.mkdir(self.flag())
+        r = self.update(self.release(published="2026-10-12T06:00:00Z"))
+        self.assertIn("waiting until", r.stdout)  # not a request
+        self.assertFalse(os.path.lexists(self.flag()))
+
     def test_check_takes_no_request(self):
         self.install()
         self.set_installed(OLD)

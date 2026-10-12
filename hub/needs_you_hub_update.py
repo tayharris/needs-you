@@ -380,7 +380,13 @@ def take_request(conf_dir: str) -> bool:
     except OSError:
         return False
     if stat.S_ISDIR(st.st_mode):
-        log("%s is a directory, not a request; ignoring it" % path)
+        # Removed too (when empty): the path unit fires while the name exists, so anything
+        # left there would start this updater again and again.
+        log("%s is a directory, not a request; removing it" % path)
+        try:
+            os.rmdir(path)
+        except OSError as e:
+            log("couldn't remove %s (%s); the path unit stops after its trigger limit" % (path, type(e).__name__))
         return False
     try:
         os.unlink(path)
