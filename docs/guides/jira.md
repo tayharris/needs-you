@@ -86,4 +86,4 @@ The full list of cards, keys and settings is in [integrations/jira/README.md](..
 - Run `needs-you-jira -v`. It says how many issues changed and how many are open, and any Jira error. It always exits 0, so cron won't tell you.
 - See [troubleshooting](troubleshooting.md#jira-poller) for token, permission and JQL errors. After 3 failed runs in a row it posts one low card, "Jira alerts stopped on devbox", which clears on the next good run.
 - Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see [troubleshooting](troubleshooting.md#a-sender-cant-reach-the-hub).
-- To start over, delete `~/.local/state/needs-you/jira.json`. The next run records your issues again without posting, and cards it posted expire within 15 minutes on their own.
+- To start over, delete `~/.local/state/needs-you/jira.json`. The next run records your issues again without posting, and cards it posted expire within 15 minutes on their own; a "Jira alerts stopped" card has no expiry, so dismiss it on the Mac.
