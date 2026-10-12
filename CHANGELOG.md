@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-12
+
+A pre-release: server hubs now update themselves, checked the same way the Mac app's updates are; the pill and panel get a Shape (Rounded, Square, Capsule), card Density, a Solid background and accent swatches; Pill size now sizes the idle pill too; and Settings → Appearance holds the whole look. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. To turn on automatic updates for a server hub, re-run `install-hub.sh` on it once (it needs `gh` 2.64 or later, logged in; add `--update-channel prerelease` to follow pre-releases), then run `needs-you update` on sender machines.
+
 ### Added
 
 - **Mac app: a Solid background and accent swatches.** **Settings → Appearance → Theme → Background** offers **Solid**: the pill, previews and the open panel on an opaque background in the theme's colour, for when the see-through glass is hard to see. Solid is always fully opaque, so Background darkness and Opacity apply to Glass (the default, unchanged) only. **Accent colour** is now a row of swatches with a live preview card ([guide](docs/guides/mac-app.md#themes)).
