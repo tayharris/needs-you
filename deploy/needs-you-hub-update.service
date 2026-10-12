@@ -1,0 +1,16 @@
+[Unit]
+Description=needs-you hub: install the newest checked release (hub-update.json)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root: it re-runs the release's own install-hub.sh, which writes /opt/needs-you and
+# the unit files. gh must be logged in for root (`sudo gh auth login`, or GH_TOKEN in a
+# drop-in) to check each release's build provenance; without it nothing is installed.
+ExecStart=/usr/bin/python3 /opt/needs-you/hub/needs_you_hub_update.py --mode system
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStartSec=20min
