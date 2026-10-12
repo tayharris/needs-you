@@ -6,6 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- **Claude Code: words typed for a "choose any" question no longer read like extra choices.** Claude gets a multi-select's answer as its choices joined by ", ", so typed words such as "SSO, then SAML" looked like two more picks. They now follow the choices as `Other: "SSO, then SAML"`. A single choice's typed words are still passed on as they are. Run `needs-you update` on sender machines to get it.
 - **`setup-sender.sh` no longer prints a hub's error reply raw.** When the test item fails, the reply is shown as printable text only, cut to 200 characters, so a broken or hostile hub can't put terminal escapes on your screen.
 
 ## [0.5.1] - 2026-10-12

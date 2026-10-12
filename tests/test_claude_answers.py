@@ -126,12 +126,13 @@ class AskMode(unittest.TestCase):
         # Claude's dialog always takes "Other" (the person's own words), so the card does too.
         typed = json.dumps({"id": "01ITEM", "key": "k", "status": "open", "question_id": "{QID}",
                             "answers": [{"selected": [], "text": "MySQL, the team knows it"},
-                                        {"selected": ["Export", "Auth"], "text": "SSO via sk-ant-not-a-key"}],
+                                        {"selected": ["Export", "Auth"], "text": "SSO, \"SAML\" via sk-ant-not-a-key"}],
                             "answered_at": "2026-10-08T10:00:00.000Z", "answered_by": "mac"})
         out = self.ask(ans=typed)
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"], {
             "Which database should we use?": "MySQL, the team knows it",  # in place of a label
-            "Which features?": "Auth, Export, SSO via sk-ant-not-a-key"})  # labels, then the words, as typed
+            # labels, then the words as typed, quoted: their comma isn't one more pick
+            "Which features?": 'Auth, Export, Other: "SSO, \\"SAML\\" via sk-ant-not-a-key"'})
         q = posted_item(self.adds()[-1])["question"]
         self.assertEqual([it.get("allow_other") for it in q["items"]], [True, True])
 
@@ -431,7 +432,7 @@ class EndToEnd(HubTestCase):
         out, err = proc.communicate(timeout=30)
         self.assertEqual((proc.returncode, err), (0, ""))
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"],
-                         {"Which database should we use?": "DuckDB for now", "Which features?": "Auth, Audit log"})
+                         {"Which database should we use?": "DuckDB for now", "Which features?": 'Auth, Other: "Audit log"'})
 
     def test_a_rate_limited_hub_never_fails_the_hook(self):
         # ADR 0010: past the post rate the CLI queues the card (exit 0) and the hook stays
