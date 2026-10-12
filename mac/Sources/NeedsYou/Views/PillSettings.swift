@@ -67,14 +67,16 @@ private struct PillSettingsPreview: View {
         let input = sampleInput()
         VStack(alignment: .leading, spacing: 6) {
             Text("Preview").font(.caption).foregroundStyle(.secondary)
-            HStack(alignment: .center, spacing: 18) {
-                sample(PillContent.make(input, options: options, hovering: false), metrics: metrics,
-                       caption: options.detail == .dot ? "At rest" : "Waiting")
-                if options.detail == .dot {
-                    sample(PillContent.make(input, options: options, hovering: true), metrics: metrics, caption: "On hover")
+            // In a row when it fits the window, else one under another (a large pill with long
+            // titles is wider than Settings, and a fixed row widened the whole page).
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 18) {
+                    samples(input, options: options, metrics: metrics)
+                    Spacer(minLength: 0)
                 }
-                idleSample(metrics)
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 12) {
+                    samples(input, options: options, metrics: metrics)
+                }
             }
             .id(Theme.palette)
             .padding(.vertical, 12)
@@ -86,6 +88,16 @@ private struct PillSettingsPreview: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .animation(.easeInOut(duration: 0.2), value: settings.ui)
+    }
+
+    @ViewBuilder
+    private func samples(_ input: PillInput, options: PillOptions, metrics: PillMetrics) -> some View {
+        sample(PillContent.make(input, options: options, hovering: false), metrics: metrics,
+               caption: options.detail == .dot ? "At rest" : "Waiting")
+        if options.detail == .dot {
+            sample(PillContent.make(input, options: options, hovering: true), metrics: metrics, caption: "On hover")
+        }
+        idleSample(metrics)
     }
 
     @ViewBuilder
