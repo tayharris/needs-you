@@ -3164,8 +3164,8 @@ def validate_peer_request(peer: Any, own_hub_id: str, own_urls: List[str], schem
 def sender_install_steps(join_url: str, flags: str = "") -> List[str]:
     """A sender invite's installer as plain lines (no pipe, quote or bracket): download it to
     the home folder, then run it. It removes its own file first thing, since the file holds the
-    invite code."""
-    return ["cd", "curl -fsSLo %s %s/install.sh" % (SENDER_INSTALL_FILE, join_url),
+    invite code; `umask 077` first makes that file private for the moment it exists."""
+    return ["cd", "umask 077", "curl -fsSLo %s %s/install.sh" % (SENDER_INSTALL_FILE, join_url),
             ("bash %s --yes %s" % (SENDER_INSTALL_FILE, flags)).rstrip()]
 
 

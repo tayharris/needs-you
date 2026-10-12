@@ -64,7 +64,7 @@ class Create(InviteCase):
                          % body["join_url"])
         # The same install as plain lines: nothing a key-by-key console can mangle.
         self.assertEqual(body["install_steps"],
-                         ["cd", "curl -fsSLo needs-you-install.sh %s/install.sh" % body["join_url"],
+                         ["cd", "umask 077", "curl -fsSLo needs-you-install.sh %s/install.sh" % body["join_url"],
                           "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts"])
         for line in body["install_steps"]:
             self.assertRegex(line, r"^[A-Za-z0-9 ./:_-]+$", line)

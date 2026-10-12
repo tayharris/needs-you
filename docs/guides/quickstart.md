@@ -63,7 +63,7 @@ On each server, paste the agent prompt into its agent, or run:
 curl -fsSL http://my-mac.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes
 ```
 
-In a browser console (a cloud provider's, or Tailscale's), which types a paste key by key and can drop the `|`, use **Plain lines** instead: `cd`, `curl -fsSLo needs-you-install.sh <join link>/install.sh`, `bash needs-you-install.sh --yes` ([add-a-sender.md](add-a-sender.md#with-an-invite-link-recommended)). If `curl` says *Failed to connect* or *Could not resolve host*, the server can't reach the Mac yet: check Tailscale on both ([tailscale.md](tailscale.md)).
+In a browser console (a cloud provider's, or Tailscale's), which types a paste key by key and can drop the `|`, use **Plain lines** instead: `cd`, `umask 077`, `curl -fsSLo needs-you-install.sh <join link>/install.sh`, `bash needs-you-install.sh --yes` ([add-a-sender.md](add-a-sender.md#with-an-invite-link-recommended)). If `curl` says *Failed to connect* or *Could not resolve host*, the server can't reach the Mac yet: check Tailscale on both ([tailscale.md](tailscale.md)).
 
 Each server gets its own token (named `<invite name>-<hostname>`), so you can revoke one without touching the others: **Settings… → Machines** in the app ([add-a-sender.md → Removing a sender](add-a-sender.md#removing-a-sender)).
 

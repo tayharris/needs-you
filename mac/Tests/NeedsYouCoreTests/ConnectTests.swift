@@ -89,7 +89,7 @@ final class ConnectLinkTests: XCTestCase {
         XCTAssertEqual(current.agentPrompt, "hub prompt --claude-hooks user; needs-you doctor")
         XCTAssertEqual(current.shellOneLiner, "hub cmd --claude-hooks user")
         // Plain lines: built here, or the hub's when every line is plain.
-        XCTAssertEqual(invite.shellSteps, ["cd", "curl -fsSLo needs-you-install.sh http://mac.tail1.ts.net:8765/join/c/install.sh",
+        XCTAssertEqual(invite.shellSteps, ["cd", "umask 077", "curl -fsSLo needs-you-install.sh http://mac.tail1.ts.net:8765/join/c/install.sh",
                                            "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts"])
         let hubSteps = ["cd", "curl -fsSLo needs-you-install.sh http://h.example.ts.net:8765/join/c/install.sh",
                         "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts --context work"]
