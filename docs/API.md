@@ -458,7 +458,8 @@ How a sender reads back the answer to its own question: only the token that post
 item with that key, else the last one updated.
 
 - `wait`: seconds to hold the request while there is no answer (a long poll), `0` to `25`,
-  default `25`.
+  default `25`; a value outside that is clamped to it, and one that isn't a number is a `400`
+  (`field` `wait`).
 
 A token may read at most 120 times a minute (`answer_read_rate_limit`) and hold at most 4
 long polls at once (`answer_waits_per_token`); past either, `429 rate_limited` at once. A
@@ -486,7 +487,7 @@ Query parameters:
 | `status` | `open` (default), `resolved`, `dismissed` or `all`. **Ignored when `cursor` or `since` is given.** |
 | `cursor` | A cursor: the `next` from this hub's previous response. Opaque; send it back unchanged. |
 | `since` | A cursor for clients that don't know `next`: the `server_time` from this hub's previous response. |
-| `limit` | Max items, default 500, max 2,000. |
+| `limit` | Max items, default 500, max 2,000 (a value outside 1–2,000 is clamped; not an integer is a `400`). |
 
 Response:
 
