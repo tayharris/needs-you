@@ -188,7 +188,7 @@ needs-you resolve --key "personal:test:hello"</code></pre></div>
 <li><p><strong>On a sender:</strong> the output of <code>needs-you doctor</code> (it never prints the token).</p></li>
 <li><p><strong>The app's log</strong> from the last hour. This saves it to your Desktop with invite codes, tokens, peer secrets, tailnet names and tailnet addresses masked:</p>
 <div class="code"><pre><code class="language-bash">log show --info --last 1h --style compact --predicate 'subsystem == "app.needsyou.mac"' |
-  sed -E 's/ny[ip]?_[A-Za-z0-9_-]+/&lt;redacted&gt;/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/&lt;host&gt;.&lt;tailnet&gt;.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g; s/fd7a:115c:a1e0:[0-9a-f:]+/fd7a:x/g' \
+  sed -E 's/ny[ip]?_[A-Za-z0-9_-]+/&lt;redacted&gt;/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/&lt;host&gt;.&lt;tailnet&gt;.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g; s/fd7a(:[0-9a-f]*)+/fd7a::x/g' \
   &gt; ~/Desktop/needs-you-log.txt</code></pre></div>
 <p>Skim it before attaching; it should hold nothing private, but you're the judge. Info lines don't stay in the log long, so run it soon after the problem. For a problem you can repeat, record it live instead: run <code>log stream --info --style compact --predicate 'subsystem == "app.needsyou.mac"'</code> (piped through the same <code>sed</code>), reproduce, then press Ctrl-C.</p></li>
 </ul>

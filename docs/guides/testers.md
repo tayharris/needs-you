@@ -166,7 +166,7 @@ Please include:
 
   ```bash
   log show --info --last 1h --style compact --predicate 'subsystem == "app.needsyou.mac"' |
-    sed -E 's/ny[ip]?_[A-Za-z0-9_-]+/<redacted>/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/<host>.<tailnet>.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g; s/fd7a:115c:a1e0:[0-9a-f:]+/fd7a:x/g' \
+    sed -E 's/ny[ip]?_[A-Za-z0-9_-]+/<redacted>/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/<host>.<tailnet>.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g; s/fd7a(:[0-9a-f]*)+/fd7a::x/g' \
     > ~/Desktop/needs-you-log.txt
   ```
 
