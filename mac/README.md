@@ -114,7 +114,7 @@ In Settings → **Connect a machine** (it needs an owner token, which the local 
 
 - **Agent prompt** (senders): paste into an agent (Claude Code, etc.) on the new machine: "Set up needs-you alerts on this machine: read <join_url> and follow it."
 - **Shell one-liner** (senders): run on the new machine: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`.
-- **Plain lines** (senders): the same install as `cd`, `curl -fsSLo needs-you-install.sh <join_url>/install.sh`, `bash needs-you-install.sh --yes …`, for a browser console that drops a pasted `|`. The saved installer deletes itself when it starts.
+- **Plain lines** (senders): the same install as `cd`, `umask 077`, `curl -fsSLo needs-you-install.sh <join_url>/install.sh`, `bash needs-you-install.sh --yes …`, for a browser console that drops a pasted `|`. The saved installer deletes itself when it starts.
 - **Mac link**: for another Mac (reader/owner invites); open it there.
 
 A sender's test card, "needs-you is set up on <host>", then shows under **Recent** in the panel.

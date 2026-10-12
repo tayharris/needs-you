@@ -683,7 +683,7 @@ Response `201`:
  "expires_at": "2026-10-09T17:04:05.123Z",
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
- "install_steps": ["cd", "curl -fsSLo needs-you-install.sh http://hub-a.example.ts.net:8765/join/nyi_.../install.sh",
+ "install_steps": ["cd", "umask 077", "curl -fsSLo needs-you-install.sh http://hub-a.example.ts.net:8765/join/nyi_.../install.sh",
                    "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts"],
  "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp <agents> registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
 ```
@@ -692,8 +692,9 @@ Response `201`:
 `sender` invites (a `peer` invite has its own `install_command` and `install_steps`, below).
 `install_steps` is the same install as plain lines, to run one after another in one shell: no
 pipe, quote, bracket, `$` or `~`, so a console that types a paste key by key (a cloud provider's
-browser console) can't break them. The installer is saved as `needs-you-install.sh` and deletes
-that file as soon as it starts, since it holds the invite code. All three set up Claude
+browser console) can't break them. The installer is saved as `needs-you-install.sh`, private to
+the user (`umask 077`, which stays set in that shell), and deletes that file as soon as it starts,
+since it holds the invite code. All three set up Claude
 Code alerts (`--claude-hooks user --skill --alerts`); the join page lists the other options.
 The prompt ends by having the agent run `needs-you doctor` and act on, or relay, the next step
 under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the

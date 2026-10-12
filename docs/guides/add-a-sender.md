@@ -11,11 +11,12 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 
      ```bash
      cd
+     umask 077
      curl -fsSLo needs-you-install.sh <join_url>/install.sh
      bash needs-you-install.sh --yes --claude-hooks user --skill --alerts
      ```
 
-     The saved installer holds the invite code, so it deletes itself as soon as it starts. Options go on the last line,
+     The saved installer holds the invite code, so `umask 077` keeps it private and it deletes itself as soon as it starts. Options go on the last line,
    - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp &lt;agents&gt; registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions &lt;agents&gt; adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."* ([Codex](codex.md))
 2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself (the plain lines in a browser console). The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
 3. **Check** the card that the installer posts, "needs-you is set up on &lt;host&gt;" (`setup:<host>:test`), under **Recent** in the panel; the installer's last lines say so. On the machine, open a new terminal and run `needs-you doctor`: every line should be `OK` or `INFO`, and each `WARN` or `FAIL` line has the command that fixes it under it.

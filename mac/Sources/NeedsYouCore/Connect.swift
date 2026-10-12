@@ -306,7 +306,8 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         }
         var base = joinURL
         while base.hasSuffix("/") { base.removeLast() }
-        return ["cd", "curl -fsSLo \(Self.installFile) \(base)/install.sh",
+        // umask 077: the saved installer holds the invite code, so it's private while it exists.
+        return ["cd", "umask 077", "curl -fsSLo \(Self.installFile) \(base)/install.sh",
                 "bash \(Self.installFile) --yes \(Self.claudeFlags)"]
     }
 }
