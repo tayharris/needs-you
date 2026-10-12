@@ -7,6 +7,14 @@
 # comment, because piped into bash there is no "$0" file to read it from.
 set -euo pipefail
 
+# Run as a saved file (the invite's install_steps: curl -fsSLo needs-you-install.sh, then
+# bash needs-you-install.sh), this file holds the invite code: delete it before anything else.
+# bash keeps reading the open file, so the rest still runs. Only that name, and never a link.
+SELF_FILE=${BASH_SOURCE[0]:-}
+if [ "${SELF_FILE##*/}" = needs-you-install.sh ] && [ -f "$SELF_FILE" ] && [ ! -L "$SELF_FILE" ]; then
+  rm -f -- "$SELF_FILE" 2>/dev/null || true
+fi
+
 HUB_URL=__NY_HUB_URL__
 CODE=__NY_CODE__
 ROLE=__NY_ROLE__
@@ -947,7 +955,11 @@ fi
 
 # ---------------------------------------------------------------- check + test
 say ""
-"$CLI" health || warn "no hub answered right now (asleep or offline?). Items queue and are sent by the 5-minute flush."
+HEALTHY=1
+"$CLI" health || {
+  HEALTHY=0
+  warn "no hub answered right now (asleep or offline?). Items queue and are sent by the 5-minute flush."
+}
 "$CLI" -q info --key "setup:$HOST_NAME:test" --title "needs-you is set up on $HOST_NAME" \
   --body "Test item from the invite installer. It expires on its own." --agent installer \
   --host "$HOST_NAME" || true
@@ -956,6 +968,12 @@ case ":$PATH:" in
   *":$BIN_DIR:"*) NY=needs-you ;;
   *) NY=$CLI ;;  # path_setup above said how to get it on PATH; until then, the full path works
 esac
+if [ "$HEALTHY" -eq 1 ]; then
+  say "Look on the Mac: a test card, \"needs-you is set up on $HOST_NAME\", is under Recent in the panel."
+else
+  say "A test card, \"needs-you is set up on $HOST_NAME\", is queued: it shows on the Mac once the hub answers."
+fi
+say ""
 say "Done. Check the setup (every line should be OK or INFO):"
 say "  $NY doctor"
 say "Then post a test item and resolve it:"
