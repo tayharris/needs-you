@@ -333,7 +333,9 @@ neither options nor `allow_other: true` is refused (`400`, `question.answerable`
 be nothing to answer with.
 So is one with two options of the same label within a question (`400`, the second one's
 `question.items[i].options[j].label`): an answer carries labels only, so the two couldn't be
-told apart. A read-only question may repeat a label; different questions may share labels.
+told apart. Labels are compared as stored (trimmed, case-sensitive, the way the hooks compare
+them): `"Yes"` and `" Yes "` are one label, `"Yes"` and `"yes"` two. A read-only question may
+repeat a label; different questions may share labels.
 Senders keep the question's text in `body` as well, for clients and views that don't show the
 field. An answer belongs to the question it answers: a re-post that changes the question (any
 part of it, `expires_at` included), or a re-post by a different token, clears the item's

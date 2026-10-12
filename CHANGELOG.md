@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude Code: words typed for a "choose any" question no longer read like extra choices.** Claude gets a multi-select's answer as its choices joined by ", ", so typed words such as "SSO, then SAML" looked like two more picks. They now follow the choices as `Other: "SSO, then SAML"`. A single choice's typed words are still passed on as they are. Run `needs-you update` on sender machines to get it.
+- **`setup-sender.sh` no longer prints a hub's error reply raw.** When the test item fails, the reply is shown as printable text only, cut to 200 characters, so a broken or hostile hub can't put terminal escapes on your screen.
+
 ## [0.5.1] - 2026-10-12
 
 A pre-release: server hubs now update themselves, checked the same way the Mac app's updates are; the pill and panel get a Shape (Rounded, Square, Capsule), card Density, a Solid background and accent swatches; Pill size now sizes the idle pill too; and Settings → Appearance holds the whole look. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. To turn on automatic updates for a server hub, re-run `install-hub.sh` on it once (it needs `gh` 2.64 or later, logged in; add `--update-channel prerelease` to follow pre-releases), then run `needs-you update` on sender machines.

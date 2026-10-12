@@ -2299,6 +2299,10 @@ def reply():
                 or any(not isinstance(p, str) or p not in labels for p in picked)
                 or len(set(picked)) != len(picked) or (q.get("multiSelect") is not True and given != 1)):
             return 0
+        # A multi-select's answer is its labels joined by ", ": the person's words there are
+        # quoted after "Other: ", so a comma in them doesn't read like one more pick.
+        if text and q.get("multiSelect") is True:
+            text = "Other: " + json.dumps(text, ensure_ascii=False)
         answers[q["question"]] = ", ".join([l for l in labels if l in picked] + ([text] if text else []))
     updated = dict(ti)
     updated["answers"] = answers

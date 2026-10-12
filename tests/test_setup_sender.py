@@ -195,6 +195,41 @@ class SetupSender(HubTestCase):
         r = self.run_setup("--no-path", STUB_UNAME="Darwin", SHELL="/bin/zsh")
         self.assertIn("already set up", r.stdout)
 
+    def test_a_hub_error_reply_is_printed_printable_and_short(self):
+        # A hub that is up but fails the test post with terminal escapes and a long body.
+        import http.server
+        import threading
+
+        reply = b"\x1b]0;owned\x07\x1b[2J" + b"boom " * 200
+
+        class Fake(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(500)
+                self.send_header("Content-Length", str(len(reply)))
+                self.end_headers()
+                self.wfile.write(reply)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), Fake)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        r = self.run_setup("--no-path", "--no-schedule", "--url", "http://127.0.0.1:%d" % srv.server_port, "--test")
+        line = next(l for l in r.stderr.splitlines() if "test item failed (HTTP 500)" in l)
+        self.assertNotIn("\x1b", r.stdout + r.stderr)
+        self.assertNotIn("\x07", r.stdout + r.stderr)
+        self.assertIn("?]0;owned??[2Jboom", line)
+        self.assertLessEqual(len(line.split("(HTTP 500): ", 1)[1]), 200)
+
     def test_no_schedule_and_bad_values(self):
         self.run_setup("--no-schedule")
         self.assertFalse(os.path.exists(self.cron))

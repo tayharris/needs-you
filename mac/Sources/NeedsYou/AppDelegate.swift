@@ -173,6 +173,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && $0.question?.items.first?.allowOther == true }
     }
 
+    /// A tour picks, answers and ticks steps only on demo items (NEEDS_YOU_DEMO=1, as
+    /// screenshots.sh runs it): a snapshot run pointed at a real hub never answers an agent.
+    private static func tourMayAnswer(_ model: AppModel) -> Bool {
+        if !model.isDemo { NSLog("NeedsYou: snapshot tour not in demo mode; no picks or answers are sent") }
+        return model.isDemo
+    }
+
     /// The tour's pill meter look: large unless it says otherwise (the default).
     private static func meters(_ model: AppModel, _ style: PillMeterStyle, _ arrangement: PillMeterArrangement = .stacked,
                                size: PillMeterSize = .large, numbers: Bool = false) {
@@ -238,7 +245,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }),
             ("6h-question-picked", { model in
                 // An answerable question: options are buttons; picks wait for Send.
-                guard let item = model.needsItems.first(where: { $0.question?.answerable == true }),
+                guard Self.tourMayAnswer(model),
+                      let item = model.needsItems.first(where: { $0.question?.answerable == true }),
                       let q = item.question else { return }
                 model.settings.ui.cardBodies = .full  // every option shown, as by default
                 model.scrollTarget = item.id  // the whole card, Send included, in view
@@ -249,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }),
             ("6i-question-answered", { model in
                 // Send: the demo feed takes it like a hub, and the card shows the answer.
-                if let item = model.needsItems.first(where: { $0.question?.answerable == true }) {
+                if Self.tourMayAnswer(model), let item = model.needsItems.first(where: { $0.question?.answerable == true }) {
                     model.sendPickedAnswer(item)
                     model.scrollTarget = item.id
                 }
@@ -262,7 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }),
             ("6l-question-other-sent", { model in
                 // Send in the answer window (6k): the words are the answer, shown on the card.
-                if let item = Self.tourOtherItem(model) {
+                if Self.tourMayAnswer(model), let item = Self.tourOtherItem(model) {
                     _ = model.submitTypedAnswer(itemID: item.id, question: 0, text: Self.tourTypedAnswer,
                                                 seenVersion: item.contentUpdatedAtRaw)
                     model.scrollTarget = item.id
@@ -638,7 +646,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.setContext(.work)
 
             // What the person does before the senders re-post: picks, answers, a tick.
-            for item in before {
+            let mayAnswer = Self.tourMayAnswer(model)
+            for item in before where mayAnswer {
                 // Typed-only questions (no options) are answered in the answer window, not by a click.
                 guard let q = item.question, q.answerable, q.items.allSatisfy({ !$0.options.isEmpty }) else { continue }
                 if AnswerPolicy.sendsOnClick(q) {
@@ -654,7 +663,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 await card(item, "answered")
             }
-            if let steps = before.first(where: { $0.steps.count > 2 }) { model.toggleStep(steps, 2) }
+            if mayAnswer, let steps = before.first(where: { $0.steps.count > 2 }) { model.toggleStep(steps, 2) }
 
             if let url = AppSettings.demoRepostURL, let reposts = try? DemoFeed.loadFixture(at: url) {
                 await model.applyDemoRepost(reposts)

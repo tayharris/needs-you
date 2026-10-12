@@ -65,6 +65,8 @@ class Catches(unittest.TestCase):
         self.check("GET /cb?token%3Dqv81kd&x=1", "qv81kd", keep=("token%3D",))
         self.check("next=%2Fhome%3Fpassword%3Dzw40hb", "zw40hb")
         self.check("api_key%3Amn55tt", "mn55tt")
+        # a lower-case escape, and a keyword at the end of a longer name
+        self.check("GET /cb?access_token%3dqv81kd&x=1", "qv81kd", keep=("access_token%3d",))
 
     def test_url_password_with_a_slash_or_an_at(self):
         self.check("postgres://app:hunter2/pw@db.example/app", "hunter2", "/pw@db", keep=(
@@ -74,12 +76,18 @@ class Catches(unittest.TestCase):
                    keep=("https://example.com/a:b@c",))
         self.check("https://example.com/user@host?q=a:b@c", keep=("https://example.com/user@host?q=a:b@c",))
         self.check("x=postgres://app:" + "q" * 300 + "@db", "q" * 20)
+        self.check("https://u:a/b/c/kz62rr@h.example/x", "kz62rr", "a/b/c", keep=("https://u:", "@h.example/x"))
+        # no scheme, or no password: ordinary text stays
+        self.check("see docs/a:b/c@v2 and 10:30/12@noon, ssh://git@host.example:22/repo",
+                   keep=("see docs/a:b/c@v2 and 10:30/12@noon, ssh://git@host.example:22/repo",))
 
     def test_short_keywords(self):
         for name in ("pwd", "pw", "auth", "credentials", "PWD", "db_pw", "x-auth", "credential"):
             with self.subTest(name):
                 self.check("%s=kz62rr ok" % name, "kz62rr", keep=(name, "ok"))
+        self.check("db pwd: kz62rr", "kz62rr", keep=("db pwd: ",))
         # pwd and cwd as words in a sentence stay
+        self.check("echo $PWD; pwd", keep=("echo $PWD; pwd",))
         self.check("Run `pwd` and check the cwd: /home/me/src, then pwd again; cwd=/tmp",
                    keep=("Run `pwd` and check the cwd: /home/me/src, then pwd again; cwd=/tmp",))
         # not a keyword at a word's end
