@@ -25,13 +25,13 @@ Each agent's cards come from its hooks: an approval prompt or a question should 
 | [Cursor](cursor.md) | Built from docs (payloads replayed; it needs a login) | **Anything**: the "finished" card, and your next prompt going through and clearing it |
 | [MCP server](mcp.md) | Tested with a scripted MCP client | Registering it in real clients (`--mcp claude,codex,...`) and an agent calling its tools |
 
-Every integration's README under [integrations/](../../integrations/) says exactly what was run and how.
+The integration READMEs under [integrations/](../../integrations/) say what was run, where it's been run live.
 
 ## How to test
 
 1. Install the Mac app and connect the machine your agent runs on: the [install guide for testers](testers.md) takes about 15 minutes.
 2. Set up your agent with its guide (the links in the table above). Most agents need a restart after their hooks are installed.
-3. Turn on the hook log so a report can show what the hook saw: add `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` to `~/.config/needs-you/env` (or export it before starting the agent).
+3. Turn on the hook log so a report can show what the hook saw: export `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` in the shell you start the agent from (the hook doesn't read this one from `~/.config/needs-you/env`).
 4. Work as you normally would, and watch the pill. Things worth trying:
    - [ ] Make the agent ask for approval (a shell command it won't run on its own). A card appears; approving in the agent clears it.
    - [ ] Let the agent finish its turn and wait. A "waiting for you" card appears (for most agents); your next prompt clears it.

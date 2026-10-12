@@ -449,7 +449,8 @@ class GuideIndexTests(unittest.TestCase):
 # Site images
 # ---------------------------------------------------------------------------------------------
 
-IMG_REF = re.compile(r"""(?:src=["']|\]\()(?:\.\./)*(?:site/)?(img/[\w./-]+)""")
+# src="img/...", ](img/...), or a share image's absolute URL (og:image, twitter:image).
+IMG_REF = re.compile(r"""(?:src=["']|content=["']https://needsyou\.app/|\]\()(?:\.\./)*(?:site/)?(img/[\w./-]+)""")
 
 
 class SiteImageTests(unittest.TestCase):

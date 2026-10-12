@@ -55,8 +55,8 @@ It posts through the `needs-you` CLI, so the outbox and hub failover apply. Whil
 | `tls`, not trusted | TLS certificate for example.com not trusted: *reason* (urgent) | the same key | Renew, if set |
 | `domain` | Domain example.com expires 2027-08-13 | `<ctx>:expiry:domain:example.com` | Renew, if set; RDAP (the record, https only) |
 | `key` | Figma PAT expires 2026-12-31 | `<ctx>:expiry:key:Figma-PAT` (characters a key can't hold become `-`) | Renew, if set |
-| checks failing | Expiry checks failing on devbox: 2 checks (low) | `<default ctx>:expiry:devbox:checks-failing` | body: each failing check, its error and the day it started |
-| poller crashed | Expiry checks stopped on devbox: needs-you-expiry failed (low) | `<default ctx>:expiry:devbox:poller-failing` | body: run `needs-you-expiry -v` |
+| checks failing | Expiry checks failing on devbox: 2 checks (low) | `<NEEDS_YOU_EXPIRY_CONTEXT>:expiry:devbox:checks-failing` | body: each failing check, its error and the day it started |
+| poller crashed | Expiry checks stopped on devbox: needs-you-expiry failed (low) | `<NEEDS_YOU_EXPIRY_CONTEXT>:expiry:devbox:poller-failing` | body: run `needs-you-expiry -v` |
 
 A check that fails (host unreachable, timeout, RDAP error, an unreadable line, even a bug in one check) keeps its last date, so a card already up stays up, and the run carries on with the other checks. Once any check has failed `NEEDS_YOU_EXPIRY_FAILS` (2) runs in a row, one low card per machine lists all of them: one card when the network is down, never one per host. It clears on the run where every check works again. A bug that stops the whole run posts the `poller-failing` card once; the next good run resolves it. No `source.event` is sent.
 

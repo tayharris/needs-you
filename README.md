@@ -51,6 +51,8 @@ Each agent gets a card when it's waiting on you, and the card clears itself when
 
 The pollers (Linear, Jira, GitHub Projects and Dependabot, expiry dates) run on one always-on machine; on the Mac, **Settings → Integrations → Cards from your tools** has each one's commands and an agent prompt that sets it up there ([Mac app](docs/guides/mac-app.md#cards-from-your-tools)).
 
+The Linear, Jira and expiry pollers, GitHub Projects and Dependabot cards, and the newest Appearance settings are in the 0.5 pre-releases; the latest stable release is older. On the Mac, **Settings → Updates → Releases and pre-releases** gets them, or download the newest pre-release from the [Releases page](https://github.com/tayharris/needs-you/releases).
+
 Anything that can run a shell command can post. Any other agent or tool with hooks, webhooks or a notification command can be connected with a [custom connector](docs/guides/custom-connector.md). Add `--alerts` as well: it turns agent cards on for every session on that machine (inside Orca they're on already).
 
 Open source, [Apache-2.0](LICENSE). **Status: early preview.** What each release changed: [CHANGELOG.md](CHANGELOG.md).
@@ -115,7 +117,7 @@ Rules for you, the whole way through:
 
 Words used below: **the app** shows your alerts on the Mac; the **hub** stores them (the app has one built in); a **sender** is any machine or agent that posts them, with only the `needs-you` command, no app; your **tailnet** is your private [Tailscale](docs/guides/tailscale.md) network, which lets other machines reach the Mac. Reader, owner, server hub and the rest: [App, hubs and senders](docs/guides/concepts.md).
 
-1. **Download** the latest release from the repository's [Releases page](https://github.com/tayharris/needs-you/releases) (macOS 14 or later): `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS`.
+1. **Download** the latest release from the repository's [Releases page](https://github.com/tayharris/needs-you/releases) (macOS 14 or later): `NeedsYou-X.Y.Z.dmg` (open it and drag `NeedsYou.app` to `/Applications`), or `NeedsYou-X.Y.Z-macos.zip` (unzip, then drag). `SHA256SUMS` on the same page checks either: `shasum -a 256 -c SHA256SUMS --ignore-missing`.
 2. **First launch.** The app is ad-hoc signed, not notarized, so macOS blocks it once. On macOS 14 and earlier: right-click `NeedsYou.app` → **Open** → **Open**. On macOS 15 and later: double-click it, then **System Settings → Privacy & Security → Open Anyway**. The release notes have the full steps (firewall prompt, managed Macs). The built-in hub needs `/usr/bin/python3` from Apple's Command Line Tools; if Settings says Python 3 isn't available, run `xcode-select --install` and reopen the app.
 3. **Connect a machine.** Right-click the pill (the small, faint shape at the top right of the screen) → **Settings…** → **Connect a machine** (under **Hubs and machines** in the sidebar) → **Create invite**, then click **Agent prompt** and paste it into Claude Code (on this Mac or any server on your tailnet), or click **Shell one-liner** and run it there. The machine installs the `needs-you` CLI and posts a test card.
 
@@ -149,7 +151,7 @@ Roadmap: [docs/roadmap/](docs/roadmap/). Design decisions: [docs/adr/](docs/adr/
                          optional: always-on server hubs ────┘ (the app can read from them)
 ```
 
-Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md): a server joins the app's built-in hub with a one-use peer invite, they replicate every item both ways, and invites made on the Mac then list the server too ([HUB.md](docs/HUB.md#with-the-apps-built-in-hub)).
+Items sent while the Mac sleeps are queued on the sender and delivered when it wakes (each sender retries every 5 minutes). If you'd rather never wait, add one or two always-on [server hubs](docs/HUB.md): a server joins the app's built-in hub with a one-use peer invite, they replicate every item both ways, and invites made on the Mac then list the server too ([HUB.md](docs/HUB.md#with-the-apps-built-in-hub)). A server hub updates itself from GitHub releases once `gh` 2.64 or later is logged in on it ([automatic updates](docs/HUB.md#automatic-updates)).
 
 **[Quickstart](docs/guides/quickstart.md)** walks through all of it.
 
@@ -190,7 +192,7 @@ The same guides, grouped for a first read, are at **[needsyou.app/guides](https:
 | [Jira](docs/guides/jira.md) | Status changes, comments, mentions and assignments on your Jira issues (Cloud or Data Center), from one poller |
 | [Server hubs](docs/HUB.md) | Optional always-on hubs, two-hub setup, backups |
 | [Troubleshooting](docs/guides/troubleshooting.md) | When an item doesn't show up |
-| [Keeping up to date](docs/guides/updates.md) | The Mac app updating itself, `needs-you update` on senders, `scripts/rollout.sh` |
+| [Keeping up to date](docs/guides/updates.md) | The Mac app updating itself, server hubs updating themselves, `needs-you update` on senders, `scripts/rollout.sh` |
 
 Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 
@@ -207,18 +209,19 @@ Reference: [AGENT-GUIDE.md](docs/AGENT-GUIDE.md) (the sender contract), [API.md]
 ## Requirements
 
 - Mac: macOS 14 or later with `/usr/bin/python3` (the Command Line Tools). Tailscale if servers should reach it.
-- Senders and server hubs: `bash`, `curl` and `python3` 3.9+, stock on macOS and Ubuntu 22.04+. No pip, no brew, no build step.
+- Senders and server hubs: `bash`, `curl` and `python3` 3.9+, stock on macOS and Ubuntu 22.04+. No pip, no brew, no build step. A server hub's automatic updates also need `gh` 2.64 or later, logged in ([HUB.md](docs/HUB.md#automatic-updates)).
 
 ## Repo layout
 
 ```
 needs-you/
-├── hub/            needs_you_hub.py, needs_you_admin.py, join-install.sh (the invite installer)
+├── hub/            needs_you_hub.py, needs_you_admin.py, needs_you_hub_update.py (server hub self-update),
+│                   join-install.sh (the invite installer)
 ├── cli/            needs-you: the sender CLI, one Python file
 ├── mac/            NeedsYou.app (Swift/SwiftUI), which runs hub/ as a child process
 ├── scripts/        install-hub.sh (server hubs), setup-sender.sh (manual sender setup)
 ├── integrations/   claude-code/ (the shared hook, skill), codex/, gemini/, opencode/, copilot/, kimi/, grok/,
-│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), github/, linear/, jira/ and expiry/ (pollers), ci/ (Actions, cron, systemd)
+│                   cursor/, cline/, aider/, orca/, mcp/ (MCP server), agent-instructions/, github/, linear/, jira/ and expiry/ (pollers), ci/ (Actions, cron, systemd)
 ├── deploy/         systemd units and an example hub config
 └── docs/           guides/, AGENT-GUIDE.md, API.md, HUB.md, roadmap/, adr/
 ```

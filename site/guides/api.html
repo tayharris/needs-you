@@ -72,8 +72,8 @@ Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Role</th><th>Can call</th></tr></thead>
 <tbody>
-<tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code></td></tr>
-<tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>GET /v1/stream</code>, <code>GET /v1/status</code></td></tr>
+<tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>GET /v1/items/answer</code>, <code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code></td></tr>
+<tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>POST /v1/items/{id}/answer</code>, <code>GET /v1/stream</code>, <code>GET /v1/status</code></td></tr>
 <tr><td><code>owner</code></td><td>everything <code>reader</code> can, plus invites (<code>/v1/invites</code>), tokens (<code>/v1/tokens</code>) and peers (<code>/v1/peers</code>): list, create, revoke, remove and request updates (the Mac app)</td></tr>
 </tbody>
 </table></div>
@@ -90,7 +90,8 @@ unparseable header never fails a request. A request without it keeps the last re
 only updates <code>last_seen_at</code>, which is written at most every 10 minutes unless the versions change.</p></li>
 <li><p><strong>Update requests (optional):</strong> while the owner has asked a sender token's machine to update
 (<code>POST /v1/tokens/&lt;id&gt;/request-update</code>, below), every <strong>2xx</strong> JSON response to a request made
-with that token (<code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, token-checked <code>GET /v1/health</code>)
+with that token (<code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>GET /v1/items/answer</code>,
+<code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code>, token-checked <code>GET /v1/health</code>; not a body-less <code>204</code>)
 carries <code>"update_requested": true</code>. Absent otherwise. It is a flag only: no URL, version or
 command comes with it. A CLI that understands it runs its own <code>needs-you update</code> (with
 auto-update on) or prints a reminder; older clients ignore it.</p></li>
@@ -103,16 +104,16 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>400</td><td><code>invalid</code></td><td>Validation failed, bad JSON, bad query parameter</td></tr>
 <tr><td>401</td><td><code>unauthorized</code></td><td>Missing, unknown or revoked token (or bad peer secret)</td></tr>
 <tr><td>403</td><td><code>forbidden</code></td><td>Valid token, wrong role for the endpoint, or typed answer <code>text</code> from a reader token (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
-<tr><td>404</td><td><code>not_found</code></td><td>Unknown endpoint, unknown id on <code>GET</code>/<code>PATCH /v1/items/{id}</code>, or nothing to revoke on <code>DELETE /v1/invites/…</code> / <code>/v1/tokens/…</code></td></tr>
+<tr><td>404</td><td><code>not_found</code></td><td>Unknown endpoint, unknown id (<code>GET</code>/<code>PATCH /v1/items/{id}</code>, <code>POST /v1/items/{id}/answer</code>), no item for this token on <code>GET /v1/items/answer</code>, unknown invite code, nothing to revoke, withdraw or remove (<code>/v1/invites/…</code>, <code>/v1/tokens/…</code>, <code>/v1/peers/…</code>), a file not on the <code>/dl</code> list, or replication on a hub with no peer secret</td></tr>
 <tr><td>409</td><td><code>self</code></td><td>A hub tried to replicate to itself, or to redeem its own peer invite</td></tr>
-<tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer</td></tr>
+<tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite</td></tr>
 <tr><td>409</td><td><code>peer_outdated</code></td><td>A hub redeeming a peer invite has an older schema than the inviting hub (<a href="#peer-invites">peer invites</a>)</td></tr>
 <tr><td>409</td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code>, <code>question_changed</code>, <code>already_answered</code></td><td>An answer that can't be taken (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>421</td><td><code>misdirected</code></td><td>The <code>Host</code> header names something this hub isn't (below). Clients fail over to their next hub URL</td></tr>
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB (8 MiB for <code>/v1/replicate</code>)</td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>The token already has 60 open items (the volume guard)</td></tr>
-<tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds)</td></tr>
-<tr><td>400</td><td><code>secret_in_text</code></td><td>A status key, label, detail, account or source field looks like a token or key (<a href="#status-records-usage-meters">status records</a>)</td></tr>
+<tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), too many answer reads (<code>GET /v1/items/answer</code>, 120 a minute by default, or more than 4 long polls open at once), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds)</td></tr>
+<tr><td>400</td><td><code>secret_in_text</code></td><td>A status key, label, detail, account or source field looks like a token or key (<a href="#status-records-usage-meters">status records</a>), or an answer's typed <code>text</code> holds a needs-you token, invite code or peer secret (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>429</td><td><code>too_many_status</code>, <code>too_fast</code></td><td>A status write over the live-status limits, or a second write to one status key within 10 s (with <code>Retry-After</code>)</td></tr>
 <tr><td>429</td><td><code>rate_limited</code></td><td>Too many status sets and clears from one token (120 a minute by default, apart from posts; with <code>Retry-After</code>)</td></tr>
 <tr><td>500</td><td><code>internal</code></td><td>Bug; details are in the hub's log</td></tr>
@@ -459,7 +460,8 @@ item.</p>
 item with that key, else the last one updated.</p>
 <ul>
 <li><code>wait</code>: seconds to hold the request while there is no answer (a long poll), <code>0</code> to <code>25</code>,
-default <code>25</code>.</li>
+default <code>25</code>; a value outside that is clamped to it, and one that isn't a number is a <code>400</code>
+(<code>field</code> <code>wait</code>).</li>
 </ul>
 <p>A token may read at most 120 times a minute (<code>answer_read_rate_limit</code>) and hold at most 4
 long polls at once (<code>answer_waits_per_token</code>); past either, <code>429 rate_limited</code> at once. A
@@ -486,7 +488,7 @@ another question's answer; see the <a href="agent-guide.html">agent guide</a>).<
 <tr><td><code>status</code></td><td><code>open</code> (default), <code>resolved</code>, <code>dismissed</code> or <code>all</code>. <strong>Ignored when <code>cursor</code> or <code>since</code> is given.</strong></td></tr>
 <tr><td><code>cursor</code></td><td>A cursor: the <code>next</code> from this hub's previous response. Opaque; send it back unchanged.</td></tr>
 <tr><td><code>since</code></td><td>A cursor for clients that don't know <code>next</code>: the <code>server_time</code> from this hub's previous response.</td></tr>
-<tr><td><code>limit</code></td><td>Max items, default 500, max 2,000.</td></tr>
+<tr><td><code>limit</code></td><td>Max items, default 500, max 2,000 (a value outside 1–2,000 is clamped; not an integer is a <code>400</code>).</td></tr>
 </tbody>
 </table></div>
 <p>Response:</p>
@@ -578,7 +580,8 @@ status line helpers and pollers (<code>needs-you status set</code>), not agents.
   "expires_at": "2026-10-14T09:00:00.000Z"
 }</code></pre></div>
 <p>Window <code>name</code> is <code>[a-z0-9-]{1,20}</code>; the producers send <code>5h</code> (the session window) and <code>7d</code>
-(the weekly one), and clients show other names as they are. <code>used_pct</code> is a number from 0 to
+(the weekly one), and clients show other names as they are. Window names within one status must
+differ (<code>400</code>, <code>field</code> <code>usage.windows</code>). <code>used_pct</code> is a number from 0 to
 100 (kept to one decimal). <code>resets_at</code> is a timestamp or <code>null</code>; a client shows a window whose
 <code>resets_at</code> has passed as reset (0 %), since the numbers are only as fresh as the last write.</p>
 <h3 id="put-v1statuskey-sender"><code>PUT /v1/status/&lt;key&gt;</code> (sender) <a class="anchor" href="#put-v1statuskey-sender" aria-label="Link to this section">#</a></h3>
@@ -628,7 +631,7 @@ token. Codes are <code>nyi_</code> plus 192 random bits (URL-safe base64); hubs 
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Field</th><th>Rule</th><th>Default</th></tr></thead>
 <tbody>
-<tr><td><code>name</code></td><td>required, 1–40 chars of letters, digits, <code>.</code>, <code>_</code>, <code>@</code>, <code>-</code></td><td></td></tr>
+<tr><td><code>name</code></td><td>required, 1–40 chars of letters, digits, <code>.</code>, <code>_</code>, <code>@</code>, <code>-</code>, starting with a letter or digit</td><td></td></tr>
 <tr><td><code>role</code></td><td><code>sender</code>, <code>reader</code>, <code>owner</code>, or <code>peer</code> (another hub, <a href="#peer-invites">below</a>)</td><td><code>sender</code></td></tr>
 <tr><td><code>uses</code></td><td>integer 1–100; exactly 1 for <code>peer</code></td><td>1</td></tr>
 <tr><td><code>ttl_hours</code></td><td>number, more than 0 and at most 2160 (90 days); at most 24 for <code>peer</code></td><td>72; 1 for <code>peer</code></td></tr>
@@ -641,7 +644,8 @@ token. Codes are <code>nyi_</code> plus 192 random bits (URL-safe base64); hubs 
  "id": "01M...", "name": "my-server", "role": "sender", "uses": 1,
  "install_command": "curl -fsSL http://hub-a.example.ts.net:8765/join/nyi_.../install.sh | bash -s -- --yes --claude-hooks user --skill --alerts",
  "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp &lt;agents&gt; registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions &lt;agents&gt; adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}</code></pre></div>
-<p><code>install_command</code> and <code>agent_prompt</code> are only present for <code>sender</code> invites. Both set up Claude
+<p><code>agent_prompt</code>, and the <code>curl … | bash</code> <code>install_command</code>, are only present for <code>sender</code> invites
+(a <code>peer</code> invite has its own <code>install_command</code>, below). Both set up Claude
 Code alerts (<code>--claude-hooks user --skill --alerts</code>); the join page lists the other options.
 The prompt ends by having the agent run <code>needs-you doctor</code> and act on, or relay, the next step
 under each <code>WARN</code> or <code>FAIL</code> line. Its wording isn't a contract: show it as sent. The URLs use the
@@ -726,7 +730,7 @@ secret. It has one use, lives 1 hour by default (at most 24), and stays on the h
 it is never replicated (it names this hub). Redeeming it mints no token. The joining hub
 (<code>needs-you-admin peer join -</code> with the <code>join_url</code> on stdin, which <code>install-hub.sh --join -</code> runs) sends:</p>
 <div class="code"><pre><code class="language-json">{"code": "nyi_...", "host": "hub-b",
- "peer": {"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "schema": 9}}</code></pre></div>
+ "peer": {"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "schema": 11}}</code></pre></div>
 <ul>
 <li><code>peer.url</code>: the joining hub's <code>public_url</code>, <code>http(s)://host[:port]</code> only (no user, path,
 query or fragment; a trailing <code>/</code> is dropped, the scheme and host lowercased). <code>https</code> to any
@@ -734,7 +738,7 @@ host, or plain <code>http</code> only to a tailnet name (<code>*.ts.net</code>),
 <code>fd7a:115c:a1e0::/48</code>) or loopback: the inviting hub sends that URL its secret and every
 record. Use the MagicDNS name, which survives a tailnet IP change.</li>
 <li><code>peer.hub_id</code>: its id (same rule as <code>hub_id</code> in the config).</li>
-<li><code>peer.schema</code>: its database schema version (<code>PRAGMA user_version</code>; 9 for this release).</li>
+<li><code>peer.schema</code>: its database schema version (<code>PRAGMA user_version</code>; 11 as of 0.5.1).</li>
 </ul>
 <p>The code is checked first (<code>404</code> as above, counted). Then, without spending the use: a
 malformed <code>peer</code> is a <code>400</code> (<code>field</code> names the part); the inviting hub's own <code>hub_id</code> or URL is
@@ -745,7 +749,7 @@ fields the newer one writes, such as <code>question</code> and <code>answer</cod
 sent with a <code>sender</code>, <code>reader</code> or <code>owner</code> invite is a <code>400</code> (<code>"field": "peer"</code>).</p>
 <p>Response <code>200</code>:</p>
 <div class="code"><pre><code class="language-json">{"role": "peer", "name": "hub-b", "peer_secret": "nyp_...", "link_id": "pl_...",
- "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 9, "version": "0.2.1",
+ "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 11, "version": "0.5.1",
  "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"]}</code></pre></div>
 <p><code>peer_secret</code> (<code>nyp_</code> plus 256 random bits) is this pair's own replication secret, and
 <code>link_id</code> (<code>pl_</code> plus 96 random bits, not a secret) names the pair: every replication request
@@ -815,6 +819,15 @@ empty script and exit 0, which reads as success.</p>
 <tr><td><code>needs_you_mcp.py</code></td><td><code>integrations/mcp/needs_you_mcp.py</code> (the MCP server; the installer's <code>--mcp</code>)</td></tr>
 <tr><td><code>needs-you-usage</code></td><td><code>integrations/claude-code/needs-you-usage</code> (Claude's usage-limit status line helper; the installer's <code>--usage</code>)</td></tr>
 <tr><td><code>agent-instructions.md</code></td><td><code>integrations/agent-instructions/needs-you.md</code> (the skill's rules for Codex, Gemini CLI and opencode; <code>--agent-instructions</code>)</td></tr>
+<tr><td><code>install-codex-hooks.sh</code>, <code>codex-hooks.json</code></td><td><code>integrations/codex/</code> (OpenAI Codex CLI hooks; <code>--codex-hooks</code>)</td></tr>
+<tr><td><code>install-gemini-hooks.sh</code>, <code>gemini-hooks.json</code></td><td><code>integrations/gemini/</code> (Gemini CLI hooks; <code>--gemini-hooks</code>)</td></tr>
+<tr><td><code>install-opencode-plugin.sh</code>, <code>needs-you-opencode.js</code></td><td><code>integrations/opencode/</code> (<code>needs-you-opencode.js</code> is <code>needs-you.js</code>; <code>--opencode-plugin</code>)</td></tr>
+<tr><td><code>install-copilot-hooks.sh</code>, <code>copilot-hooks.json</code></td><td><code>integrations/copilot/</code> (GitHub Copilot CLI hooks; <code>--copilot-hooks</code>)</td></tr>
+<tr><td><code>install-cursor-hooks.sh</code>, <code>cursor-hooks.json</code></td><td><code>integrations/cursor/</code> (Cursor hooks; <code>--cursor-hooks</code>)</td></tr>
+<tr><td><code>install-cline-hooks.sh</code></td><td><code>integrations/cline/</code> (Cline hooks; <code>--cline-hooks</code>)</td></tr>
+<tr><td><code>install-aider-notifications.sh</code></td><td><code>integrations/aider/</code> (Aider's notifications command; <code>--aider</code>)</td></tr>
+<tr><td><code>install-kimi-hooks.sh</code>, <code>kimi-hooks.toml</code></td><td><code>integrations/kimi/</code> (Kimi Code hooks; <code>--kimi-hooks</code>)</td></tr>
+<tr><td><code>install-grok-hooks.sh</code>, <code>grok-hooks.json</code></td><td><code>integrations/grok/</code> (Grok Build hooks; <code>--grok-hooks</code>)</td></tr>
 <tr><td><code>manifest.json</code></td><td>generated: see below</td></tr>
 </tbody>
 </table></div>
@@ -935,7 +948,7 @@ clients just see no meters. Token records carry <code>id</code>, <code>name</cod
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ],
- "statuses": [ ...status records... ]}</code></pre></div>
+ "invites": [ ...invite records... ], "statuses": [ ...status records... ]}</code></pre></div>
 <p>Response <code>{"ok": true, "applied": &lt;n&gt;, "hub_id": "hub-b", "skipped": [...]}</code>; <code>409 self</code> if
 <code>from_hub</code> is the receiving hub's own id (the sender then stops using that peer).</p>
 <p><strong>Unreadable items are skipped, not the batch.</strong> An item record the receiver can't read (a
@@ -952,7 +965,7 @@ never its hash) and nothing in it is applied. The pusher keeps that record, and 
 behind it, retries with backoff, and reports it in its peer status as <code>blocked</code>. The same
 holds for a pull: the puller's cursor stays before such a record. Replication resumes by itself
 once both hubs run a version that reads it. A body that isn't a JSON object, or a
-<code>tokens</code>/<code>items</code>/<code>invites</code> that isn't an array, is a <code>400</code> too.</p>
+<code>tokens</code>/<code>items</code>/<code>invites</code>/<code>statuses</code> that isn't an array, is a <code>400</code> too.</p>
 <p>Hubs up to 0.1.2 have no <code>skipped</code> and answer <code>400</code> for the whole batch when any record
 doesn't parse; against them the pusher halves the batch (without backing off) until the
 refused record is alone, then skips it if it is an item and holds it (as above) if it is a
@@ -970,7 +983,7 @@ Outbox rows survive restarts. The admin tool writes to the same outbox, so
 <h3 id="pull-anti-entropy-get-v1replicatechangesafterseqlimitn">Pull (anti-entropy): <code>GET /v1/replicate/changes?after=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> <a class="anchor" href="#pull-anti-entropy-get-v1replicatechangesafterseqlimitn" aria-label="Link to this section">#</a></h3>
 <p>Every stored version gets a per-hub sequence number. The response is</p>
 <div class="code"><pre><code class="language-json">{"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
- "items": [ ... ], "tokens": [ ... ], "statuses": [ ... ]}</code></pre></div>
+ "items": [ ... ], "tokens": [ ... ], "invites": [ ... ], "statuses": [ ... ]}</code></pre></div>
 <p>Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
 paging while <code>more</code> is true. An item record in a page that the puller can't read is skipped
 (logged, counted and quarantined, like a skipped push) and the cursor still moves past it; a

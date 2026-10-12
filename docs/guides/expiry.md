@@ -58,7 +58,7 @@ Add `renew=https://...` to give the card a **Renew** button that opens the page 
 
 ## Check it works
 
-Step 3 prints every date it read (`-v`) and the cards it would post: anything within 30 days. Put a `key "Test key" <a date next week>` line in, run `needs-you-expiry` once, and a normal "Test key expires ..." card appears on your Mac. Take the line out, run it again, and the card clears.
+Step 3 prints every date it read (`-v`) and the cards it would post: anything within 30 days. Put a `key "Test key" <a date 5 days from now>` line in, run `needs-you-expiry` once, and a normal "Test key expires ..." card appears on your Mac. Take the line out, run it again, and the card clears.
 
 ## Tune it
 

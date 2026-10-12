@@ -76,7 +76,7 @@ https://github.com/tayharris/needs-you/blob/main/docs/guides/custom-connector.md
 needs-you resolve --key "acme-agent:devbox:3f9c2a:waiting"</code></pre></div>
 <ul>
 <li>It tries each hub in <code>NEEDS_YOU_URLS</code> in order (failover), and when none answers it queues the request in <code>~/.local/state/needs-you/outbox/</code> and <strong>exits 0</strong>; the next call or the 5-minute <code>needs-you flush</code> sends it.</li>
-<li>It exits <strong>2</strong> when the hub refuses the request (a 4xx: bad field, bad token, volume guard) or the flags are wrong. A refused request is not queued, so test your connector (section 5) and wrap every call with <code>|| true</code> or ignore the exit code.</li>
+<li>It exits <strong>2</strong> when the hub refuses the request (a 4xx: bad field, bad token, volume guard) or the flags are wrong. A refused request is not queued (except <code>429 rate_limited</code>, which the CLI queues and sends after the hub's <code>retry_after</code>, exit 0), so test your connector (section 5) and wrap every call with <code>|| true</code> or ignore the exit code.</li>
 <li>Pass untrusted text as <code>--title=TEXT</code> / <code>--body=TEXT</code> (with <code>=</code>), so a value starting with <code>-</code> isn't read as an option, and call it with an argument list, never through <code>sh -c</code> with the text pasted in.</li>
 <li><code>needs-you --json add ...</code> prints the hub's response; <code>-q</code> prints nothing on success.</li>
 </ul>
@@ -128,7 +128,7 @@ curl -sS --max-time 5 -X POST "$NEEDS_YOU_URL/v1/items" \
 <tr><td><code>done</code></td><td>no</td><td>boolean</td><td><code>true</code> or <code>false</code>; anything else is a 400</td><td><code>false</code></td></tr>
 </tbody>
 </table></div>
-<p><strong>Same key, same card.</strong> If an item with this <code>key</code> is open (not resolved, dismissed or expired), the post updates it in place and keeps its id. A re-post is your whole current view: every field is replaced, and fields you leave out go back to their defaults. The card re-animates only when <code>title</code>, <code>body</code>, <code>priority</code> or <code>steps</code> changed. Otherwise a new item is created.</p>
+<p><strong>Same key, same card.</strong> If an item with this <code>key</code> is open (not resolved, dismissed or expired), the post updates it in place and keeps its id. A re-post is your whole current view: every field is replaced, and fields you leave out go back to their defaults. The card re-animates only when <code>title</code>, <code>body</code>, <code>priority</code>, <code>steps</code> or <code>question</code> changed. Otherwise a new item is created.</p>
 <p><strong>Response.</strong> <code>201</code> when created, <code>200</code> when an open item with the key was updated. The body is the item plus two booleans, <code>created</code> and <code>changed</code>:</p>
 <div class="code"><pre><code class="language-json">{"id": "01M4C6NFX41A7Y475SD1THXN5A", "key": "acme-agent:devbox:3f9c2a:waiting", "context": "work",
  "kind": "needs", "priority": "normal", "title": "acme-agent wants to run git: app", "body": null,
@@ -153,6 +153,7 @@ curl -sS --max-time 5 -X POST "$NEEDS_YOU_URL/v1/items" \
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB</td><td>Shorten it (the field limits keep a valid item far below this)</td></tr>
 <tr><td>421</td><td><code>misdirected</code></td><td>The URL's host name isn't one this hub answers to</td><td>The CLI tries the next hub; check <code>NEEDS_YOU_URLS</code></td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>This token already has 60 open items (<code>max_open_per_token</code>) and the post would create a new one. Re-posts of open keys still work</td><td>Something is looping: fix the keys (a timestamp or run id in the key?) and resolve what's open</td></tr>
+<tr><td>429</td><td><code>rate_limited</code></td><td>This token posted more than 120 times in a minute (re-posts count)</td><td>Something is looping; the CLI queues it and retries after <code>Retry-After</code>. With raw HTTP, wait that long</td></tr>
 <tr><td>500</td><td><code>internal</code></td><td>A hub bug</td><td>Report it; the hub's log has the details</td></tr>
 </tbody>
 </table></div>

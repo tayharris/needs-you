@@ -74,7 +74,7 @@ Linear assignments, comments, mentions and status changes (<a href="linear.html"
 </ul>
 <h2 id="setup-on-a-machine-once">Setup on a machine (once) <a class="anchor" href="#setup-on-a-machine-once" aria-label="Link to this section">#</a></h2>
 <p>The person makes an <strong>invite link</strong> (Mac app: Settings → <strong>Connect a machine</strong> → **Create
-invite**; on a server hub: <code>needs-you-admin invite create</code>). It looks like
+invite**; on a server hub: <code>needs-you-admin invite create &lt;name&gt; --role sender</code>). It looks like
 <code>http://my-mac.example.ts.net:8765/join/nyi_...</code>. If you're an agent and were given one:</p>
 <ol>
 <li>Read the link. It's Markdown written for you: the install line, its options and the rules.</li>
@@ -87,7 +87,7 @@ Code (plus <code>--ssh-alias &lt;name&gt;</code> if the person reaches it from t
 <code>--orca</code> for Orca automations, <code>--context personal</code> if
 its items are personal. Only if the person asks: <code>--agent-instructions codex,gemini,opencode</code>
 (these rules in those agents' own instruction files) and <code>--mcp &lt;agents&gt;</code> (the MCP server,
-registered with <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>opencode</code> or <code>copilot</code>).</li>
+registered with <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>opencode</code>, <code>copilot</code> or <code>cursor</code>).</li>
 <li>Run <code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes [options]</code>.</li>
 <li>Report the health line (<code>&lt;hub url&gt;  OK  hub=... token=&lt;name&gt; role=sender</code>), never the
 token. Then run <code>~/.local/bin/needs-you doctor</code> (the new <code>PATH</code> reaches new shells only)
@@ -102,7 +102,8 @@ machine's own, writes <code>~/.config/needs-you/env</code> (mode 600) and adds a
 <div class="code"><pre><code class="language-bash">NEEDS_YOU_URLS=http://my-mac.example.ts.net:8765,http://hub-a.example.ts.net:8765   # tried in order
 NEEDS_YOU_URL=http://my-mac.example.ts.net:8765                                      # the first, for curl
 NEEDS_YOU_TOKEN=&lt;this machine's token&gt;
-NEEDS_YOU_DEFAULT_CONTEXT=work                                                       # if --context was given</code></pre></div>
+NEEDS_YOU_DEFAULT_CONTEXT=work                                                       # if --context was given
+NEEDS_YOU_AUTO_UPDATE=1                                       # unless --no-auto-update: the flush runs needs-you update daily</code></pre></div>
 <p>Re-running is safe and keeps the token unless <code>--force</code> is passed. Without a link,
 <code>scripts/setup-sender.sh</code> asks for URLs and a token (<a href="add-a-sender.html">Add a sender</a>).
 Each machine, and each project with its own CI, has its own token: never copy one between
@@ -240,7 +241,7 @@ context; that belongs where they can see what will run.</li>
 <h3 id="when-something-seems-wrong">When something seems wrong <a class="anchor" href="#when-something-seems-wrong" aria-label="Link to this section">#</a></h3>
 <p>Run <code>needs-you doctor --json</code> when you're unsure the machine is set up (a post queued instead
 of sending, <code>command not found</code>, a hook that never fires). It prints
-<code>{"ok": ..., "checks": [{"check", "status", "detail", "hint"}]}</code>. <code>status</code> is <code>OK</code>, <code>WARN</code>,
+<code>{"ok": ..., "version": ..., "checks": [{"check", "status", "detail", "hint"}]}</code>. <code>status</code> is <code>OK</code>, <code>WARN</code>,
 <code>FAIL</code> or <code>INFO</code>; on a <code>WARN</code> or <code>FAIL</code>, <code>hint</code> is one next step: a command to run, or what to
 ask the person for. It exits 1 on any <code>FAIL</code>, is read-only, never posts and never prints the
 token.</p>

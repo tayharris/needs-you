@@ -4903,7 +4903,7 @@ class Doctor:
                 # A tip, never a WARN: Orca is optional, and doctor never posts anything.
                 self.add("orca", "INFO", "%d git worktrees in this repo, and Orca isn't installed" % n,
                          "optional: Orca runs agents in worktrees and switches between them, and needs-you "
-                         "cards from its terminals get a Terminal button (see the Orca guide, docs/guides/orca.md)")
+                         "cards from its terminals get an Orca button (see the Orca guide, docs/guides/orca.md)")
             return
         parts = ["ORCA_TERMINAL_HANDLE %s" % ("set" if handle else "not set (not an Orca terminal)"),
                  "ORCA_WORKTREE_ID %s" % ("set" if os.environ.get("ORCA_WORKTREE_ID") else "not set")]

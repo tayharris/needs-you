@@ -27,8 +27,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 
   | Role | Can call |
   |---|---|
-  | `sender` | `POST /v1/items`, `POST /v1/items/resolve`, `PUT`/`DELETE /v1/status/<key>` |
-  | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `GET /v1/stream`, `GET /v1/status` |
+  | `sender` | `POST /v1/items`, `POST /v1/items/resolve`, `GET /v1/items/answer`, `PUT`/`DELETE /v1/status/<key>` |
+  | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `POST /v1/items/{id}/answer`, `GET /v1/stream`, `GET /v1/status` |
   | `owner` | everything `reader` can, plus invites (`/v1/invites`), tokens (`/v1/tokens`) and peers (`/v1/peers`): list, create, revoke, remove and request updates (the Mac app) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
@@ -44,7 +44,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   only updates `last_seen_at`, which is written at most every 10 minutes unless the versions change.
 - **Update requests (optional):** while the owner has asked a sender token's machine to update
   (`POST /v1/tokens/<id>/request-update`, below), every **2xx** JSON response to a request made
-  with that token (`POST /v1/items`, `POST /v1/items/resolve`, token-checked `GET /v1/health`)
+  with that token (`POST /v1/items`, `POST /v1/items/resolve`, `GET /v1/items/answer`,
+  `PUT`/`DELETE /v1/status/<key>`, token-checked `GET /v1/health`; not a body-less `204`)
   carries `"update_requested": true`. Absent otherwise. It is a flag only: no URL, version or
   command comes with it. A CLI that understands it runs its own `needs-you update` (with
   auto-update on) or prints a reminder; older clients ignore it.
@@ -57,16 +58,16 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 400 | `invalid` | Validation failed, bad JSON, bad query parameter |
   | 401 | `unauthorized` | Missing, unknown or revoked token (or bad peer secret) |
   | 403 | `forbidden` | Valid token, wrong role for the endpoint, or typed answer `text` from a reader token ([answers](#post-v1itemsidanswer-reader)) |
-  | 404 | `not_found` | Unknown endpoint, unknown id on `GET`/`PATCH /v1/items/{id}`, or nothing to revoke on `DELETE /v1/invites/…` / `/v1/tokens/…` |
+  | 404 | `not_found` | Unknown endpoint, unknown id (`GET`/`PATCH /v1/items/{id}`, `POST /v1/items/{id}/answer`), no item for this token on `GET /v1/items/answer`, unknown invite code, nothing to revoke, withdraw or remove (`/v1/invites/…`, `/v1/tokens/…`, `/v1/peers/…`), a file not on the `/dl` list, or replication on a hub with no peer secret |
   | 409 | `self` | A hub tried to replicate to itself, or to redeem its own peer invite |
-  | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer |
+  | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite |
   | 409 | `peer_outdated` | A hub redeeming a peer invite has an older schema than the inviting hub ([peer invites](#peer-invites)) |
   | 409 | `not_open`, `not_answerable`, `question_expired`, `question_changed`, `already_answered` | An answer that can't be taken ([answers](#post-v1itemsidanswer-reader)) |
   | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
-  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds) |
-  | 400 | `secret_in_text` | A status key, label, detail, account or source field looks like a token or key ([status records](#status-records-usage-meters)) |
+  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), too many answer reads (`GET /v1/items/answer`, 120 a minute by default, or more than 4 long polls open at once), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds) |
+  | 400 | `secret_in_text` | A status key, label, detail, account or source field looks like a token or key ([status records](#status-records-usage-meters)), or an answer's typed `text` holds a needs-you token, invite code or peer secret ([answers](#post-v1itemsidanswer-reader)) |
   | 429 | `too_many_status`, `too_fast` | A status write over the live-status limits, or a second write to one status key within 10 s (with `Retry-After`) |
   | 429 | `rate_limited` | Too many status sets and clears from one token (120 a minute by default, apart from posts; with `Retry-After`) |
   | 500 | `internal` | Bug; details are in the hub's log |
@@ -459,7 +460,8 @@ How a sender reads back the answer to its own question: only the token that post
 item with that key, else the last one updated.
 
 - `wait`: seconds to hold the request while there is no answer (a long poll), `0` to `25`,
-  default `25`.
+  default `25`; a value outside that is clamped to it, and one that isn't a number is a `400`
+  (`field` `wait`).
 
 A token may read at most 120 times a minute (`answer_read_rate_limit`) and hold at most 4
 long polls at once (`answer_waits_per_token`); past either, `429 rate_limited` at once. A
@@ -487,7 +489,7 @@ Query parameters:
 | `status` | `open` (default), `resolved`, `dismissed` or `all`. **Ignored when `cursor` or `since` is given.** |
 | `cursor` | A cursor: the `next` from this hub's previous response. Opaque; send it back unchanged. |
 | `since` | A cursor for clients that don't know `next`: the `server_time` from this hub's previous response. |
-| `limit` | Max items, default 500, max 2,000. |
+| `limit` | Max items, default 500, max 2,000 (a value outside 1–2,000 is clamped; not an integer is a `400`). |
 
 Response:
 
@@ -599,7 +601,8 @@ status line helpers and pollers (`needs-you status set`), not agents.
 ```
 
 Window `name` is `[a-z0-9-]{1,20}`; the producers send `5h` (the session window) and `7d`
-(the weekly one), and clients show other names as they are. `used_pct` is a number from 0 to
+(the weekly one), and clients show other names as they are. Window names within one status must
+differ (`400`, `field` `usage.windows`). `used_pct` is a number from 0 to
 100 (kept to one decimal). `resets_at` is a timestamp or `null`; a client shows a window whose
 `resets_at` has passed as reset (0 %), since the numbers are only as fresh as the last write.
 
@@ -666,7 +669,7 @@ token. Codes are `nyi_` plus 192 random bits (URL-safe base64); hubs store only 
 
 | Field | Rule | Default |
 |---|---|---|
-| `name` | required, 1–40 chars of letters, digits, `.`, `_`, `@`, `-` | |
+| `name` | required, 1–40 chars of letters, digits, `.`, `_`, `@`, `-`, starting with a letter or digit | |
 | `role` | `sender`, `reader`, `owner`, or `peer` (another hub, [below](#peer-invites)) | `sender` |
 | `uses` | integer 1–100; exactly 1 for `peer` | 1 |
 | `ttl_hours` | number, more than 0 and at most 2160 (90 days); at most 24 for `peer` | 72; 1 for `peer` |
@@ -682,7 +685,8 @@ Response `201`:
  "agent_prompt": "Set up needs-you alerts on this machine: read http://hub-a.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp <agents> registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions <agents> adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."}
 ```
 
-`install_command` and `agent_prompt` are only present for `sender` invites. Both set up Claude
+`agent_prompt`, and the `curl … | bash` `install_command`, are only present for `sender` invites
+(a `peer` invite has its own `install_command`, below). Both set up Claude
 Code alerts (`--claude-hooks user --skill --alerts`); the join page lists the other options.
 The prompt ends by having the agent run `needs-you doctor` and act on, or relay, the next step
 under each `WARN` or `FAIL` line. Its wording isn't a contract: show it as sent. The URLs use the
@@ -800,7 +804,7 @@ it is never replicated (it names this hub). Redeeming it mints no token. The joi
 
 ```json
 {"code": "nyi_...", "host": "hub-b",
- "peer": {"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "schema": 9}}
+ "peer": {"url": "http://hub-b.example.ts.net:8765", "hub_id": "hub-b", "schema": 11}}
 ```
 
 - `peer.url`: the joining hub's `public_url`, `http(s)://host[:port]` only (no user, path,
@@ -809,7 +813,7 @@ it is never replicated (it names this hub). Redeeming it mints no token. The joi
   `fd7a:115c:a1e0::/48`) or loopback: the inviting hub sends that URL its secret and every
   record. Use the MagicDNS name, which survives a tailnet IP change.
 - `peer.hub_id`: its id (same rule as `hub_id` in the config).
-- `peer.schema`: its database schema version (`PRAGMA user_version`; 9 for this release).
+- `peer.schema`: its database schema version (`PRAGMA user_version`; 11 as of 0.5.1).
 
 The code is checked first (`404` as above, counted). Then, without spending the use: a
 malformed `peer` is a `400` (`field` names the part); the inviting hub's own `hub_id` or URL is
@@ -823,7 +827,7 @@ Response `200`:
 
 ```json
 {"role": "peer", "name": "hub-b", "peer_secret": "nyp_...", "link_id": "pl_...",
- "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 9, "version": "0.2.1",
+ "hub_id": "hub-a", "hub_url": "http://hub-a.example.ts.net:8765", "schema": 11, "version": "0.5.1",
  "hub_urls": ["http://hub-a.example.ts.net:8765", "http://hub-b.example.ts.net:8765"]}
 ```
 
@@ -914,6 +918,15 @@ Serves files from the hub's install directory (`install_dir`, default: the direc
 | `needs_you_mcp.py` | `integrations/mcp/needs_you_mcp.py` (the MCP server; the installer's `--mcp`) |
 | `needs-you-usage` | `integrations/claude-code/needs-you-usage` (Claude's usage-limit status line helper; the installer's `--usage`) |
 | `agent-instructions.md` | `integrations/agent-instructions/needs-you.md` (the skill's rules for Codex, Gemini CLI and opencode; `--agent-instructions`) |
+| `install-codex-hooks.sh`, `codex-hooks.json` | `integrations/codex/` (OpenAI Codex CLI hooks; `--codex-hooks`) |
+| `install-gemini-hooks.sh`, `gemini-hooks.json` | `integrations/gemini/` (Gemini CLI hooks; `--gemini-hooks`) |
+| `install-opencode-plugin.sh`, `needs-you-opencode.js` | `integrations/opencode/` (`needs-you-opencode.js` is `needs-you.js`; `--opencode-plugin`) |
+| `install-copilot-hooks.sh`, `copilot-hooks.json` | `integrations/copilot/` (GitHub Copilot CLI hooks; `--copilot-hooks`) |
+| `install-cursor-hooks.sh`, `cursor-hooks.json` | `integrations/cursor/` (Cursor hooks; `--cursor-hooks`) |
+| `install-cline-hooks.sh` | `integrations/cline/` (Cline hooks; `--cline-hooks`) |
+| `install-aider-notifications.sh` | `integrations/aider/` (Aider's notifications command; `--aider`) |
+| `install-kimi-hooks.sh`, `kimi-hooks.toml` | `integrations/kimi/` (Kimi Code hooks; `--kimi-hooks`) |
+| `install-grok-hooks.sh`, `grok-hooks.json` | `integrations/grok/` (Grok Build hooks; `--grok-hooks`) |
 | `manifest.json` | generated: see below |
 
 Anything else is a `404`. A file the install directory lacks is a `404` too.
@@ -1052,7 +1065,7 @@ token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ```json
 {"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ],
- "statuses": [ ...status records... ]}
+ "invites": [ ...invite records... ], "statuses": [ ...status records... ]}
 ```
 
 Response `{"ok": true, "applied": <n>, "hub_id": "hub-b", "skipped": [...]}`; `409 self` if
@@ -1073,7 +1086,7 @@ never its hash) and nothing in it is applied. The pusher keeps that record, and 
 behind it, retries with backoff, and reports it in its peer status as `blocked`. The same
 holds for a pull: the puller's cursor stays before such a record. Replication resumes by itself
 once both hubs run a version that reads it. A body that isn't a JSON object, or a
-`tokens`/`items`/`invites` that isn't an array, is a `400` too.
+`tokens`/`items`/`invites`/`statuses` that isn't an array, is a `400` too.
 
 Hubs up to 0.1.2 have no `skipped` and answer `400` for the whole batch when any record
 doesn't parse; against them the pusher halves the batch (without backing off) until the
@@ -1098,7 +1111,7 @@ Every stored version gets a per-hub sequence number. The response is
 
 ```json
 {"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
- "items": [ ... ], "tokens": [ ... ], "statuses": [ ... ]}
+ "items": [ ... ], "tokens": [ ... ], "invites": [ ... ], "statuses": [ ... ]}
 ```
 
 Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and

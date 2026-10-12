@@ -13,10 +13,16 @@
   <meta property="og:site_name" content="needs-you">
   <meta property="og:title" content="needs-you">
   <meta property="og:description" content="One inbox for &quot;you have to do something&quot;, fed by your agents, servers and CI.">
-  <meta name="twitter:card" content="summary">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="canonical" href="https://needsyou.app/">
   <meta property="og:url" content="https://needsyou.app/">
-  <!-- TODO: og:image (a 1200x630 PNG in site/; most crawlers ignore SVG). -->
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:image" content="https://needsyou.app/img/og.png">
+  <meta name="twitter:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
@@ -240,9 +246,9 @@
         <figcaption>Settings &rarr; Built-in hub: the hub inside the app, on by default.</figcaption>
       </figure>
       <p><strong>Senders are the one-file <code>needs-you</code> command.</strong> It tries each hub in turn. If none answers (your Mac is asleep, say), it keeps the alert in a local outbox, exits cleanly so the job carries on, and sends it later.</p>
-      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. A server joins the app's built-in hub with a one-use link from Settings &rarr; Built-in hub, and from then on they copy every write to each other (<a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a>). Most people don't need one.</p>
+      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. A server joins the app's built-in hub with a one-use link from Settings &rarr; Built-in hub, and from then on they copy every write to each other (<a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a>). A server hub updates itself from GitHub releases, checked like the app's own updates (<a href="guides/hub.html#automatic-updates">how</a>). Most people don't need one.</p>
       <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
-      <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day, closed items are deleted after 7 days, and a sender's outbox keeps at most 500 alerts for 7 days.</p>
+      <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day. A closed item's text is deleted a day after it closes, and what's left of it (no text) after 30 days. A sender's outbox keeps at most 500 alerts for 7 days.</p>
 
       <h3 id="weight">How heavy is it?</h3>
       <div class="table-wrap">
@@ -291,7 +297,7 @@
           </ul>
         </div>
       </div>
-      <p class="note">The pollers for Linear, Jira, GitHub and expiry dates run on one always-on machine; in the app, Settings &rarr; Integrations &rarr; Cards from your tools gives each one's commands and an agent prompt that sets it up (<a href="guides/mac-app.html#cards-from-your-tools">how</a>).</p>
+      <p class="note">The pollers for Linear, Jira, GitHub and expiry dates run on one always-on machine; in the app, Settings &rarr; Integrations &rarr; Cards from your tools gives each one's commands and an agent prompt that sets it up (<a href="guides/mac-app.html#cards-from-your-tools">how</a>). They're in the 0.5 pre-releases: in the app, Settings &rarr; Updates &rarr; <strong>Releases and pre-releases</strong> gets them.</p>
       <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>. For any other agent or tool with hooks, webhooks or a notification command, <a href="guides/custom-connector.html">build a custom connector</a>: the guide has the exact item format, which fields are required, and tested examples.</p>
       <p class="note">Most of these haven't been used with a real model yet. If you use one, <a href="#help-test">help us test it</a>.</p>
     </section>

@@ -7,7 +7,7 @@ A sender is anything that posts items: an agent, an Orca automation, a VM's cron
 1. **Make a link.** In the Mac app: right-click the pill → **Settings…** → **Connect a machine** (or **Connect a Machine…** in the menu bar menu), keep *A server or agent that sends alerts*, set **Uses** to the number of machines, **Create invite**. On a server hub: `needs-you-admin invite create my-server --role sender --uses 3 --ttl 72`. You get:
    - a join URL, e.g. `http://my-mac.example.ts.net:8765/join/nyi_...`,
    - a one-liner: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`. The last three options set up Claude Code alerts; on a machine without Claude Code, drop them ([Options](#options)),
-   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."* ([Codex](codex.md))
+   - an agent prompt: *"Set up needs-you alerts on this machine: read &lt;join_url&gt; and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, add --codex-hooks user; Gemini CLI, add --gemini-hooks user; opencode, add --opencode-plugin; GitHub Copilot CLI, add --copilot-hooks user; Kimi Code, add --kimi-hooks user; Grok Build, add --grok-hooks user; Cursor, add --cursor-hooks user; Cline, add --cline-hooks user; Aider, add --aider. Only if I ask for them: --mcp &lt;agents&gt; registers the needs-you MCP server (claude, codex, gemini, opencode, copilot, cursor) and --agent-instructions &lt;agents&gt; adds the posting rules to their instruction files (codex, gemini, opencode). Daily updates are on by default (the 5-minute flush runs needs-you update); add --no-auto-update only if I ask. Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one."* ([Codex](codex.md))
 2. **Use it on the machine.** Paste the prompt into the machine's agent (Claude Code, Orca), or run the one-liner yourself. The machine must reach the hub: on the Mac itself `127.0.0.1` always works (pass `--hub http://127.0.0.1:8765` if the link's MagicDNS name doesn't resolve) and the installer puts it first; elsewhere it must be on the tailnet.
 3. **Check** the card that the installer posts (`setup:<host>:test`, under **Recent**). On the machine, open a new terminal and run `needs-you doctor`: every line should be `OK` or `INFO`.
 
@@ -56,9 +56,12 @@ Add them after `--yes`: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --s
 | `--host NAME` | This machine's name (default: short hostname). |
 | `--hub URL` | Use a different URL for the same hub (e.g. its IP while DNS is broken). It is used for the install and saved first in `NEEDS_YOU_URLS`, ahead of the hub's advertised URLs. |
 | `--no-schedule` | Don't add the 5-minute flush. |
+| `--mcp AGENTS` | Install the MCP server as `~/.local/bin/needs-you-mcp` and register it with these agents (comma-separated: `claude`, `codex`, `gemini`, `opencode`, `copilot`, `cursor`). See [mcp.md](mcp.md). |
+| `--agent-instructions AGENTS` | The posting rules as a marked block in `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md` or `~/.config/opencode/AGENTS.md` (`codex`, `gemini`, `opencode`). |
+| `--usage` | Install `~/.local/bin/needs-you-usage`, a Claude Code status line helper that posts a card when the 5-hour or weekly limit runs high (you add it to `statusLine` yourself; [Claude Code](claude-code.md)). |
 | `--no-path` | Don't add `~/.local/bin` to `PATH` in your shell profile; print the line instead. |
 | `--force` | Redeem again and replace an existing token (needs a link with a use left). |
-| `--uninstall` | Remove the CLI, the config, the flush schedule, the skill, local state (outbox, hook markers) and (if installed) the user-level hooks. Works until the link expires or is revoked. |
+| `--uninstall` | Remove the CLI, the config, the flush schedule, the skill, local state (outbox, hook markers) and (if installed) the user-level hooks, the MCP server, `needs-you-usage` and the instruction blocks. Works until the link expires or is revoked. |
 
 Re-running with an already-configured machine updates the CLI and the schedule and keeps the token and every setting you don't pass again (the PATH line is added once). It doesn't spend a use, and it works until the link expires or is revoked, also after its last use is spent. A new machine (or `--force`) needs a use left; the installer stops with exit 1 before installing anything if there's none. Give provisioning scripts a link with a long enough expiry (up to 90 days).
 
@@ -76,7 +79,7 @@ Mint a token on a server hub (`needs-you-admin token add <name> --role sender`),
 ./scripts/setup-sender.sh
 ```
 
-It installs the CLI, asks for the hub URLs and the token (hidden input), writes `~/.config/needs-you/env`, checks health, schedules the 5-minute `needs-you flush` (crontab on Linux, a LaunchAgent on macOS, like the installer), puts `~/.local/bin` on `PATH` in your shell profile, and offers a test item. Re-running it is safe. Unattended:
+It installs the CLI, asks for the hub URLs and the token (hidden input), writes `~/.config/needs-you/env`, checks health, schedules the 5-minute `needs-you flush` (crontab on Linux, a LaunchAgent on macOS, like the installer), turns on daily updates (`NEEDS_YOU_AUTO_UPDATE=1`), puts `~/.local/bin` on `PATH` in your shell profile, and offers a test item. Re-running it is safe. Unattended:
 
 ```bash
 printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
@@ -93,18 +96,20 @@ printf '%s' "$TOKEN" | ./scripts/setup-sender.sh --non-interactive \
 | `--test` / `--no-test` | Post (or don't) the test item. `--test-context work\|personal`. |
 | `--require-health` | Exit 3 if no hub answers. |
 | `--no-schedule` / `--no-path` | Skip the flush schedule / the shell profile line. |
+| `--no-auto-update` / `--auto-update` | Turn daily updates off / back on, as in the installer above. |
 | `--alerts`, `--context-alert`, `--ssh-alias`, `--agent-link`, `--orca-environment` | Claude Code hook settings, as in the installer above. |
 | `--orca-usage` | The Orca accounts' usage meters, as in the installer above. |
 
 ## The sender's config
 
-The CLI, the agent hooks and the pollers (GitHub, Linear, Jira, expiry) all read `~/.config/needs-you/env`: `KEY=VALUE` lines, mode 600. A variable set in the environment wins over the same line in the file. The installer writes the first three; the rest are optional.
+The CLI, the agent hooks and the pollers (GitHub, Linear, Jira, expiry) all read `~/.config/needs-you/env`: `KEY=VALUE` lines, mode 600. A variable set in the environment wins over the same line in the file. The installer writes the first three and `NEEDS_YOU_AUTO_UPDATE` (and `NEEDS_YOU_DEFAULT_CONTEXT` with `--context`); the rest are optional.
 
 | Variable | Meaning |
 |---|---|
 | `NEEDS_YOU_URLS` | Hub URLs, comma-separated, tried in order (failover). Preferred over `NEEDS_YOU_URL` |
-| `NEEDS_YOU_URL` | A hub URL (or a comma-separated list), used when `NEEDS_YOU_URLS` is unset |
+| `NEEDS_YOU_URL` | A hub URL (or a comma-separated list), used when `NEEDS_YOU_URLS` is unset (one set in the environment wins over the file's `NEEDS_YOU_URLS`) |
 | `NEEDS_YOU_TOKEN` | This machine's sender token |
+| `NEEDS_YOU_AUTO_UPDATE` | `1`: the 5-minute flush runs `needs-you update` once a day (the installers' default); `0`: off. `needs-you update --enable-auto` / `--disable-auto` set it |
 | `NEEDS_YOU_DEFAULT_CONTEXT` | `work` or `personal`: the context when a sender doesn't give one (default `work`) |
 | `NEEDS_YOU_HOST` | The machine name on cards (default: the short hostname) |
 | `NEEDS_YOU_TIMEOUT` | Seconds to wait for each hub (default 3) |

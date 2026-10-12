@@ -91,7 +91,7 @@ NEEDS_YOU_LINEAR_CATEGORIES=-mention                         # turn events off (
 <li>"refusing the key file": run <code>chmod 600 ~/.config/needs-you/linear-key</code> as the user cron runs as.</li>
 <li>"Authentication required" or HTTP 400/401: the key was revoked or mistyped; make a new one and repeat step 2. After 3 failed runs in a row it posts one low card, "Linear alerts stopped on devbox", which clears on the next good run.</li>
 <li>Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see <a href="troubleshooting.html#a-sender-cant-reach-the-hub">troubleshooting</a>.</li>
-<li>To start over, delete <code>~/.local/state/needs-you/linear.json</code>. Cards it posted expire within 15 minutes on their own.</li>
+<li>To start over, delete <code>~/.local/state/needs-you/linear.json</code>. Cards it posted expire within 15 minutes on their own; a "Linear alerts stopped" card has no expiry, so dismiss it on the Mac.</li>
 </ul>
 <p>More in <a href="troubleshooting.html#linear-poller">troubleshooting</a>.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/linear.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/linear.md">docs/guides/linear.md</a> in the repo. View or edit it on GitHub.</p>

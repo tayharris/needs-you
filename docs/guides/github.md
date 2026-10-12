@@ -7,7 +7,7 @@ A small poller, `needs-you-github`, does this from **one** machine every 5 minut
 ## Before you start
 
 - A sender machine that's always on, such as a devbox: run an invite link's installer there first ([add-a-sender.md](add-a-sender.md)). `needs-you doctor` should show no `FAIL`.
-- [GitHub CLI](https://cli.github.com/) logged in on it: `gh auth status` says "Logged in". (`gh auth login` grants the `repo` and `notifications` scopes the poller needs.)
+- [GitHub CLI](https://cli.github.com/) logged in on it: `gh auth status` says "Logged in". (`gh auth login` grants the `repo` scope, which covers the notifications and pull requests the poller reads.)
 - `python3` 3.9 or newer.
 
 ## Set up (3 commands)
@@ -93,4 +93,4 @@ The full list of cards, keys and settings is in [integrations/github/README.md](
 - A "need gh's ... scope" card: run the `gh auth refresh -s ...` command it names. The poller checks again within the hour, and the card goes.
 - `gh` errors (logged out, token expired): fix with `gh auth login`. After 3 failed runs in a row it posts one low card, "GitHub alerts stopped on devbox", which clears on the next good run.
 - Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see [troubleshooting](troubleshooting.md#a-sender-cant-reach-the-hub).
-- To start over, delete `~/.local/state/needs-you/github.json`. Cards it posted expire within 15 minutes on their own.
+- To start over, delete `~/.local/state/needs-you/github.json`. Cards it posted expire within 15 minutes on their own (a merged-PR card after a day); a "GitHub alerts stopped" or "... cards need gh's ... scope" card has no expiry, so dismiss it on the Mac.

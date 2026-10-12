@@ -70,6 +70,6 @@ The full list of cards, keys and settings is in [integrations/linear/README.md](
 - "refusing the key file": run `chmod 600 ~/.config/needs-you/linear-key` as the user cron runs as.
 - "Authentication required" or HTTP 400/401: the key was revoked or mistyped; make a new one and repeat step 2. After 3 failed runs in a row it posts one low card, "Linear alerts stopped on devbox", which clears on the next good run.
 - Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see [troubleshooting](troubleshooting.md#a-sender-cant-reach-the-hub).
-- To start over, delete `~/.local/state/needs-you/linear.json`. Cards it posted expire within 15 minutes on their own.
+- To start over, delete `~/.local/state/needs-you/linear.json`. Cards it posted expire within 15 minutes on their own; a "Linear alerts stopped" card has no expiry, so dismiss it on the Mac.
 
 More in [troubleshooting](troubleshooting.md#linear-poller).

@@ -43,7 +43,7 @@ Setting up Tailscale, or checking it step by step: [tailscale.md](tailscale.md).
 | Times out only while the Mac sleeps | The Mac is asleep, and the app's built-in hub with it | Expected: items queue and the 5-minute flush sends them after it wakes. Add a [server hub](../HUB.md) to avoid the wait. |
 | Times out from servers, works on the Mac | Tailscale is down on the Mac (the app's hub then listens only on `127.0.0.1`), or the macOS firewall blocks it | Bring Tailscale up on the Mac; the hub picks up the tailnet address by itself (Settings… → Built-in hub shows the URL). Allow `python3` in System Settings → Network → Firewall |
 | `HTTP 400` | Validation: title > 100 chars, body > 2,000, > 6 links, a link scheme not on the allow-list, a bad `context`/`kind`/`priority` | Fix the item; the response body says which field |
-| `HTTP 429` or "too many open items" | The sender has 60 open items: something is looping | Stop the loop; resolve the stale keys |
+| `HTTP 429` "already has 60 open items", or "too many posts from this token" | The sender has 60 open items, or posted more than 120 times in a minute: something is looping | Stop the loop; resolve the stale keys. Items queued in the outbox are sent later |
 
 The CLI never fails your job because of the hub. It queues to `~/.local/state/needs-you/outbox/` and sends on the next call or `needs-you flush` (the invite installer schedules one every 5 minutes). Items sitting in the outbox mean no hub has accepted them yet. The outbox keeps at most 500 requests and 7 days; older ones are dropped with a warning.
 
@@ -70,7 +70,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 
 ## Items post, but nothing shows on the Mac
 
-1. **Context and hours:** a `work` item at 21:00 shows only as the faint second number (`0 · 1`). Use the toggle in the expanded header, or check the work-hours setting.
+1. **Context and hours:** a `work` item at 21:00 shows only as the faint second number (`0 · 1`). Use the toggle in the expanded header, or turn off **Settings → Alerts → Switch work / personal on a schedule** (the hours are fixed: weekdays 7:00–18:00).
 2. **Kind:** `done` and `info` items never raise the count. They're in the collapsed **Recent** section.
 3. **Snoozed:** press Control-Option-Space (⌃⌥Space, or your configured shortcut) to bring the panel back.
 4. **Mac can't reach a server hub:** the Mac needs Tailscale up. Hover the idle pill: the "last check" time should be recent.

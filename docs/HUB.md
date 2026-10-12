@@ -17,7 +17,9 @@ Mac or an invite link can use any of them. The wire contract is in [API.md](API.
 
 You need two always-on Linux machines with systemd and Tailscale (MagicDNS on), called
 `hub-a` and `hub-b` below, and this repo cloned on each. Everything installs under your home
-directory; no root except one `loginctl` command.
+directory; no root except one `loginctl` command. Each hub then [updates itself](#automatic-updates)
+from GitHub releases, which needs `gh` 2.64 or later logged in as your user (`gh auth login`);
+pass `--no-auto-update` to stay on the checkout's code.
 
 **1. Hub A, with a new peer secret:**
 
@@ -106,7 +108,10 @@ installed, that manifest's build provenance; without `gh` it talks to GitHub's o
 https only), refuses a tarball for any other version, and installs nothing if a check fails or
 GitHub can't be reached. The Mac's hub supplies only the link: no code comes from it, so a hub
 can't make a server install anything else. It installs and starts a system-wide hub, pairs it
-with the Mac's hub, and prints no secret. A development build of the app has no matching
+with the Mac's hub, and prints no secret. The hub then [updates itself](#automatic-updates) from
+GitHub releases, which needs `gh` 2.64 or later logged in as root (`sudo gh auth login`, or
+`GH_TOKEN` in a drop-in); until then each update run logs why it installed nothing. Add
+`--no-auto-update` after `--join -` to opt out. A development build of the app has no matching
 release: install from a checkout then. From a checkout (or the release's server tarball),
 `echo '<link>' | ./scripts/install-hub.sh --user --join -` does the same as your user (or run it
 without the `echo` and paste the link when it asks). Run as root, a
@@ -150,13 +155,15 @@ pair the same hub again, or under a new URL, remove it first (**Remove** in Sett
 
 | Path | What |
 |---|---|
-| `~/.local/share/needs-you/` | The code: `hub/`, `cli/` and the Claude Code files the hub serves at `/dl/` |
+| `~/.local/share/needs-you/` | The code: `hub/`, `cli/` and the integration files the hub serves at `/dl/` |
 | `~/.config/needs-you/hub.json` | Config, mode 600 (holds the peer secret) |
 | `~/.local/state/needs-you/hub.db` | SQLite database (WAL, incremental auto-vacuum) |
 | `~/.config/systemd/user/needs-you-hub.service` | `systemctl --user` unit, `Restart=always` |
 | `~/.local/bin/needs-you-admin` | The admin tool, preset to this config |
 | `~/.config/needs-you/hub-update.json` | [Automatic update](#automatic-updates) settings, mode 600 |
 | `~/.config/systemd/user/needs-you-hub-update.{service,timer}` | The automatic updater, every 6 hours |
+| `~/.local/state/needs-you/hub-update.lock`, `hub-update-failed.json` | The updater's lock, and the releases that failed to install |
+| `~/.local/share/needs-you.previous` | The code from before the last automatic update, for a rollback |
 
 Options:
 
@@ -180,8 +187,9 @@ Options:
 | `--update-soak-hours N` | `24` | Wait this long after a release is published before installing it (0–720). |
 | `--update-gh PATH` | `gh` on `PATH` | The `gh` that checks each release (2.64 or later, logged in). |
 
-Re-running upgrades in place: the code and unit are replaced, the config is kept with only the
-flags you passed applied to it, the database is untouched, and the service restarts. The owner
+Re-running upgrades in place: the code and units (hub and updater) are replaced, `hub.json` and
+`hub-update.json` are kept with only the flags you passed applied to them, the update timer is
+turned on or off to match, the database is untouched, and the service restarts. The owner
 invite is printed only when the config is first created.
 
 Logs go to the journal only (`journalctl --user -u needs-you-hub -f`); the hub writes no log
@@ -198,7 +206,11 @@ Same options without `--user`. It creates a `needs-you` system user and uses
 `/var/lib/needs-you/hub.db`, the sandboxed unit `/etc/systemd/system/needs-you-hub.service`
 (read-only system, no home access, no capabilities, syscall filter), and the wrapper
 `/usr/local/bin/needs-you-admin`, which runs the admin tool as `needs-you`. Logs:
-`journalctl -u needs-you-hub`.
+`journalctl -u needs-you-hub`. It also installs the [automatic updater](#automatic-updates):
+`/etc/systemd/system/needs-you-hub-update.{service,timer}` (run as root, since it re-runs the
+installer), its settings in `/etc/needs-you/hub-update.json`, and its lock and failed-release
+record in `/etc/needs-you/`; the code from before an update is kept in `/opt/needs-you.previous`.
+It needs `gh` 2.64 or later logged in as root. Its log: `journalctl -u needs-you-hub-update`.
 
 ## Config reference
 
@@ -218,7 +230,7 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `owner_token_file` | `--owner-token-file` | | On start, make sure an owner token with the secret in this file exists (the Mac app uses this). |
 | `owner_token_name` | `--owner-token-name` | `this-mac` | Its name. A changed secret replaces the old one. |
 | `parent_pid` | `--parent-pid` | | Exit cleanly when that process is gone (checked every 2 s). |
-| `install_dir` | `--install-dir` | the directory above `hub/` | Where `/dl/` files are read from (`cli/`, `integrations/claude-code/`). |
+| `install_dir` | `--install-dir` | the directory above `hub/` | Where `/dl/` files are read from (`cli/`, `integrations/`). |
 | `text_retention_hours` | | 24 | A closed or expired item's text (title, body, links, steps, question, answer, source) is purged this long after it closed; a tombstone stays. 0 keeps the text until the item is deleted. |
 | `retention_days` | `--retention-days` | 30 | Closed and expired items (tombstones by then) older than this are deleted. 0 keeps them forever. |
 | `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
@@ -286,7 +298,8 @@ tombstone (id, key, status, times, origin hub) so peers and clients that were aw
 closed; tombstones are deleted after `retention_days` (30). The purge runs on the hub's own clock,
 a peer's copy can't bring purged text back, freed space is overwritten (`secure_delete`), and the
 backups made before a migration (`hub.db.bak-N`) are purged the same way. Stale peer
-outbox rows after 7 days, dead invites after a day, with a WAL checkpoint and incremental
+outbox rows go after 7 days, expired invites at the next pass and revoked ones a day after the
+revocation (so it replicates), with a WAL checkpoint and incremental
 vacuum every 10 minutes and a full `VACUUM` at most daily. Replicated records older than the
 cutoff are refused, so a peer can't bring purged items back. `GET /v1/health` shows
 `db_bytes`, item counts and outbox depth.
@@ -319,12 +332,18 @@ token); a failover that waits on an unreachable (not refused) hub costs up to
 
 ## Upgrading
 
-Upgrades never lose config or data. A hub installed by `install-hub.sh` upgrades itself
-([automatic updates](#automatic-updates), on by default); to upgrade by hand:
+Upgrades never lose config or data. A hub installed by `install-hub.sh` 0.5.1 or later upgrades
+itself ([automatic updates](#automatic-updates), on by default; it needs `gh` 2.64 or later,
+logged in). An older hub gets the updater the next time a 0.5.1 or later `install-hub.sh` runs
+on it. To upgrade by hand from a checkout:
 
 ```bash
 cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./scripts/install-hub.sh
 ```
+
+A hub installed from a release (the `--join -` command [above](#with-the-apps-built-in-hub)) has no
+checkout: run the newer release's `install-hub.sh` the same way, without `--join` (the config and
+database are kept).
 
 - **Code** in `~/.local/share/needs-you` (or `/opt/needs-you`) is replaced in place, and the
   service is restarted. The installer says which version it replaced: "Upgraded the needs-you
@@ -370,7 +389,8 @@ cd ~/needs-you && git pull && ./scripts/install-hub.sh --user     # or: sudo ./s
 
 ### Automatic updates
 
-Every 6 hours (`needs-you-hub-update.timer`) the updater (`hub/needs_you_hub_update.py`) asks
+15 minutes after boot and then every 6 hours, each run up to 30 minutes late at random
+(`needs-you-hub-update.timer`), the updater (`hub/needs_you_hub_update.py`) asks
 GitHub, through `gh`, for the newest release on the hub's channel. When one is newer than the
 installed hub and was published at least the soak time ago (24 hours by default), it:
 
@@ -381,10 +401,13 @@ installed hub and was published at least the soak time ago (24 hours by default)
    release's server tarball the same way, keeps `hub.json`, the update settings and the database,
    and restarts the hub;
 3. waits up to a minute for `/v1/health` to answer with the new version. If it doesn't, it stops
-   the hub, puts the previous code back (it keeps a copy in `~/.local/share/needs-you.previous`),
+   the hub, puts the previous code back (it keeps a copy next to it, `~/.local/share/needs-you.previous`
+   or `/opt/needs-you.previous` system-wide),
    restores the database from the hub's own pre-migration backup (`hub.db.bak-<schema>`) if the new
    version had already migrated it, restarts the hub and checks it answers. A release that failed
-   is remembered (`hub-update-failed.json`) and not tried again; the next newer one is.
+   is remembered (`hub-update-failed.json` in `~/.local/state/needs-you/`, or `/etc/needs-you/`
+   system-wide) and not tried again: until a newer release is out, each run logs that it's skipped
+   and exits non-zero; the next newer one is tried. Delete that file to retry the failed one.
 
 Nothing is installed without build provenance, so automatic updates need **`gh` 2.64 or later,
 logged in** (`gh auth login`; system-wide installs: logged in as root, or `GH_TOKEN` in a
@@ -407,6 +430,12 @@ python3 ~/.local/share/needs-you/hub/needs_you_hub_update.py --mode user --check
 systemctl --user start needs-you-hub-update.service                                 # update now (respects the soak)
 ./scripts/install-hub.sh --user --no-auto-update                                    # off
 ```
+
+System-wide: `sudo systemctl start needs-you-hub-update.service`, and the installer without
+`--user`. Turning it off by re-running the installer also installs that checkout's (or release's)
+code, so pull first: an older checkout is a downgrade. Or set `"auto_update": false` in
+`hub-update.json`: the next run does nothing, and a re-run of the installer without
+`--auto-update` keeps it off.
 
 A hub installed from a checkout updates from GitHub releases too, replacing the checkout's code
 at the next newer release; pass `--no-auto-update` to keep tracking the checkout. Peered hubs
