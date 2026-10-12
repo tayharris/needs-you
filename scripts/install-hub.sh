@@ -372,7 +372,8 @@ PY
   SRC=$STAGE
   for f in hub/needs_you_hub.py hub/needs_you_admin.py hub/join-install.sh hub/needs_you_hub_update.py cli/needs-you \
            deploy/needs-you-admin.sh deploy/needs-you-hub.service deploy/needs-you-hub.user.service \
-           deploy/needs-you-hub-update.service deploy/needs-you-hub-update.user.service deploy/needs-you-hub-update.timer; do
+           deploy/needs-you-hub-update.service deploy/needs-you-hub-update.user.service deploy/needs-you-hub-update.timer \
+           deploy/needs-you-hub-update.path; do
     [ -f "$SRC/$f" ] || die "release v$INSTALLER_VERSION has no $f; nothing installed"
   done
 fi
@@ -626,6 +627,22 @@ else
   SYSTEMCTL=(systemctl)
   JOURNAL="journalctl -u needs-you-hub"
 fi
+# 4b. "update now" (ADR 0013): the hub drops hub-update-request next to its database when the
+#     owner asks (POST /v1/hub/update); this .path unit starts the updater when it appears.
+#     Only a plain path (no space, quote or %) goes into the unit; otherwise the timer finds it.
+REQ_PATH="$(dirname "$(cfg_get db)")/hub-update-request"
+PATH_UNIT=0
+case "$REQ_PATH" in
+  /*) if printf '%s' "$REQ_PATH" | grep -Eq '^[A-Za-z0-9/._-]+$'; then PATH_UNIT=1; fi ;;
+esac
+if [ "$PATH_UNIT" -eq 1 ]; then
+  sed "s|@REQUEST@|$REQ_PATH|" "$SRC/deploy/needs-you-hub-update.path" > "$UNIT_DIR/needs-you-hub-update.path.tmp"
+  chmod 0644 "$UNIT_DIR/needs-you-hub-update.path.tmp"
+  mv -f "$UNIT_DIR/needs-you-hub-update.path.tmp" "$UNIT_DIR/needs-you-hub-update.path"
+else
+  rm -f "$UNIT_DIR/needs-you-hub-update.path"
+  echo "install-hub: the database path has characters a systemd unit can't hold; update requests wait for the 6-hour timer" >&2
+fi
 if [ "$START" -eq 1 ]; then
   "${SYSTEMCTL[@]}" daemon-reload
   "${SYSTEMCTL[@]}" enable needs-you-hub.service >/dev/null
@@ -633,8 +650,13 @@ if [ "$START" -eq 1 ]; then
   if [ "$AUTO_ON" = 1 ]; then
     "${SYSTEMCTL[@]}" enable --now needs-you-hub-update.timer >/dev/null 2>&1 \
       || echo "install-hub: couldn't start the automatic update timer (needs-you-hub-update.timer)" >&2
+    if [ "$PATH_UNIT" -eq 1 ]; then
+      "${SYSTEMCTL[@]}" enable --now needs-you-hub-update.path >/dev/null 2>&1 \
+        || echo "install-hub: couldn't start needs-you-hub-update.path (update requests wait for the timer)" >&2
+    fi
   else
     "${SYSTEMCTL[@]}" disable --now needs-you-hub-update.timer >/dev/null 2>&1 || true
+    "${SYSTEMCTL[@]}" disable --now needs-you-hub-update.path >/dev/null 2>&1 || true
   fi
   first_bind=$(cfg_get bind | cut -d, -f1)
   port=$(cfg_get port)

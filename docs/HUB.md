@@ -157,6 +157,7 @@ pair the same hub again, or under a new URL, remove it first (**Remove** in Sett
 | `~/.local/bin/needs-you-admin` | The admin tool, preset to this config |
 | `~/.config/needs-you/hub-update.json` | [Automatic update](#automatic-updates) settings, mode 600 |
 | `~/.config/systemd/user/needs-you-hub-update.{service,timer}` | The automatic updater, every 6 hours |
+| `~/.config/systemd/user/needs-you-hub-update.path` | Starts the updater when the owner asks for an update ([below](#update-now-from-the-mac)) |
 
 Options:
 
@@ -224,6 +225,8 @@ on `needs_you_hub.py`, so no file is required: the named flags below, or
 | `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
 | `allow_any_interface` | `--allow-any-interface` | false | Allow `0.0.0.0` / `::`. |
 | `allowed_hosts` | `--allowed-host` (repeatable) | `[]` | Extra `Host` names the hub answers to, besides IP literals, `localhost`, bind names, `public_url`, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, [API.md](API.md#conventions)). Also `$NEEDS_YOU_HUB_ALLOWED_HOSTS` (comma-separated), which is how to set it for the Mac app's hub (`launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name`, then restart the app). `*` turns the check off. |
+| `self_update_dir` | | the config file's directory | Where the [updater's](#automatic-updates) `hub-update.json` and `hub-update-status.json` are, for `/v1/hub/update`. Without a config file (the Mac app's hub) there is none and the hub can't be asked to update. |
+| `update_request_interval_seconds` | | 900 | At most one accepted `POST /v1/hub/update` per this many seconds (`429` with `Retry-After` otherwise). |
 | `quiet` | `--quiet` | false | No access log. |
 | `access_log` | | true | One stderr line per request. Invite codes in `/join/` paths (and anything shaped like a code or token) are replaced with `<code>`/`<redacted>`, and control characters are escaped. |
 | `max_open_per_token` | | 60 | Volume guard. |
@@ -407,6 +410,20 @@ python3 ~/.local/share/needs-you/hub/needs_you_hub_update.py --mode user --check
 systemctl --user start needs-you-hub-update.service                                 # update now (respects the soak)
 ./scripts/install-hub.sh --user --no-auto-update                                    # off
 ```
+
+#### Update now from the Mac
+
+Settings → Updates → **Machines and hubs** on the Mac lists each server hub with its version and
+a **Request update** button ([ADR 0013](adr/0013-hub-update-requests.md),
+[`POST /v1/hub/update`](API.md#hub-updates), owner token only). The request carries nothing: the
+hub drops a flag file, `hub-update-request`, next to its database, and
+`needs-you-hub-update.path` starts the updater, which removes the flag and runs exactly as on its
+timer except that it doesn't wait out the soak. Every check (channel, sums, manifest, build
+provenance, failed releases, rollback) stays. Each run writes `hub-update-status.json` next to
+`hub.json` (what it did, one log line, no secrets), which is how the Mac shows "Updated to 0.5.2"
+or why it failed. One request per 15 minutes is accepted; the updater honours one per 10 minutes.
+It needs automatic updates on. The same from a shell on the server:
+`touch <the database's directory>/hub-update-request`.
 
 A hub installed from a checkout updates from GitHub releases too, replacing the checkout's code
 at the next newer release; pass `--no-auto-update` to keep tracking the checkout. Peered hubs

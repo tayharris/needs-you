@@ -20,6 +20,13 @@ Run by the needs-you-hub-update timer (every 6 hours). Each run:
    database, the hub's own pre-migration backup of it), restarts it and checks it answers. A
    release that failed is remembered and not tried again; a newer one is.
 
+Asked to update now (ADR 0013): the owner's POST /v1/hub/update makes the hub drop a flag,
+hub-update-request, next to its database; the needs-you-hub-update.path unit starts this
+updater when it appears (the timer finds it too). Nothing in the flag is read: this updater
+only checks that it exists and removes it, and a requested run is the same run with the soak
+time skipped, every check kept. At most one requested run per 10 minutes. Each run writes what
+it did to hub-update-status.json next to hub.json, which the hub shows the owner.
+
 Never touches the database or the config itself. Logs go to stdout (the journal); no token,
 secret or invite code is ever read or printed. Exit 0: up to date, waiting out the soak, off,
 or updated; 1: an update was refused or failed (the timer shows it as failed).
@@ -39,6 +46,7 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -58,13 +66,20 @@ VERSION_RE = re.compile(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$")
 TAG_RE = re.compile(r"^v(\d{1,6}\.\d{1,6}\.\d{1,6})$")
 HEALTH_WAIT = 60.0
 FAILED_FILE = "hub-update-failed.json"
+STATUS_FILE = "hub-update-status.json"     # written here, read by the hub (GET /v1/hub/update)
+REQUEST_FILE = "hub-update-request"        # dropped by the hub next to its database, never read
+REQUEST_MIN_INTERVAL = 600                 # seconds between requested runs honoured
 
 
 class Refused(Exception):
     """An update that must not go ahead; the message says why, in plain words."""
 
 
+_last_log = [""]
+
+
 def log(msg: str) -> None:
+    _last_log[0] = msg
     sys.stdout.write("needs-you-hub-update: %s\n" % msg)
     sys.stdout.flush()
 
@@ -348,6 +363,90 @@ def remember_failed(state_dir: str, version: str) -> None:
         log("couldn't record that %s failed (%s)" % (version, type(e).__name__))
 
 
+def request_path(conf_dir: str) -> Optional[str]:
+    """Where the hub drops its update request: next to its database."""
+    db = db_path(conf_dir)
+    return os.path.join(os.path.dirname(db), REQUEST_FILE) if db else None
+
+
+def take_request(conf_dir: str) -> bool:
+    """True when the hub left an update request; removes it either way. The file is in the
+    hub's own directory, so it's never opened or followed: only lstat and unlink."""
+    path = request_path(conf_dir)
+    if not path:
+        return False
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if stat.S_ISDIR(st.st_mode):
+        log("%s is a directory, not a request; ignoring it" % path)
+        return False
+    try:
+        os.unlink(path)
+    except OSError as e:
+        log("couldn't remove the update request %s (%s)" % (path, type(e).__name__))
+    return stat.S_ISREG(st.st_mode)
+
+
+def read_status(conf_dir: str) -> Dict[str, Any]:
+    try:
+        with open(os.path.join(conf_dir, STATUS_FILE), "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        return raw if isinstance(raw, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_status(args: argparse.Namespace, state: str, target: Optional[str] = None,
+                 message: str = "", finished: bool = False) -> None:
+    """hub-update-status.json next to hub.json: what this run is doing or did, for the hub to
+    show (GET /v1/hub/update). Versions, times and one log line: nothing secret. A system
+    install's is 644 in root's /etc/needs-you, which the hub (group needs-you) can read."""
+    if args.check:
+        return
+    now = int(time.time() * 1000)
+    rec = {"state": state, "requested": bool(getattr(args, "requested", False)),
+           "started_at": getattr(args, "started_at", now), "finished_at": now if finished else None,
+           "from_version": getattr(args, "from_version", None), "target": target,
+           "message": message[:300]}
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".hub-update-status.", dir=args.conf_dir)
+        with os.fdopen(fd, "w") as fh:
+            json.dump(rec, fh)
+        os.chmod(tmp, 0o644 if args.mode == "system" else 0o600)
+        os.replace(tmp, os.path.join(args.conf_dir, STATUS_FILE))
+    except OSError as e:
+        log("couldn't write %s (%s)" % (STATUS_FILE, type(e).__name__))
+
+
+def run_once(args: argparse.Namespace) -> int:
+    """One update run, with its status written before and after."""
+    args.requested = False if args.check else take_request(args.conf_dir)
+    if args.requested:
+        prev = read_status(args.conf_dir)
+        last = prev.get("started_at") if prev.get("requested") is True else None
+        if isinstance(last, int) and time.time() * 1000 - last < REQUEST_MIN_INTERVAL * 1000:
+            log("asked to update again within %d minutes of the last request; running as on the timer"
+                % (REQUEST_MIN_INTERVAL // 60))
+            args.requested = False
+    args.started_at = int(time.time() * 1000)
+    args.from_version = installed_version(args.prefix)
+    args.outcome = None
+    args.target = None
+    write_status(args, "checking",
+                 message="asked to update now" if args.requested else "checking for a newer release")
+    try:
+        rc = update(args)
+    except Refused as e:
+        log("%s; nothing changed" % e if "rolled back" not in str(e) else str(e))
+        write_status(args, "failed", target=args.target, message=str(e), finished=True)
+        return 1
+    state, target, message = args.outcome or (("up_to_date" if rc == 0 else "failed"), None, _last_log[0])
+    write_status(args, state, target=target, message=message, finished=True)
+    return rc
+
+
 def systemctl(mode: str) -> List[str]:
     return ["systemctl", "--user"] if mode == "user" else ["systemctl"]
 
@@ -360,6 +459,7 @@ def update(args: argparse.Namespace) -> int:
         return 1
     if not settings["auto_update"] and not args.check:
         log("%s; nothing to do" % settings["why_off"])
+        args.outcome = ("off", None, settings["why_off"])
         return 0
     gh = find_gh(settings)
     if not gh:
@@ -371,14 +471,20 @@ def update(args: argparse.Namespace) -> int:
     now = datetime.datetime.now(datetime.timezone.utc)
     if os.environ.get("NEEDS_YOU_HUB_UPDATE_NOW"):  # tests: a fixed clock
         now = parse_time(os.environ["NEEDS_YOU_HUB_UPDATE_NOW"]) or now
-    target, why = pick_release(list_releases(gh), settings["channel"], current, settings["soak_hours"], now)
+    soak = 0 if getattr(args, "requested", False) else settings["soak_hours"]
+    if soak != settings["soak_hours"]:
+        log("asked to update now: not waiting out the soak (every other check stays)")
+    target, why = pick_release(list_releases(gh), settings["channel"], current, soak, now)
     if target is None:
         log(why)
+        args.outcome = ("up_to_date", None, why)
         return 0
     version = target["version"]
     if version in failed_versions(args.state_dir):
         log("%s failed to install here before and is skipped until a newer release is out "
             "(delete %s to try it again)" % (version, os.path.join(args.state_dir, FAILED_FILE)))
+        args.outcome = ("failed", version, "%s failed to install here before and is skipped until a newer "
+                                           "release is out" % version)
         return 1
     if args.check:
         log("would install %s (installed: %s, channel %s)%s" % (
@@ -391,8 +497,10 @@ def update(args: argparse.Namespace) -> int:
     dl = os.path.join(tmp, "release")
     os.mkdir(dl, 0o700)
     previous = args.prefix.rstrip("/") + ".previous"
+    args.target = version
     try:
         inst = fetch_installer(gh, version, dl)
+        write_status(args, "updating", target=version, message="installing %s" % version)
         log("release v%s checked (SHA256SUMS, manifest, build provenance); upgrading from %s" % (version, current))
         shutil.rmtree(previous, ignore_errors=True)
         shutil.copytree(args.prefix, previous, symlinks=True)
@@ -435,6 +543,7 @@ def update(args: argparse.Namespace) -> int:
                               "install-hub.sh by hand" % (version, current))
             raise Refused("upgrade to %s failed and was rolled back to %s" % (version, current))
         log("upgraded the hub from %s to %s (the previous code is in %s)" % (current, version, previous))
+        args.outcome = ("updated", version, "upgraded the hub from %s to %s" % (current, version))
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -526,6 +635,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         args.state_dir = args.conf_dir
     if args.check and not os.access(args.state_dir, os.W_OK):
         try:
+            args.requested = False
             return update(args)
         except Refused as e:
             log(str(e))
@@ -543,10 +653,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         log("another update is running")
         return 0
     try:
-        return update(args)
-    except Refused as e:
-        log("%s; nothing changed" % e if "rolled back" not in str(e) else str(e))
-        return 1
+        rc = run_once(args)
+        # A request that came in while this run held the lock (its .path start merged into this
+        # run): honour it now rather than at the next timer run.
+        path = request_path(args.conf_dir)
+        if not args.check and not args.requested and path and os.path.lexists(path):
+            rc = run_once(args)
+        return rc
     finally:
         lock.close()
 
