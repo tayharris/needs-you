@@ -354,6 +354,111 @@ esac
         self.assertFalse(self.settings()["auto_update"])
 
 
+    # --- update requests (ADR 0013): the hub's hub-update-request flag makes the next run skip
+    # the soak (and only the soak); every run writes hub-update-status.json for the hub ---
+
+    def flag(self):
+        return os.path.join(self.home, ".local", "state", "needs-you", "hub-update-request")
+    def request(self):
+        with open(self.flag(), "w") as fh:
+            fh.write('{"requested_at": 1}')
+
+    def status(self):
+        with open(os.path.join(self.conf, "hub-update-status.json")) as fh:
+            return json.load(fh)
+
+    def test_install_writes_the_path_unit(self):
+        self.install()
+        with open(os.path.join(self.home, ".config", "systemd", "user", "needs-you-hub-update.path")) as fh:
+            unit = fh.read()
+        self.assertIn("PathExists=%s\n" % self.flag(), unit)
+        self.assertIn("Unit=needs-you-hub-update.service", unit)
+        self.assertNotIn("@REQUEST@", unit)
+
+    def test_a_request_skips_the_soak_but_not_the_checks(self):
+        self.install()  # 24 h soak
+        self.set_installed(OLD)
+        gh = self.release(published="2026-10-12T06:00:00Z")
+        r = self.update(gh)  # the timer: waits
+        self.assertIn("waiting until", r.stdout)
+        self.assertEqual(self.status()["state"], "up_to_date")
+        self.assertFalse(self.status()["requested"])
+        self.request()
+        r = self.update(gh)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("asked to update now: not waiting out the soak", r.stdout)
+        self.assertEqual(self.installed(), NEW)
+        self.assertFalse(os.path.lexists(self.flag()))
+        st = self.status()
+        self.assertEqual((st["state"], st["requested"], st["target"], st["from_version"]), ("updated", True, NEW, OLD))
+        self.assertIsNotNone(st["finished_at"])
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.conf, "hub-update-status.json")).st_mode), 0o600)
+
+    def test_a_request_never_skips_provenance(self):
+        self.install()
+        self.set_installed(OLD)
+        self.request()
+        r = self.update(self.release(runner="self-hosted"))
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(self.installed(), OLD)
+        st = self.status()
+        self.assertEqual((st["state"], st["requested"]), ("failed", True))
+        self.assertIn("provenance", st["message"])
+
+    def test_requests_too_close_together_run_as_the_timer(self):
+        self.install()
+        self.set_installed(OLD)
+        gh = self.release(published="2026-10-12T06:00:00Z")
+        self.request()
+        self.update(gh, "--no-start")  # requested: installs NEW
+        self.set_installed(OLD)
+        self.request()
+        r = self.update(gh)
+        self.assertIn("within 10 minutes", r.stdout)
+        self.assertIn("waiting until", r.stdout)
+        self.assertEqual(self.installed(), OLD)
+        self.assertFalse(os.path.lexists(self.flag()))
+
+    def test_off_ignores_a_request(self):
+        self.install("--no-auto-update")
+        self.set_installed(OLD)
+        self.request()
+        r = self.update(self.release())
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(self.installed(), OLD)
+        self.assertFalse(os.path.lexists(self.flag()))
+        self.assertEqual(self.status()["state"], "off")
+
+    def test_a_symlink_request_is_removed_not_followed(self):
+        self.install()
+        self.set_installed(OLD)
+        target = os.path.join(self.tmp, "precious")
+        with open(target, "w") as fh:
+            fh.write("keep")
+        os.symlink(target, self.flag())
+        r = self.update(self.release(published="2026-10-12T06:00:00Z"))
+        self.assertIn("waiting until", r.stdout)  # not a request
+        self.assertFalse(os.path.lexists(self.flag()))
+        with open(target) as fh:
+            self.assertEqual(fh.read(), "keep")
+
+    def test_a_directory_request_is_removed_so_the_path_unit_stops(self):
+        self.install()
+        self.set_installed(OLD)
+        os.mkdir(self.flag())
+        r = self.update(self.release(published="2026-10-12T06:00:00Z"))
+        self.assertIn("waiting until", r.stdout)  # not a request
+        self.assertFalse(os.path.lexists(self.flag()))
+
+    def test_check_takes_no_request(self):
+        self.install()
+        self.set_installed(OLD)
+        self.request()
+        self.update(self.release(), "--check")
+        self.assertTrue(os.path.exists(self.flag()))
+        self.assertFalse(os.path.exists(os.path.join(self.conf, "hub-update-status.json")))
+
+
 class Rollback(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="needs-you-hu-")

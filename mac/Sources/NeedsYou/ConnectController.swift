@@ -175,6 +175,22 @@ final class ConnectController: ObservableObject {
         }
     }
 
+    /// Update all (Settings → Updates): the same request for each machine, on every owner hub.
+    func requestUpdates(_ tokens: [TokenSummary]) {
+        guard !tokens.isEmpty else { return }
+        if tokens.count == 1 { return requestUpdate(tokens[0]) }
+        runAccess(working: "Asking \(tokens.count) machines to update…",
+                  success: "Asked \(tokens.count) machines to update. Each sees the request the next time it posts or flushes (within about 5 minutes).",
+                  everyHub: true) { client, hub, owner in
+            var firstError: Error?
+            var ok = false
+            for token in tokens {
+                do { try await client.requestUpdate(id: token.id, hub: hub, token: owner); ok = true } catch { firstError = firstError ?? error }
+            }
+            if !ok, let firstError { throw firstError }
+        }
+    }
+
     func clearUpdateRequest(_ token: TokenSummary) {
         runAccess(working: "Withdrawing the update request for \(token.name)…", success: nil, everyHub: true) { client, hub, owner in
             try await client.clearUpdateRequest(id: token.id, hub: hub, token: owner)

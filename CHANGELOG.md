@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Settings → Updates → Machines and hubs.** The Updates page now lists every sender machine and every server hub (those paired with the Mac's built-in hub, and other hubs you have an owner token for) with its version and whether it's behind, a **Request update** for each, and **Update all** for the ones behind. The **Machines** page keeps its own Request update buttons ([guide](docs/guides/updates.md#server-hubs)).
+- **Ask a server hub to update now.** `POST /v1/hub/update` (owner token only; a sender, a reader or a peer can't) asks a server hub's own updater to run at once. The request carries nothing: no URL, version or command. The updater installs the newest release on the hub's channel with every check it always makes (checksums, manifest, build provenance, rollback, a failed release never retried) and skips only the wait after a release. `GET /v1/hub/update` shows the hub's version and how its last run went (requested, updating, updated, failed), which the Mac shows in the hub's row. One request per 15 minutes. It needs automatic updates on, and the new `needs-you-hub-update.path` unit that `install-hub.sh` installs, so a hub gets it at its next update ([ADR 0013](docs/adr/0013-hub-update-requests.md), [API](docs/API.md#hub-updates), [HUB.md](docs/HUB.md#update-now-from-the-mac)).
+
 ### Fixed
 
 - **Claude Code: words typed for a "choose any" question no longer read like extra choices.** Claude gets a multi-select's answer as its choices joined by ", ", so typed words such as "SSO, then SAML" looked like two more picks. They now follow the choices as `Other: "SSO, then SAML"`. A single choice's typed words are still passed on as they are. Run `needs-you update` on sender machines to get it.

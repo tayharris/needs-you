@@ -12,7 +12,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from support import OPENER, ROOT, FakeClock, HubTestCase, hubmod, request
+from support import OPENER, PEER_SECRET, ROOT, FakeClock, HubTestCase, hubmod, request
 
 
 def raw_get(url, headers=None):
@@ -298,6 +298,124 @@ class Migration(HubTestCase):
         self.assertEqual(hub.store.token_clients()[hub.store.token_by_secret(tok)["id"]]["client"], {"cli": "0.1.1"})
         with hub.store.lock:
             self.assertEqual(hub.store.conn.execute("PRAGMA user_version").fetchone()[0], len(hubmod.MIGRATIONS))
+
+
+class HubUpdateRequests(HubTestCase):
+    """GET/POST /v1/hub/update (ADR 0013): owner only, a flag file and nothing else, rate
+    limited, and the updater's status shown."""
+
+    def setUp(self):
+        super().setUp()
+        self.clock = FakeClock()
+        self.conf = os.path.join(self.tmp, "conf")
+        os.makedirs(self.conf)
+        self.write_settings({"auto_update": True, "channel": "stable", "soak_hours": 24, "gh": ""})
+        self.hub = self.make_hub(clock=self.clock, self_update_dir=self.conf)
+        self.owner, _ = self.hub.store.add_token("mac", "owner")
+        self.sender, _ = self.hub.store.add_token("devbox", "sender")
+        self.reader, _ = self.hub.store.add_token("viewer", "reader")
+        self.flag = os.path.join(self.tmp, "hub-update-request")
+        self.url = self.hub.url + "/v1/hub/update"
+
+    def write_settings(self, data):
+        with open(os.path.join(self.conf, "hub-update.json"), "w") as fh:
+            fh.write(data if isinstance(data, str) else json.dumps(data))
+
+    def write_status(self, **rec):
+        with open(os.path.join(self.conf, "hub-update-status.json"), "w") as fh:
+            json.dump(rec, fh)
+
+    def test_owner_only_and_peers_cannot(self):
+        for tok in (self.sender, self.reader):
+            self.assertEqual(call_status("POST", self.url, tok)[0], 403)
+            self.assertEqual(call_status("GET", self.url, tok)[0], 403)
+        self.assertEqual(call_status("POST", self.url, "ny_nope")[0], 401)
+        # The peer secret is not a token: a peer can't ask either.
+        self.assertEqual(call_status("POST", self.url, PEER_SECRET)[0], 401)
+        self.assertFalse(os.path.lexists(self.flag))
+
+    def test_get_shows_version_and_idle(self):
+        status, body = call_status("GET", self.url, self.owner)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["version"], hubmod.VERSION)
+        self.assertTrue(body["available"])
+        self.assertEqual((body["state"], body["channel"], body["requested_at"], body["reason"]),
+                         ("idle", "stable", None, None))
+
+    def test_request_drops_a_flag_and_reads_no_body(self):
+        status, body = call_status("POST", self.url, self.owner, body={"url": "https://evil.example/x.sh",
+                                                                       "version": "9.9.9", "command": "rm -rf /"})
+        self.assertEqual(status, 202)
+        self.assertEqual(body["state"], "requested")
+        self.assertIsNotNone(body["requested_at"])
+        with open(self.flag) as fh:
+            content = fh.read()
+        self.assertEqual(set(json.loads(content)), {"requested_at"})
+        self.assertNotIn("evil", content)
+        self.assertNotIn("9.9.9", content)
+        # Pending: asking again changes nothing and isn't rate limited.
+        status, again = call_status("POST", self.url, self.owner)
+        self.assertEqual((status, again["state"], again["requested_at"]), (200, "requested", body["requested_at"]))
+
+    def test_rate_limited(self):
+        self.assertEqual(call_status("POST", self.url, self.owner)[0], 202)
+        os.unlink(self.flag)  # the updater took it
+        self.write_status(state="up_to_date", requested=True, started_at=int(self.clock() * 1000),
+                          finished_at=int(self.clock() * 1000), message="up to date")
+        status, body = call_status("POST", self.url, self.owner)
+        self.assertEqual((status, body["error"]), (429, "rate_limited"))
+        self.assertGreater(body["retry_after"], 800)
+        self.assertIsNotNone(call_status("GET", self.url, self.owner)[1]["next_request_at"])
+        self.clock.advance(901)
+        self.assertEqual(call_status("POST", self.url, self.owner)[0], 202)
+
+    def test_rate_limit_survives_a_restart_through_the_status_file(self):
+        self.write_status(state="updated", requested=True, started_at=int(self.clock() * 1000) - 60_000,
+                          finished_at=int(self.clock() * 1000), from_version="0.5.0", target="0.5.1",
+                          message="upgraded the hub from 0.5.0 to 0.5.1")
+        self.assertEqual(call_status("POST", self.url, self.owner)[0], 429)
+
+    def test_unavailable(self):
+        self.write_settings({"auto_update": False, "channel": "stable"})
+        status, body = call_status("POST", self.url, self.owner)
+        self.assertEqual((status, body["error"]), (409, "unavailable"))
+        self.assertIn("--auto-update", body["message"])
+        self.write_settings("{nope")
+        self.assertEqual(call_status("POST", self.url, self.owner)[0], 409)
+        os.unlink(os.path.join(self.conf, "hub-update.json"))
+        view = call_status("GET", self.url, self.owner)[1]
+        self.assertFalse(view["available"])
+        self.assertIsNone(view["auto_update"])
+        self.assertFalse(os.path.lexists(self.flag))
+
+    def test_a_hub_without_a_config_file_cannot(self):
+        hub = self.make_hub("hub-b")
+        owner, _ = hub.store.add_token("mac", "owner")
+        self.assertIsNone(hub.cfg["self_update_dir"])
+        status, body = call_status("POST", hub.url + "/v1/hub/update", owner)
+        self.assertEqual((status, body["error"]), (409, "unavailable"))
+        self.assertIn("isn't a server hub", body["message"])
+
+    def test_status_states_and_checks(self):
+        now = int(self.clock() * 1000)
+        self.write_status(state="failed", requested=True, started_at=now - 5000, finished_at=now,
+                          from_version="0.5.0", target="0.5.1",
+                          message="upgrade to 0.5.1 failed and was rolled back to 0.5.0 nyp_" + "a" * 40)
+        body = call_status("GET", self.url, self.owner)[1]
+        self.assertEqual((body["state"], body["target"], body["from_version"]), ("failed", "0.5.1", "0.5.0"))
+        self.assertNotIn("nyp_aaaa", body["message"])  # redacted like the access log
+        self.write_status(state="updating", started_at=now - 31 * 60 * 1000, target="0.5.1")
+        body = call_status("GET", self.url, self.owner)[1]
+        self.assertEqual(body["state"], "failed")
+        self.assertIn("without finishing", body["message"])
+        self.write_status(state="something-new", started_at="yesterday", target="$(x)", message=7)
+        body = call_status("GET", self.url, self.owner)[1]
+        self.assertEqual((body["state"], body["started_at"], body["target"], body["message"]),
+                         ("idle", None, None, None))
+
+    def test_a_symlinked_flag_is_not_a_request(self):
+        os.symlink("/etc/passwd", self.flag)
+        self.assertEqual(call_status("GET", self.url, self.owner)[1]["state"], "idle")
 
 
 if __name__ == "__main__":

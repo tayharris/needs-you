@@ -1,0 +1,11 @@
+[Unit]
+Description=needs-you hub: update now when the owner asks (POST /v1/hub/update, ADR 0013)
+
+[Path]
+# The hub drops this file next to its database when the owner asks; the updater removes it and
+# runs its usual checked update without the soak wait. install-hub.sh fills in the path.
+PathExists=@REQUEST@
+Unit=needs-you-hub-update.service
+
+[Install]
+WantedBy=paths.target

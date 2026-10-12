@@ -168,6 +168,7 @@ pair the same hub again, or under a new URL, remove it first (<strong>Remove</st
 <tr><td><code>~/.config/systemd/user/needs-you-hub-update.{service,timer}</code></td><td>The automatic updater, every 6 hours</td></tr>
 <tr><td><code>~/.local/state/needs-you/hub-update.lock</code>, <code>hub-update-failed.json</code></td><td>The updater's lock, and the releases that failed to install</td></tr>
 <tr><td><code>~/.local/share/needs-you.previous</code></td><td>The code from before the last automatic update, for a rollback</td></tr>
+<tr><td><code>~/.config/systemd/user/needs-you-hub-update.path</code></td><td>Starts the updater when the owner asks for an update (<a href="#update-now-from-the-mac">below</a>)</td></tr>
 </tbody>
 </table></div>
 <p>Options:</p>
@@ -234,6 +235,8 @@ on <code>needs_you_hub.py</code>, so no file is required: the named flags below,
 <tr><td><code>freebind</code></td><td><code>--freebind</code></td><td>false</td><td>Linux: bind before tailscaled has the address. The installer sets it.</td></tr>
 <tr><td><code>allow_any_interface</code></td><td><code>--allow-any-interface</code></td><td>false</td><td>Allow <code>0.0.0.0</code> / <code>::</code>.</td></tr>
 <tr><td><code>allowed_hosts</code></td><td><code>--allowed-host</code> (repeatable)</td><td><code>[]</code></td><td>Extra <code>Host</code> names the hub answers to, besides IP literals, <code>localhost</code>, bind names, <code>public_url</code>, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, <a href="api.html#conventions">API</a>). Also <code>$NEEDS_YOU_HUB_ALLOWED_HOSTS</code> (comma-separated), which is how to set it for the Mac app's hub (<code>launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name</code>, then restart the app). <code>*</code> turns the check off.</td></tr>
+<tr><td><code>self_update_dir</code></td><td></td><td>the config file's directory</td><td>Where the <a href="#automatic-updates">updater's</a> <code>hub-update.json</code> and <code>hub-update-status.json</code> are, for <code>/v1/hub/update</code>. Without a config file (the Mac app's hub) there is none and the hub can't be asked to update.</td></tr>
+<tr><td><code>update_request_interval_seconds</code></td><td></td><td>900</td><td>At most one accepted <code>POST /v1/hub/update</code> per this many seconds (<code>429</code> with <code>Retry-After</code> otherwise).</td></tr>
 <tr><td><code>quiet</code></td><td><code>--quiet</code></td><td>false</td><td>No access log.</td></tr>
 <tr><td><code>access_log</code></td><td></td><td>true</td><td>One stderr line per request. Invite codes in <code>/join/</code> paths (and anything shaped like a code or token) are replaced with <code>&lt;code&gt;</code>/<code>&lt;redacted&gt;</code>, and control characters are escaped.</td></tr>
 <tr><td><code>max_open_per_token</code></td><td></td><td>60</td><td>Volume guard.</td></tr>
@@ -407,6 +410,18 @@ systemctl --user start needs-you-hub-update.service                             
 code, so pull first: an older checkout is a downgrade. Or set <code>"auto_update": false</code> in
 <code>hub-update.json</code>: the next run does nothing, and a re-run of the installer without
 <code>--auto-update</code> keeps it off.</p>
+<h4 id="update-now-from-the-mac">Update now from the Mac <a class="anchor" href="#update-now-from-the-mac" aria-label="Link to this section">#</a></h4>
+<p>Settings → Updates → <strong>Machines and hubs</strong> on the Mac lists each server hub with its version and
+a <strong>Request update</strong> button (<a data-repo="/blob/main/docs/adr/0013-hub-update-requests.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0013-hub-update-requests.md">ADR 0013</a>,
+<a href="api.html#hub-updates"><code>POST /v1/hub/update</code></a>, owner token only). The request carries nothing: the
+hub drops a flag file, <code>hub-update-request</code>, next to its database, and
+<code>needs-you-hub-update.path</code> starts the updater, which removes the flag and runs exactly as on its
+timer except that it doesn't wait out the soak. Every check (channel, sums, manifest, build
+provenance, failed releases, rollback) stays. Each run writes <code>hub-update-status.json</code> next to
+<code>hub.json</code> (what it did, one log line, no secrets), which is how the Mac shows "Updated to 0.5.2"
+or why it failed. One request per 15 minutes is accepted; the updater honours one per 10 minutes.
+It needs automatic updates on. The same from a shell on the server:
+<code>touch &lt;the database's directory&gt;/hub-update-request</code>.</p>
 <p>A hub installed from a checkout updates from GitHub releases too, replacing the checkout's code
 at the next newer release; pass <code>--no-auto-update</code> to keep tracking the checkout. Peered hubs
 each update on their own schedule; keep them on the same channel so they stay a version apart at

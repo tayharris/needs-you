@@ -145,7 +145,7 @@ Tick off what you get to; anything that surprises you is worth a report. With a 
 - [ ] **Make it yours:** **Settings → Appearance** (theme, accent, Glass or Solid background, the pill's shape and size, card density and text, opacity, how loud alerts look, usage meters), **Panel** (shortcut) and **Alerts** (what interrupts). **Control-Option-Space (⌃⌥Space)** opens or collapses the card list.
 - [ ] **Mac asleep or app quit:** quit Needs You, post from another machine (the CLI says it queued and exits 0), reopen the app. The item arrives within about 5 minutes.
 - [ ] **Machines:** **Settings → Machines → Refresh** lists your machines (names, what they are and CLI versions, never tokens). **Revoke** one; on that machine `needs-you add …` is now refused.
-- [ ] **Updates:** **Settings → Updates** shows the version and the last check. It checks GitHub Releases on its own (no login needed) and only installs published releases, never drafts.
+- [ ] **Updates:** **Settings → Updates** shows the version and the last check. It checks GitHub Releases on its own (no login needed) and only installs published releases, never drafts. **Machines and hubs** lists your sender machines and server hubs with their versions; one that's behind has **Request update**.
 
 More on everything: [mac-app.md](mac-app.md), [claude-code-everywhere.md](claude-code-everywhere.md), [troubleshooting.md](troubleshooting.md).
 

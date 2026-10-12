@@ -873,5 +873,25 @@ class CrossHub(HubCase):
         self.assertTrue(wait_until(lambda: not seen()), "the clear didn't replicate")
 
 
+class HubUpdates(HubCase):
+    """GET/POST /v1/hub/update (ADR 0013): owner only. POST is sent only to a hub that says it
+    can't update itself, so running this suite never updates a real hub."""
+
+    def test_owner_only_and_shape(self):
+        for tok in (Env.sender, Env.reader):
+            self.assertError(call("GET", "/v1/hub/update", tok), 403, "forbidden")
+            self.assertError(call("POST", "/v1/hub/update", tok), 403, "forbidden")
+        self.assertError(call("POST", "/v1/hub/update", "ny_unknown-token-0123456789"), 401, "unauthorized")
+        self.assertError(call("POST", "/v1/hub/update", None), 401, "unauthorized")
+        status, body = call("GET", "/v1/hub/update", Env.owner)
+        self.assertEqual(status, 200, body)
+        self.assertIsInstance(body["version"], str)
+        self.assertIsInstance(body["available"], bool)
+        self.assertIsInstance(body["state"], str)
+        if not body["available"]:
+            self.assertIsInstance(body["reason"], str)
+            self.assertError(call("POST", "/v1/hub/update", Env.owner), 409, "unavailable")
+
+
 if __name__ == "__main__":
     unittest.main()

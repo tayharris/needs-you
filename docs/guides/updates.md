@@ -7,7 +7,7 @@ tag vX.Y.Z → CI tests → draft release (+ release-manifest.json) → you publ
   → the Mac app sees it (within 6 h), waits 2 h, verifies, installs when you're away
   → its hub now serves the new CLI, hook, skill and Orca snippet (/dl/manifest.json)
   → senders run `needs-you update` (daily on their own by default, by hand, or scripts/rollout.sh)
-  → Settings → Updates: "1 of 4 machines out of date"
+  → Settings → Updates → Machines and hubs: "1 of 4 machines out of date", Update all
 ```
 
 ## The Mac app
@@ -75,9 +75,11 @@ Machines set up before this was the default have it off. `needs-you doctor` warn
 
 Why it's on: an update is code, but every file must match both the hub's manifest and the GitHub release built by the release workflow, so a hub can't push files of its own. Without `gh` the remaining gap is build provenance (that the release's files came from the release workflow, not from someone with write access to the release); install `gh` on the sender to close it.
 
-**Asked from the Mac (Request update).** In **Settings → Machines** (the machine list), a sender
-whose CLI is older than the Mac app, or hasn't reported a version, has a **Request update**
-button. It marks that machine's token "update requested" on each of your owner hubs, and the
+**Asked from the Mac (Request update).** In **Settings → Updates → Machines and hubs**, and on
+**Settings → Machines** (the machine list), a sender whose CLI is older than the Mac app, or
+hasn't reported a version, has a **Request update** button. **Update all** on the Updates page
+asks every such machine (seen in the last 14 days, no request pending) at once, along with the
+server hubs that are behind ([below](#server-hubs)). It marks that machine's token "update requested" on each of your owner hubs, and the
 machine's next post, resolve, flush or token-checked health call gets `"update_requested": true`
 back. Then:
 
@@ -96,7 +98,7 @@ command, and is kept per hub, not replicated (the app sends it to every owner hu
 a server hub's shell: `needs-you-admin token request-update <name>` and `token clear-update
 <name>`. Why this is safe: [request-update.md](../security/request-update.md).
 
-**Every request** a sender makes carries `X-Needs-You-Client: cli=…; hook=…; skill=…; orca=…`, so **Settings → Updates → Sender machines** on the Mac shows each machine's versions, when it was last seen, and "N of M machines out of date". `needs-you doctor` has an `update` line with the local versions against the hub's.
+**Every request** a sender makes carries `X-Needs-You-Client: cli=…; hook=…; skill=…; orca=…`, so **Settings → Updates → Machines and hubs** on the Mac shows each machine's versions, when it was last seen, and "N of M machines out of date". `needs-you doctor` has an `update` line with the local versions against the hub's.
 
 **Orca prompts** point at `~/.config/needs-you/orca-snippet.md` instead of carrying a copy ([integrations/orca](../../integrations/orca/README.md#prompt-block)), so an update reaches every automation on its next run. Prompts pasted before this change carry the old full text: replace them with the pointer once.
 
@@ -105,3 +107,18 @@ a server hub's shell: `needs-you-admin token request-update <name>` and `token c
 ## Server hubs
 
 A server hub serves its own checkout or tarball on `/dl`, so its senders follow it, not the Mac. A hub installed by `install-hub.sh` (0.5.1 or later) **updates itself**: every 6 hours it installs the newest stable release, 24 hours after it's published, once its checksums and build provenance check out, and rolls back if the new version doesn't come up. It needs `gh` 2.64 or later, logged in (as root for a system-wide hub). `--update-channel prerelease`, `--update-soak-hours N`, `--update-gh PATH` and `--no-auto-update` change that ([docs/HUB.md](../HUB.md#automatic-updates)). What each run did: `journalctl --user -u needs-you-hub-update` (system-wide: without `--user`). A hub installed from a checkout switches to GitHub releases at the next newer one. A hub installed before 0.5.1 gets it the next time a 0.5.1 or later `install-hub.sh` is run on it.
+
+**Asked from the Mac.** **Settings → Updates → Machines and hubs** lists each server hub too:
+the hubs paired with this Mac's built-in hub (Settings → Built-in hub → Always-on hub) and any
+other hub the app has an owner token for, with its version, which channel it follows, and what
+its updater last did ("updated from 0.5.0 2h ago"). A hub older than the newest release this app
+knows of (its own version, or a newer one its update check saw) says so, with **Request update**;
+**Update all** includes it. The request goes to that hub with the app's owner token and carries
+nothing (no URL, version or command): the hub's own updater runs at once, installs the newest
+release on its channel with every check above, and skips only the wait after a release. The row
+then says "Update requested", "Updating to 0.5.2…", "Up to date", or "Last update failed:" with
+the updater's reason (a release that fails its checks or doesn't come up is rolled back and
+never retried). A hub can be asked once per 15 minutes. A hub with automatic updates off says so
+and has no button (`install-hub.sh --auto-update` there turns them on); a hub from before this
+change shows its version and "Too old to be asked: re-run install-hub.sh on it once." Design
+and safety: [ADR 0013](../adr/0013-hub-update-requests.md), [HUB.md](../HUB.md#update-now-from-the-mac).

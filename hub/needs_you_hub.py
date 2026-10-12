@@ -1035,6 +1035,11 @@ def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None)
     cfg.setdefault("peer_timeout_seconds", 5.0)
     cfg.setdefault("allow_any_interface", False)
     cfg.setdefault("freebind", False)
+    # Where the server updater's files are (hub-update.json, hub-update-status.json): next to
+    # the config file install-hub.sh wrote. No config file (the Mac app's hub): none, and the
+    # hub can't be asked to update itself (ADR 0013).
+    cfg.setdefault("self_update_dir", os.path.dirname(os.path.abspath(path)) if path else None)
+    cfg.setdefault("update_request_interval_seconds", 900.0)
     # Extra Host names this hub answers to (security audit #16), from the config, --allowed-host
     # and NEEDS_YOU_HUB_ALLOWED_HOSTS (comma-separated; how the Mac app's hub gets them). "*"
     # turns the check off.
@@ -3717,6 +3722,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._list_peers()
             if path.startswith("/v1/peers/") and method == "DELETE":
                 return self._remove_peer(urllib.parse.unquote(path[len("/v1/peers/"):]))
+            if path == "/v1/hub/update" and method in ("GET", "POST"):
+                return self._hub_update(method == "POST")
             if path == "/v1/tokens" and method == "GET":
                 return self._list_tokens()
             if (path.startswith("/v1/tokens/") and path[len("/v1/tokens/"):].endswith("/request-update")
@@ -3914,6 +3921,16 @@ class Handler(BaseHTTPRequestHandler):
     def _list_peers(self) -> None:
         self._auth("owner")
         self._send(200, {"peers": [self.hub.peer_status(p) for p in self.hub.peer_urls()]})
+
+    def _hub_update(self, request: bool) -> None:
+        """ADR 0013. Owner tokens only; the body (if any) is never read."""
+        self._auth("owner")
+        if not request:
+            return self._send(200, self.hub.self_update.view())
+        status, view = self.hub.self_update.request()
+        if status == 202 and not self.hub.cfg.get("quiet"):
+            sys.stderr.write("update requested by the owner; the updater starts it\n")
+        self._send(status, view)
 
     def _remove_peer(self, which: str) -> None:
         self._auth("owner")
@@ -4386,6 +4403,159 @@ class _Server(ThreadingHTTPServer):
         super().server_bind()
 
 
+# -- update requests (ADR 0013) ---------------------------------------------
+
+UPDATE_SETTINGS_FILE = "hub-update.json"
+UPDATE_STATUS_FILE = "hub-update-status.json"
+UPDATE_REQUEST_FILE = "hub-update-request"
+UPDATE_STATES = ("checking", "updating", "updated", "up_to_date", "off", "failed")
+UPDATE_STALE_MS = 30 * 60 * 1000
+_UPDATE_VERSION_RE = re.compile(r"^\d{1,6}\.\d{1,6}\.\d{1,6}$")
+
+
+class SelfUpdate:
+    """POST /v1/hub/update and its state: the hub only drops a flag file next to its database
+    (hub-update-request, nothing in it the updater reads) and reads what the updater writes
+    (hub-update-status.json next to the config). needs_you_hub_update.py, started by the
+    needs-you-hub-update.path unit or its timer, does the checked update itself."""
+
+    def __init__(self, cfg: Dict[str, Any], clock: Callable[[], float]) -> None:
+        d = cfg.get("self_update_dir")
+        self.dir = os.path.abspath(str(d)) if d else None
+        db = str(cfg.get("db") or "")
+        self.request_path = (os.path.join(os.path.dirname(os.path.abspath(db)), UPDATE_REQUEST_FILE)
+                             if db and db != ":memory:" and not db.startswith("file:") else None)
+        self.interval_ms = int(float(cfg.get("update_request_interval_seconds", 900.0)) * 1000)
+        self.clock = clock
+        self.lock = threading.Lock()
+        self.last_request_ms = 0
+
+    def _now(self) -> int:
+        return int(self.clock() * 1000)
+
+    @staticmethod
+    def _read_json(path: str, cap: int = 16 << 10) -> Optional[Dict[str, Any]]:
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except OSError:
+            return None
+        try:
+            with os.fdopen(fd, "rb") as fh:
+                raw = fh.read(cap + 1)
+            if len(raw) > cap:
+                return None
+            data = json.loads(raw.decode("utf-8"))
+        except (OSError, ValueError, UnicodeDecodeError, RecursionError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def settings(self) -> Tuple[bool, Optional[bool], Optional[str], Optional[str]]:
+        """(available, auto_update, channel, reason when not available)."""
+        if not self.dir or not self.request_path:
+            return False, None, None, ("this hub has no updater: it isn't a server hub installed by "
+                                       "install-hub.sh (the Mac app's hub updates with the app)")
+        raw = self._read_json(os.path.join(self.dir, UPDATE_SETTINGS_FILE))
+        if raw is None:
+            return False, None, None, ("%s isn't there or can't be read: re-run install-hub.sh"
+                                       % UPDATE_SETTINGS_FILE)
+        auto = raw.get("auto_update") is True
+        channel = raw.get("channel", "stable")
+        channel = channel if channel in ("stable", "prerelease") else None
+        if channel is None:
+            return False, auto, None, "%s has a bad channel, so updates are off" % UPDATE_SETTINGS_FILE
+        if not auto:
+            return False, False, channel, ("automatic updates are off on this hub: run install-hub.sh "
+                                           "--auto-update there to allow it")
+        return True, True, channel, None
+
+    def status(self) -> Dict[str, Any]:
+        """The updater's last run, from its status file; checked field by field."""
+        raw = (self._read_json(os.path.join(self.dir, UPDATE_STATUS_FILE)) if self.dir else None) or {}
+
+        def ms(k: str) -> Optional[int]:
+            v = raw.get(k)
+            return v if isinstance(v, int) and not isinstance(v, bool) and 0 < v < 253402300800000 else None
+
+        def ver(k: str) -> Optional[str]:
+            v = raw.get(k)
+            return v if isinstance(v, str) and _UPDATE_VERSION_RE.match(v) else None
+        msg = raw.get("message")
+        state = raw.get("state")
+        return {"state": state if state in UPDATE_STATES else None, "requested": raw.get("requested") is True,
+                "started_at": ms("started_at"), "finished_at": ms("finished_at"),
+                "from_version": ver("from_version"), "target": ver("target"),
+                "message": redact_log(msg[:300]) if isinstance(msg, str) and msg else None}
+
+    def pending_since(self) -> Optional[int]:
+        """When the pending request was made, or None. Only a regular file counts."""
+        if not self.request_path:
+            return None
+        try:
+            st = os.lstat(self.request_path)
+        except OSError:
+            return None
+        if not (st.st_mode & 0o170000 == 0o100000):
+            return None
+        raw = self._read_json(self.request_path, cap=1024) or {}
+        at = raw.get("requested_at")
+        return at if isinstance(at, int) and not isinstance(at, bool) and at > 0 else int(st.st_mtime * 1000)
+
+    def view(self) -> Dict[str, Any]:
+        available, auto, channel, reason = self.settings()
+        st = self.status()
+        now = self._now()
+        pending = self.pending_since()
+        state = st["state"] or "idle"
+        message = st["message"]
+        if state in ("checking", "updating") and now - (st["started_at"] or 0) > UPDATE_STALE_MS:
+            state, message = "failed", "the updater stopped without finishing (see its journal)"
+        if pending is not None:
+            state = "requested"
+        nxt = self._next_allowed(st)
+        return {"version": VERSION, "available": available, "auto_update": auto, "channel": channel,
+                "reason": reason, "state": state, "requested_at": fmt_ts(pending),
+                "requested": st["requested"], "started_at": fmt_ts(st["started_at"]),
+                "finished_at": fmt_ts(st["finished_at"]), "from_version": st["from_version"],
+                "target": st["target"], "message": message,
+                "next_request_at": fmt_ts(nxt) if nxt > now else None}
+
+    def _next_allowed(self, st: Dict[str, Any]) -> int:
+        last = self.last_request_ms
+        if st["requested"] and st["started_at"]:
+            last = max(last, st["started_at"])
+        return last + self.interval_ms if last else 0
+
+    def request(self) -> Tuple[int, Dict[str, Any]]:
+        """(HTTP status, view). Raises ApiError 409/429."""
+        with self.lock:
+            view = self.view()
+            if not view["available"]:
+                raise ApiError(409, "unavailable", view["reason"] or "this hub can't update itself")
+            if view["state"] in ("requested", "checking", "updating"):
+                return 200, view
+            now = self._now()
+            nxt = self._next_allowed(self.status())
+            if nxt > now:
+                wait = max(1, int((nxt - now + 999) // 1000))
+                raise ApiError(429, "rate_limited", "this hub was asked to update less than %d minutes ago; "
+                               "try again in %d s" % (self.interval_ms // 60000, wait),
+                               headers={"Retry-After": str(wait)})
+            assert self.request_path is not None
+            d = os.path.dirname(self.request_path)
+            tmp = os.path.join(d, ".%s.%s" % (UPDATE_REQUEST_FILE, secrets.token_hex(6)))
+            try:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump({"requested_at": now}, fh)
+                os.replace(tmp, self.request_path)  # whole or absent: the .path unit starts the updater
+            except OSError as e:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp)
+                raise ApiError(500, "internal", "couldn't record the request (%s)" % type(e).__name__)
+            self.last_request_ms = now
+            return 202, self.view()
+
+
 class RateLimiter:
     """Attempts per client (failed invite redeems per IP, answers and posts per token) in a sliding
     window (in memory)."""
@@ -4473,6 +4643,7 @@ class Hub:
         self.answer_read_limiter = RateLimiter(int(cfg["answer_read_rate_limit"]),
                                                float(cfg["answer_rate_window_seconds"]))
         self.answer_waits = WaitCounter(int(cfg["answer_waits_per_token"]))
+        self.self_update = SelfUpdate(cfg, clock)
         # Peers: the config's (mesh secret) and the links peer invites made (own secrets).
         self.config_peers: List[str] = list(cfg["peers"])
         self.links: Dict[str, Dict[str, Any]] = {}

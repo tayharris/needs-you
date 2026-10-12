@@ -29,7 +29,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   |---|---|
   | `sender` | `POST /v1/items`, `POST /v1/items/resolve`, `GET /v1/items/answer`, `PUT`/`DELETE /v1/status/<key>` |
   | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `POST /v1/items/{id}/answer`, `GET /v1/stream`, `GET /v1/status` |
-  | `owner` | everything `reader` can, plus invites (`/v1/invites`), tokens (`/v1/tokens`) and peers (`/v1/peers`): list, create, revoke, remove and request updates (the Mac app) |
+  | `owner` | everything `reader` can, plus invites (`/v1/invites`), tokens (`/v1/tokens`) and peers (`/v1/peers`): list, create, revoke, remove and request updates (the Mac app); and asking a server hub to update itself (`/v1/hub/update`) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
   `GET /join/<code>[/install.sh]` and `GET /dl/<file>` need no token. The hub stores only the sha256 of each token, and records
@@ -62,11 +62,12 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 409 | `self` | A hub tried to replicate to itself, or to redeem its own peer invite |
   | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite |
   | 409 | `peer_outdated` | A hub redeeming a peer invite has an older schema than the inviting hub ([peer invites](#peer-invites)) |
+  | 409 | `unavailable` | `POST /v1/hub/update` on a hub that can't update itself ([hub updates](#hub-updates)) |
   | 409 | `not_open`, `not_answerable`, `question_expired`, `question_changed`, `already_answered` | An answer that can't be taken ([answers](#post-v1itemsidanswer-reader)) |
   | 421 | `misdirected` | The `Host` header names something this hub isn't (below). Clients fail over to their next hub URL |
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
-  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), too many answer reads (`GET /v1/items/answer`, 120 a minute by default, or more than 4 long polls open at once), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds) |
+  | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), too many answer reads (`GET /v1/items/answer`, 120 a minute by default, or more than 4 long polls open at once), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds), or a second `POST /v1/hub/update` within 15 minutes (with `Retry-After`) |
   | 400 | `secret_in_text` | A status key, label, detail, account or source field looks like a token or key ([status records](#status-records-usage-meters)), or an answer's typed `text` holds a needs-you token, invite code or peer secret ([answers](#post-v1itemsidanswer-reader)) |
   | 429 | `too_many_status`, `too_fast` | A status write over the live-status limits, or a second write to one status key within 10 s (with `Retry-After`) |
   | 429 | `rate_limited` | Too many status sets and clears from one token (120 a minute by default, apart from posts; with `Retry-After`) |
@@ -964,6 +965,57 @@ the last use of the same invite within the replication delay (normally under a s
 the retry backoff if a hub is unreachable), both succeed, so a link can set up one machine
 more than `uses`. Each extra machine still gets its own revocable token. Keep `uses` and
 `ttl_hours` small.
+
+## Hub updates
+
+A server hub installed by `install-hub.sh` updates itself with its checked updater
+([HUB.md](HUB.md#automatic-updates)). The owner can ask it to do so now and see how that went
+([ADR 0013](adr/0013-hub-update-requests.md)). Local to each hub: nothing here replicates, and
+the Mac app sends the request to the hub it means, at that hub's own URL.
+
+### `GET /v1/hub/update` (owner)
+
+```json
+{"version": "0.5.1", "available": true, "auto_update": true, "channel": "stable", "reason": null,
+ "state": "updated", "requested_at": null, "requested": true,
+ "started_at": "2026-10-12T09:00:01.000Z", "finished_at": "2026-10-12T09:01:30.000Z",
+ "from_version": "0.5.0", "target": "0.5.1", "message": "upgraded the hub from 0.5.0 to 0.5.1",
+ "next_request_at": "2026-10-12T09:15:00.000Z"}
+```
+
+- `version`: the hub's running version.
+- `available`: whether this hub can update itself on request. It needs the updater's settings
+  (`hub-update.json` next to the hub's config file, as `install-hub.sh` writes it) with
+  `auto_update` on. The Mac app's own hub and hubs run by hand are `false`; `reason` then says
+  why in a sentence (`null` otherwise). `auto_update` and `channel` are what that file says
+  (`null` without it).
+- `state`: `idle` (nothing known yet), `requested` (asked, the updater hasn't started),
+  `checking` (the updater is running), `updating` (it is installing `target`), `updated`
+  (it installed `target`), `up_to_date` (nothing newer on the channel; `message` says what it
+  found), `off` (automatic updates were off when it ran) or `failed` (it refused or rolled back;
+  `message` says why). Clients treat an unknown state like `idle`. A `checking` or `updating`
+  state over 30 minutes old reads as `failed` ("didn't finish").
+- `requested_at`: when a pending request was made (`null` when none is pending). `requested`:
+  whether the last run was one the owner asked for. `started_at`, `finished_at`, `from_version`,
+  `target`, `message`: the updater's last run (`null` when unknown). `message` is at most 300
+  characters of the updater's log line, redacted like the access log.
+- `next_request_at`: the earliest time another `POST` is accepted (`null` when now).
+
+### `POST /v1/hub/update` (owner)
+
+Asks this hub to update now. **No body is read**: the request carries no URL, version, channel
+or command, and only sets a flag on the hub. The hub's own updater does the work exactly as on
+its timer (newest release on the configured channel, its SHA-256 sums, manifest and build
+provenance checked, a failed release never retried, rollback when the new version doesn't come
+up), except that it doesn't wait out the soak time. It starts within seconds (the
+`needs-you-hub-update.path` unit), or on the next timer run.
+
+Response `202` with the body of `GET /v1/hub/update` (`state: "requested"`). `200` with the same
+body, and nothing new recorded, while a request is pending or the updater is running.
+`409 unavailable` when `available` is `false`. `429 rate_limited` (with `Retry-After`) within 15
+minutes of the last accepted request (`update_request_interval_seconds`); the updater also
+ignores a request within 10 minutes of the last one it honoured. Only an owner token is
+accepted: a sender or reader token is a `403`, a peer secret a `401`.
 
 ## Housekeeping
 
