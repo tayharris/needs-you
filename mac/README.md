@@ -205,7 +205,7 @@ NEEDS_YOU_SUPPORT_DIR=$(mktemp -d) dist/NeedsYou.app/Contents/MacOS/NeedsYou &  
 | `NEEDS_YOU_DEMO_FIXTURE=file.json` | Demo seed items (the hub's list shape) |
 | `NEEDS_YOU_POLL_SECONDS=n` | Poll interval (default 30; 5 in demo) |
 | `NEEDS_YOU_EXPAND=1` | Start expanded (still never takes focus) |
-| `NEEDS_YOU_SNAPSHOT_DIR=dir` | Snapshot tour: write a 2x PNG of each panel state and of the Settings pages (Built-in hub, Connect a machine, each Appearance page, Panel, Alerts) into dir (no Screen Recording permission). Demo items are drawn as a real inbox (no DEMO badge, the hub shown running at example addresses); no global shortcut is registered |
+| `NEEDS_YOU_SNAPSHOT_DIR=dir` | Snapshot tour: write a 2x PNG of each panel state and of the Settings pages (Built-in hub, Connect a machine, each Appearance page, Panel, Alerts) into dir (no Screen Recording permission). Demo items are drawn as a real inbox (no DEMO badge, the hub shown running at example addresses); no global shortcut is registered. The tour picks and sends answers only in demo mode (`NEEDS_YOU_DEMO=1`), never to a real hub |
 | `NEEDS_YOU_SUPPORT_DIR=dir` | `hub.db`, `owner.token` and `tokens.json` here instead of Application Support |
 | `NEEDS_YOU_DEFAULTS_SUITE=name` | Read and write settings in this defaults suite instead of `app.needsyou.mac` |
 | `NEEDS_YOU_HUB_PORT=n` | Run the local hub on port n instead of 8765 (test copies next to the real app) |
