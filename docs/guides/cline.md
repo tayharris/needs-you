@@ -43,9 +43,9 @@ The invite installer's `--alerts` writes that line.
 | Task ended on an error | **Cline stopped on an error: my-repo** |
 | Waiting for your approval | none (Cline has no hook for it) |
 
-A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: **Cline asks: Should I push the branch? · my-repo** (cleaned, token-shaped text redacted, clamped). `NEEDS_YOU_TURN_TEXT=0` keeps the old **Cline is waiting for you** card with no name or question.
+A finished turn's card names the session when the agent gives it a name, and when the turn's last message ends on a question to you, the card is that question instead: **Cline asks: Should I push the branch? · my-repo** (cleaned, token-shaped text redacted, clamped). `NEEDS_YOU_TURN_TEXT=0` keeps the plain **Cline finished** card with no name or question.
 
-One card per task (Cline's `taskId`). Starting or resuming a task clears the cards of earlier tasks in the same Cline. Cline's final answer, which it hands to the hook, and your prompts aren't sent. Subagent runs post nothing, and neither does a one-shot `cline "task"`: it has exited, so nobody is waiting. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns the finished cards off.
+One card per task (Cline's `taskId`). Starting or resuming a task clears the cards of earlier tasks in the same Cline. Of Cline's final answer, which it hands to the hook, only a question it ends on is sent; your prompts aren't. Subagent runs post nothing, and neither does a one-shot `cline "task"`: it has exited, so nobody is waiting. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns the finished cards off.
 
 The `cline` CLI's interactive sessions run in a background hub process that outlives the terminal, so a card from a session you then quit stays until your next task, the hub process stops, or 48 hours pass.
 
