@@ -309,6 +309,20 @@ class UniqueLabels(AnswerCase):
                                              {"text": "B?", "options": [{"label": "Yes"}, {"label": "No"}]}]}
         self.assertTrue(self.ask("two", question=two)["question"]["answerable"])
 
+    def test_answerable_labels_compare_trimmed_and_case_sensitive(self):
+        # The hooks answer only labels exactly as stored: trimmed, case kept.
+        def q(*labels):
+            return {"answerable": True, "items": [{"text": "Clean up?", "options": [{"label": l} for l in labels]}]}
+        for labels in (("Yes", "Yes"), ("Yes", " Yes"), ("Yes", "Yes\t"), ("No", "Yes", "  Yes  ")):
+            with self.subTest(labels=labels):
+                status, err = self.post({"key": "dup", "title": "Claude asks", "question": q(*labels)})
+                self.assertEqual((status, err["error"]), (400, "invalid"), err)
+                where = "question.items[0].options[%d].label" % (len(labels) - 1)
+                self.assertEqual(err.get("field"), where, err)
+                self.assertIn("repeats a label", err["message"])
+        item = self.ask("cases", question=q("Yes", "yes", "YES"))
+        self.assertEqual([o["label"] for o in item["question"]["items"][0]["options"]], ["Yes", "yes", "YES"])
+
     def test_a_peer_record_with_repeated_answerable_labels_loses_its_question(self):
         st = self.make_hub("hub-x", start=False).store
         twins = {"answerable": True, "items": [{"text": "Clean up?", "options": [{"label": "Yes"}, {"label": "Yes"}]}]}

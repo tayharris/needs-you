@@ -290,6 +290,8 @@ VALIDATION = [
     ("question nine options", _with(question={"items": [{"text": "q", "options": [{"label": str(i)} for i in range(9)]}]}),
      "question.items[0].options"),
     ("answerable without options", _with(question={"items": [{"text": "q"}], "answerable": True}), "question.answerable"),
+    ("answerable repeats a label", _with(question={"answerable": True, "items": [{"text": "q", "options": [
+        {"label": "Yes"}, {"label": "No"}, {"label": " Yes "}]}]}), "question.items[0].options[2].label"),
 ]
 
 
