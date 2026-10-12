@@ -76,7 +76,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .connect:
             return "Make a link that sets up a sender (a server or agent machine) or another Mac that shows your alerts."
         case .machines:
-            return "Every sender and Mac connected to your hub, and open invite links. Revoke any of them."
+            return "Every sender and Mac connected to your hub, and open invite links. Ask a sender to update, or revoke any of them."
         case .otherHubs:
             return "Optional. Join a hub someone else runs, or add one by URL. Always-on server hubs are added in Built-in hub."
         case .theme:
