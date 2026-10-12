@@ -210,7 +210,7 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     // Panel
     case panelAndMenuBar, openPanel, usageMeterContent, setupTips, orca, keyboard
     // Alerts
-    case newItems, delivery, snoozedOrHidden, bypassRules, workScreen, schedule
+    case newItems, workScreen, delivery, snoozedOrHidden, bypassRules, schedule
     // Integrations
     case toolCards, terminalButton, usageSetup, senders
     // Updates
@@ -232,7 +232,7 @@ public enum SettingsSection: String, CaseIterable, Sendable {
         case .glowAndRing, .arrivals, .edgeGlow: return .alertStyle
         case .usageMeterLook: return .usageMeters
         case .panelAndMenuBar, .openPanel, .usageMeterContent, .setupTips, .orca, .keyboard: return .panel
-        case .newItems, .delivery, .snoozedOrHidden, .bypassRules, .workScreen, .schedule: return .alerts
+        case .newItems, .workScreen, .delivery, .snoozedOrHidden, .bypassRules, .schedule: return .alerts
         case .toolCards, .terminalButton, .usageSetup, .senders: return .integrations
         case .updates: return .updates
         case .liveUpdates, .advanced: return .advanced

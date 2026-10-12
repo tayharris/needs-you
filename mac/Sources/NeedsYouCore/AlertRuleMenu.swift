@@ -83,7 +83,7 @@ public enum AlertRuleMenu {
 
     /// Whether the rule at `index` never applies because an earlier rule matches every item
     /// it does (`covers`): the same scope for any event or the same event, or a broader rule
-    /// such as Settings' "Agents Always Interrupt" (key prefix `agent:`) above a session's.
+    /// such as Settings' "Agents always interrupt" (key prefix `agent:`) above a session's.
     static func isShadowed(_ book: RuleBook, at index: Int) -> Bool {
         let rule = book.rules[index]
         return book.rules[..<index].contains { covers($0, rule) }
