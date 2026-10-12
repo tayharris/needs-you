@@ -91,15 +91,23 @@ python3 /Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py \
   --public-url http://<this-mac>.<tailnet>.ts.net:8765 invite create my-server --role peer
 ```
 
-**2. On the server** (Linux with systemd, python3 and Tailscale), the command Settings showed:
+**2. On the server** (Linux with systemd, python3 and Tailscale), the lines Settings showed
+(**Copy**), then the link when the installer asks for it (**Copy link**):
 
 ```bash
-(curl -fsSL https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh \
-  && echo 'http://<this-mac>.<tailnet>.ts.net:8765/join/nyi_...') | sudo bash -s -- --join -
+cd
+curl -fsSLo install-hub.sh https://github.com/tayharris/needs-you/releases/download/vX.Y.Z/install-hub.sh
+sudo bash install-hub.sh --join -
+# Paste the peer invite link: http://<this-mac>.<tailnet>.ts.net:8765/join/nyi_...
 ```
 
-The link goes to the installer on its stdin, after the script (`--join -`), so the invite code
-is in no command line: not in `ps`, and not in the command sudo logs. Run it in bash or zsh.
+They have no quote, bracket or pipe, so they survive a browser console that types a paste key by
+key. Logged in as root, leave out `sudo`. The installer reads the link at its prompt, so the
+invite code is in no command line: not in `ps`, not in the command sudo logs, not in your shell
+history. It's saved in your home folder on purpose: run from a file, the installer treats the
+folder above it as a checkout when that holds hub code, and above a home folder only root can
+write. In a normal terminal the one line the hub's invite gives works too:
+`(curl -fsSL <install-hub.sh URL> && echo '<link>') | sudo bash -s -- --join -`.
 
 `vX.Y.Z` is the release the Mac app runs. The installer comes from that GitHub release, and so
 does all the code it installs: it downloads the release's server tarball for its own version,

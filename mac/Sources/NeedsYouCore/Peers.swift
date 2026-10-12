@@ -212,13 +212,37 @@ public enum PeerJoinCommand {
     /// here for its join URL and the version it names, else the one built with the app's
     /// version; nil when the join URL isn't a join URL (nothing to run).
     public static func resolve(joinURL: String, hubCommand: String?, appVersion: String?) -> String? {
+        resolvedVersion(joinURL: joinURL, hubCommand: hubCommand, appVersion: appVersion)
+            .flatMap { command(joinURL: joinURL, version: $0) }
+    }
+
+    /// The release `resolve` installs: the one the hub's install_command names when that command
+    /// is exactly the one built here, else the app's; nil when the join URL isn't a join URL.
+    public static func resolvedVersion(joinURL: String, hubCommand: String?, appVersion: String?) -> String? {
         guard isJoinURL(joinURL) else { return nil }
         if let hubCommand,
            let r = hubCommand.range(of: #"/releases/download/v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}/"#,
                                     options: .regularExpression) {
             let version = String(hubCommand[r].dropFirst("/releases/download/v".count).dropLast())
-            if command(joinURL: joinURL, version: version) == hubCommand { return hubCommand }
+            if command(joinURL: joinURL, version: version) == hubCommand { return version }
         }
-        return appVersion.flatMap { command(joinURL: joinURL, version: $0) }
+        guard let appVersion, command(joinURL: joinURL, version: appVersion) != nil else { return nil }
+        return appVersion
+    }
+
+    /// What Settings shows: the same install as `resolve`, as lines that survive any console,
+    /// including a browser console that types a paste key by key and drops `(`, `'` or `|`:
+    /// no quote, bracket, pipe, `$` or `~`, and no secret. The installer then asks for the
+    /// join link (`--join -` on a terminal), which is pasted on its own line. It's saved in the
+    /// home folder: the installer treats the folder above its own file as a checkout when that
+    /// holds hub code, and above a home folder is /home (or /), which only root can write.
+    public static func steps(joinURL: String, hubCommand: String?, appVersion: String?,
+                             repository: String = UpdateSource.defaultRepository) -> [String]? {
+        guard let version = resolvedVersion(joinURL: joinURL, hubCommand: hubCommand, appVersion: appVersion) else {
+            return nil
+        }
+        return ["cd",
+                "curl -fsSLo install-hub.sh https://github.com/\(repository)/releases/download/v\(version)/install-hub.sh",
+                "sudo bash install-hub.sh --join -"]
     }
 }

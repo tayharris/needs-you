@@ -8,7 +8,9 @@ import SwiftUI
 @MainActor
 final class AlwaysOnHubController: ObservableObject {
     @Published private(set) var peers: [PeerSummary] = []
-    @Published private(set) var command: String?
+    /// The lines to run on the server, and the join link its installer then asks for.
+    @Published private(set) var steps: [String]?
+    @Published private(set) var joinLink: String?
     @Published private(set) var commandExpires: Date?
     @Published private(set) var message: String?
     @Published private(set) var working = false
@@ -47,14 +49,16 @@ final class AlwaysOnHubController: ObservableObject {
                                                            hub: LocalHub.clientURL, token: token)
             // The link follows the script on stdin (--join -), so it stays out of sudo's log and ps.
             // The command runs as root: built only from a join URL of the hub's shape, quoted.
-            guard let built = PeerJoinCommand.resolve(
+            guard let built = PeerJoinCommand.steps(
                 joinURL: invite.joinURL, hubCommand: invite.hubInstallCommand,
                 appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) else {
-                command = nil
+                steps = nil
+                joinLink = nil
                 message = "The hub's invite link isn't a join link (http(s)://<hub>/join/nyi_…), so there's no command to run. Try again, or restart Needs You."
                 return
             }
-            command = built
+            steps = built
+            joinLink = invite.joinURL
             commandExpires = invite.expiresAt.flatMap(HubJSON.parseDate)
             message = nil
         } catch {
@@ -102,16 +106,29 @@ struct AlwaysOnHubSection: View {
                 peerRow(peer)
             }
             if reach.reachableFromOtherMachines {
-                if let command = controller.command {
+                if let steps = controller.steps, let link = controller.joinLink {
+                    let commands = steps.joined(separator: "\n")
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("On the server (Linux with systemd and Tailscale), run this. It installs the hub from this app's GitHub release and pairs it with this Mac:")
+                        Text("On the server (Linux with systemd and Tailscale), it installs the hub from this app's GitHub release and pairs it with this Mac.")
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("1. Run these. They work in any terminal, a browser console too. Logged in as root? Leave out sudo.")
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(alignment: .top) {
-                            Text(command).font(.callout.monospaced()).textSelection(.enabled)
+                            Text(commands).font(.callout.monospaced()).textSelection(.enabled)
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer()
-                            SettingsCopyButton(title: "Copy", text: command)
+                            SettingsCopyButton(title: "Copy", text: commands)
                         }
+                        Text("2. When it asks \u{201C}Paste the peer invite link\u{201D}, paste this and press Return. It's used once.")
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .top) {
+                            Text(link).font(.callout.monospaced()).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+                            SettingsCopyButton(title: "Copy link", text: link)
+                        }
+                        Text("If curl stops with error 22 (404), this version has no release on GitHub (a development build, or one not published yet): install from a checkout instead, as the hub guide says.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Text(expiryNote)
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
@@ -122,7 +139,7 @@ struct AlwaysOnHubSection: View {
                             .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    Button(controller.command == nil ? "Add an always-on hub…" : "Make a new link") {
+                    Button(controller.steps == nil ? "Add an always-on hub…" : "Make a new link") {
                         Task { await controller.makeInvite() }
                     }
                     .disabled(controller.working)

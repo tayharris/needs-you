@@ -144,6 +144,19 @@ final class PeersTests: XCTestCase {
             XCTAssertNil(PeerJoinCommand.resolve(joinURL: bad, hubCommand: hubs, appVersion: "0.3.0"), bad)
         }
         XCTAssertNil(PeerJoinCommand.command(joinURL: join, version: "0.3.0; id"))
+        // The steps Settings shows: the same release, nothing a key-by-key console can lose.
+        let steps = PeerJoinCommand.steps(joinURL: join, hubCommand: hubs, appVersion: "0.2.9")
+        XCTAssertEqual(steps, ["cd",
+                               "curl -fsSLo install-hub.sh https://github.com/tayharris/needs-you/releases/download/v0.3.0/install-hub.sh",
+                               "sudo bash install-hub.sh --join -"])
+        XCTAssertEqual(PeerJoinCommand.steps(joinURL: join, hubCommand: tampered, appVersion: "0.3.1")?[1],
+                       "curl -fsSLo install-hub.sh https://github.com/tayharris/needs-you/releases/download/v0.3.1/install-hub.sh")
+        XCTAssertNil(PeerJoinCommand.steps(joinURL: join, hubCommand: nil, appVersion: "X.Y.Z"))
+        XCTAssertNil(PeerJoinCommand.steps(joinURL: join + "'", hubCommand: hubs, appVersion: "0.3.0"))
+        for line in steps ?? [] {
+            XCTAssertNil(line.rangeOfCharacter(from: CharacterSet(charactersIn: "()'\"|$~`;&<>\\")), line)
+            XCTAssertFalse(line.contains("nyi_"), line)
+        }
         XCTAssertEqual(PeerJoinCommand.shellQuote("it's"), "'it'\"'\"'s'")
     }
 }
