@@ -927,6 +927,42 @@ class InstallHubUserPaths(unittest.TestCase):
         self.assertEqual(missing, [])
         self.assertEqual(sorted(hubmod.download_manifest(prefix)["files"]), sorted(hubmod.DOWNLOADS))
 
+    def run_install(self, *args):
+        return subprocess.run([BASH, self.script, "--user", "--no-start", "--no-invite", "--bind", "127.0.0.1"]
+                              + list(args), env=self.env, capture_output=True, text=True, timeout=120)
+
+    def test_bad_flag_values_stop_before_anything_is_installed(self):
+        for args, says in ((["--port", "80a"], "--port takes a number from 1 to 65535"),
+                           (["--port", "70000"], "--port takes a number from 1 to 65535"),
+                           (["--hub-id", "bad id"], "--hub-id takes 1-64 letters"),
+                           (["--public-url", "hub-a:8765"], "--public-url takes an http(s)://host:port URL"),
+                           (["--peer", "hub-b"], "--peer takes a hub's http(s)://host:port URL"),
+                           (["--peer-secret", "short-secret-x"], "at least 16 characters"),
+                           (["--peer-secret-file", os.path.join(self.tmp, "none")], "--peer-secret-file: can't read"),
+                           (["--port"], "--port needs a number")):
+            with self.subTest(args=args):
+                r = self.run_install(*args)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn(says, r.stderr)
+                self.assertNotIn("short-secret-x", r.stdout + r.stderr)
+                self.assertFalse(os.path.exists(os.path.join(self.home, ".local", "share", "needs-you")))
+
+    def test_a_config_the_hub_cant_start_with_is_not_written(self):
+        self.install("--hub-id", "hub-a")
+        conf = os.path.join(self.home, ".config", "needs-you", "hub.json")
+        with open(conf) as fh:
+            cfg = json.load(fh)
+        cfg["retention_days"] = "a month"
+        with open(conf, "w") as fh:
+            json.dump(cfg, fh)
+        r = self.run_install()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("retention_days must be a number", r.stderr)
+        self.assertIn("is unchanged", r.stderr)
+        with open(conf) as fh:
+            self.assertEqual(json.load(fh)["retention_days"], "a month")
+        self.assertFalse(os.path.exists(conf + ".tmp"))
+
     def test_unit_uses_the_config_it_wrote_with_xdg_config_home(self):
         # The unit hard-coded %h/.config/needs-you/hub.json, so with XDG_CONFIG_HOME set the
         # service started without the config the installer had just written.

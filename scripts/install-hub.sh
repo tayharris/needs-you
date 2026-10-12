@@ -68,12 +68,14 @@ while [ $# -gt 0 ]; do
     --user) MODE=user; shift ;;
     --system) MODE=system; shift ;;
     --bind) BINDS+=("${2:?--bind needs an address}"); shift 2 ;;
-    --port) PORT=${2:?}; shift 2 ;;
-    --hub-id) HUB_ID=${2:?}; shift 2 ;;
-    --public-url) PUBLIC_URL=${2:?}; shift 2 ;;
+    --port) PORT=${2:?--port needs a number (1-65535)}; shift 2 ;;
+    --hub-id) HUB_ID=${2:?--hub-id needs an id}; shift 2 ;;
+    --public-url) PUBLIC_URL=${2:?--public-url needs a URL}; shift 2 ;;
     --peer) PEERS+=("${2:?--peer needs a URL}"); shift 2 ;;
-    --peer-secret) PEER_SECRET=${2:?}; shift 2 ;;
-    --peer-secret-file) PEER_SECRET=$(tr -d '\r\n' < "${2:?}"); shift 2 ;;
+    --peer-secret) PEER_SECRET=${2:?--peer-secret needs the secret}; shift 2 ;;
+    --peer-secret-file)
+      [ -r "${2:?--peer-secret-file needs a file}" ] && [ -f "$2" ] || die "--peer-secret-file: can't read $2"
+      PEER_SECRET=$(tr -d '\r\n' < "$2"); shift 2 ;;
     --generate-peer-secret) GEN_SECRET=1; shift ;;
     --join) JOIN=${2:?--join needs the peer invite link}; shift 2 ;;
     --reconfigure) RECONFIGURE=1; shift ;;
@@ -88,6 +90,17 @@ while [ $# -gt 0 ]; do
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
+# Every flag's value is checked here, before anything is installed, with what it takes.
+case "$PORT" in ""|*[!0-9]*) [ -z "$PORT" ] || die "--port takes a number from 1 to 65535" ;; esac
+[ -z "$PORT" ] || { [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ]; } || die "--port takes a number from 1 to 65535"
+[ -z "$HUB_ID" ] || printf '%s' "$HUB_ID" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' \
+  || die "--hub-id takes 1-64 letters, digits, '.', '_' or '-' (starting with a letter or digit)"
+case "$PUBLIC_URL" in ""|http://?*|https://?*) ;; *) die "--public-url takes an http(s)://host:port URL" ;; esac
+for p in "${PEERS[@]+"${PEERS[@]}"}"; do
+  case "$p" in http://?*|https://?*) ;; *) die "--peer takes a hub's http(s)://host:port URL" ;; esac
+done
+[ -z "$PEER_SECRET" ] || [ "${#PEER_SECRET}" -ge 16 ] \
+  || die "the peer secret must be at least 16 characters (--generate-peer-secret makes one)"
 case "$UPDATE_CHANNEL" in ""|stable|prerelease) ;; *) die "--update-channel takes stable or prerelease" ;; esac
 case "$UPDATE_SOAK" in ""|*[!0-9]*) [ -z "$UPDATE_SOAK" ] || die "--update-soak-hours takes whole hours (0-720)" ;; esac
 [ -z "$UPDATE_SOAK" ] || [ "$UPDATE_SOAK" -le 720 ] || die "--update-soak-hours takes whole hours (0-720)"
@@ -521,6 +534,12 @@ if [ "$MODE" = system ]; then
   chmod 0640 "$CONF.tmp"
 else
   chmod 0600 "$CONF.tmp"
+fi
+# The hub checks it the way it will at start (types, ranges, bind, peers, hub_id), so a bad
+# value stops here with what it takes instead of in a restart loop. Unknown keys: a warning.
+if ! "$PYTHON" -B "$PREFIX/hub/needs_you_hub.py" --check-config --config "$CONF.tmp" >/dev/null; then
+  rm -f "$CONF.tmp"
+  die "the config above isn't one the hub can start with; $CONF is unchanged"
 fi
 if [ -f "$CONF" ] && cmp -s "$CONF" "$CONF.tmp"; then
   rm -f "$CONF.tmp"; echo "config unchanged: $CONF"
