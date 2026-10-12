@@ -142,8 +142,9 @@ NEEDS_YOU_CONTEXT_ALERT_PCT=80        # context card threshold in percent; 0 = o
 NEEDS_YOU_CONTEXT_WINDOW=200000       # default 200000, 1000000 for a [1m] model
 NEEDS_YOU_AGENT_EXPIRY_HOURS=48       # a card expires this long after its last post; 0 = never
 NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'                # paired Orca server: its name in the Mac's Orca
-NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log   # one debug line per hook call
 ```
+
+`NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` logs one debug line per hook call; it's read from the environment only, not the env file. Every setting, with what it takes: [Configuration](configuration.md#agent-hooks).
 
 The invite installer writes some of these for you: `--context-alert` (`NEEDS_YOU_CONTEXT_ALERT_PCT`), `--ssh-alias`, `--agent-link`, `--orca-environment`, and `--context` (`NEEDS_YOU_DEFAULT_CONTEXT`, which the cards follow unless `NEEDS_YOU_AGENT_CONTEXT` is set).
 

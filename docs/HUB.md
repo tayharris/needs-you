@@ -224,45 +224,16 @@ It needs `gh` 2.64 or later logged in as root. Its log: `journalctl -u needs-you
 ## Config reference
 
 `hub.json` is plain JSON (see `deploy/hub.example.json`). Every key can also be set by a flag
-on `needs_you_hub.py`, so no file is required: the named flags below, or
-`--set KEY=VALUE` for anything else (VALUE is parsed as JSON when it can be).
+on `needs_you_hub.py`, so no file is required: the named flags, or `--set KEY=VALUE` for
+anything else (VALUE is parsed as JSON when it can be). Every key, with its flag, default and
+what it takes, is in [Configuration → hub.json](guides/configuration.md#hub-hubjson), with
+`hub-update.json` and every environment variable. The hub refuses to start with a value of the
+wrong type or out of range (naming the key), and warns about a key it doesn't know. Check a
+config without starting anything:
 
-| Key | Flag | Default | Meaning |
-|---|---|---|---|
-| `bind` | `--bind` (repeatable, or commas) | `127.0.0.1` | Listen addresses. `0.0.0.0`/`::` need `allow_any_interface`. |
-| `port` | `--port` | 8765 | |
-| `public_url` | `--public-url` | first bind address | The URL others use. Put the MagicDNS name here. |
-| `db` | `--db` | `needs-you-hub.db` | SQLite path. |
-| `hub_id` | `--hub-id` | short hostname | Unique per hub; LWW tie-break and self-peer detection. |
-| `peers` | `--peer` (repeatable) | `[]` | Peer public URLs: used for replication and handed to senders as `hub_urls`. |
-| `peer_secret` / `peer_secret_file` | `--peer-secret-file` | | Required (16+ chars) when `peers` is set. Also `$NEEDS_YOU_PEER_SECRET`. A `peer_secret_file` that group or other users can read or write stops the hub at start with `chmod 600 <path>` (the secret lets anyone replicate as a peer). |
-| `owner_token_file` | `--owner-token-file` | | On start, make sure an owner token with the secret in this file exists (the Mac app uses this). |
-| `owner_token_name` | `--owner-token-name` | `this-mac` | Its name. A changed secret replaces the old one. |
-| `parent_pid` | `--parent-pid` | | Exit cleanly when that process is gone (checked every 2 s). |
-| `install_dir` | `--install-dir` | the directory above `hub/` | Where `/dl/` files are read from (`cli/`, `integrations/`). |
-| `text_retention_hours` | | 24 | A closed or expired item's text (title, body, links, steps, question, answer, source) is purged this long after it closed; a tombstone stays. 0 keeps the text until the item is deleted. |
-| `retention_days` | `--retention-days` | 30 | Closed and expired items (tombstones by then) older than this are deleted. 0 keeps them forever. |
-| `freebind` | `--freebind` | false | Linux: bind before tailscaled has the address. The installer sets it. |
-| `allow_any_interface` | `--allow-any-interface` | false | Allow `0.0.0.0` / `::`. |
-| `allowed_hosts` | `--allowed-host` (repeatable) | `[]` | Extra `Host` names the hub answers to, besides IP literals, `localhost`, bind names, `public_url`, and this machine's host and MagicDNS names. Anything else is a 421 (DNS-rebinding protection, [API.md](API.md#conventions)). Also `$NEEDS_YOU_HUB_ALLOWED_HOSTS` (comma-separated), which is how to set it for the Mac app's hub (`launchctl setenv NEEDS_YOU_HUB_ALLOWED_HOSTS name`, then restart the app). `*` turns the check off. |
-| `self_update_dir` | | the config file's directory | Where the [updater's](#automatic-updates) `hub-update.json` and `hub-update-status.json` are, for `/v1/hub/update`. Without a config file (the Mac app's hub) there is none and the hub can't be asked to update. |
-| `update_request_interval_seconds` | | 900 | At most one accepted `POST /v1/hub/update` per this many seconds (`429` with `Retry-After` otherwise). |
-| `quiet` | `--quiet` | false | No access log. |
-| `access_log` | | true | One stderr line per request. Invite codes in `/join/` paths (and anything shaped like a code or token) are replaced with `<code>`/`<redacted>`, and control characters are escaped. |
-| `max_open_per_token` | | 60 | Volume guard. |
-| `max_connections` / `request_read_seconds` | | 128 / 10 | Connections served at once, across all binds (kept 64 under the file descriptor limit). When full, a connection open longer than `request_read_seconds` (a slow request, or an answer its client stopped reading; never a reader's `/v1/stream`) is closed to make room; otherwise new ones are closed at once. |
-| `default_expiry_hours` | | 24 | Expiry for `done`/`info` items without `expires_at`. |
-| `maintenance_seconds` | | 600 | Purge + WAL checkpoint + incremental vacuum interval. |
-| `vacuum_hours` | | 24 | How often a full `VACUUM` may run (only when over 25% is free). |
-| `redeem_fail_limit` / `redeem_fail_window_seconds` | | 10 / 600 | Failed invite redeems per client IP before `429`. |
-| `answer_rate_limit` / `answer_rate_window_seconds` | | 30 / 60 | Answers (`POST /v1/items/{id}/answer`, counted whether taken or not) per token before `429`. |
-| `answer_read_rate_limit` | | 120 | Reads of an answer (`GET /v1/items/answer`) per token per `answer_rate_window_seconds` before `429`. |
-| `answer_waits_per_token` | | 4 | Long polls of `GET /v1/items/answer` one token may hold open at once. |
-| `post_rate_limit` / `post_rate_window_seconds` | | 120 / 60 | Posts (`POST /v1/items`, re-posts included) per token before `429 rate_limited` with `Retry-After`; a sender stuck in a loop (ADR 0010). Status sets and clears get a limit of the same size, counted apart. 0 = off. |
-| `anti_entropy_seconds` | | 60 | How often each peer is pulled. |
-| `outbox_poll_seconds` | | 2 | Outbox check interval without a wake-up. |
-| `retry_base_seconds` / `retry_max_seconds` | | 1 / 300 | Push backoff. |
-| `peer_timeout_seconds` | | 5 | Per request to a peer. |
+```bash
+python3 ~/.local/share/needs-you/hub/needs_you_hub.py --check-config --config ~/.config/needs-you/hub.json
+```
 
 Restart after editing: `systemctl --user restart needs-you-hub` (or `sudo systemctl restart
 needs-you-hub`).

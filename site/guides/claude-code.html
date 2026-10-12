@@ -156,8 +156,8 @@ NEEDS_YOU_SSH_ALIAS=devbox            # this host's name in the Mac's ~/.ssh/con
 NEEDS_YOU_CONTEXT_ALERT_PCT=80        # context card threshold in percent; 0 = off
 NEEDS_YOU_CONTEXT_WINDOW=200000       # default 200000, 1000000 for a [1m] model
 NEEDS_YOU_AGENT_EXPIRY_HOURS=48       # a card expires this long after its last post; 0 = never
-NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'                # paired Orca server: its name in the Mac's Orca
-NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log   # one debug line per hook call</code></pre></div>
+NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'                # paired Orca server: its name in the Mac's Orca</code></pre></div>
+<p><code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> logs one debug line per hook call; it's read from the environment only, not the env file. Every setting, with what it takes: <a href="configuration.html#agent-hooks">Configuration</a>.</p>
 <p>The invite installer writes some of these for you: <code>--context-alert</code> (<code>NEEDS_YOU_CONTEXT_ALERT_PCT</code>), <code>--ssh-alias</code>, <code>--agent-link</code>, <code>--orca-environment</code>, and <code>--context</code> (<code>NEEDS_YOU_DEFAULT_CONTEXT</code>, which the cards follow unless <code>NEEDS_YOU_AGENT_CONTEXT</code> is set).</p>
 <h2 id="the-skill">The skill <a class="anchor" href="#the-skill" aria-label="Link to this section">#</a></h2>
 <p>The hooks only say <em>that</em> a session is waiting. The skill teaches Claude to post <em>what</em> it needs: a specific blocker with its options and links, or a <code>done</code> note when a long job you're waiting on finishes. It uses <code>needs-you add</code> / <code>resolve</code> / <code>done</code> with the rules from <a href="agent-guide.html">Agent guide</a>: stable keys, the title is the action, link to where you act, no secrets, resolve what you post, no progress updates. It knows the hooks already cover permission prompts and waiting, and doesn't duplicate them.</p>

@@ -175,7 +175,7 @@ Put these in `~/.config/needs-you/env` on the machine where Claude runs (or in t
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | Card expiry after its last post; `0` never |
 | `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: its name in the Mac's Orca. Installer: `--orca-environment` |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
-| `NEEDS_YOU_HOOK_LOG` | unset | Append a debug line per event to this file |
+| `NEEDS_YOU_HOOK_LOG` | unset | Append a debug line per event to this file. Environment only: a line in the env file does nothing |
 
 ## Installing by hand
 
