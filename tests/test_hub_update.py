@@ -72,6 +72,18 @@ class PickRelease(unittest.TestCase):
         self.assertEqual(r["version"], "0.10.0")
 
 
+class Scrub(unittest.TestCase):
+    def test_the_status_line_never_holds_a_secret(self):
+        line = ("gh: Authorization: token ghp_%s failed for https://u:%s@example.com/x, "
+                "github_pat_%s, ny_%s, nyp_%s, http://hub-a.example.ts.net:8765/join/nyi_%s"
+                % ("a" * 36, "pw/with/slash", "b" * 30, "c" * 24, "d" * 30, "e" * 30))
+        out = upd.scrub(line)
+        for secret in ("a" * 36, "pw/with", "b" * 30, "c" * 24, "d" * 30, "e" * 30):
+            self.assertNotIn(secret, out)
+        self.assertEqual(upd.scrub("upgrade to 0.5.2 failed and was rolled back to 0.5.1"),
+                         "upgrade to 0.5.2 failed and was rolled back to 0.5.1")
+
+
 class Settings(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="needs-you-hu-")

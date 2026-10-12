@@ -71,6 +71,26 @@ REQUEST_FILE = "hub-update-request"        # dropped by the hub next to its data
 REQUEST_MIN_INTERVAL = 600                 # seconds between requested runs honoured
 
 
+# Secrets that must never reach the status file (644 in /etc/needs-you on a system install)
+# or the owner's view of it, should gh or the installer ever print one on its last line.
+_SECRET_RES = (
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"), "<github-token>"),
+    (re.compile(r"\bnyi_[A-Za-z0-9_\-]+"), "nyi_<redacted>"),
+    (re.compile(r"\bny_[A-Za-z0-9_\-]{16,}"), "ny_<redacted>"),
+    (re.compile(r"\bnyp_[A-Za-z0-9_\-]+"), "nyp_<redacted>"),
+    (re.compile(r"/join/[^/\s\"?#]+"), "/join/<code>"),
+    (re.compile(r"(?i)\b(authorization:\s*(?:bearer|token)\s+)\S+"), r"\1<redacted>"),
+    (re.compile(r"(://[^/\s:@]+:)[^@\s]+@"), r"\1<redacted>@"),
+)
+
+
+def scrub(text: str) -> str:
+    """`text` with anything that looks like a token or credential replaced."""
+    for rx, repl in _SECRET_RES:
+        text = rx.sub(repl, text)
+    return text
+
+
 class Refused(Exception):
     """An update that must not go ahead; the message says why, in plain words."""
 
@@ -415,7 +435,7 @@ def write_status(args: argparse.Namespace, state: str, target: Optional[str] = N
     rec = {"state": state, "requested": bool(getattr(args, "requested", False)),
            "started_at": getattr(args, "started_at", now), "finished_at": now if finished else None,
            "from_version": getattr(args, "from_version", None), "target": target,
-           "message": message[:300]}
+           "message": scrub(message)[:300]}
     try:
         fd, tmp = tempfile.mkstemp(prefix=".hub-update-status.", dir=args.conf_dir)
         with os.fdopen(fd, "w") as fh:
