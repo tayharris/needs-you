@@ -1,6 +1,6 @@
 # 0013. The owner can ask a server hub to update now
 
-- Status: Proposed (2026-10-12)
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Builds on [0004](0004-always-on-hub.md), [0012](0012-mac-hub-peers.md) and the server hubs'
   automatic updates ([HUB.md](../HUB.md#automatic-updates))
