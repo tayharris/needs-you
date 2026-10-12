@@ -64,7 +64,7 @@ fi
 put "$PLUGIN_SRC" "$PLUGIN" 644
 put "$HOOK_SRC" "$HOOK" 755
 
-ENV_FILE="${NEEDS_YOU_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}"
+ENV_FILE="${NEEDS_YOU_ENV_FILE:-${NEEDS_YOU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/needs-you/env}}"
 echo ""
 echo "Next:"
 if grep -Eqs "^[[:space:]]*(export[[:space:]]+)?NEEDS_YOU_AGENT_ALERTS=['\"]?(1|true|yes|on)['\"]?[[:space:]]*$" "$ENV_FILE"; then
