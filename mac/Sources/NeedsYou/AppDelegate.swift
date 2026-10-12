@@ -736,7 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.connect.copy(invite.agentPrompt)
                     self.model.setupNotice = SetupNotice(
                         tip: tip,
-                        text: "Agent prompt copied. Paste it into Claude Code; it works once, for \(SetupChecklist.inviteHours) hours.",
+                        text: "Agent prompt copied. Paste it into Claude Code; it works once, for \(SetupChecklist.inviteHours) hours. A test card shows here when it's done.",
                         failed: false)
                 } else {
                     var reason = "Couldn't create an invite."

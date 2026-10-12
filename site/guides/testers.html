@@ -144,24 +144,26 @@ shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK<
 <figure class="doc-fig">
 <div class="stage"><img src="../img/settings-connect.png" width="560" height="404" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite." loading="lazy" decoding="async"></div>
 </figure></li>
-<li><p>Click <strong>Create invite</strong>. The join link appears with two copy buttons:</p>
+<li><p>Click <strong>Create invite</strong>. The join link appears with three copy buttons:</p>
 <ul>
 <li><p><strong>Shell one-liner</strong> copies a command to run on the machine:</p>
 <div class="code"><pre><code class="language-bash">curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts</code></pre></div></li>
+<li><p><strong>Plain lines</strong> copies the same install as three lines with no <code>|</code> or quotes, for a browser console (a cloud provider's, or Tailscale's) that types a paste key by key and can drop one. The installer they save deletes itself as soon as it starts.</p></li>
 <li><p><strong>Agent prompt</strong> copies a sentence to paste into Claude Code on that machine instead; the agent reads the link and runs the same installer.</p></li>
 </ul></li>
-<li><p>On the machine (the Mac itself, or a server over SSH), paste and run the one-liner. It takes a few seconds and needs only <code>bash</code>, <code>curl</code> and <code>python3</code> 3.9+, which macOS and Ubuntu 22.04+ have. Everything goes under your home directory:</p>
+<li><p>On the machine (the Mac itself, or a server over SSH), paste and run the one-liner (or the plain lines). If <code>curl</code> says <em>Failed to connect</em> or <em>Could not resolve host</em>, that machine can't reach the Mac: check Tailscale on both (<a href="tailscale.html">Tailscale</a>), then run it again; nothing was installed. It takes a few seconds and needs only <code>bash</code>, <code>curl</code> and <code>python3</code> 3.9+, which macOS and Ubuntu 22.04+ have. Everything goes under your home directory:</p>
 <ul>
 <li>the <code>needs-you</code> CLI in <code>~/.local/bin</code>, and one line tagged <code># added by needs-you</code> in your shell profile that puts it on <code>PATH</code>;</li>
 <li>a token of the machine's own in <code>~/.config/needs-you/env</code> (mode 600; never paste this file);</li>
 <li>a 5-minute <code>needs-you flush</code> (a LaunchAgent on macOS, a crontab line on Linux) that delivers items queued while the Mac was asleep;</li>
 <li>with the options in the line: the Claude Code hooks (<code>--claude-hooks user</code>), the needs-you skill for Claude (<code>--skill</code>), and alerts turned on for every Claude Code session on the machine (<code>--alerts</code>). Leave those three off on a machine without Claude Code. Every option: <a href="add-a-sender.html#options">Add a sender</a>.</li>
 </ul></li>
-<li><p>A test card (<code>setup:&lt;host&gt;:test</code>) appears under <strong>Recent</strong> in the open panel (click the pill to open it).</p></li>
+<li><p>A test card, "needs-you is set up on &lt;host&gt;", appears under <strong>Recent</strong> in the open panel (click the pill to open it). The installer's last lines say so too.</p></li>
 <li><p>Open a <strong>new</strong> terminal tab (so <code>PATH</code> is updated) and run <code>needs-you doctor</code>. Every line should be <code>OK</code> or <code>INFO</code>; each <code>WARN</code> or <code>FAIL</code> has its fix under it.</p></li>
 <li><p>Restart open Claude Code sessions so they load the hooks.</p></li>
 </ol>
 <p>Re-running the line on the same machine is safe: it keeps the token and doesn't spend a use. Uninstall: the same line with <code>--uninstall</code> instead of the other options (while the link hasn't expired).</p>
+<p><strong>Optional: an always-on server hub</strong> (a Linux server or VM with systemd and Tailscale), so alerts land while the Mac sleeps: <strong>Settings → Built-in hub → Always-on hub → Add an always-on hub…</strong> shows three plain lines to run on the server, then a link to paste when the installer asks for it. It ends with <code>needs-you-hub is up</code>, and the server shows in that list within a minute (<a href="hub.html#with-the-apps-built-in-hub">Server hubs</a>).</p>
 <h2 id="7-what-to-try">7. What to try <a class="anchor" href="#7-what-to-try" aria-label="Link to this section">#</a></h2>
 <p>Tick off what you get to; anything that surprises you is worth a report. With a few items waiting, the pill shows a count, a new one springs out for a moment, and a click opens the cards (these are example items):</p>
 <figure class="doc-fig">

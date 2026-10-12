@@ -438,7 +438,7 @@ final class AppModel: ObservableObject {
         setupActionHandler?(action, tip)
     }
 
-    /// Dismiss: the tip doesn't come back (Settings → Panel → Show dismissed tips again).
+    /// Dismiss: the tip doesn't come back (Settings → Panel → Setup tips → Show again).
     func dismissSetupTip(_ tip: SetupTip) {
         settings.setupTipsDismissed.insert(tip.rawValue)
         if setupNotice?.tip == tip { setupNotice = nil }

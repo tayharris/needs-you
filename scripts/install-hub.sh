@@ -591,7 +591,7 @@ fi
 JOINED=""
 if [ -n "$JOIN" ]; then
   if ! JOINED=$(printf '%s\n' "$JOIN" | "$ADMIN_BIN" peer join -); then
-    die "couldn't join with that link (above). The hub is installed; make a new peer invite and re-run with --join -, or run: echo '<link>' | needs-you-admin peer join -"
+    die "couldn't join with that link (above). The hub is installed: make a new peer invite (on a Mac: Settings -> Built-in hub -> Always-on hub -> Make a new link), then run needs-you-admin peer join - and paste the new link when it asks"
   fi
   echo "$JOINED"
 fi
@@ -696,21 +696,28 @@ fi
 if [ "$INVITE" -eq 1 ] && [ "$NEW_CONFIG" -eq 1 ]; then
   echo
   echo "Connect a Mac to this hub with this link. (To pair this hub with a Mac app's built-in hub instead,"
-  echo "make a link in its Settings -> Built-in hub -> Always-on hub and run the command it shows.)"
+  echo "make a link in its Settings -> Built-in hub -> Always-on hub and run the lines it shows.)"
   "$ADMIN_BIN" invite create mac --role owner --uses 1 --ttl 72 | sed 's/^/  /'
 fi
 if [ -n "$JOINED" ]; then
   echo
   echo "This hub now replicates with the hub that invited it: items posted to either show on both,"
   echo "and sender invites made there list this hub too. Check it: needs-you-admin peer list"
-fi
-cat <<EOF
+  cat <<EOF
+
+Next: on the Mac, Settings -> Built-in hub -> Always-on hub lists this hub
+within a minute. Keep making sender invites on the Mac (Settings -> Connect a machine): they
+now list this hub too, so senders use it while the Mac sleeps.
+EOF
+else
+  cat <<EOF
 
 Next:
   needs-you-admin invite create my-server --role sender --uses 3   # a link for servers/agents
   needs-you-admin invite list
   needs-you-admin token list
 EOF
+fi
 UPD_LOG="journalctl $([ "$MODE" = user ] && echo "--user ")-u needs-you-hub-update"
 if [ "$AUTO_ON" = 1 ]; then
   echo "Automatic updates: on ($("$PYTHON" -c 'import json,sys; c=json.load(open(sys.argv[1])); print("%s channel, %s h after a release" % (c.get("channel"), c.get("soak_hours")))' "$UPD"); every 6 hours). They need gh 2.64+ logged in$([ "$MODE" = system ] && echo " as root")."

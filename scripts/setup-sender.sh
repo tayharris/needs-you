@@ -54,11 +54,15 @@ usage() {
   cat <<EOF
 Usage: $PROG [options]
 
+The manual way to make this machine a sender, with a hub URL and a token you
+already have. Have an invite link instead (Mac app: Settings > Connect a
+machine)? Use its one-liner: it does all of this and needs no token.
+
 Interactive by default. Every prompt has a flag, so it also runs unattended.
 
 Hub and token:
   --url URLS             Hub URL(s), comma-separated, in failover order.
-                         e.g. http://hub-a.tailnet.ts.net:8765,http://hub-b.tailnet.ts.net:8765
+                         e.g. http://hub-a.example.ts.net:8765,http://hub-b.example.ts.net:8765
   --token-stdin          Read the token from stdin (preferred for automation:
                          it keeps the token out of 'ps' and shell history).
   --token TOKEN          Token on the command line (visible in 'ps'; avoid).
@@ -239,6 +243,7 @@ OLD_TOKEN=$(read_env_value NEEDS_YOU_TOKEN)
 
 say "needs-you sender setup on $HOST_SHORT"
 [ -f "$ENV_FILE" ] && info "existing config: $ENV_FILE (values you don't change are kept)"
+[ -f "$ENV_FILE" ] || info "(have an invite link? its one-liner is simpler: it does all of this and needs no token)"
 
 # ---------------------------------------------------------------- 1. CLI install
 # cli_newer INSTALLED NEW: the installed CLI's version when it is newer than NEW's (a
@@ -330,8 +335,8 @@ fi
 if [ "$NON_INTERACTIVE" -eq 1 ]; then
   [ -n "$URLS" ] || URLS=$OLD_URLS
   [ -n "$TOKEN" ] || TOKEN=$OLD_TOKEN
-  [ -n "$URLS" ] || die "--url is required with --non-interactive (no existing config)" 2
-  [ -n "$TOKEN" ] || die "a token is required with --non-interactive (--token-stdin, --token or NEEDS_YOU_TOKEN)" 2
+  [ -n "$URLS" ] || die "--url is required with --non-interactive (no existing config). The hub's URL is in the Mac app's Settings > Built-in hub (or a server hub's public_url); with an invite link, use its one-liner instead" 2
+  [ -n "$TOKEN" ] || die "a token is required with --non-interactive (--token-stdin, --token or NEEDS_YOU_TOKEN). On a server hub: needs-you-admin token add NAME --role sender; or use an invite link's one-liner instead, which needs no token" 2
 else
   if [ -z "$URLS" ]; then
     say ""
@@ -362,7 +367,7 @@ for u in $(url_list "$URLS"); do
   while [ "${u%/}" != "$u" ]; do u=${u%/}; done
   case "$u" in
     http://*|https://*) ;;
-    *) die "hub URL must start with http:// or https://: $u" 2 ;;
+    *) die "hub URL must start with http:// or https://: $u (e.g. http://hub-a.example.ts.net:8765)" 2 ;;
   esac
   case "$u" in
     *[!A-Za-z0-9.:/_~%@-]*) die "hub URL has characters that aren't allowed (expected scheme://host:port[/path]): $u" 2 ;;
@@ -633,7 +638,7 @@ PY
       -X POST -H "@$AUTH_FILE" -H 'Content-Type: application/json' \
       --data-binary "$BODY" "$HEALTHY/v1/items" 2>/dev/null) || code="000"
     case "$code" in
-      2??) info "posted test item to $HEALTHY (key setup:$HOST_SHORT:test)" ;;
+      2??) info "posted test item to $HEALTHY (key setup:$HOST_SHORT:test): look for it under Recent in the Mac's panel" ;;
       401|403) warn "test item refused (HTTP $code): the token isn't valid on $HEALTHY" ;;
       # The hub's reply, printable ASCII only and cut short: a reply is never written raw to the terminal.
       *) warn "test item failed (HTTP $code): $(head -c 200 "$RESP_FILE" 2>/dev/null | LC_ALL=C tr -c ' -~' '?')" ;;
@@ -645,13 +650,14 @@ fi
 say ""
 say "Done. Next:"
 if command -v needs-you >/dev/null 2>&1 || [ -x "$BIN_DIR/needs-you" ]; then
+  info "needs-you doctor    # checks the setup; each WARN or FAIL line says what to run"
   info "needs-you add --key \"personal:$HOST_SHORT:hello\" --context personal --title \"Hello from $HOST_SHORT\""
   info "needs-you resolve --key \"personal:$HOST_SHORT:hello\""
 else
   info "curl: . $ENV_FILE && curl -fsS \"\$NEEDS_YOU_URL/v1/health\""
 fi
 if [ -n "$ALERTS" ]; then
-  info "Claude Code alerts (on for every session here): integrations/claude-code/install-hooks.sh"
+  info "Claude Code alerts (on for every session here): $REPO_DIR/integrations/claude-code/install-hooks.sh"
 else
-  info "Claude Code alerts: integrations/claude-code/install-hooks.sh, then re-run this with --alerts"
+  info "Claude Code alerts: $REPO_DIR/integrations/claude-code/install-hooks.sh, then re-run this with --alerts"
 fi

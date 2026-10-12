@@ -101,24 +101,27 @@ Do this for the Mac itself first (so Claude Code on the Mac can post), then for 
 2. **What is it?** *A server or agent that sends alerts*. **Machine name:** anything, e.g. `laptop` or `devbox`. **Uses:** how many machines this link should set up. **Expires after:** keep the default.
 
    <img src="../../site/img/settings-connect.png" width="560" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite.">
-3. Click **Create invite**. The join link appears with two copy buttons:
+3. Click **Create invite**. The join link appears with three copy buttons:
    - **Shell one-liner** copies a command to run on the machine:
 
      ```bash
      curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts
      ```
 
+   - **Plain lines** copies the same install as three lines with no `|` or quotes, for a browser console (a cloud provider's, or Tailscale's) that types a paste key by key and can drop one. The installer they save deletes itself as soon as it starts.
    - **Agent prompt** copies a sentence to paste into Claude Code on that machine instead; the agent reads the link and runs the same installer.
-4. On the machine (the Mac itself, or a server over SSH), paste and run the one-liner. It takes a few seconds and needs only `bash`, `curl` and `python3` 3.9+, which macOS and Ubuntu 22.04+ have. Everything goes under your home directory:
+4. On the machine (the Mac itself, or a server over SSH), paste and run the one-liner (or the plain lines). If `curl` says *Failed to connect* or *Could not resolve host*, that machine can't reach the Mac: check Tailscale on both ([tailscale.md](tailscale.md)), then run it again; nothing was installed. It takes a few seconds and needs only `bash`, `curl` and `python3` 3.9+, which macOS and Ubuntu 22.04+ have. Everything goes under your home directory:
    - the `needs-you` CLI in `~/.local/bin`, and one line tagged `# added by needs-you` in your shell profile that puts it on `PATH`;
    - a token of the machine's own in `~/.config/needs-you/env` (mode 600; never paste this file);
    - a 5-minute `needs-you flush` (a LaunchAgent on macOS, a crontab line on Linux) that delivers items queued while the Mac was asleep;
    - with the options in the line: the Claude Code hooks (`--claude-hooks user`), the needs-you skill for Claude (`--skill`), and alerts turned on for every Claude Code session on the machine (`--alerts`). Leave those three off on a machine without Claude Code. Every option: [add-a-sender.md](add-a-sender.md#options).
-5. A test card (`setup:<host>:test`) appears under **Recent** in the open panel (click the pill to open it).
+5. A test card, "needs-you is set up on &lt;host&gt;", appears under **Recent** in the open panel (click the pill to open it). The installer's last lines say so too.
 6. Open a **new** terminal tab (so `PATH` is updated) and run `needs-you doctor`. Every line should be `OK` or `INFO`; each `WARN` or `FAIL` has its fix under it.
 7. Restart open Claude Code sessions so they load the hooks.
 
 Re-running the line on the same machine is safe: it keeps the token and doesn't spend a use. Uninstall: the same line with `--uninstall` instead of the other options (while the link hasn't expired).
+
+**Optional: an always-on server hub** (a Linux server or VM with systemd and Tailscale), so alerts land while the Mac sleeps: **Settings → Built-in hub → Always-on hub → Add an always-on hub…** shows three plain lines to run on the server, then a link to paste when the installer asks for it. It ends with `needs-you-hub is up`, and the server shows in that list within a minute ([HUB.md](../HUB.md#with-the-apps-built-in-hub)).
 
 ## 7. What to try
 

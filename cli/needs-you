@@ -226,6 +226,10 @@ def warn(msg: Any) -> None:
     sys.stderr.write("needs-you: %s\n" % clean(msg, multiline=True))
 
 
+# After "not set": what to do about it. Doctor's config line has the exact command.
+NOT_SET_UP_STEP = "Run needs-you doctor: it says what's missing and the step that sets it up."
+
+
 def say_clean(msg: Any) -> None:
     """print() for a line that may carry text from a hub, an item, a release or a peer."""
     print(clean(msg, multiline=True))
@@ -1780,7 +1784,7 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
             warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s), and the outbox can't be written (%s): dropped"
                  % (config_path(), e))
             return 0
-        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); queued %s" % (config_path(), f))
+        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); queued %s. %s" % (config_path(), f, NOT_SET_UP_STEP))
         return 0
     try:
         import fcntl  # noqa: F401  (the outbox lock)
@@ -1899,7 +1903,7 @@ def answer_wait(cfg: Config, key: str, timeout: float, quiet: bool,
     which the hub reads back while this post hasn't reached it) is "not there yet" too.
     Never answers anything itself."""
     if not cfg.ok:
-        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s)" % config_path())
+        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s). %s" % (config_path(), NOT_SET_UP_STEP))
         return 2
     key = key.strip()
     deadline = time.monotonic() + max(0.0, timeout)
@@ -2111,8 +2115,8 @@ def status_command(cfg: Config, args: argparse.Namespace) -> int:
     else:
         method, body = "DELETE", None
     if not cfg.ok:
-        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); status not sent (statuses are never queued)"
-             % config_path())
+        warn("NEEDS_YOU_URLS / NEEDS_YOU_TOKEN not set (%s); status not sent (statuses are never queued). %s"
+             % (config_path(), NOT_SET_UP_STEP))
         return 0
     rc, why, resp = send_status(cfg, method, key, body)
     if rc == 0:
@@ -3972,9 +3976,40 @@ def _rerun(flags: str) -> str:
             "ask the person for a new one)" % _installer(flags))
 
 
-def _profile() -> str:
+def _profile_path() -> str:
+    """The profile the invite installer adds its PATH line to (join-install.sh profile_file)."""
+    home = os.path.expanduser("~")
     shell = os.path.basename(os.environ.get("SHELL") or "")
-    return {"zsh": "~/.zshrc", "bash": "~/.bashrc"}.get(shell, "~/.profile")
+    if shell == "zsh":
+        return os.path.join(os.environ.get("ZDOTDIR") or home, ".zshrc")
+    if shell == "bash":
+        return os.path.join(home, ".bash_profile" if sys.platform == "darwin" else ".bashrc")
+    return os.path.join(home, ".profile")
+
+
+def _profile() -> str:
+    return _sh(_profile_path())
+
+
+def _profile_adds_local_bin() -> bool:
+    """Does that profile already put ~/.local/bin on PATH (the installer's tagged line, or a
+    PATH line of its own)? Then only this shell lacks it: new ones have it."""
+    try:
+        text = _read_text(_profile_path()) or ""
+    except (OSError, ValueError):
+        return False
+    for line in text.splitlines():
+        s = line.strip()
+        if "# added by needs-you" in s:
+            return True
+        if not s.startswith("#") and "PATH" in s and ".local/bin" in s:
+            return True
+    return False
+
+
+# What doctor says on a machine that was never set up, instead of fixing each part by hand:
+# the invite installer does all of them.
+_BY_INSTALLER = "the invite installer (see the config line above) does this too"
 
 
 def _host_of(url: str) -> str:
@@ -4025,6 +4060,9 @@ class Doctor:
         self.home = os.path.expanduser("~")
         self.env_path = config_path()
         self.file = read_env_file(self.env_path)
+        # No env file and no settings: never set up. The installer's one line then fixes the
+        # PATH and the flush schedule too, so those lines point at it instead of hand fixes.
+        self.not_set_up = False
 
     def add(self, check: str, status: str, detail: str, hint: str = "") -> None:
         self.checks.append({"check": check, "status": status, "detail": detail, "hint": hint})
@@ -4062,6 +4100,7 @@ class Doctor:
         if st is None:
             parts.append("%s not found" % shown)
             if not self.cfg.ok:
+                self.not_set_up = True
                 status, hint = "FAIL", ("this machine isn't set up: ask the person for an invite link (%s), "
                                         "then run: %s" % (INVITE_LINK_HINT, _installer()))
             else:
@@ -4123,9 +4162,16 @@ class Doctor:
                 detail += " (this run: %s)" % _tilde(me)
             detail += "; ~/.local/bin %s PATH" % ("on" if on_path else "not on")
             self.add("path", "OK", detail)
+        elif os.path.exists(installed) and _profile_adds_local_bin():
+            # Just installed: the profile has the line, only this shell started before it.
+            self.add("path", "INFO", "needs-you is not on this shell's PATH yet; %s adds ~/.local/bin for new shells"
+                     % _profile(), "open a new terminal, or in this one run: export PATH=\"$HOME/.local/bin:$PATH\"")
         elif os.path.exists(installed):
             self.add("path", "WARN", "needs-you is not on PATH; ~/.local/bin/needs-you exists",
                      "run: %s (new shells); in this one, call ~/.local/bin/needs-you by its full path" % hint_line)
+        elif self.not_set_up:
+            self.add("path", "WARN", "needs-you is not on PATH%s" % ("" if on_path else "; ~/.local/bin not on PATH"),
+                     _BY_INSTALLER + ": it installs needs-you in ~/.local/bin and puts that on PATH")
         else:
             self.add("path", "WARN", "needs-you is not on PATH%s" % ("" if on_path else "; ~/.local/bin not on PATH"),
                      "run: mkdir -p ~/.local/bin && ln -sf %s ~/.local/bin/needs-you && %s"
@@ -4891,7 +4937,8 @@ class Doctor:
             self.add("claude skill", "OK", _tilde(p))
         else:
             self.add("claude skill", "INFO", "%s not installed (optional)" % _tilde(p),
-                     "to install: " + _installer("--skill"))
+                     ("to install, add --skill to the invite installer's line (see the config line above)"
+                      if self.not_set_up else "to install, " + _rerun("--skill")))
 
     # -- Orca --------------------------------------------------------------
     def orca(self) -> None:
@@ -4935,7 +4982,7 @@ class Doctor:
                     data = plistlib.load(fh)
             except OSError:
                 self.add("flush schedule", "WARN", "no LaunchAgent %s, so queued items wait for the next post"
-                         % _tilde(plist), _rerun(""))
+                         % _tilde(plist), _BY_INSTALLER if self.not_set_up else _rerun(""))
                 return
             except Exception:
                 self.add("flush schedule", "WARN", "%s is not a valid plist" % _tilde(plist), _rerun(""))
@@ -4961,6 +5008,9 @@ class Doctor:
             text = ""
         if crontab_has_flush(text):
             self.add("flush schedule", "OK", "crontab line tagged %s" % CRON_TAG)
+        elif self.not_set_up:
+            self.add("flush schedule", "WARN", "no crontab line tagged %s, so queued items wait for the next post"
+                     % CRON_TAG, _BY_INSTALLER)
         else:
             self.add("flush schedule", "WARN", "no crontab line tagged %s, so queued items wait for the next post"
                      % CRON_TAG, "run: (crontab -l 2>/dev/null; echo %s) | crontab -"
@@ -5669,7 +5719,7 @@ def _doctor_mcp(self: "Doctor") -> None:
         here = [a for a in MCP_AGENTS if _detected(a, homes[a])]
         if here:
             self.add("mcp server", "INFO", "not registered (optional: agents post through MCP tools, no shell needed)",
-                     "to install: " + _installer("--mcp " + ",".join(here)))
+                     "to install, " + _rerun("--mcp " + ",".join(here)))
         return
     rerun = _rerun("--mcp " + ",".join(registered))
     if not os.path.isfile(server):

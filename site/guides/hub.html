@@ -112,7 +112,7 @@ older hub; replication then resumes by itself.</p>
 the server redeems for the pair's own replication secret. Nothing to copy by hand, and the
 secret never shows on a screen (<a data-repo="/blob/main/docs/adr/0012-mac-hub-peers.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0012-mac-hub-peers.md">ADR 0012</a>).</p>
 <p><strong>1. On the Mac</strong>, make the link: **Settings → Built-in hub → Always-on hub → Add an always-on
-hub** shows the command to run on the server (and copies it). The Mac must be on the tailnet;
+hub** shows the lines to run on the server and the link to paste, each with a copy button. The Mac must be on the tailnet;
 the link lasts an hour. From a terminal on the Mac instead:</p>
 <div class="code"><pre><code class="language-bash">python3 /Applications/NeedsYou.app/Contents/Resources/hub/needs_you_admin.py \
   --db ~/Library/Application\ Support/NeedsYou/hub.db \
@@ -128,8 +128,10 @@ key. Logged in as root, leave out <code>sudo</code>. The installer reads the lin
 invite code is in no command line: not in <code>ps</code>, not in the command sudo logs, not in your shell
 history. It's saved in your home folder on purpose: run from a file, the installer treats the
 folder above it as a checkout when that holds hub code, and above a home folder only root can
-write. In a normal terminal the one line the hub's invite gives works too:
-<code>(curl -fsSL &lt;install-hub.sh URL&gt; &amp;&amp; echo '&lt;link&gt;') | sudo bash -s -- --join -</code>.</p>
+write. It ends with <code>needs-you-hub is up</code>; the Mac's Always-on hub list shows the server within
+a minute. The hub's invite carries the same lines (<code>install_steps</code>, also on the link's page and
+in <code>needs-you-admin invite create</code>), plus one line for scripts and agents, with no one to paste
+the link: <code>(curl -fsSL &lt;install-hub.sh URL&gt; &amp;&amp; echo '&lt;link&gt;') | sudo bash -s -- --join -</code>.</p>
 <p><code>vX.Y.Z</code> is the release the Mac app runs. The installer comes from that GitHub release, and so
 does all the code it installs: it downloads the release's server tarball for its own version,
 checks it against the release's <code>SHA256SUMS</code> and <code>release-manifest.json</code> (and, when <code>gh</code> is
@@ -142,12 +144,12 @@ GitHub releases, which needs <code>gh</code> 2.64 or later logged in as root (<c
 <code>GH_TOKEN</code> in a drop-in); until then each update run logs why it installed nothing. Add
 <code>--no-auto-update</code> after <code>--join -</code> to opt out. A development build of the app has no matching
 release: install from a checkout then. From a checkout (or the release's server tarball),
-<code>echo '&lt;link&gt;' | ./scripts/install-hub.sh --user --join -</code> does the same as your user (or run it
-without the <code>echo</code> and paste the link when it asks). Run as root, a
+<code>./scripts/install-hub.sh --user --join -</code> does the same as your user: paste the link when it
+asks (from a script, pipe the link in on stdin). Run as root, a
 checkout is first copied to a private directory, refusing symlinks and anything another user
 could write (the files or any directory above them), and only that copy is installed. On a server
 that already runs a hub (alone, or in a mesh with its own <code>peer_secret</code>), run
-<code>echo '&lt;link&gt;' | needs-you-admin peer join -</code> instead; the running hub picks it up within 5 seconds and
+<code>needs-you-admin peer join -</code> instead and paste the link when it asks; the running hub picks it up within 5 seconds and
 its other peers are left as they are.</p>
 <p>Then:</p>
 <ul>
@@ -167,8 +169,8 @@ so the Mac reaches it by name whatever its tailnet IP. The Mac's hub is named th
 purged a day after it closed, but a text-free tombstone stays for 30 days (<a href="#housekeeping">housekeeping</a>),
 and the Mac's hub pulls it when it wakes. Only after 30 days away can an item resolved on the
 server stay open on the Mac until you close it.</p>
-<p>Joining one server to another works the same way: <code>needs-you-admin invite create hub-b --role peer</code> on one, the command it prints (<code>install-hub.sh --join -</code>, or <code>needs-you-admin peer join -</code>,
-with the link on stdin) on the other.</p>
+<p>Joining one server to another works the same way: <code>needs-you-admin invite create hub-b --role peer</code> on one, the lines it prints (<code>install-hub.sh --join -</code>, or <code>needs-you-admin peer join -</code>,
+then the link when it asks) on the other.</p>
 <p>A pairing can't be taken over: a peer invite redeemed with the URL or hub id of a hub that is
 already paired is refused (<code>409</code>), and so is a join whose answer names another paired hub. To
 pair the same hub again, or under a new URL, remove it first (<strong>Remove</strong> in Settings,
@@ -289,7 +291,7 @@ needs-you-admin token list             # name, role, state, open items
 needs-you-admin token revoke my-server-build-1
 needs-you-admin token add ci-myrepo --role sender                          # a bare token, printed once
 needs-you-admin invite create hub-b --role peer       # another hub joins this one (one use, 1 h)
-echo '&lt;peer invite link&gt;' | needs-you-admin peer join -   # this hub joins another
+needs-you-admin peer join -                            # this hub joins another (paste the link)
 needs-you-admin peer list                              # peers: config and invite, never secrets
 needs-you-admin peer remove hub-b                      # by hub id, URL or name (invite peers)</code></pre></div>
 <p>Roles: <code>sender</code> posts and resolves; <code>reader</code> reads, resolves, dismisses and answers a card's

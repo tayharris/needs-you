@@ -19,6 +19,8 @@ final class SetupChecklistTests: XCTestCase {
         ("testDemoAndDisabledShowNothing", testDemoAndDisabledShowNothing),
         ("testCardsLookLikeLocalNeedsItems", testCardsLookLikeLocalNeedsItems),
         ("testCardTextNeverHoldsInviteDetails", testCardTextNeverHoldsInviteDetails),
+        ("testFirstSenderTipSaysWhereThePromptWorks", testFirstSenderTipSaysWhereThePromptWorks),
+        ("testHooksTipNeverPointsAtACheckout", testHooksTipNeverPointsAtACheckout),
         ("testGuideLinksAreAllowedHttps", testGuideLinksAreAllowedHttps),
         ("testLoopbackDetection", testLoopbackDetection),
         ("testOtherHosts", testOtherHosts),
@@ -194,7 +196,29 @@ final class SetupChecklistTests: XCTestCase {
             let priority = SetupChecklist.card(tip, state: s).item.priority
             XCTAssertTrue(priority == .low || priority == .normal, "\(tip) is \(priority)")
         }
-        XCTAssertEqual(SetupChecklist.card(.connectSender, state: s).buttons.map(\.action), [.copyAgentPrompt])
+        XCTAssertEqual(SetupChecklist.card(.connectSender, state: s).buttons.map(\.action),
+                       [.copyAgentPrompt, .openSettings(.connect)])
+    }
+
+    func testFirstSenderTipSaysWhereThePromptWorks() {
+        var s = freshHub()
+        s.localHub = .running(loopbackOnly: false)
+        XCTAssertTrue(SetupChecklist.card(.connectSender, state: s).item.body?.contains("on this Mac or on a server") ?? false)
+        s.localHub = .running(loopbackOnly: true)
+        let body = SetupChecklist.card(.connectSender, state: s).item.body ?? ""
+        XCTAssertTrue(body.contains("servers need Tailscale first"), body)
+        XCTAssertTrue(body.contains("shows here"), body)  // where to look next
+    }
+
+    func testHooksTipNeverPointsAtACheckout() {
+        // A person who installed the app from a disk image has no checkout to run a script from.
+        var s = freshHub { $0.senderSeen = true; $0.claudeCodeInstalled = true }
+        for canInvite in [true, false] {
+            s.canInvite = canInvite
+            let body = SetupChecklist.card(.claudeHooks, state: s).item.body ?? ""
+            XCTAssertFalse(body.contains("integrations/"), body)
+            XCTAssertTrue(body.contains(canInvite ? "agent prompt" : "--claude-hooks user"), body)
+        }
     }
 
     func testCardTextNeverHoldsInviteDetails() {

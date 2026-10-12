@@ -112,9 +112,12 @@ If Settings says Python isn't available, install Apple's command line tools (`xc
 
 In Settings → **Connect a machine** (it needs an owner token, which the local hub gives you; without one the page says how to get one): pick what it is (*A server or agent that sends alerts* = sender, *Another Mac that shows the same alerts* = reader, or *Another Mac that can also connect machines (advanced)* = owner), enter a name, the number of uses (1–20) and an expiry, then **Create invite**. Copy one of:
 
-- **Agent prompt**: paste into an agent (Claude Code, etc.) on the new machine: "Set up needs-you alerts on this machine: read <join_url> and follow it."
-- **Shell one-liner**: run on the new machine: `curl -fsSL <join_url>/install.sh | bash -s -- --yes`.
+- **Agent prompt** (senders): paste into an agent (Claude Code, etc.) on the new machine: "Set up needs-you alerts on this machine: read <join_url> and follow it."
+- **Shell one-liner** (senders): run on the new machine: `curl -fsSL <join_url>/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts`.
+- **Plain lines** (senders): the same install as `cd`, `curl -fsSLo needs-you-install.sh <join_url>/install.sh`, `bash needs-you-install.sh --yes …`, for a browser console that drops a pasted `|`. The saved installer deletes itself when it starts.
 - **Mac link**: for another Mac (reader/owner invites); open it there.
+
+A sender's test card, "needs-you is set up on <host>", then shows under **Recent** in the panel.
 
 Tailscale is recommended: the join URL uses the hub's MagicDNS name (`…ts.net`). Any https URL also works.
 
@@ -129,7 +132,7 @@ The app redeems the code (sending this Mac's host name), adds every hub URL the 
 
 ## Manual setup (fallback)
 
-In Settings → **Other hubs (advanced)** → **Hubs by URL and token**, add a hub URL, e.g. `http://hub-a.example.ts.net:8765`, and a read/patch token you were given. Press **Test**, then **Save & Connect**. Hubs are polled in order (this Mac first): the first reachable one is used and the next takes over on errors or timeouts. A failed hub is retried after 2 minutes. The hover line shows which one is in use. Hand-entered tokens have no known role, so they don't enable inviting.
+In Settings → **Other hubs (advanced)** → **Hubs by URL and token**, add a hub URL, e.g. `http://hub-a.example.ts.net:8765`, and a read/patch token you were given. Press **Test**, then **Save and connect**. Hubs are polled in order (this Mac first): the first reachable one is used and the next takes over on errors or timeouts. A failed hub is retried after 2 minutes. The hover line shows which one is in use. Hand-entered tokens have no known role, so they don't enable inviting.
 
 Tokens are stored in `tokens.json` (see [Where config lives](#where-config-lives)). Hub URLs and other settings are in `defaults read app.needsyou.mac`.
 

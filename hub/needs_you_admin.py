@@ -225,17 +225,26 @@ def invite_cmd(args: argparse.Namespace, cfg: dict, store: hubmod.Store) -> int:
                                                           "" if rec["uses"] == 1 else "s", expires))
         print()
         if rec["role"] == hubmod.PEER_ROLE:
-            print("On the other hub (a server with Linux, systemd, python3 and Tailscale), run:")
-            print("  %s" % links["install_command"])
+            print("1. On the other hub (a server with Linux, systemd, python3 and Tailscale), run these:")
+            for line in links["install_steps"]:
+                print("  %s" % line)
             print()
-            print("Or, where a hub already runs: echo %s | needs-you-admin peer join -"
-                  % hubmod._sh_quote(links["join_url"]))
+            print("2. When it asks \"Paste the peer invite link\", paste this (it works once):")
+            print("  %s" % links["join_url"])
+            print()
+            print("Where a hub already runs, instead: needs-you-admin peer join -   (then paste the link)")
+            print("From a script, the one line that pipes the link in:")
+            print("  %s" % links["install_command"])
         elif rec["role"] == "sender":
             print("Join URL (open it to read what it does):")
             print("  %s" % links["join_url"])
             print()
             print("One-liner, on the machine to connect:")
             print("  %s" % links["install_command"])
+            print()
+            print("Or the same as plain lines (for a browser console that mangles | or quotes):")
+            for line in links["install_steps"]:
+                print("  %s" % line)
             print()
             print("Or paste this to an agent on that machine:")
             print("  %s" % links["agent_prompt"])

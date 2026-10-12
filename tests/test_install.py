@@ -36,6 +36,12 @@ exit 0
 """
 
 
+def get_install_sh(inv):
+    from support import OPENER
+    with OPENER.open(inv["join_url"] + "/install.sh", timeout=10) as resp:
+        return resp.read().decode()
+
+
 class InstallScript(HubTestCase):
     def setUp(self):
         super().setUp()
@@ -166,6 +172,28 @@ class InstallScript(HubTestCase):
         r = self.install(inv, "--yes", "--host", "box1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("kept the existing token", r.stdout)
+
+    def test_the_plain_lines_install_and_leave_no_copy_of_the_code(self):
+        """The sender invite's install_steps, run line by line in one shell from another
+        folder: they install, and the saved installer (it holds the code) is gone at once."""
+        inv = self.invite()
+        elsewhere = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(elsewhere)
+        r = subprocess.run([BASH, "-c", "\n".join(inv["install_steps"])], env=self.env(), cwd=elsewhere,
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.access(os.path.join(self.home, ".local", "bin", "needs-you"), os.X_OK))
+        self.assertFalse(os.path.exists(os.path.join(self.home, "needs-you-install.sh")))
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertIn("is under Recent in the panel", r.stdout)  # where to look next
+        # A file of another name is the person's own: never deleted.
+        kept = os.path.join(self.home, "my-install.sh")
+        with open(kept, "w") as fh:
+            fh.write(get_install_sh(inv))
+        r = subprocess.run([BASH, kept, "--yes"], env=self.env(), cwd=self.home,
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.exists(kept))
 
     def test_uninstall_and_linux_cron(self):
         inv = self.invite(uses=1)
@@ -1055,6 +1083,33 @@ esac
         self.assertEqual(argv, "bash -s -- --join -\n")
         self.assertNotIn("nyi_", argv)
         self.assertNotIn(inv["code"], r.stdout + r.stderr)
+
+    def test_the_plain_lines_pair_with_the_link_typed_after(self):
+        """The peer invite's install_steps, as a person runs them: line by line in one shell,
+        then the link where the installer asks for it. curl saves this checkout's installer in
+        the home folder (so it installs the stand-in release, as from GitHub), sudo records its
+        argv: no line, and no command line, carries the code."""
+        status, inv = request("POST", self.mac.url + "/v1/invites", OWNER, {"name": "server", "role": "peer"})
+        self.assertEqual(status, 201, inv)
+        sudo_log = os.path.join(self.tmp, "sudo.log")
+        self.stub("curl", 'out=""; while [ $# -gt 0 ]; do case "$1" in -*o) out=$2; shift ;; esac; shift; done\n'
+                          'printf "%%s\\n" "$out" >> "%s"\nexec cp "%s" "$out"\n' % (sudo_log, self.script))
+        self.stub("sudo", 'printf "%%s\\n" "$*" >> "%s"\nexec "$@" $NEEDS_YOU_TEST_ARGS\n' % sudo_log)
+        self.stub("crontab", "exit 0\n")
+        env = dict(self.fake_release(), NEEDS_YOU_TEST_ARGS="--user --no-start --bind 127.0.0.1 --port %d "
+                   "--hub-id srv --public-url http://127.0.0.1:%d" % (self.port, self.port))
+        r = subprocess.run([BASH, "-c", "\n".join(inv["install_steps"])], input=inv["join_url"] + "\n",
+                           cwd=self.tmp, env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (link,) = self.mac.store.peer_links()
+        self.assertEqual(link["hub_id"], "srv")
+        with open(sudo_log) as fh:
+            argv = fh.read()
+        self.assertEqual(argv, "install-hub.sh\nbash install-hub.sh --join -\n")
+        self.assertNotIn(inv["code"], argv + r.stdout + r.stderr)
+        self.assertIn("installing release v%s from GitHub" % INSTALLER_VERSION, r.stdout)
+        self.assertIn("Settings -> Built-in hub -> Always-on hub lists this hub", r.stdout)  # the next step
+        self.assertNotIn("invite create my-server", r.stdout)  # not this hub's job once paired
 
     def test_join_dash_reads_the_link_from_stdin(self):
         r = self.install("--join", "-", stdin="")

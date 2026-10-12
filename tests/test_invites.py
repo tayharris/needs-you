@@ -62,6 +62,12 @@ class Create(InviteCase):
         self.assertEqual(body["install_command"],
                          "curl -fsSL %s/install.sh | bash -s -- --yes --claude-hooks user --skill --alerts"
                          % body["join_url"])
+        # The same install as plain lines: nothing a key-by-key console can mangle.
+        self.assertEqual(body["install_steps"],
+                         ["cd", "curl -fsSLo needs-you-install.sh %s/install.sh" % body["join_url"],
+                          "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts"])
+        for line in body["install_steps"]:
+            self.assertRegex(line, r"^[A-Za-z0-9 ./:_-]+$", line)
         self.assertEqual(body["agent_prompt"],
                          "Set up needs-you alerts on this machine: read %s and follow it. If this machine "
                          "runs Claude Code, use --claude-hooks user --skill --alerts. If it runs OpenAI Codex CLI, "
@@ -190,6 +196,8 @@ class JoinAndDownloads(InviteCase):
         self.assertTrue(ctype.startswith("text/markdown"))
         text = data.decode()
         self.assertIn("curl -fsSL %s/install.sh | bash -s -- --yes" % inv["join_url"], text)
+        self.assertIn("\n".join(inv["install_steps"]), text)  # the plain lines, for a browser console
+        self.assertIn("under **Recent**", text)  # where the test card shows up
         for opt in ("--claude-hooks", "--skill", "--orca", "--context", "--force", "Posting rules"):
             self.assertIn(opt, text)
         self.assertIn("2 uses left", text)
@@ -496,6 +504,7 @@ class Admin(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn("http://hub.example.ts.net:8765/join/nyi_", r.stdout)
             self.assertIn("/install.sh | bash -s -- --yes", r.stdout)
+            self.assertIn("  bash needs-you-install.sh --yes", r.stdout)  # the plain lines too
             self.assertIn("Set up needs-you alerts on this machine: read http://hub.example.ts.net:8765/join/",
                           r.stdout)
             r = run("invite", "create", "mac", "--role", "owner")

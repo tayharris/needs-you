@@ -152,6 +152,14 @@ class CreatePeerInvite(PeerCase):
         self.assertEqual(body["install_command"],
                          "(curl -fsSL https://github.com/tayharris/needs-you/releases/download/v%s/install-hub.sh"
                          " && echo '%s') | sudo bash -s -- --join -" % (hubmod.VERSION, body["join_url"]))
+        # The same install as plain lines with no code in them: the installer asks for the link.
+        self.assertEqual(body["install_steps"],
+                         ["cd", "curl -fsSLo install-hub.sh https://github.com/tayharris/needs-you/releases/"
+                                "download/v%s/install-hub.sh" % hubmod.VERSION,
+                          "sudo bash install-hub.sh --join -"])
+        for line in body["install_steps"]:
+            self.assertRegex(line, r"^[A-Za-z0-9 ./:_-]+$", line)
+            self.assertNotIn(body["code"], line)
         self.assertNotIn("mac_url", body)
         self.assertNotIn("agent_prompt", body)
         left = hubmod.parse_ts(body["expires_at"]) - a.store.now_ms()
@@ -185,10 +193,15 @@ class CreatePeerInvite(PeerCase):
         self.assertEqual(status, 200)
         self.assertIn("This invite is for another hub", page)
         self.assertIn(inv["install_command"], page)
+        for line in inv["install_steps"]:
+            self.assertIn("    " + line + "\n", page)
+        self.assertIn("Paste the peer invite link:", page)
         status, headers, script = get_raw(inv["join_url"] + "/install.sh")
         self.assertEqual(status, 200)  # so `curl -f | bash` runs it and fails loudly
         self.assertIn("exit 1", script)
         self.assertIn("install-hub.sh --join", script)
+        self.assertIn(inv["install_steps"][1], script)  # the lines to run instead
+        self.assertNotIn(inv["code"], script)
         self.assertEqual(a.store.list_invites()[0]["left"], 1)  # nothing spent
 
     def test_peer_invites_stay_on_the_hub_that_made_them(self):
@@ -507,7 +520,8 @@ class AdminTool(PeerCase):
         self.assertEqual(rc, 0, err)
         self.assertIn("/releases/download/v%s/install-hub.sh && echo '" % hubmod.VERSION, out)
         self.assertIn("') | sudo bash -s -- --join -", out)
-        self.assertIn("| needs-you-admin peer join -", out)
+        self.assertIn("needs-you-admin peer join -   (then paste the link)", out)
+        self.assertIn("  sudo bash install-hub.sh --join -\n", out)  # the plain lines come first
         for line in out.splitlines():  # the link is never an argument of the admin tool
             self.assertNotRegex(line, r"needs-you-admin peer join\s+\S*nyi_")
         (inv,) = a.store.list_invites()
@@ -649,3 +663,16 @@ class Redaction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlainLinesMirror(unittest.TestCase):
+    def test_the_mac_builds_the_hubs_peer_lines(self):
+        """Settings → Always-on hub shows its own PeerJoinCommand.steps; they must be the
+        hub's install_steps, line for line, so the join page and the Mac never disagree."""
+        from support import ROOT
+        with open(os.path.join(ROOT, "mac", "Sources", "NeedsYouCore", "Peers.swift")) as fh:
+            swift = fh.read()
+        lines = [hubmod.PEER_JOIN_STEPS[0],
+                 hubmod.PEER_JOIN_STEPS[1].replace(hubmod.RELEASE_REPO, "\\(repository)").replace("%s", "\\(version)"),
+                 hubmod.PEER_JOIN_STEPS[2]]
+        self.assertIn('return [%s]' % ",\n                ".join('"%s"' % l for l in lines), swift)

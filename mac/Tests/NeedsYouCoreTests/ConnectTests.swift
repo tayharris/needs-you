@@ -88,6 +88,25 @@ final class ConnectLinkTests: XCTestCase {
                                      hubInstallCommand: "hub cmd --claude-hooks user")
         XCTAssertEqual(current.agentPrompt, "hub prompt --claude-hooks user; needs-you doctor")
         XCTAssertEqual(current.shellOneLiner, "hub cmd --claude-hooks user")
+        // Plain lines: built here, or the hub's when every line is plain.
+        XCTAssertEqual(invite.shellSteps, ["cd", "curl -fsSLo needs-you-install.sh http://mac.tail1.ts.net:8765/join/c/install.sh",
+                                           "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts"])
+        let hubSteps = ["cd", "curl -fsSLo needs-you-install.sh http://h.example.ts.net:8765/join/c/install.sh",
+                        "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts --context work"]
+        XCTAssertEqual(InviteResponse(code: "c", joinURL: "j", macURL: nil, expiresAt: nil, hubInstallSteps: hubSteps).shellSteps,
+                       hubSteps)
+        for bad in [["cd", "curl x | bash --claude-hooks user"], ["echo $HOME --claude-hooks user"],
+                    ["rm -rf ~ --claude-hooks user"], ["a; b --claude-hooks user"], ["x --claude-hooks user\n"], []] {
+            let steps = InviteResponse(code: "c", joinURL: "http://h.example.ts.net:8765/join/c", macURL: nil,
+                                       expiresAt: nil, hubInstallSteps: bad).shellSteps
+            XCTAssertEqual(steps.last, "bash needs-you-install.sh --yes --claude-hooks user --skill --alerts", "\(bad)")
+        }
+        // Decoding: install_steps is optional, and a malformed one doesn't fail the invite.
+        let decoded = try? JSONDecoder().decode(InviteResponse.self, from: Data(#"{"code": "c", "join_url": "j", "install_steps": 3}"#.utf8))
+        XCTAssertEqual(decoded?.hubInstallSteps, nil)
+        XCTAssertEqual(decoded?.joinURL, "j")
+        let full = try? JSONDecoder().decode(InviteResponse.self, from: Data(#"{"code": "c", "join_url": "j", "install_steps": ["cd"]}"#.utf8))
+        XCTAssertEqual(full?.hubInstallSteps, ["cd"])
         // uses are clamped to 1...20.
         XCTAssertEqual(InviteRequest(name: " box ", role: .sender, uses: 99, ttlHours: 24).uses, 20)
         XCTAssertEqual(InviteRequest(name: "box", role: .sender, uses: 0, ttlHours: 24).uses, 1)

@@ -201,6 +201,8 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
     /// Optional extras some hubs send for sender invites; preferred when present.
     public var hubAgentPrompt: String?
     public var hubInstallCommand: String?
+    /// The same install as plain lines (hubs since 0.5.2); used when every line is plain.
+    public var hubInstallSteps: [String]?
 
     enum CodingKeys: String, CodingKey {
         case code
@@ -209,16 +211,40 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         case expiresAt = "expires_at"
         case hubAgentPrompt = "agent_prompt"
         case hubInstallCommand = "install_command"
+        case hubInstallSteps = "install_steps"
     }
 
     public init(code: String, joinURL: String, macURL: String?, expiresAt: String?,
-                hubAgentPrompt: String? = nil, hubInstallCommand: String? = nil) {
+                hubAgentPrompt: String? = nil, hubInstallCommand: String? = nil,
+                hubInstallSteps: [String]? = nil) {
         self.code = code
         self.joinURL = joinURL
         self.macURL = macURL
         self.expiresAt = expiresAt
         self.hubAgentPrompt = hubAgentPrompt
         self.hubInstallCommand = hubInstallCommand
+        self.hubInstallSteps = hubInstallSteps
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        code = try c.decode(String.self, forKey: .code)
+        joinURL = try c.decode(String.self, forKey: .joinURL)
+        macURL = try? c.decodeIfPresent(String.self, forKey: .macURL)
+        expiresAt = try? c.decodeIfPresent(String.self, forKey: .expiresAt)
+        hubAgentPrompt = try? c.decodeIfPresent(String.self, forKey: .hubAgentPrompt)
+        hubInstallCommand = try? c.decodeIfPresent(String.self, forKey: .hubInstallCommand)
+        // A malformed list (a newer or odd hub) is ignored, never a failed invite.
+        hubInstallSteps = (try? c.decodeIfPresent([String].self, forKey: .hubInstallSteps)) ?? nil
+    }
+
+    /// The installer's saved name in `shellSteps`: it deletes itself when it starts (it holds the code).
+    public static let installFile = "needs-you-install.sh"
+    /// A line a person can paste anywhere, a browser console that types it key by key too:
+    /// letters, digits, spaces and `. / : _ = -` only (no quote, bracket, pipe, `$`, `~` or `;`).
+    public static func isPlainLine(_ line: String) -> Bool {
+        !line.isEmpty && line.count <= 500
+            && line.range(of: #"^[A-Za-z0-9 ./:_=-]+\z"#, options: .regularExpression) != nil
     }
 
     /// The installer flags for a machine that runs Claude Code: hooks, skill, alerts on
@@ -270,6 +296,18 @@ public struct InviteResponse: Decodable, Equatable, Sendable {
         var base = joinURL
         while base.hasSuffix("/") { base.removeLast() }
         return "curl -fsSL \(base)/install.sh | bash -s -- --yes \(Self.claudeFlags)"
+    }
+    /// The same install as plain lines, for a console that mangles `|`: the hub's install_steps
+    /// when it sends them for the Claude Code setup and every line is plain, else built here.
+    public var shellSteps: [String] {
+        if let steps = hubInstallSteps, !steps.isEmpty, steps.allSatisfy(Self.isPlainLine),
+           steps.last?.contains("--claude-hooks") == true {
+            return steps
+        }
+        var base = joinURL
+        while base.hasSuffix("/") { base.removeLast() }
+        return ["cd", "curl -fsSLo \(Self.installFile) \(base)/install.sh",
+                "bash \(Self.installFile) --yes \(Self.claudeFlags)"]
     }
 }
 
