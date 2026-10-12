@@ -150,6 +150,66 @@ class CopilotHook(unittest.TestCase):
         self.run_hook("notify", dict(data, message="Which one?"), NEEDS_YOU_AGENT_QUESTIONS="0")
         self.assertEqual(opt(self.wait_calls(4)[-1], "--title"), "Copilot asked you a question: my-repo")
 
+    def error(self, recoverable, context="model_call", name="RateLimitError", **extra):
+        # errorOccurred (docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference)
+        self.run_hook("notify", {"error": {"message": "429 from upstream, key=%s" % SECRET, "name": name,
+                                           "stack": "at /home/someone/%s.js:1" % SECRET},
+                                 "errorContext": context, "recoverable": recoverable}, **extra)
+
+    def test_error_card_only_when_not_recoverable(self):
+        self.error(True)
+        self.error(True, "tool_execution")
+        time.sleep(0.8)
+        self.assertTrue(wait_until(lambda: not self.hook_running("notify"), timeout=20))
+        self.assertEqual(self.calls(), [])
+        titles = {"model_call": "Copilot stopped on a model error",
+                  "tool_execution": "Copilot stopped on a tool error",
+                  "system": "Copilot stopped on an error", "user_input": "Copilot stopped on an error"}
+        for n, (context, title) in enumerate(sorted(titles.items()), 1):
+            self.error(False, context)
+            argv = self.wait_calls(n)[-1]
+            self.assertEqual(opt(argv, "--title"), title + ": my-repo")
+            self.assertEqual(opt(argv, "--event"), "failed")
+            self.assertTrue(opt(argv, "--body").startswith("Copilot reported RateLimitError. "))
+            posted_item(argv)
+        self.error(False, name="not a <name> %s" % SECRET)
+        argv = self.wait_calls(len(titles) + 1)[-1]
+        self.assertNotIn("Copilot reported", opt(argv, "--body"))
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
+        self.assertNotIn("429 from upstream", json.dumps(self.calls()))
+        self.wait_marker(True)
+        with open(os.path.join(self.state, SESSION)) as fh:
+            self.assertIn("kind=failure\n", fh.read())
+
+    def test_error_card_stays_through_turn_end_and_session_end(self):
+        self.error(False)
+        key = opt(self.wait_calls(1)[-1], "--key")
+        self.wait_marker(True)
+        # agentStop after the error: not replaced by "finished"
+        self.run_hook("notify", {"stopReason": "end_turn"})
+        # sessionEnd with reason error: not resolved (flush clears it once Copilot exits)
+        self.run_hook("end", {"reason": "error"})
+        time.sleep(0.8)
+        self.assertTrue(wait_until(lambda: not self.hook_running("notify") and not self.hook_running("end"),
+                                   timeout=20))
+        self.assertEqual(len(self.calls()), 1)
+        self.assertTrue(os.path.exists(os.path.join(self.state, SESSION)))
+        # the next prompt clears it
+        self.run_hook("resolve", {"prompt": "retry"})
+        self.assertEqual(self.wait_calls(2)[-1], ["resolve", "--key", key])
+
+    def test_error_posts_while_the_agents_own_item_is_open(self):
+        items = os.path.join(self.home, ".local", "state", "needs-you", "session-items", SESSION)
+        os.makedirs(items)
+        with open(os.path.join(items, "x"), "w") as fh:
+            fh.write("key=ci:x\nexpires=%d\n" % (time.time() + 3600))
+        self.run_hook("notify", {"stopReason": "end_turn"})  # the turn card: skipped (one card per wait)
+        self.error(False)
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"), "Copilot stopped on a model error: my-repo")
+        self.assertTrue(wait_until(lambda: not self.hook_running("notify"), timeout=20))
+        self.assertEqual(len(self.calls()), 1)
+
     def test_turn_cards_can_be_turned_off_and_other_notifications_post_nothing(self):
         self.run_hook("notify", {"stopReason": "end_turn"}, NEEDS_YOU_AGENT_TURN_CARDS="0")
         for ntype in ("agent_idle", "agent_completed", "shell_completed"):
@@ -199,6 +259,7 @@ class CopilotHooksJson(unittest.TestCase):
         hooks = doc["hooks"]
         self.assertEqual({ev: h[0]["bash"].split()[-2:] for ev, h in hooks.items()},
                          {"notification": ["notify", "copilot"], "agentStop": ["notify", "copilot"],
+                          "errorOccurred": ["notify", "copilot"],
                           "userPromptSubmitted": ["resolve", "copilot"], "postToolUse": ["resolve", "copilot"],
                           "postToolUseFailure": ["resolve", "copilot"], "sessionEnd": ["end", "copilot"]})
         self.assertEqual(hooks["notification"][0]["matcher"], "permission_prompt|elicitation_dialog")

@@ -5,6 +5,9 @@
     "stop": [
       { "command": "./hooks/needs-you-hook.sh notify cursor", "timeout": 10 }
     ],
+    "afterAgentResponse": [
+      { "command": "./hooks/needs-you-hook.sh turn cursor", "timeout": 10 }
+    ],
     "beforeSubmitPrompt": [
       { "command": "./hooks/needs-you-hook.sh resolve cursor", "timeout": 10 }
     ],

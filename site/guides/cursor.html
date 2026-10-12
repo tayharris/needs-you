@@ -49,7 +49,7 @@
 <h2 id="manual-install">Manual install <a class="anchor" href="#manual-install" aria-label="Link to this section">#</a></h2>
 <p>On a sender machine, from a checkout of this repo:</p>
 <div class="code" data-copy><pre><code class="language-bash">integrations/cursor/install-cursor-hooks.sh    # merges into ~/.cursor/hooks.json</code></pre></div>
-<p>It backs up <code>~/.cursor/hooks.json</code>, adds three entries (<code>stop</code>, <code>beforeSubmitPrompt</code>, <code>sessionEnd</code>) next to your own hooks, and copies the hook to <code>~/.cursor/hooks/needs-you-hook.sh</code>. It never registers a permission hook such as <code>preToolUse</code> or <code>beforeShellExecution</code>: Cursor blocks the action when one of those prints nothing. <code>--uninstall</code> takes the entries out again, and so does <code>needs-you uninstall-hooks --cursor</code>, which needs no checkout and no hub.</p>
+<p>It backs up <code>~/.cursor/hooks.json</code>, adds four entries (<code>stop</code>, <code>afterAgentResponse</code>, <code>beforeSubmitPrompt</code>, <code>sessionEnd</code>) next to your own hooks, and copies the hook to <code>~/.cursor/hooks/needs-you-hook.sh</code>. It never registers a permission hook such as <code>preToolUse</code> or <code>beforeShellExecution</code>: Cursor blocks the action when one of those prints nothing. <code>--uninstall</code> takes the entries out again, and so does <code>needs-you uninstall-hooks --cursor</code>, which needs no checkout and no hub.</p>
 <h2 id="opt-in">Opt in <a class="anchor" href="#opt-in" aria-label="Link to this section">#</a></h2>
 <p>Cursor starts hooks from the app, not your shell, so put the switch in the env file:</p>
 <div class="code" data-copy><pre><code class="language-bash">echo 'NEEDS_YOU_AGENT_ALERTS=1' &gt;&gt; ~/.config/needs-you/env</code></pre></div>
@@ -58,19 +58,20 @@
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Agent state</th><th>Card</th></tr></thead>
 <tbody>
-<tr><td>Turn finished, waiting for you</td><td><strong>Cursor finished: my-repo</strong> (Cursor's hook carries no text of the turn, so never a question)</td></tr>
-<tr><td>Turn ended on an error</td><td><strong>Cursor stopped on an error: my-repo</strong></td></tr>
+<tr><td>Turn finished, waiting for you</td><td><strong>Cursor finished: my-repo</strong></td></tr>
+<tr><td>Turn ended on a question to you</td><td><strong>Cursor asks: Should I run the migration too? · my-repo</strong>, that paragraph in the body</td></tr>
+<tr><td>Turn or chat ended on an error</td><td><strong>Cursor stopped on an error: my-repo</strong></td></tr>
 <tr><td>Waiting for your approval</td><td>none (Cursor has no hook for it)</td></tr>
 </tbody>
 </table></div>
-<p>One card per chat (Cursor's <code>conversation_id</code>), updated in place. Prompts, your email address (which Cursor sends to every hook) and the transcript aren't sent. A turn you stopped yourself posts nothing. On the Mac the card has a <strong>Cursor</strong> button that opens the project. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> turns the finished cards off (which leaves only errors).</p>
+<p>One card per chat (Cursor's <code>conversation_id</code>), updated in place. The question comes from the agent's last reply (<code>afterAgentResponse</code>): only when its last line ends with "?", outside code, cleaned, anything token-shaped redacted, clamped; <code>NEEDS_YOU_TURN_TEXT=0</code> keeps the plain <strong>Cursor finished</strong>. Prompts, your email address (which Cursor sends to every hook), the rest of the reply, the transcript and Cursor's error text aren't sent. An error card stays when the chat ends on the error. Hooks installed before these were added: run <code>needs-you update</code>. A turn you stopped yourself posts nothing. On the Mac the card has a <strong>Cursor</strong> button that opens the project. <code>NEEDS_YOU_AGENT_TURN_CARDS=0</code> turns the finished cards off (which leaves only errors).</p>
 <p><strong>Your Claude Code hooks.</strong> Cursor also runs the hooks in <code>~/.claude/settings.json</code> (Settings → Agents → Third-Party Imports, on by default). Given a Cursor payload they now exit at once, so they neither post nor clear the Cursor card. You don't need to change anything.</p>
 <h2 id="check-it-works">Check it works <a class="anchor" href="#check-it-works" aria-label="Link to this section">#</a></h2>
 <div class="code" data-copy><pre><code class="language-bash">needs-you doctor    # the "cursor hooks" line should be OK
 cd ~/.cursor &amp;&amp; echo '{"conversation_id":"test-1","hook_event_name":"stop","status":"completed","workspace_roots":["/tmp/my-repo"]}' |
   NEEDS_YOU_AGENT_ALERTS=1 ./hooks/needs-you-hook.sh notify cursor
 echo '{"conversation_id":"test-1","hook_event_name":"beforeSubmitPrompt"}' | NEEDS_YOU_AGENT_ALERTS=1 ./hooks/needs-you-hook.sh resolve cursor</code></pre></div>
-<p>The first command prints <code>{}</code> and the second <code>{"continue":true}</code> (Cursor reads a hook's output as its answer); the card arrives and goes a moment later. No card from a real chat? Check that <code>NEEDS_YOU_AGENT_ALERTS=1</code> is in the env file and that <code>~/.cursor/hooks.json</code> still has the three needs-you entries. In the <code>cursor-agent</code> CLI, one-shot <code>-p</code> runs post nothing: the agent has exited, so nobody is waiting. Add <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> to the test commands above to log what the hook does (<a href="troubleshooting.html#cursor-cline-and-aider">troubleshooting</a>).</p>
+<p>The first command prints <code>{}</code> and the second <code>{"continue":true}</code> (Cursor reads a hook's output as its answer); the card arrives and goes a moment later. No card from a real chat? Check that <code>NEEDS_YOU_AGENT_ALERTS=1</code> is in the env file and that <code>~/.cursor/hooks.json</code> still has the four needs-you entries. In the <code>cursor-agent</code> CLI, one-shot <code>-p</code> runs post nothing: the agent has exited, so nobody is waiting. Add <code>NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log</code> to the test commands above to log what the hook does (<a href="troubleshooting.html#cursor-cline-and-aider">troubleshooting</a>).</p>
 <p>Tested against Cursor's documented hook payloads, not a live Cursor session (that needs a Cursor login).</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/cursor.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/cursor.md">docs/guides/cursor.md</a> in the repo. View or edit it on GitHub.</p>
   </main>

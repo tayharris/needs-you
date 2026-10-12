@@ -20,7 +20,7 @@ On a sender machine, from a checkout of this repo:
 integrations/cursor/install-cursor-hooks.sh    # merges into ~/.cursor/hooks.json
 ```
 
-It backs up `~/.cursor/hooks.json`, adds three entries (`stop`, `beforeSubmitPrompt`, `sessionEnd`) next to your own hooks, and copies the hook to `~/.cursor/hooks/needs-you-hook.sh`. It never registers a permission hook such as `preToolUse` or `beforeShellExecution`: Cursor blocks the action when one of those prints nothing. `--uninstall` takes the entries out again, and so does `needs-you uninstall-hooks --cursor`, which needs no checkout and no hub.
+It backs up `~/.cursor/hooks.json`, adds four entries (`stop`, `afterAgentResponse`, `beforeSubmitPrompt`, `sessionEnd`) next to your own hooks, and copies the hook to `~/.cursor/hooks/needs-you-hook.sh`. It never registers a permission hook such as `preToolUse` or `beforeShellExecution`: Cursor blocks the action when one of those prints nothing. `--uninstall` takes the entries out again, and so does `needs-you uninstall-hooks --cursor`, which needs no checkout and no hub.
 
 ## Opt in
 
@@ -36,11 +36,12 @@ The invite installer's `--alerts` writes that line.
 
 | Agent state | Card |
 |---|---|
-| Turn finished, waiting for you | **Cursor finished: my-repo** (Cursor's hook carries no text of the turn, so never a question) |
-| Turn ended on an error | **Cursor stopped on an error: my-repo** |
+| Turn finished, waiting for you | **Cursor finished: my-repo** |
+| Turn ended on a question to you | **Cursor asks: Should I run the migration too? · my-repo**, that paragraph in the body |
+| Turn or chat ended on an error | **Cursor stopped on an error: my-repo** |
 | Waiting for your approval | none (Cursor has no hook for it) |
 
-One card per chat (Cursor's `conversation_id`), updated in place. Prompts, your email address (which Cursor sends to every hook) and the transcript aren't sent. A turn you stopped yourself posts nothing. On the Mac the card has a **Cursor** button that opens the project. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns the finished cards off (which leaves only errors).
+One card per chat (Cursor's `conversation_id`), updated in place. The question comes from the agent's last reply (`afterAgentResponse`): only when its last line ends with "?", outside code, cleaned, anything token-shaped redacted, clamped; `NEEDS_YOU_TURN_TEXT=0` keeps the plain **Cursor finished**. Prompts, your email address (which Cursor sends to every hook), the rest of the reply, the transcript and Cursor's error text aren't sent. An error card stays when the chat ends on the error. Hooks installed before these were added: run `needs-you update`. A turn you stopped yourself posts nothing. On the Mac the card has a **Cursor** button that opens the project. `NEEDS_YOU_AGENT_TURN_CARDS=0` turns the finished cards off (which leaves only errors).
 
 **Your Claude Code hooks.** Cursor also runs the hooks in `~/.claude/settings.json` (Settings → Agents → Third-Party Imports, on by default). Given a Cursor payload they now exit at once, so they neither post nor clear the Cursor card. You don't need to change anything.
 
@@ -53,6 +54,6 @@ cd ~/.cursor && echo '{"conversation_id":"test-1","hook_event_name":"stop","stat
 echo '{"conversation_id":"test-1","hook_event_name":"beforeSubmitPrompt"}' | NEEDS_YOU_AGENT_ALERTS=1 ./hooks/needs-you-hook.sh resolve cursor
 ```
 
-The first command prints `{}` and the second `{"continue":true}` (Cursor reads a hook's output as its answer); the card arrives and goes a moment later. No card from a real chat? Check that `NEEDS_YOU_AGENT_ALERTS=1` is in the env file and that `~/.cursor/hooks.json` still has the three needs-you entries. In the `cursor-agent` CLI, one-shot `-p` runs post nothing: the agent has exited, so nobody is waiting. Add `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` to the test commands above to log what the hook does ([troubleshooting](troubleshooting.md#cursor-cline-and-aider)).
+The first command prints `{}` and the second `{"continue":true}` (Cursor reads a hook's output as its answer); the card arrives and goes a moment later. No card from a real chat? Check that `NEEDS_YOU_AGENT_ALERTS=1` is in the env file and that `~/.cursor/hooks.json` still has the four needs-you entries. In the `cursor-agent` CLI, one-shot `-p` runs post nothing: the agent has exited, so nobody is waiting. Add `NEEDS_YOU_HOOK_LOG=/tmp/ny-hook.log` to the test commands above to log what the hook does ([troubleshooting](troubleshooting.md#cursor-cline-and-aider)).
 
 Tested against Cursor's documented hook payloads, not a live Cursor session (that needs a Cursor login).

@@ -32,8 +32,9 @@
 #            starts this hook with a small JSON object): PermissionRequest,
 #            Question and Stop (the session went idle) call `notify`.
 #   copilot  GitHub Copilot CLI (integrations/copilot/, ~/.copilot/hooks/):
-#            notification (permission_prompt, elicitation_dialog) and agentStop
-#            call `notify`. Its payload names the session `sessionId`. Copilot
+#            notification (permission_prompt, elicitation_dialog), agentStop and
+#            errorOccurred (only one that isn't recoverable posts) call `notify`; a
+#            sessionEnd with reason error leaves the cards. Its payload names the session `sessionId`. Copilot
 #            waits for most hooks, so like gemini the work runs in the background.
 #   grok     Grok Build (integrations/grok/, ~/.grok/hooks/needs-you.json):
 #            Notification permission_prompt / idle_prompt (sent as
@@ -51,8 +52,10 @@
 #            a hook's process group when it runs past its timeout, so the work goes
 #            to a background copy in a session of its own.
 #   cursor   Cursor (integrations/cursor/, ~/.cursor/hooks.json): stop (status
-#            completed or error) calls `notify`, beforeSubmitPrompt `resolve`,
-#            sessionEnd `end`. The session is conversation_id. Cursor reads a hook's
+#            completed or error) calls `notify`, afterAgentResponse `turn` (keeps the
+#            reply's question for "Cursor asks"), beforeSubmitPrompt `resolve`,
+#            sessionEnd `end` (reason error: keeps or posts the error card instead).
+#            The session is conversation_id. Cursor reads a hook's
 #            stdout as its answer: this prints {"continue":true} in resolve mode (only
 #            beforeSubmitPrompt runs it) and {} otherwise, then works in the background.
 #            Cursor also runs the Claude Code hooks; given a Cursor payload they exit.
@@ -1656,18 +1659,21 @@ def write_title_cache(c):
 
 
 def turn_cache_path():
-    sid = re.sub(r"^\.", "_", re.sub(r"[^A-Za-z0-9._-]", "_", session)[:80])  # as the shell's sanitize
-    return os.path.join(os.environ["NY_STATE"], ".turn-" + sid) if sid else ""
+    """.turn-<id> in the state dir: the card's session as the shell names it (sanitized)."""
+    sid = os.environ.get("NY_ID", "")
+    return os.path.join(os.environ["NY_STATE"], ".turn-" + sid) if sid and sid not in (".", "..") else ""
 
 
 def stop_turn():
-    """Claude's Stop (the `turn` mode): keep what the idle_prompt card a minute later needs from
-    the turn's final message, last_assistant_message (the docs: the transcript isn't sure to
-    have it yet at Stop). Only turn_question()'s answer is kept, already redacted: the question
-    and its paragraph, or none. Private (mode 600), one file per session, replaced each Stop."""
+    """The `turn` mode: keep what the session's next turn card needs from the turn's final
+    message. Claude's Stop carries it as last_assistant_message (the docs: the transcript isn't
+    sure to have it yet at Stop), for the idle_prompt card a minute later; Cursor's
+    afterAgentResponse as text, for its stop card. Only turn_question()'s answer is kept,
+    already redacted: the question and its paragraph, or none. Private (mode 600), one file per
+    session, replaced each time."""
     path = turn_cache_path()
-    text = data.get("last_assistant_message")
-    if AGENT != "claude" or not path or not isinstance(text, str):
+    text = data.get({"claude": "last_assistant_message", "cursor": "text"}.get(AGENT, ""))
+    if not path or not isinstance(text, str):
         return 3
     q, para = turn_question(text) if turn_text_on() else ("", "")
     try:
@@ -1678,8 +1684,8 @@ def stop_turn():
 
 
 def read_turn_cache():
-    """(question, paragraph) that Claude's last Stop kept for this session, or None (an older
-    Claude Code, without last_assistant_message: the transcript is read instead)."""
+    """(question, paragraph) that stop_turn() kept for this session, or None (none kept: an older
+    Claude Code, without last_assistant_message, so the transcript is read instead)."""
     path = turn_cache_path()
     if not path:
         return None
@@ -2067,8 +2073,25 @@ def copilot_card():
         if asked:
             return ("question",) + asked
         return "question", "Copilot asked you a question", "Copilot is waiting for your answer."
+    if not ntype and isinstance(data.get("error"), dict) and "recoverable" in data:
+        # errorOccurred (docs.github.com cli-hooks-reference): error {message, name, stack},
+        # errorContext (model_call, tool_execution, system, user_input), recoverable. Copilot
+        # goes on by itself after a recoverable one; for the rest the card names the context
+        # and at most the error's name (a class name), never its message or stack.
+        if data.get("recoverable") is not False:
+            return None
+        what = {"model_call": "Copilot stopped on a model error",
+                "tool_execution": "Copilot stopped on a tool error"}.get(field("errorContext"),
+                                                                          "Copilot stopped on an error")
+        name = data["error"].get("name")
+        name = name if isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.]{0,63}", name) else ""
+        return "failure", what, ("Copilot reported %s. " % name if name else "") + \
+            "It can't recover from it on its own; send a message to retry."
     if not ntype and "stopReason" in data:
         if not turn_cards():
+            return None
+        # The turn ended on an error: its card says more than "finished"; keep it.
+        if read_marker(os.environ["NY_MARKER"]).get("kind") == "failure":
             return None
         return turn_card("Copilot", "", "Copilot is waiting for you",
                          "Copilot finished its turn and is waiting for your next message.")
@@ -2076,16 +2099,24 @@ def copilot_card():
 
 
 def cursor_card():
-    """(kind, what, msg) for a Cursor stop hook, or None. Cursor has no hook for "waiting for
-    approval", so this is the only card: the agent's turn ended (or failed)."""
+    """(kind, what, msg) for a Cursor stop hook (or a sessionEnd that ended on an error), or
+    None. Cursor has no hook for "waiting for approval", so this is the only card: the agent's
+    turn ended (or failed). afterAgentResponse kept the turn's question (stop_turn)."""
+    if event == "sessionEnd":
+        # reason error (cursor.com/docs/hooks): error_message is free text and stays off the card
+        if field("reason") != "error":
+            return None
+        return ("failure", "Cursor stopped on an error",
+                "The conversation ended on an error; send a message to retry.")
     if event != "stop":
         return None
     status = field("status")
     if status == "completed":
         if not turn_cards():
             return None
+        kept = read_turn_cache()
         return turn_card("Cursor", "", "Cursor finished",
-                         "Cursor's agent finished its turn and is waiting for your next message.")
+                         "Cursor's agent finished its turn and is waiting for your next message.", kept)
     if status == "error":
         return "failure", "Cursor stopped on an error", "The agent's turn ended on an error; send a message to retry."
     return None  # aborted: the person stopped it, so they are right there
@@ -2728,7 +2759,25 @@ raise SystemExit(rc)
 PY
 }
 
+# A session that ended on an error is not the usual end, which clears the session's cards.
+# Cursor's sessionEnd (reason error): keep the error card its stop posted, else post one.
+# Copilot's: its errorOccurred card (perhaps still being posted) stays; `needs-you flush`
+# clears the session's cards once Copilot has exited.
+if [ "$mode" = end ] && { [ "$agent" = cursor ] || [ "$agent" = copilot ]; } &&
+   [ "$(json_str reason)" = error ]; then
+  if [ "$agent" = copilot ] || grep -qs '^kind=failure$' "$marker"; then
+    log "end $key: the session ended on an error; its cards stay"
+    exit 0
+  fi
+  mode=notify
+fi
+
 case "$mode" in
+  turn)
+    # Cursor's afterAgentResponse: keep the reply's question for the stop card that follows.
+    run_py turn >/dev/null
+    ;;
+
   resolve)
     # Claude Code's Notifications that say a wait is over: each ends one kind of card (the
     # topic= notify wrote in the marker), and leaves any other card, and a post under way, alone.
@@ -2751,6 +2800,8 @@ case "$mode" in
       esac
       exit 0
     fi
+    # A new prompt: a question kept from Cursor's last reply no longer applies.
+    [ "$agent" = cursor ] && rm -f "$state_dir/.turn-$id"
     # Codex's Interrupt hook is synchronous with a 1-3 s limit: don't wait on the hub.
     [ "$agent" = codex ] && resolve_bg=1
     cancel_posts
@@ -2770,10 +2821,10 @@ case "$mode" in
     # The turn's final message (last_assistant_message, Claude Code 2.1.47+): keep its question
     # for the idle_prompt card about a minute later. Without it (an older Claude Code), drop
     # what an earlier turn kept, so that card reads the transcript instead.
-    if [ "$agent" = claude ] && [ -n "$session_id" ]; then
+    if [ "$agent" = claude ]; then
       case "$input" in
         *'"last_assistant_message"'*) run_py turn >/dev/null ;;
-        *) rm -f "$state_dir/.turn-$(sanitize "$session_id")" ;;
+        *) rm -f "$state_dir/.turn-$id" ;;
       esac
     fi
     case "${NEEDS_YOU_CONTEXT_ALERT_PCT:-}" in
@@ -2835,8 +2886,8 @@ case "$mode" in
     else
       resolve_marker "$marker" "$key"
       resolve_marker "$ctx_marker"
-      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")" "$state_dir/.title-$(sanitize "$session_id")" \
-        "$state_dir/.turn-$(sanitize "$session_id")"
+      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")" "$state_dir/.title-$(sanitize "$session_id")"
+      case "$id" in .|..) ;; *) rm -f "$state_dir/.turn-$id" ;; esac
     fi
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
@@ -2920,7 +2971,8 @@ case "$mode" in
     esac
     case "$agent:$ntype:$(json_str hook_event_name)" in
       claude:idle_prompt:*|claude:agent_needs_input:*|grok:idle_prompt:*|kimi::Stop|codex::Stop|opencode::Stop|gemini::AfterAgent|copilot::)
-        if own_item_open; then
+        # (Copilot's errorOccurred has no type or event name either: an error still posts.)
+        if [ -z "$(json_str errorContext)" ] && own_item_open; then
           log "notify $key -> skipped: the agent's own item for this session is open"
           exit 0
         fi
