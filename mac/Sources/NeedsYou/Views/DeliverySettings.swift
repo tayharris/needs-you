@@ -16,26 +16,26 @@ struct DeliverySection: View {
             Picker(selection: $settings.delivery.normal) {
                 ForEach(DeliveryDefaults.needsChoices, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("Normal items", "With no focus. Urgent items always interrupt.")
+                LabelWithDetail("Normal items", "With no Focus on. Urgent items always interrupt.")
             }
             Picker(selection: $settings.delivery.low) {
                 ForEach(DeliveryDefaults.needsChoices, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("Low items", "Later collects them for the start of the day.")
+                LabelWithDetail("Low items", "With no Focus on. Ambient (the default) changes the count; nothing springs out.")
             }
             Picker(selection: $settings.delivery.recent) {
                 ForEach(DeliveryDefaults.quietChoices, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("Done and info", "Recent rows; never counted.")
+                LabelWithDetail("Done and info items", "Cards that say something finished, or are just for your information. They show under Recent and are never counted.")
             }
             Picker(selection: $settings.delivery.otherContext) {
                 ForEach(DeliveryDefaults.quietChoices, id: \.self) { Text($0.title).tag($0) }
             } label: {
-                LabelWithDetail("The other context", "Non-urgent work items in the evening, personal ones by day: the faint second number.")
+                LabelWithDetail("Items for the other side", "Work items in the evening and personal ones by day, except urgent: the faint second number on the pill.")
             }
             Toggle(isOn: $settings.delivery.urgentBreaksFocus) {
                 LabelWithDetail("Urgent items break through Focus",
-                                "Under Agents and urgent only, and Urgent only. Off (for a presentation): they arrive ambient. Everything later holds urgent too. A focus set by a link always lets urgent through.")
+                                "On: urgent items still interrupt under Agents and urgent only, and Urgent only. Off, for a presentation: they arrive ambient. Everything later holds them either way, and a Focus turned on by a link always lets them through.")
             }
             Toggle(isOn: $settings.allowFocusLinks) {
                 LabelWithDetail("Allow focus links from other apps (Shortcuts, scripts)",
@@ -44,7 +44,7 @@ struct DeliverySection: View {
         } header: {
             Text("Delivery")
         } footer: {
-            Text("Interrupt: the preview springs out with a glow. Ambient: the count changes with one soft glow. Later: held out of the count and delivered as one peek when the focus or snooze ends, or at the start of the day. Turn Focus on from the pill's right-click menu, the menu bar, or needsyou://focus.")
+            Text("Interrupt: the preview springs out with a glow. Ambient: the count changes with one soft glow. Later: held out of the count and shown as one peek when the Focus or snooze ends, or at the start of the day. Focus is this app's own (not macOS's): turn it on from the pill's right-click menu, the menu bar, or a needsyou://focus link.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -149,15 +149,15 @@ struct BypassRulesSection: View {
     }
 
     static let presets: [Preset] = [
-        Preset(title: "Agent Questions Are Urgent",
+        Preset(title: "Agent questions are urgent",
                help: "An agent's question card (source.event question, keys starting agent:) is treated as urgent",
                rule: BypassRule(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .urgent,
                                 event: AgentEvent.question.rawValue)!),
-        Preset(title: "Agent Failures Are Urgent",
+        Preset(title: "Agent failures are urgent",
                help: "An agent that stopped on an error, a rate limit or a sign-in (source.event failed) is treated as urgent",
                rule: BypassRule(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .urgent,
                                 event: AgentEvent.failed.rawValue)!),
-        Preset(title: "Agents Always Interrupt",
+        Preset(title: "Agents always interrupt",
                help: "Every agent session's card (keys starting agent:) interrupts, whatever the focus",
                rule: BypassRule(match: .keyPrefix, value: FocusLevel.agentKeyPrefix, action: .alwaysInterrupt)!),
     ]
@@ -173,6 +173,7 @@ struct BypassRulesSection: View {
                     .fixedSize()
                     TextField(Self.placeholder(draft.match), text: $draft.value)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel(draft.match.title)
                     Picker("Event", selection: $draft.event) {
                         Text(AgentEvent.title(of: nil)).tag("")
                         ForEach(AgentEvent.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
@@ -196,10 +197,11 @@ struct BypassRulesSection: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Remove this rule")
+                    .accessibilityLabel("Remove this rule")
                 }
             }
             HStack {
-                Button("Add Rule") {
+                Button("Add rule") {
                     drafts.append(Draft(match: .keyPrefix, value: "", action: .alwaysInterrupt))
                 }
                 .disabled(drafts.count >= RuleBook.maxRules)

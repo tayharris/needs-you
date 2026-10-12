@@ -147,8 +147,11 @@ final class Phase3Controller: ObservableObject {
     /// Settings → Alerts: the work/personal schedule and the morning summary.
     var scheduleSection: AnyView { settingsSection }
 
-    /// Settings → Integrations: live updates over SSE.
+    /// Settings → Advanced → Live updates: the hub's event stream (/v1/stream).
     var streamSection: AnyView { AnyView(Phase3StreamSection(phase3: self)) }
+
+    /// How often the app checks the hub without the stream, in seconds.
+    var pollSeconds: Int { Int(model.settings.pollInterval) }
 }
 
 // settings-section: schedule
@@ -172,10 +175,15 @@ private struct Phase3StreamSection: View {
     @ObservedObject var phase3: Phase3Controller
 
     var body: some View {
-        Section("Live updates") {
+        Section {
             Toggle(isOn: $phase3.useStream) {
-                LabelWithDetail("Live updates from the hub", "Uses /v1/stream when the hub offers it, so new items show at once instead of at the next poll.")
+                LabelWithDetail("Live updates from the hub", "On: new items show as soon as the hub has them. Off: they show at the app's next check, up to \(phase3.pollSeconds) seconds later.")
             }
+        } header: {
+            Text("Live updates")
+        } footer: {
+            Text("The app keeps one connection open to the first hub in its list and checks every \(phase3.pollSeconds) seconds as well, so a hub without live updates still works.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

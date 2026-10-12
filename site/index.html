@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>needs-you</title>
+  <title>needs-you: one inbox for agents, servers and CI that need you</title>
   <meta name="description" content="One inbox for &quot;you have to do something&quot;. Your agents, servers and CI post when they need you; a small pill on your Mac shows it, and it goes away when it's handled.">
   <meta name="color-scheme" content="dark light">
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
@@ -11,9 +11,11 @@
 
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="needs-you">
-  <meta property="og:title" content="needs-you">
+  <meta property="og:title" content="needs-you: one inbox for &quot;you have to do something&quot;">
   <meta property="og:description" content="One inbox for &quot;you have to do something&quot;, fed by your agents, servers and CI.">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="needs-you: one inbox for &quot;you have to do something&quot;">
+  <meta name="twitter:description" content="One inbox for &quot;you have to do something&quot;, fed by your agents, servers and CI.">
   <link rel="canonical" href="https://needsyou.app/">
   <meta property="og:url" content="https://needsyou.app/">
   <meta property="og:image" content="https://needsyou.app/img/og.png">
@@ -25,6 +27,7 @@
   <meta name="twitter:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="styles.css">
   <script src="site.js" defer></script>
 </head>
@@ -36,9 +39,9 @@
       <a class="brand" href="#main"><span class="dot" aria-hidden="true"></span>needs-you</a>
       <nav aria-label="Primary">
         <a href="#how">How it works</a>
-        <a class="nav-wide" href="#inside">Under the hood</a>
         <a class="nav-wide" href="#works">Works with</a>
         <a href="#install">Install</a>
+        <a class="nav-wide" href="#inside">Under the hood</a>
         <a href="guides/index.html">Guides</a>
         <a class="nav-wide" href="#source">Source</a>
       </nav>
@@ -48,8 +51,10 @@
   <main id="main" class="wrap wrap-home home">
     <section class="intro" aria-labelledby="title">
       <h1 id="title">One inbox for <span class="h1-quote">&ldquo;you have to do something.&rdquo;</span></h1>
-      <p class="lede">Your agents, servers and CI jobs post when they need you. A small pill on your Mac shows it. When it's handled, it goes away.</p>
-      <p class="hero-sub">The Mac app has its own hub built in, so it holds the alerts itself. No server, no account, no cloud.</p>
+      <p class="lede">Your agents, servers and CI jobs post when they need you. A small pill on your Mac shows it, with a button to where you act. When it's handled, it goes away.</p>
+      <p class="hero-sub">For anyone running AI coding agents (Claude Code, Codex, Gemini CLI and more), servers or CI who would rather not watch terminals. The Mac app has its own hub built in: no server, no account, no cloud.</p>
+      <p class="hero-cta"><a class="button" href="#install">Get started</a> <a class="button-quiet" href="guides/quickstart.html">Read the quickstart</a></p>
+      <p class="hero-facts note">Free and open source (Apache-2.0). macOS 14 or later; senders run on any Mac or Linux machine with Python 3.9+.</p>
     </section>
 
     <!-- The live demo: the pill, drawn in HTML and CSS (site.js). Example alerts arrive on
@@ -190,6 +195,108 @@
       <p class="note">Make it yours under Settings &rarr; Appearance: a theme and accent colour on see-through glass or a solid background, the pill's shape (rounded, square or capsule), size and what it shows, roomy or compact cards, how loudly a new item arrives, and the usage meters (<a href="guides/mac-app.html#make-it-yours">Mac app guide</a>).</p>
     </section>
 
+    <section id="works" aria-labelledby="works-title">
+      <h2 id="works-title">Works with</h2>
+      <!-- The "Works with" list: edit it here (and the matching line in README.md).
+           Move an agent from Coming soon to Supported, with a link to its guide, only once
+           its integration is merged and tested. Text only, no third-party logos. -->
+      <div class="works">
+        <div class="works-group">
+          <h3 class="works-h3">Supported</h3>
+          <ul class="works-list">
+            <li><a href="guides/claude-code.html">Claude Code</a> <span>hooks + skill</span></li>
+            <li><a href="guides/codex.html">Codex CLI</a> <span>hooks</span></li>
+            <li><a href="guides/gemini.html">Gemini CLI</a> <span>hooks</span></li>
+            <li><a href="guides/opencode.html">opencode</a> <span>plugin</span></li>
+            <li><a href="guides/copilot.html">GitHub Copilot CLI</a> <span>hooks</span></li>
+            <li><a href="guides/kimi.html">Kimi Code</a> <span>hooks</span></li>
+            <li><a href="guides/grok.html">Grok Build</a> <span>hooks</span></li>
+            <li><a href="guides/cursor.html">Cursor</a> <span>hooks, finished turns only</span></li>
+            <li><a href="guides/cline.html">Cline</a> <span>hooks, finished tasks only</span></li>
+            <li><a href="guides/aider.html">Aider</a> <span>notifications, waiting only</span></li>
+            <li><a href="guides/orca.html">Orca</a> <span>automation prompt blocks</span></li>
+            <li><a href="guides/mcp.html">Any MCP agent</a> <span>MCP server</span></li>
+            <li><a href="guides/github.html">GitHub</a> <span>reviews, approvals, CI, Projects, Dependabot</span></li>
+            <li><a href="guides/linear.html">Linear</a> <span>assignments, comments, mentions</span></li>
+            <li><a href="guides/jira.html">Jira</a> <span>status changes, comments, mentions</span></li>
+            <li><a href="guides/expiry.html">Expiry dates</a> <span>certificates, domains, API keys</span></li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">The pollers for Linear, Jira, GitHub and expiry dates run on one always-on machine; in the app, Settings &rarr; Integrations &rarr; Cards from your tools gives each one's commands and an agent prompt that sets it up (<a href="guides/mac-app.html#cards-from-your-tools">how</a>).</p>
+      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>. For any other agent or tool with hooks, webhooks or a notification command, <a href="guides/custom-connector.html">build a custom connector</a>: the guide has the exact item format, which fields are required, and tested examples.</p>
+      <p class="note">Most of these haven't been used with a real model yet. If you use one, <a href="#help-test">help us test it</a>.</p>
+    </section>
+
+    <section id="install" aria-labelledby="install-title">
+      <h2 id="install-title">Install</h2>
+      <p>Three steps. For alerts from this Mac alone you need nothing else; other machines reach the Mac over <a href="guides/tailscale.html">Tailscale</a>.</p>
+      <h3 id="download" class="step"><span class="step-n" aria-hidden="true">01</span>Download the app</h3>
+      <p><a class="button" data-repo="/releases/latest" href="https://github.com/tayharris/needs-you/releases/latest">Download for Mac</a></p>
+      <p>The latest release has <code>NeedsYou-&lt;version&gt;.dmg</code> (open it, drag the app to Applications) and the same app as a <code>.zip</code>. macOS 14 or later.</p>
+      <h3 id="first-launch" class="step"><span class="step-n" aria-hidden="true">02</span>Open it the first time</h3>
+      <p>The app is ad-hoc signed, not notarized, so macOS blocks the first launch. On macOS 15 and later: double-click it, then System Settings &rarr; Privacy &amp; Security &rarr; <strong>Open Anyway</strong>. On macOS 14: Right-click the app &rarr; <strong>Open</strong> &rarr; <strong>Open</strong>. If macOS asks whether python3 may accept incoming connections, choose Allow: that's the built-in hub.</p>
+      <h3 id="connect" class="step"><span class="step-n" aria-hidden="true">03</span>Connect a machine</h3>
+      <p>A faint pill appears at the top right, and the app's built-in hub is running. Each machine that should alert you (Claude Code on this Mac, a server, a CI runner) joins with an invite: right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>. On a new install, the pill's <strong>Connect your first agent or machine</strong> card gets you there too.</p>
+      <figure class="shot">
+        <div class="stage stage-window">
+          <img src="img/settings-connect.png" width="760" height="548" loading="lazy" decoding="async"
+               alt="Settings, Connect a machine page: a New invite form asking what the machine is (a server or agent that sends alerts, another Mac that shows the same alerts, or another Mac that can also connect machines), its name, uses and expiry, and a Create invite button.">
+        </div>
+        <figcaption>One invite link sets up a server, an agent or another Mac.</figcaption>
+      </figure>
+      <p>The invite gives you the real commands to copy, with your hub's address and code in them. Paste the <strong>Agent prompt</strong> into the machine's agent, or run the <strong>Shell one-liner</strong> there. Either way the machine gets the <code>needs-you</code> command and posts a test card. The one-liner looks like this (the Claude Code options are optional):</p>
+      <div class="code"><pre><code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes \
+  --claude-hooks user --skill --alerts</code></pre></div>
+      <h3 id="with-an-agent">Or let an agent do all three</h3>
+      <p>Paste this into Claude Code (or Codex, Gemini CLI, any agent that runs shell commands) on your Mac, and later on each server. It installs the app, connects the agents it finds and posts a test card. It asks you at every choice, and never sees your tokens. <a href="guides/setup-with-an-agent.html">What it does</a>.</p>
+      <div class="code prompt" data-copy><pre><code>Set up needs-you for me on this machine. needs-you is a small inbox for "a person has to do something": agents and jobs post an alert when they're blocked on me, and the Needs You app on my Mac shows it. Guide: https://needsyou.app/guides/setup-with-an-agent.html. Source: https://github.com/tayharris/needs-you.
+
+Rules for you, the whole way through:
+- Where a step says ASK, stop, ask me, and wait. Never answer for me or pick a default I didn't choose.
+- Look before you change anything, and only read: no installing system-wide, no sudo, no logging in to anything, no editing any agent's config yourself. The needs-you installer makes the config changes.
+- Never print, paste or save a token or an invite code. Only the installer writes them (to ~/.config/needs-you/env). Don't repeat my invite link back to me. Never open credential files (auth.json, .credentials.json, hosts.yml, anything in the Keychain).
+
+1. Look around (read-only), then show me a short list:
+   - The OS: uname -s, and sw_vers -productVersion on a Mac.
+   - needs-you already here? If ~/.local/bin/needs-you exists, run ~/.local/bin/needs-you doctor.
+   - On a Mac, Needs You: /Applications/NeedsYou.app or ~/Applications/NeedsYou.app (or mdfind "kMDItemCFBundleIdentifier == 'app.needsyou.mac'"), its version (CFBundleShortVersionString in Contents/Info.plist), and whether it's running (pgrep -f NeedsYou.app/Contents/MacOS/NeedsYou). The latest release: curl -fsSIL -o /dev/null -w '%{url_effective}' https://github.com/tayharris/needs-you/releases/latest
+   - Tailscale: tailscale status --json (on a Mac the command may be /Applications/Tailscale.app/Contents/MacOS/Tailscale). Report only BackendState, Self.DNSName and how many peers.
+   - Agents and tools: which of these are on PATH, or have their folder: claude (~/.claude), codex (~/.codex), gemini (~/.gemini), opencode (~/.config/opencode), copilot (~/.copilot), kimi (~/.kimi-code), grok (~/.grok), cursor or cursor-agent (~/.cursor), cline (~/Documents/Cline), aider (~/.aider.conf.yml), orca, gh. For accounts, run only status commands that print no secrets (gh auth status, codex login status); otherwise say only whether the folder exists.
+
+2. Explain, in a few sentences and these words: the app runs on my Mac and shows alerts in a small pill at the top of the screen. A hub stores the alerts; the app has one built in, so there's nothing else to run. Senders are the machines and agents that post alerts with the needs-you command; they join with an invite link from the app. A server hub is optional: the same hub, always on, on a Linux server, so alerts land while the Mac sleeps. Tailscale is only needed so other machines can reach this Mac's hub.
+
+3. The app (Mac only; on any other OS skip to step 5, because the app runs on my Mac and this machine becomes a sender).
+   - Installed and the latest: say so, and open it if it isn't running (open -g -a &lt;its path&gt;).
+   - Missing or older: ASK "Install Needs You &lt;version&gt; to /Applications?", or "Replace Needs You &lt;old&gt; at &lt;path&gt; with &lt;new&gt;? The old copy is kept as NeedsYou.app.previous". On yes: in a new empty temp folder, download NeedsYou-&lt;version&gt;-macos.zip and SHA256SUMS from https://github.com/tayharris/needs-you/releases/download/v&lt;version&gt;/ with curl -fL. Run shasum -a 256 -c SHA256SUMS --ignore-missing and stop if the zip isn't OK. Unpack with ditto -x -k &lt;zip&gt; &lt;folder&gt;/app. Install with the app's own installer: &lt;folder&gt;/app/NeedsYou.app/Contents/Resources/scripts/install.sh --app &lt;folder&gt;/app/NeedsYou.app. Add --dest ~/Applications if /Applications isn't writable without sudo. It quits a running copy, swaps the new one in, keeps the previous one and opens the new one.
+   - A curl download carries no quarantine flag, so macOS shouldn't block it. If xattr -p com.apple.quarantine &lt;app&gt; shows one, ASK, then remove it from that app only: xattr -dr com.apple.quarantine &lt;app&gt;. Never turn Gatekeeper off or change security settings.
+   - Tell me: a faint pill appears at the top right of the screen. If macOS asks whether python3 may accept incoming connections, choose Allow (that's the built-in hub). If the app says Python 3 isn't available, ASK before running xcode-select --install (it opens Apple's installer).
+
+4. Other machines (Mac only). ASK: "Should other machines (servers, a devbox, CI) send alerts to this Mac?" If yes and Tailscale isn't installed or logged in, tell me to install it from https://tailscale.com/download and log in myself, then check again. Don't install it or log in for me. Then ASK: "Do you want an always-on server hub too? Most people don't." If yes, point me to https://needsyou.app/guides/hub.html: it's set up on the server, not from here.
+
+5. Senders. Show me the agents and tools you found in step 1, and what each gets, then ASK which ones to connect (none is fine):
+   - Claude Code: --claude-hooks user --skill
+   - Codex: --codex-hooks user
+   - Gemini CLI: --gemini-hooks user
+   - opencode: --opencode-plugin
+   - GitHub Copilot CLI: --copilot-hooks user
+   - Kimi Code: --kimi-hooks user
+   - Grok Build: --grok-hooks user
+   - Cursor: --cursor-hooks user
+   - Cline: --cline-hooks user
+   - Aider: --aider
+   - Orca: --orca
+   Add --alerts when I pick any agent (cards from every session, not only Orca's). Then ASK about each extra, and add it only on a yes: --usage (a card when Claude Code's 5-hour or weekly limit runs high, for Pro and Max plans), --mcp &lt;agents&gt; (the MCP server, for agents that should post through a tool call), --agent-instructions codex,gemini,opencode (the posting rules in their instruction files). Daily automatic updates are on by default; tell me that, and add --no-auto-update only if I ask. If gh is installed, offer the GitHub poller as a later step (https://needsyou.app/guides/github.html); don't set it up now.
+   Then ASK me for an invite: in the app, click the pill, then Settings… &gt; Connect a machine &gt; Create invite &gt; Agent prompt (on a new install, the pill's "Connect your first agent or machine" card has Copy agent prompt), and paste it here. On a machine other than the Mac, the invite comes from the Mac's app, and this machine must reach the Mac (step 4). Read the join page the link points to (curl -fsSL &lt;link&gt;; it's Markdown for agents). Then run its one-line installer with exactly the flags I picked: curl -fsSL &lt;link&gt;/install.sh | bash -s -- --yes &lt;flags&gt;. If it says the link is unknown, expired or used up, ASK me for a new one.
+
+6. Check.
+   - Run ~/.local/bin/needs-you doctor. For each WARN or FAIL line, run the next step printed under it if it's a command for this machine; otherwise tell me what it needs.
+   - Post a test card: ~/.local/bin/needs-you add --key "personal:test:hello" --context personal --title "needs-you works on $(hostname -s)". Tell me what to look for: a card springs out of the pill on my Mac, and clicking the pill opens the panel with it. ASK whether I see it; if not, follow https://needsyou.app/guides/troubleshooting.html.
+   - Clear it: ~/.local/bin/needs-you resolve --key "personal:test:hello". It leaves the panel within a few seconds.
+   - Finish with a summary: what was installed and where, which agents need a restart to pick up their hooks (and for Codex, that I trust the needs-you hooks once in /hooks), that daily updates are on (or off), and that needs-you doctor checks everything again any time.</code></pre></div>
+      <p class="note">Step by step: the <a href="guides/quickstart.html">Quickstart</a>, <a href="guides/tailscale.html">Tailscale</a> for servers and other machines, and <a href="guides/troubleshooting.html">Troubleshooting</a> if a card doesn't show. Trying it for us? The <a href="guides/testers.html">tester guide</a> has what to try and how to report problems. <a href="guides/index.html">All guides</a>.</p>
+    </section>
+
     <section id="inside" aria-labelledby="inside-title">
       <h2 id="inside-title">Under the hood</h2>
 
@@ -246,7 +353,7 @@
         <figcaption>Settings &rarr; Built-in hub: the hub inside the app, on by default.</figcaption>
       </figure>
       <p><strong>Senders are the one-file <code>needs-you</code> command.</strong> It tries each hub in turn. If none answers (your Mac is asleep, say), it keeps the alert in a local outbox, exits cleanly so the job carries on, and sends it later.</p>
-      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. A server joins the app's built-in hub with a one-use link from Settings &rarr; Built-in hub, and from then on they copy every write to each other (<a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a>). A server hub updates itself from GitHub releases, checked like the app's own updates (<a href="guides/hub.html#automatic-updates">how</a>). Most people don't need one.</p>
+      <p><strong>Server hubs are optional, for redundancy.</strong> Run the same hub on an always-on Linux server, so alerts land while the Mac sleeps. A server joins the app's built-in hub with a one-use link from Settings &rarr; Built-in hub, and from then on they copy every write to each other (<a href="guides/hub.html#with-the-apps-built-in-hub">Server hubs</a>). Once <code>gh</code> is logged in on it, a server hub updates itself from GitHub releases, checked like the app's own updates (<a href="guides/hub.html#automatic-updates">how</a>). Most people don't need one.</p>
       <p><strong>The app checks every 30 seconds</strong> and keeps a live stream open, so new alerts show at once. With nothing new, a check is under 100 bytes and the stream sends a short ping every 15 seconds.</p>
       <p><strong>It cleans up after itself.</strong> Done and FYI cards expire after a day. A closed item's text is deleted a day after it closes, and what's left of it (no text) after 30 days. A sender's outbox keeps at most 500 alerts for 7 days.</p>
 
@@ -267,39 +374,6 @@
         </table>
       </div>
       <p class="note">Measured 2026-10-07 on an Apple Silicon MacBook Pro (macOS 15, the app's bundled hub on Python 3.9) and a desktop Linux machine (8-core AMD Ryzen, Python 3.12). Idle CPU is the average over two quiet minutes. No Docker, no database server, no pip packages, no cloud account. Details in <a href="guides/concepts.html">App, hubs and senders</a> and <a href="guides/hub.html#resource-use">Server hubs</a>.</p>
-    </section>
-
-    <section id="works" aria-labelledby="works-title">
-      <h2 id="works-title">Works with</h2>
-      <!-- The "Works with" list: edit it here (and the matching line in README.md).
-           Move an agent from Coming soon to Supported, with a link to its guide, only once
-           its integration is merged and tested. Text only, no third-party logos. -->
-      <div class="works">
-        <div class="works-group">
-          <h3 class="works-h3">Supported</h3>
-          <ul class="works-list">
-            <li><a href="guides/claude-code.html">Claude Code</a> <span>hooks + skill</span></li>
-            <li><a href="guides/codex.html">Codex CLI</a> <span>hooks</span></li>
-            <li><a href="guides/gemini.html">Gemini CLI</a> <span>hooks</span></li>
-            <li><a href="guides/opencode.html">opencode</a> <span>plugin</span></li>
-            <li><a href="guides/copilot.html">GitHub Copilot CLI</a> <span>hooks</span></li>
-            <li><a href="guides/kimi.html">Kimi Code</a> <span>hooks</span></li>
-            <li><a href="guides/grok.html">Grok Build</a> <span>hooks</span></li>
-            <li><a href="guides/cursor.html">Cursor</a> <span>hooks, finished turns only</span></li>
-            <li><a href="guides/cline.html">Cline</a> <span>hooks, finished tasks only</span></li>
-            <li><a href="guides/aider.html">Aider</a> <span>notifications, waiting only</span></li>
-            <li><a href="guides/orca.html">Orca</a> <span>automation prompt blocks</span></li>
-            <li><a href="guides/mcp.html">Any MCP agent</a> <span>MCP server</span></li>
-            <li><a href="guides/github.html">GitHub</a> <span>reviews, approvals, CI, Projects, Dependabot</span></li>
-            <li><a href="guides/linear.html">Linear</a> <span>assignments, comments, mentions</span></li>
-            <li><a href="guides/jira.html">Jira</a> <span>status changes, comments, mentions</span></li>
-            <li><a href="guides/expiry.html">Expiry dates</a> <span>certificates, domains, API keys</span></li>
-          </ul>
-        </div>
-      </div>
-      <p class="note">The pollers for Linear, Jira, GitHub and expiry dates run on one always-on machine; in the app, Settings &rarr; Integrations &rarr; Cards from your tools gives each one's commands and an agent prompt that sets it up (<a href="guides/mac-app.html#cards-from-your-tools">how</a>). They're in the 0.5 pre-releases: in the app, Settings &rarr; Updates &rarr; <strong>Releases and pre-releases</strong> gets them.</p>
-      <p class="note">Anything that can run a shell command can post too: CI, cron, scripts. See <a href="guides/add-a-sender.html">Add a sender</a>. For any other agent or tool with hooks, webhooks or a notification command, <a href="guides/custom-connector.html">build a custom connector</a>: the guide has the exact item format, which fields are required, and tested examples.</p>
-      <p class="note">Most of these haven't been used with a real model yet. If you use one, <a href="#help-test">help us test it</a>.</p>
     </section>
 
     <section id="help-test" aria-labelledby="help-test-title">
@@ -337,72 +411,6 @@
       <p><a class="button" data-repo="/issues/new?template=agent_test.yml" href="https://github.com/tayharris/needs-you/issues/new?template=agent_test.yml">Report a test</a></p>
       <p>Or: <a data-repo="/issues/new?template=integration_request.yml" href="https://github.com/tayharris/needs-you/issues/new?template=integration_request.yml">ask for a tool we don't support</a>, <a data-repo="/issues/new?template=feature_request.yml" href="https://github.com/tayharris/needs-you/issues/new?template=feature_request.yml">suggest something</a>, or <a data-repo="/issues/new?template=bug_report.yml" href="https://github.com/tayharris/needs-you/issues/new?template=bug_report.yml">report a bug</a>. A GitHub account is needed.</p>
       <p class="note">What to try with each tool, and what to put in a report: <a href="guides/help-us-test.html">Help us test</a>. Want to write code? See <a data-repo="/blob/main/CONTRIBUTING.md" href="https://github.com/tayharris/needs-you/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
-    </section>
-
-    <section id="install" aria-labelledby="install-title">
-      <h2 id="install-title">Install</h2>
-      <p><a class="button" data-repo="/releases/latest" href="https://github.com/tayharris/needs-you/releases/latest">Download for Mac</a></p>
-      <p>The latest release has <code>NeedsYou-&lt;version&gt;.dmg</code> (open it, drag the app to Applications) and the same app as a <code>.zip</code>. macOS 14 or later.</p>
-      <p class="note">The app is ad-hoc signed, not notarized, so macOS blocks the first launch. On macOS 15 and later: double-click it, then System Settings &rarr; Privacy &amp; Security &rarr; <strong>Open Anyway</strong>. On macOS 14: Right-click the app &rarr; <strong>Open</strong> &rarr; <strong>Open</strong>.</p>
-      <h3 id="with-an-agent">Or let an agent set it up</h3>
-      <p>Paste this into Claude Code (or Codex, Gemini CLI, any agent that runs shell commands) on your Mac, and later on each server. It installs the app, connects the agents it finds and posts a test card. It asks you at every choice, and never sees your tokens. <a href="guides/setup-with-an-agent.html">What it does</a>.</p>
-      <div class="code prompt" data-copy><pre><code>Set up needs-you for me on this machine. needs-you is a small inbox for "a person has to do something": agents and jobs post an alert when they're blocked on me, and the Needs You app on my Mac shows it. Guide: https://needsyou.app/guides/setup-with-an-agent.html. Source: https://github.com/tayharris/needs-you.
-
-Rules for you, the whole way through:
-- Where a step says ASK, stop, ask me, and wait. Never answer for me or pick a default I didn't choose.
-- Look before you change anything, and only read: no installing system-wide, no sudo, no logging in to anything, no editing any agent's config yourself. The needs-you installer makes the config changes.
-- Never print, paste or save a token or an invite code. Only the installer writes them (to ~/.config/needs-you/env). Don't repeat my invite link back to me. Never open credential files (auth.json, .credentials.json, hosts.yml, anything in the Keychain).
-
-1. Look around (read-only), then show me a short list:
-   - The OS: uname -s, and sw_vers -productVersion on a Mac.
-   - needs-you already here? If ~/.local/bin/needs-you exists, run ~/.local/bin/needs-you doctor.
-   - On a Mac, Needs You: /Applications/NeedsYou.app or ~/Applications/NeedsYou.app (or mdfind "kMDItemCFBundleIdentifier == 'app.needsyou.mac'"), its version (CFBundleShortVersionString in Contents/Info.plist), and whether it's running (pgrep -f NeedsYou.app/Contents/MacOS/NeedsYou). The latest release: curl -fsSIL -o /dev/null -w '%{url_effective}' https://github.com/tayharris/needs-you/releases/latest
-   - Tailscale: tailscale status --json (on a Mac the command may be /Applications/Tailscale.app/Contents/MacOS/Tailscale). Report only BackendState, Self.DNSName and how many peers.
-   - Agents and tools: which of these are on PATH, or have their folder: claude (~/.claude), codex (~/.codex), gemini (~/.gemini), opencode (~/.config/opencode), copilot (~/.copilot), kimi (~/.kimi-code), grok (~/.grok), cursor or cursor-agent (~/.cursor), cline (~/Documents/Cline), aider (~/.aider.conf.yml), orca, gh. For accounts, run only status commands that print no secrets (gh auth status, codex login status); otherwise say only whether the folder exists.
-
-2. Explain, in a few sentences and these words: the app runs on my Mac and shows alerts in a small pill at the top of the screen. A hub stores the alerts; the app has one built in, so there's nothing else to run. Senders are the machines and agents that post alerts with the needs-you command; they join with an invite link from the app. A server hub is optional: the same hub, always on, on a Linux server, so alerts land while the Mac sleeps. Tailscale is only needed so other machines can reach this Mac's hub.
-
-3. The app (Mac only; on any other OS skip to step 5, because the app runs on my Mac and this machine becomes a sender).
-   - Installed and the latest: say so, and open it if it isn't running (open -g -a &lt;its path&gt;).
-   - Missing or older: ASK "Install Needs You &lt;version&gt; to /Applications?", or "Replace Needs You &lt;old&gt; at &lt;path&gt; with &lt;new&gt;? The old copy is kept as NeedsYou.app.previous". On yes: in a new empty temp folder, download NeedsYou-&lt;version&gt;-macos.zip and SHA256SUMS from https://github.com/tayharris/needs-you/releases/download/v&lt;version&gt;/ with curl -fL. Run shasum -a 256 -c SHA256SUMS --ignore-missing and stop if the zip isn't OK. Unpack with ditto -x -k &lt;zip&gt; &lt;folder&gt;/app. Install with the app's own installer: &lt;folder&gt;/app/NeedsYou.app/Contents/Resources/scripts/install.sh --app &lt;folder&gt;/app/NeedsYou.app. Add --dest ~/Applications if /Applications isn't writable without sudo. It quits a running copy, swaps the new one in, keeps the previous one and opens the new one.
-   - A curl download carries no quarantine flag, so macOS shouldn't block it. If xattr -p com.apple.quarantine &lt;app&gt; shows one, ASK, then remove it from that app only: xattr -dr com.apple.quarantine &lt;app&gt;. Never turn Gatekeeper off or change security settings.
-   - Tell me: a faint pill appears at the top right of the screen. If macOS asks whether python3 may accept incoming connections, choose Allow (that's the built-in hub). If the app says Python 3 isn't available, ASK before running xcode-select --install (it opens Apple's installer).
-
-4. Other machines (Mac only). ASK: "Should other machines (servers, a devbox, CI) send alerts to this Mac?" If yes and Tailscale isn't installed or logged in, tell me to install it from https://tailscale.com/download and log in myself, then check again. Don't install it or log in for me. Then ASK: "Do you want an always-on server hub too? Most people don't." If yes, point me to https://needsyou.app/guides/hub.html: it's set up on the server, not from here.
-
-5. Senders. Show me the agents and tools you found in step 1, and what each gets, then ASK which ones to connect (none is fine):
-   - Claude Code: --claude-hooks user --skill
-   - Codex: --codex-hooks user
-   - Gemini CLI: --gemini-hooks user
-   - opencode: --opencode-plugin
-   - GitHub Copilot CLI: --copilot-hooks user
-   - Kimi Code: --kimi-hooks user
-   - Grok Build: --grok-hooks user
-   - Cursor: --cursor-hooks user
-   - Cline: --cline-hooks user
-   - Aider: --aider
-   - Orca: --orca
-   Add --alerts when I pick any agent (cards from every session, not only Orca's). Then ASK about each extra, and add it only on a yes: --usage (a card when Claude Code's 5-hour or weekly limit runs high, for Pro and Max plans), --mcp &lt;agents&gt; (the MCP server, for agents that should post through a tool call), --agent-instructions codex,gemini,opencode (the posting rules in their instruction files). Daily automatic updates are on by default; tell me that, and add --no-auto-update only if I ask. If gh is installed, offer the GitHub poller as a later step (https://needsyou.app/guides/github.html); don't set it up now.
-   Then ASK me for an invite: in the app, click the pill, then Settings… &gt; Connect a machine &gt; Create invite &gt; Agent prompt (on a new install, the pill's "Connect your first agent or machine" card has Copy agent prompt), and paste it here. On a machine other than the Mac, the invite comes from the Mac's app, and this machine must reach the Mac (step 4). Read the join page the link points to (curl -fsSL &lt;link&gt;; it's Markdown for agents). Then run its one-line installer with exactly the flags I picked: curl -fsSL &lt;link&gt;/install.sh | bash -s -- --yes &lt;flags&gt;. If it says the link is unknown, expired or used up, ASK me for a new one.
-
-6. Check.
-   - Run ~/.local/bin/needs-you doctor. For each WARN or FAIL line, run the next step printed under it if it's a command for this machine; otherwise tell me what it needs.
-   - Post a test card: ~/.local/bin/needs-you add --key "personal:test:hello" --context personal --title "needs-you works on $(hostname -s)". Tell me what to look for: a card springs out of the pill on my Mac, and clicking the pill opens the panel with it. ASK whether I see it; if not, follow https://needsyou.app/guides/troubleshooting.html.
-   - Clear it: ~/.local/bin/needs-you resolve --key "personal:test:hello". It leaves the panel within a few seconds.
-   - Finish with a summary: what was installed and where, which agents need a restart to pick up their hooks (and for Codex, that I trust the needs-you hooks once in /hooks), that daily updates are on (or off), and that needs-you doctor checks everything again any time.</code></pre></div>
-      <h3 id="connect">Connect a machine</h3>
-      <p>A faint pill appears at the top right, and the app's built-in hub is running. To connect a sender (a server, a CI runner, or Claude Code on this Mac): right-click the pill &rarr; <strong>Settings&hellip;</strong> &rarr; <strong>Connect a machine</strong> &rarr; <strong>Create invite</strong>.</p>
-      <figure class="shot">
-        <div class="stage stage-window">
-          <img src="img/settings-connect.png" width="760" height="548" loading="lazy" decoding="async"
-               alt="Settings, Connect a machine page: a New invite form asking what the machine is (a server or agent that sends alerts, another Mac that shows the same alerts, or another Mac that can also connect machines), its name, uses and expiry, and a Create invite button.">
-        </div>
-        <figcaption>One invite link sets up a server, an agent or another Mac.</figcaption>
-      </figure>
-      <p>The invite gives you the real commands to copy, with your hub's address and code in them. Paste the <strong>Agent prompt</strong> into the machine's agent, or run the <strong>Shell one-liner</strong> there. Either way the machine gets the <code>needs-you</code> command and posts a test card. The one-liner looks like this (the Claude Code options are optional):</p>
-      <div class="code"><pre><code>curl -fsSL &lt;join_url&gt;/install.sh | bash -s -- --yes \
-  --claude-hooks user --skill --alerts</code></pre></div>
-      <p class="note">Step by step: the <a href="guides/quickstart.html">Quickstart</a>, the <a href="guides/testers.html">install guide for testers</a> (first run, what to try, reporting problems), and <a href="guides/tailscale.html">Tailscale</a> for servers and other machines. <a href="guides/index.html">All guides</a>.</p>
     </section>
 
     <section id="source" aria-labelledby="source-title">

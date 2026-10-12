@@ -4,14 +4,14 @@ The needs-you site: the landing page, and the guides from `docs/` as pages. Plai
 
 | File | What |
 |---|---|
-| `index.html` | The whole page: what it is, the live pill demo (`#demo`), how it works, how agents use it (a command and the card it makes, drawn in HTML), what it looks like (the panel and the pill's states), under the hood (architecture diagram, measured resource use), Works with, Install, Open source |
+| `index.html` | The whole page, in the order a newcomer decides: what it is and who it's for, with **Get started** (to `#install`) and the quickstart; the live pill demo (`#demo`); how it works; how agents use it (a command and the card it makes, drawn in HTML); what it looks like (the panel and the pill's states); Works with; Install (three numbered steps, then the agent prompt); under the hood (architecture diagram, measured resource use); Help us test; Open source |
 | `styles.css` | All styles. Built on the owner's shared design tokens: primitives (the only hexes, `tests/test_site.py` enforces it) then semantic variables on `:root`. Dark-first, light via `prefers-color-scheme: light`. IBM Plex Sans/Mono bundled in `fonts/` (Latin1 woff2 subsets, `fonts/OFL.txt`); the pill's priority colours and link button match the Mac app (`mac/Sources/NeedsYou/Views/Theme.swift`). Landing-page sections space every block by one rule (the `.home section > * + *` flow margins), and text stops at `--measure` |
 | `site.js` | `REPO_URL`, the one GitHub constant, Copy buttons on code blocks marked `data-copy`, and the live demo (the page works without JS) |
 | `guides/` | **Generated, don't edit.** One page per guide, plus `guides/index.html`, built from the markdown by `scripts/build_site_guides.py` (see [Guides](#guides)) |
 | `_headers` | Cloudflare Pages response headers (CSP and other security headers) |
 | `img/` | Screenshots of the app (2x PNGs, each under 200 KB), made from example items by `mac/scripts/screenshots.sh`, then optimised by hand (the flat backdrop around the panel made transparent, a 256-colour palette; any PNG optimiser will do). The guides in `docs/guides/` use these same files. Which tour file each one is: `panel` 2-expanded, `panel-personal` 4-personal (the empty middle cut out), `pill-count` 16-usage-pill, `pill-split` 8-pill-split, `pill-top-item` 9-pill-top-item, `preview` 6-preview, `preview-agent`, `pill-idle`, `settings-inbox`, `settings-connect`, and `settings-opacity` cropped from settings-cards-4. The panel and pill images come from a run with only the first six example items (the question cards left out), so the panel shows the same four work cards as before (the low one is below the fold, under the usage section). Retake them when the panel or Settings changes visibly; check each one by eye for names, hosts or tokens before committing `og.png` (1200x630) is the share image for `og:image`/`twitter:image`, not a screenshot; it's referenced by absolute URL (`https://needsyou.app/img/og.png`), as crawlers need |
 
-The favicon is an inline SVG data URI in `index.html`, so there's no separate icon file.
+The favicon is an inline SVG data URI in `index.html` (the guide pages copy that `<link>`). `apple-touch-icon.png` (180x180, the same design on a full-bleed square) is the home-screen icon for iOS, which doesn't take SVG.
 
 ## The live demo
 
@@ -38,11 +38,11 @@ python3 scripts/build_site_guides.py --check   # exit 1 if site/guides/ is stale
 
 and commit the markdown and the pages together; `tests/test_site_guides.py` fails when they differ, so CI catches a forgotten rebuild.
 
-- **Which pages, in which order:** `GROUPS` (the index's sections, in order: Start here, Agents, Servers, CI and tools, More guides, Run it, Reference) and `CURATED` (group, source, page name, short title, summary for the index, in order within each group) at the top of the script. A new `docs/guides/*.md` that isn't listed is published anyway, under *More guides* (after the setup guides, before Run it), with its `# ` title and first paragraph; add it to `CURATED` to place and describe it.
+- **Which pages, in which order:** `GROUPS` (the index's sections, in order: Start here, Agents, Servers and CI, Cards from your tools, More guides, Run it, Reference) and `CURATED` (group, source, page name, short title, summary for the index, in order within each group) at the top of the script. A new `docs/guides/*.md` that isn't listed is published anyway, under *More guides* (after the setup guides, before Run it), with its `# ` title and first paragraph; add it to `CURATED` to place and describe it.
 - **Markdown:** the subset `docs/` uses: headings (with GitHub's anchor ids, so `file.md#section` links keep working), paragraphs, nested and task lists, fenced code, tables, blockquotes, links, bold, italic. All HTML in the markdown is escaped, except `<img>` tags pointing into `site/img/` (rebuilt from `src`, `width` and `alt`, with the height read from the PNG). A line of images becomes a figure on a stage; a one-line italic paragraph right after it (`*Settings → Panel → Opacity, at the defaults.*`) becomes its caption.
 - **Links:** a relative link to a published doc becomes a link to its page (link text that is just a file name, like `tailscale.md`, shows the page's title); `site/img/...` becomes `../img/...`; anything else in the repo goes to GitHub through `REPO_URL`. A link to a missing file or anchor, or a plain `http://` link, fails the build. Each page ends with a link to its markdown on GitHub.
 - **Copy buttons:** only on shell blocks that run exactly as written (`copyable()` in the script: no `<placeholders>`, `...`, example hosts or names, tokens). The real setup commands come from the app's invite flow, so examples are there to read, not paste.
-- **Look:** the same header, footer and `styles.css` as the landing page (the `.doc` rules). Tables and code blocks scroll inside themselves on a phone.
+- **Look:** the same header, footer and `styles.css` as the landing page (the `.doc` rules). Tables and code blocks scroll inside themselves on a phone. Each page ends with Previous and Next links in the index's order (`pager()`), and has its own `og:` tags with the share image.
 
 ## Works with
 
@@ -111,4 +111,4 @@ An alternative host, not used today. The plan is in [docs/roadmap/site-deploy.md
 | Root directory | *(repo root)* |
 | Production branch | `main` |
 
-The site's domain is **https://needsyou.app** (`canonical` and `og:url` in `index.html`; `tests/test_site.py` checks them). Still to do: an `og:image` (a 1200×630 PNG; most crawlers ignore SVG).
+The site's domain is **https://needsyou.app** (`canonical` and `og:url` in `index.html`; `tests/test_site.py` checks them). The share image is `img/og.png`.

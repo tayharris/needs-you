@@ -9,7 +9,18 @@
   <meta name="theme-color" content="#0d0e10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#e3e5e8" media="(prefers-color-scheme: light)">
   <link rel="canonical" href="https://needsyou.app/guides/mac-app.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="needs-you">
+  <meta property="og:title" content="The Mac app · needs-you guides">
+  <meta property="og:description" content="Installing and using NeedsYou.app: the pill, the cards, Settings.">
+  <meta property="og:url" content="https://needsyou.app/guides/mac-app.html">
+  <meta property="og:image" content="https://needsyou.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="needs-you: one inbox for &quot;you have to do something.&quot; Your agents, servers and CI post when they need you.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0e10'/%3E%3Crect x='10' y='22' width='44' height='20' rx='10' fill='none' stroke='%23f5cd72' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23f5cd72'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png">
   <link rel="stylesheet" href="../styles.css">
   <script src="../site.js" defer></script>
 </head>
@@ -166,7 +177,7 @@
 <li><strong>Always interrupt</strong>, <strong>Never interrupt</strong> (ambient at most) or <strong>Always later</strong>.</li>
 </ul>
 <p>A rule can also be narrowed to one <strong>event</strong>, what the sender says happened (<code>source.event</code>, set by the agent hooks for every agent they serve): <strong>asks</strong> a question, <strong>needs approval</strong> (a command, an edit, a plan), <strong>finishes</strong> its turn, <strong>fails</strong> (an error, a rate limit, a sign-in), or its <strong>context</strong> is nearly full. One click adds <strong>Agent questions are urgent</strong> or <strong>Agent failures are urgent</strong> (key prefix <code>agent:</code> with that event), or <strong>Agents always interrupt</strong>.</p>
-<p>From a card: an agent card's <strong>…</strong> menu has <strong>Alerts for This Session</strong> and <strong>Alerts for All &lt;agent&gt; Sessions</strong> (for example <em>claude-code</em>), (a usage-limit card, which is the machine's rather than a session's, has only the second), each with <strong>Treat as Urgent</strong>, <strong>Always Interrupt</strong>, <strong>Never Interrupt</strong> and <strong>Always Later</strong>, the same under <strong>Only When It Asks / Needs Approval / Finishes / Fails</strong>, and <strong>Remove Rules</strong>. A checkmark shows the rule in force; choosing it again removes it. Rules made there go above the rules made in Settings, so they win over them, and show up in Settings; among themselves the most specific comes first (a session's rules above its agent's, and an "Only When It…" rule above the same menu's rule for everything), so <strong>Always Interrupt</strong> chosen after <strong>Only When It Asks → Treat as Urgent</strong> still leaves questions urgent. A rule that never applies (one below a broader rule from Settings, such as <strong>Agents Always Interrupt</strong> added later, which goes to the top of the list) has no checkmark; choosing it again puts it back where it applies. So "tell me loudly when <em>this</em> session stops or asks, and nothing else" is: <strong>Alerts for This Session → Treat as Urgent</strong> on its card, plus <strong>Never Interrupt</strong> (or <strong>Always Later</strong>) under <strong>Alerts for All claude-code Sessions</strong> on any card.</p>
+<p>From a card: an agent card's <strong>…</strong> menu has <strong>Alerts for This Session</strong> and <strong>Alerts for All &lt;agent&gt; Sessions</strong> (for example <em>claude-code</em>), (a usage-limit card, which is the machine's rather than a session's, has only the second), each with <strong>Treat as Urgent</strong>, <strong>Always Interrupt</strong>, <strong>Never Interrupt</strong> and <strong>Always Later</strong>, the same under <strong>Only When It Asks / Needs Approval / Finishes / Fails</strong>, and <strong>Remove Rules</strong>. A checkmark shows the rule in force; choosing it again removes it. Rules made there go above the rules made in Settings, so they win over them, and show up in Settings; among themselves the most specific comes first (a session's rules above its agent's, and an "Only When It…" rule above the same menu's rule for everything), so <strong>Always Interrupt</strong> chosen after <strong>Only When It Asks → Treat as Urgent</strong> still leaves questions urgent. A rule that never applies (one below a broader rule from Settings, such as <strong>Agents always interrupt</strong> added later, which goes to the top of the list) has no checkmark; choosing it again puts it back where it applies. So "tell me loudly when <em>this</em> session stops or asks, and nothing else" is: <strong>Alerts for This Session → Treat as Urgent</strong> on its card, plus <strong>Never Interrupt</strong> (or <strong>Always Later</strong>) under <strong>Alerts for All claude-code Sessions</strong> on any card.</p>
 <p>A hidden panel stays hidden; no rule ever takes focus.</p>
 <h3 id="drive-it-from-shortcuts-or-a-script">Drive it from Shortcuts or a script <a class="anchor" href="#drive-it-from-shortcuts-or-a-script" aria-label="Link to this section">#</a></h3>
 <p>The app handles <code>needsyou://focus?level=&lt;level&gt;[&amp;minutes=&lt;n&gt; | &amp;until=tomorrow]</code>, with <code>level</code> one of <code>off</code>, <code>agents</code> (agents and urgent only), <code>urgent</code>, <code>later</code> (everything later). Anything else in the link is refused and does nothing.</p>
@@ -219,25 +230,34 @@ open -g 'needsyou://focus?level=off'</code></pre></div>
 <tr><td>How the usage meters look</td><td>Appearance → <strong>Usage meters</strong></td><td>Warning colour, and the pill's meter style, size, layout and percentages: see <a href="#usage-meters">Usage meters</a></td></tr>
 </tbody>
 </table></div>
-<p><strong>Panel and Alerts</strong> (what shows, where, and what may interrupt you):</p>
+<p><strong>Panel, Alerts and Advanced</strong> (what shows, where, when, and what may interrupt you):</p>
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Setting</th><th>Where</th><th>Choices (default first)</th></tr></thead>
 <tbody>
+<tr><td>Show the floating pill and panel</td><td>Panel → Panel and menu bar → <strong>Show floating panel</strong></td><td>On, Off (new items then only update the menu bar)</td></tr>
+<tr><td>The menu bar icon, and the count next to it</td><td>Panel → Panel and menu bar → <strong>Show menu bar icon</strong>, <strong>Show count in menu bar</strong></td><td>On, On (the icon and the panel can't both be hidden)</td></tr>
+<tr><td>A dropped pill snaps to the nearest corner</td><td>Panel → Panel and menu bar → <strong>Snap to corners</strong></td><td>Off, On</td></tr>
 <tr><td>Open the panel once when you start the app yourself (never at login or after an update)</td><td>Panel → Open panel → <strong>Open the panel when Needs You starts</strong></td><td>On, Off</td></tr>
 <tr><td>Close the open panel when you click in another app or open a link</td><td>Panel → Open panel → <strong>Collapse when clicking elsewhere</strong></td><td>On, Off</td></tr>
 <tr><td>Usage meters in the panel and on the pill, which providers and windows, and hiding a bar under a percentage</td><td>Panel → <strong>Usage meters</strong></td><td>On, On, every provider, both windows, always show</td></tr>
 <tr><td>Cards about what isn't set up yet (<a href="#setup-tips">Setup tips</a>)</td><td>Panel → Setup tips → <strong>Show setup tips</strong></td><td>On, Off</td></tr>
+<tr><td>The open panel's list of Orca worktrees (<a href="#orca-worktrees">Orca</a>)</td><td>Panel → Orca → <strong>Show Orca worktrees</strong></td><td>On, Off (shows nothing without the Orca CLI)</td></tr>
 <tr><td>The global shortcut</td><td>Panel → Keyboard</td><td>Control-Option-Space (⌃⌥Space), or record your own (it must use Control, Option or Command)</td></tr>
 <tr><td>How long a new item's preview stays out (also the "3 waited" Later peek)</td><td>Alerts → New items → <strong>Show new items for</strong></td><td>14 s, 5 s, 10 s, 20 s, 30 s, Until I click or point at it (pointing at it always holds it)</td></tr>
 <tr><td>Play urgent's arrival again while nobody has looked</td><td>Alerts → New items → <strong>Remind about unseen urgent items</strong></td><td>Off, every 2, 5, 10, 15, 30 min, every hour</td></tr>
-<tr><td>How normal / low / done and info / other-context items arrive</td><td>Alerts → <strong>Delivery</strong></td><td>Interrupt, Ambient, Ambient, Later (see <a href="#focus-heads-down-except-what-you-choose">Focus</a>)</td></tr>
+<tr><td>Where new items spring out</td><td>Alerts → <strong>On the work screen</strong></td><td>The pill's display (default), The display you're working on</td></tr>
+<tr><td>How normal, low, done and info, and other-side (work or personal) items arrive</td><td>Alerts → <strong>Delivery</strong></td><td>Interrupt, Ambient, Ambient, Later (see <a href="#focus-heads-down-except-what-you-choose">Focus</a>)</td></tr>
 <tr><td>Urgent items break through Focus</td><td>Alerts → Delivery</td><td>On, Off</td></tr>
 <tr><td>Focus links from other apps apply without asking</td><td>Alerts → Delivery</td><td>Off (ask), On</td></tr>
+<tr><td>An urgent item ends a snooze and shows the panel</td><td>Alerts → Snoozed or hidden → <strong>Urgent items break through a snooze</strong></td><td>On, Off</td></tr>
+<tr><td>An urgent item brings a hidden panel back</td><td>Alerts → Snoozed or hidden → <strong>Urgent items show the panel even when hidden</strong></td><td>Off (one pulse of the menu bar icon), On</td></tr>
 <tr><td>Bypass rules</td><td>Alerts → <strong>Bypass rules</strong>, or an agent card's <strong>…</strong> menu</td><td>None; up to 50</td></tr>
-<tr><td>Where new items spring out</td><td>Alerts → On the work screen</td><td>The pill's display (default), The display you're working on</td></tr>
+<tr><td>Work on weekdays 7:00–18:00, personal otherwise</td><td>Alerts → Schedule → <strong>Switch work / personal on a schedule</strong></td><td>On, Off</td></tr>
+<tr><td>The panel opens at 7:30 on weekdays with what's waiting</td><td>Alerts → Schedule → <strong>Start-of-day summary</strong></td><td>On, Off</td></tr>
+<tr><td>New items show as soon as the hub has them (else at the next check, every 30 s)</td><td>Advanced → Live updates → <strong>Live updates from the hub</strong></td><td>On, Off</td></tr>
 </tbody>
 </table></div>
-<p>The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. <strong>Appearance → Alert style → Preview on the pill</strong> (<strong>Urgent</strong> or <strong>Normal</strong>) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. <strong>Advanced → Reset to defaults</strong> puts the theme, pill, panel and cards (with the dragged height), opacity and alert style back, plus how long new items show, the urgent reminder and click-elsewhere (not the edge glow, the usage meters, delivery or bypass rules).</p>
+<p>The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. <strong>Appearance → Alert style → Preview on the pill</strong> (<strong>Urgent</strong> or <strong>Normal</strong>) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. <strong>Advanced → Reset Appearance</strong> puts every setting under Appearance back to its default (Theme, Pill, Panel and cards with the dragged height, Alert style with the edge glow, and Usage meters) and changes nothing else.</p>
 <h3 id="themes">Themes <a class="anchor" href="#themes" aria-label="Link to this section">#</a></h3>
 <p>Every theme keeps urgent red and easy to read: the text, the secondary text and the urgent colour are checked against each theme's background for contrast (WCAG 4.5:1 or better; 7:1 for urgent in High contrast), and urgent stays clearly different from normal and low. <strong>Match system</strong> and <strong>High contrast</strong> switch between dark and light glass when macOS does; the others always look the same. Light themes use a light layer behind the glass instead of a dark one, so <strong>Background darkness</strong> lightens it. High contrast keeps that layer at 60% or more.</p>
 <p><strong>Accent colour</strong> is a row of swatches: the theme's own (the default), Blue, Purple, Green, Teal, Graphite, then <strong>Custom</strong> for any colour. The accent never touches the priority colours, and red is kept for urgent: a custom colour close to urgent's red isn't used (the theme's own accent stays, and Settings says so). Pink and Orange, offered before, came too close to it; if you had picked one, the theme's own accent shows instead.</p>
@@ -299,9 +319,9 @@ Under <strong>Appearance</strong> (how things look, nothing else):</p></li>
 <p>Under <strong>Needs You</strong>:</p>
 <ul>
 <li><strong>Panel:</strong> whether the floating panel and menu bar icon show, snap to corners, opening at launch and closing on a click elsewhere, which usage meters show and where, setup tips, Orca worktrees, the keyboard shortcut.</li>
-<li><strong>Alerts:</strong> how long new items stay out and the urgent reminder, delivery and focus, snooze and hidden-panel rules, bypass rules, which display new items spring out on, the work / personal schedule.</li>
-<li><strong>Integrations:</strong> <strong>Cards from your tools</strong> (below), <strong>Jump to iTerm2 and Terminal tabs</strong> (<a href="#terminal-button">Terminal button</a>), live updates from the hub, and how to start sending usage meters.</li>
-<li><strong>Updates</strong> (<a href="updates.html">guide</a>): this app's version and update settings, and <strong>Machines and hubs</strong>: every sender machine and server hub with its version, <strong>Request update</strong> for each one that's behind, and <strong>Update all</strong> (<a href="updates.html#server-hubs">guide</a>). <strong>Advanced</strong> (reset the appearance; <strong>Developer mode</strong>, below; the data folder, <code>~/Library/Application Support/NeedsYou/</code>, with <strong>Show in Finder</strong>).</li>
+<li><strong>Alerts:</strong> how long new items stay out and the urgent reminder, which display new items spring out on, delivery and focus, snooze and hidden-panel rules, bypass rules, the work / personal schedule.</li>
+<li><strong>Integrations:</strong> <strong>Cards from your tools</strong> (below), <strong>Jump to iTerm2 and Terminal tabs</strong> (<a href="#terminal-button">Terminal button</a>), and how to start sending usage meters.</li>
+<li><strong>Updates</strong> (<a href="updates.html">guide</a>): this app's version and update settings, and <strong>Machines and hubs</strong>: every sender machine and server hub with its version, <strong>Request update</strong> for each one that's behind, and <strong>Update all</strong> (<a href="updates.html#server-hubs">guide</a>). <strong>Advanced</strong>: <strong>Live updates from the hub</strong>, <strong>Reset Appearance</strong> (every Appearance setting back to its default, nothing else), <strong>Developer mode</strong> (below), and the data folder, <code>~/Library/Application Support/NeedsYou/</code>, with <strong>Show in Finder</strong>.</li>
 </ul>
 <h3 id="cards-from-your-tools">Cards from your tools <a class="anchor" href="#cards-from-your-tools" aria-label="Link to this section">#</a></h3>
 <p><strong>Settings → Integrations → Cards from your tools</strong> lists the pollers that turn another tool into cards: <a href="linear.html">Linear</a>, <a href="jira.html">Jira</a>, <a href="github.html#projects-statuses-and-dependabot-alerts-opt-in">GitHub Projects statuses and Dependabot alerts</a>, and <a href="expiry.html">expiring certificates, domains and keys</a>. Each row says in a sentence what it sends; open it for what it needs (where its token lives, or which <code>gh</code> scope), its settings in <code>~/.config/needs-you/env</code>, the commands with <strong>Copy</strong> buttons (install, store the token, try it, schedule it), and <strong>Copy agent prompt</strong>.</p>
@@ -319,9 +339,13 @@ Under <strong>Appearance</strong> (how things look, nothing else):</p></li>
 <ul>
 <li><strong>Work hours:</strong> weekdays 7:00–18:00 = work, everything else = personal (<strong>Settings → Alerts → Switch work / personal on a schedule</strong>). Items with the other context don't vanish; they show as the faint second number.</li>
 <li><strong>Start of day:</strong> at 7:30 on weekdays the panel opens once with open work items, or on the first check after 7:30 if the Mac was asleep (<strong>Settings → Alerts → Start-of-day summary</strong>).</li>
-<li><strong>Live updates:</strong> uses the hub's event stream when available, otherwise polls every 30 s (<strong>Settings → Integrations → Live updates from the hub</strong>).</li>
+<li><strong>Live updates:</strong> uses the hub's event stream when available, otherwise polls every 30 s (<strong>Settings → Advanced → Live updates from the hub</strong>).</li>
 </ul>
 <p><a data-repo="/blob/main/mac/README.md" href="https://github.com/tayharris/needs-you/blob/main/mac/README.md">mac/README.md</a> is authoritative for the details.</p>
+    <nav class="pager" aria-label="Previous and next guide">
+      <a class="pager-prev" href="concepts.html" rel="prev"><span>Previous</span> App, hubs and senders</a>
+      <a class="pager-next" href="help-us-test.html" rel="next"><span>Next</span> Help us test</a>
+    </nav>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/mac-app.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/mac-app.md">docs/guides/mac-app.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

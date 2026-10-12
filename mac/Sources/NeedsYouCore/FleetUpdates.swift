@@ -122,7 +122,7 @@ public enum HubUpdateState: Equatable, Sendable {
     public init(hub: FleetHub, target: SemVer?) {
         guard let status = hub.status else {
             if hub.version != nil, hub.error == nil { self = .tooOld; return }
-            self = .unknown(hub.error ?? "not reached yet")
+            self = .unknown(hub.error ?? "Not reached yet. Refresh to try again.")
             return
         }
         switch status.state {

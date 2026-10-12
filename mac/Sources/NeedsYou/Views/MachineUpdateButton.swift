@@ -1,7 +1,7 @@
 import NeedsYouCore
 import SwiftUI
 
-/// The trailing control on a machine's row (Settings → Access / Machines): **Request update**
+/// The trailing control on a machine's row (Settings → Machines, and Updates → Machines and hubs): **Request update**
 /// while its CLI is older than this app's version or hasn't reported one, "Update requested
 /// 5m ago" with **Cancel** while a request stands, "Up to date" once it's current.
 ///

@@ -133,7 +133,7 @@ Two guards: an urgent item breaks through a focus unless you turn off **Settings
 
 A rule can also be narrowed to one **event**, what the sender says happened (`source.event`, set by the agent hooks for every agent they serve): **asks** a question, **needs approval** (a command, an edit, a plan), **finishes** its turn, **fails** (an error, a rate limit, a sign-in), or its **context** is nearly full. One click adds **Agent questions are urgent** or **Agent failures are urgent** (key prefix `agent:` with that event), or **Agents always interrupt**.
 
-From a card: an agent card's **…** menu has **Alerts for This Session** and **Alerts for All <agent> Sessions** (for example *claude-code*), (a usage-limit card, which is the machine's rather than a session's, has only the second), each with **Treat as Urgent**, **Always Interrupt**, **Never Interrupt** and **Always Later**, the same under **Only When It Asks / Needs Approval / Finishes / Fails**, and **Remove Rules**. A checkmark shows the rule in force; choosing it again removes it. Rules made there go above the rules made in Settings, so they win over them, and show up in Settings; among themselves the most specific comes first (a session's rules above its agent's, and an "Only When It…" rule above the same menu's rule for everything), so **Always Interrupt** chosen after **Only When It Asks → Treat as Urgent** still leaves questions urgent. A rule that never applies (one below a broader rule from Settings, such as **Agents Always Interrupt** added later, which goes to the top of the list) has no checkmark; choosing it again puts it back where it applies. So "tell me loudly when *this* session stops or asks, and nothing else" is: **Alerts for This Session → Treat as Urgent** on its card, plus **Never Interrupt** (or **Always Later**) under **Alerts for All claude-code Sessions** on any card.
+From a card: an agent card's **…** menu has **Alerts for This Session** and **Alerts for All <agent> Sessions** (for example *claude-code*), (a usage-limit card, which is the machine's rather than a session's, has only the second), each with **Treat as Urgent**, **Always Interrupt**, **Never Interrupt** and **Always Later**, the same under **Only When It Asks / Needs Approval / Finishes / Fails**, and **Remove Rules**. A checkmark shows the rule in force; choosing it again removes it. Rules made there go above the rules made in Settings, so they win over them, and show up in Settings; among themselves the most specific comes first (a session's rules above its agent's, and an "Only When It…" rule above the same menu's rule for everything), so **Always Interrupt** chosen after **Only When It Asks → Treat as Urgent** still leaves questions urgent. A rule that never applies (one below a broader rule from Settings, such as **Agents always interrupt** added later, which goes to the top of the list) has no checkmark; choosing it again puts it back where it applies. So "tell me loudly when *this* session stops or asks, and nothing else" is: **Alerts for This Session → Treat as Urgent** on its card, plus **Never Interrupt** (or **Always Later**) under **Alerts for All claude-code Sessions** on any card.
 
 A hidden panel stays hidden; no rule ever takes focus.
 
@@ -196,24 +196,33 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | A red glow around the work screen's edge when an urgent item arrives | Appearance → Alert style → **Edge glow** | Off, Urgent arrivals |
 | How the usage meters look | Appearance → **Usage meters** | Warning colour, and the pill's meter style, size, layout and percentages: see [Usage meters](#usage-meters) |
 
-**Panel and Alerts** (what shows, where, and what may interrupt you):
+**Panel, Alerts and Advanced** (what shows, where, when, and what may interrupt you):
 
 | Setting | Where | Choices (default first) |
 |---|---|---|
+| Show the floating pill and panel | Panel → Panel and menu bar → **Show floating panel** | On, Off (new items then only update the menu bar) |
+| The menu bar icon, and the count next to it | Panel → Panel and menu bar → **Show menu bar icon**, **Show count in menu bar** | On, On (the icon and the panel can't both be hidden) |
+| A dropped pill snaps to the nearest corner | Panel → Panel and menu bar → **Snap to corners** | Off, On |
 | Open the panel once when you start the app yourself (never at login or after an update) | Panel → Open panel → **Open the panel when Needs You starts** | On, Off |
 | Close the open panel when you click in another app or open a link | Panel → Open panel → **Collapse when clicking elsewhere** | On, Off |
 | Usage meters in the panel and on the pill, which providers and windows, and hiding a bar under a percentage | Panel → **Usage meters** | On, On, every provider, both windows, always show |
 | Cards about what isn't set up yet ([Setup tips](#setup-tips)) | Panel → Setup tips → **Show setup tips** | On, Off |
+| The open panel's list of Orca worktrees ([Orca](#orca-worktrees)) | Panel → Orca → **Show Orca worktrees** | On, Off (shows nothing without the Orca CLI) |
 | The global shortcut | Panel → Keyboard | Control-Option-Space (⌃⌥Space), or record your own (it must use Control, Option or Command) |
 | How long a new item's preview stays out (also the "3 waited" Later peek) | Alerts → New items → **Show new items for** | 14 s, 5 s, 10 s, 20 s, 30 s, Until I click or point at it (pointing at it always holds it) |
 | Play urgent's arrival again while nobody has looked | Alerts → New items → **Remind about unseen urgent items** | Off, every 2, 5, 10, 15, 30 min, every hour |
-| How normal / low / done and info / other-context items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
+| Where new items spring out | Alerts → **On the work screen** | The pill's display (default), The display you're working on |
+| How normal, low, done and info, and other-side (work or personal) items arrive | Alerts → **Delivery** | Interrupt, Ambient, Ambient, Later (see [Focus](#focus-heads-down-except-what-you-choose)) |
 | Urgent items break through Focus | Alerts → Delivery | On, Off |
 | Focus links from other apps apply without asking | Alerts → Delivery | Off (ask), On |
+| An urgent item ends a snooze and shows the panel | Alerts → Snoozed or hidden → **Urgent items break through a snooze** | On, Off |
+| An urgent item brings a hidden panel back | Alerts → Snoozed or hidden → **Urgent items show the panel even when hidden** | Off (one pulse of the menu bar icon), On |
 | Bypass rules | Alerts → **Bypass rules**, or an agent card's **…** menu | None; up to 50 |
-| Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
+| Work on weekdays 7:00–18:00, personal otherwise | Alerts → Schedule → **Switch work / personal on a schedule** | On, Off |
+| The panel opens at 7:30 on weekdays with what's waiting | Alerts → Schedule → **Start-of-day summary** | On, Off |
+| New items show as soon as the hub has them (else at the next check, every 30 s) | Advanced → Live updates → **Live updates from the hub** | On, Off |
 
-The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Appearance → Alert style → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the theme, pill, panel and cards (with the dragged height), opacity and alert style back, plus how long new items show, the urgent reminder and click-elsewhere (not the edge glow, the usage meters, delivery or bypass rules).
+The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Appearance → Alert style → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset Appearance** puts every setting under Appearance back to its default (Theme, Pill, Panel and cards with the dragged height, Alert style with the edge glow, and Usage meters) and changes nothing else.
 
 ### Themes
 
@@ -288,9 +297,9 @@ Under **Appearance** (how things look, nothing else):
 Under **Needs You**:
 
 - **Panel:** whether the floating panel and menu bar icon show, snap to corners, opening at launch and closing on a click elsewhere, which usage meters show and where, setup tips, Orca worktrees, the keyboard shortcut.
-- **Alerts:** how long new items stay out and the urgent reminder, delivery and focus, snooze and hidden-panel rules, bypass rules, which display new items spring out on, the work / personal schedule.
-- **Integrations:** **Cards from your tools** (below), **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)), live updates from the hub, and how to start sending usage meters.
-- **Updates** ([guide](updates.md)): this app's version and update settings, and **Machines and hubs**: every sender machine and server hub with its version, **Request update** for each one that's behind, and **Update all** ([guide](updates.md#server-hubs)). **Advanced** (reset the appearance; **Developer mode**, below; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
+- **Alerts:** how long new items stay out and the urgent reminder, which display new items spring out on, delivery and focus, snooze and hidden-panel rules, bypass rules, the work / personal schedule.
+- **Integrations:** **Cards from your tools** (below), **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)), and how to start sending usage meters.
+- **Updates** ([guide](updates.md)): this app's version and update settings, and **Machines and hubs**: every sender machine and server hub with its version, **Request update** for each one that's behind, and **Update all** ([guide](updates.md#server-hubs)). **Advanced**: **Live updates from the hub**, **Reset Appearance** (every Appearance setting back to its default, nothing else), **Developer mode** (below), and the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**.
 
 ### Cards from your tools
 
@@ -313,6 +322,6 @@ Fixed times, each with a switch (all on by default):
 
 - **Work hours:** weekdays 7:00–18:00 = work, everything else = personal (**Settings → Alerts → Switch work / personal on a schedule**). Items with the other context don't vanish; they show as the faint second number.
 - **Start of day:** at 7:30 on weekdays the panel opens once with open work items, or on the first check after 7:30 if the Mac was asleep (**Settings → Alerts → Start-of-day summary**).
-- **Live updates:** uses the hub's event stream when available, otherwise polls every 30 s (**Settings → Integrations → Live updates from the hub**).
+- **Live updates:** uses the hub's event stream when available, otherwise polls every 30 s (**Settings → Advanced → Live updates from the hub**).
 
 [mac/README.md](../../mac/README.md) is authoritative for the details.

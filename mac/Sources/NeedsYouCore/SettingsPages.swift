@@ -76,7 +76,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .connect:
             return "Make a link that sets up a sender (a server or agent machine) or another Mac that shows your alerts."
         case .machines:
-            return "Every sender and Mac connected to your hub, and open invite links. Revoke any of them."
+            return "Every sender and Mac connected to your hub, and open invite links. Ask a sender to update, or revoke any of them."
         case .otherHubs:
             return "Optional. Join a hub someone else runs, or add one by URL. Always-on server hubs are added in Built-in hub."
         case .theme:
@@ -94,11 +94,11 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .alerts:
             return "What can interrupt you, and when: delivery, focus, snoozes, rules and reminders."
         case .integrations:
-            return "Cards from Linear, Jira, GitHub and expiry dates, the Terminal button, live updates, and sending usage meters."
+            return "Cards from Linear, Jira, GitHub and expiry dates, the Terminal button, and sending usage meters."
         case .updates:
             return "This app's version, automatic updates, and which machines and hubs are out of date, with Request update for each."
         case .advanced:
-            return "Reset the appearance and alerts, developer mode, and where settings and data are kept."
+            return "Live updates from the hub, resetting the appearance, developer mode, and where settings and data are kept."
         }
     }
 

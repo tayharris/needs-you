@@ -170,7 +170,8 @@ public enum PanelOpacity {
     }
 }
 
-/// Settings → Appearance → Panel and cards → Opacity → Background: how dark the layer behind the glass is.
+/// Settings → Appearance → Panel and cards → Opacity → Background darkness: how dark the
+/// layer behind the glass is.
 public enum PanelBackdrop {
     public static let choices: [Double] = [0, 0.15, 0.3, 0.45, 0.6, 0.75]
     public static let standard = 0.3

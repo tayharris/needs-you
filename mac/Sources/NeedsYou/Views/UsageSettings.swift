@@ -113,25 +113,30 @@ struct UsageContentSection: View {
             Toggle(isOn: $settings.usage.onPill) {
                 LabelWithDetail("Show on the pill", "The fullest session and weekly window on the collapsed pill, also when nothing is waiting. The count stays readable.")
             }
-            ForEach(knownProviders, id: \.self) { provider in
-                Toggle(UsageMeters.providerTitle(provider), isOn: providerBinding(provider))
-            }
-            Picker(selection: $settings.usage.windows) {
-                ForEach(UsageWindowChoice.allCases, id: \.self) { Text($0.title).tag($0) }
-            } label: {
-                LabelWithDetail("Windows", "The 5-hour session limit, the weekly one, or both.")
-            }
-            Picker(selection: $settings.usage.hideUnderPct) {
-                ForEach(UsagePrefs.hideUnderChoices, id: \.self) { pct in
-                    Text(pct == 0 ? "Always show" : "Under \(pct)%").tag(pct)
+            Group {
+                ForEach(knownProviders, id: \.self) { provider in
+                    Toggle(UsageMeters.providerTitle(provider), isOn: providerBinding(provider))
                 }
-            } label: {
-                LabelWithDetail("Hide a bar", "Keep the meters out of the way until a window fills up.")
+                Picker(selection: $settings.usage.windows) {
+                    ForEach(UsageWindowChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+                } label: {
+                    LabelWithDetail("Windows", "The 5-hour session limit, the weekly one, or both.")
+                }
+                Picker(selection: $settings.usage.hideUnderPct) {
+                    ForEach(UsagePrefs.hideUnderChoices, id: \.self) { pct in
+                        Text(pct == 0 ? "Always show" : "Under \(pct)%").tag(pct)
+                    }
+                } label: {
+                    LabelWithDetail("Hide a bar", "Keep the meters out of the way until a window fills up.")
+                }
             }
+            .disabled(!settings.usage.isShown)
         } header: {
             Text("Usage meters")
         } footer: {
-            Text("Meters for your agents' session and weekly limits, as their hooks report them. They never count as waiting, animate or notify. How they look: Appearance → Usage meters.")
+            Text(settings.usage.isShown
+                 ? "Meters for your agents' session and weekly limits, as their hooks report them. They never count as waiting, animate or notify. How they look: Appearance → Usage meters."
+                 : "Both are off, so no meters show and the app doesn't ask the hub for them. Turn one on to choose which.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -142,7 +147,7 @@ struct UsageContentSection: View {
 struct UsageSetupSection: View {
     var body: some View {
         Section {
-            Text("On a machine with Orca, run `needs-you orca usage --enable`. Without Orca, install with `--usage`, which wraps Claude Code's status line. The Codex hook reports Codex on its own.")
+            Text("On a machine with Orca, run `needs-you orca usage --enable`. Without Orca, set the machine up with the `--usage` option, which adds a helper for Claude Code's status line. Codex needs nothing more: its hook reports the numbers.")
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
