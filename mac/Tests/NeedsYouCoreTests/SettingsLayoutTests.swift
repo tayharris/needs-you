@@ -18,6 +18,7 @@ final class SettingsLayoutTests: XCTestCase {
         ("testEveryPageHasSections", testEveryPageHasSections),
         ("testSectionsWriteOnlyTheirPagesKeys", testSectionsWriteOnlyTheirPagesKeys),
         ("testMovedSettingsAndOldNames", testMovedSettingsAndOldNames),
+        ("testAppearanceResetResetsLookOnly", testAppearanceResetResetsLookOnly),
     ]
 
     private let suite = TestDefaults.suiteName(SettingsLayoutTests.self)
@@ -117,7 +118,6 @@ final class SettingsLayoutTests: XCTestCase {
     /// Writes a section may make to a key on another page, on purpose.
     private static let crossPageWrites: Set<String> = [
         "welcome runLocalHub",   // General's first-run "Use the hub built into this app"
-        "advanced ui",           // Advanced → Reset: every UIPrefs key back to its default
     ]
 
     /// Reads every app source: `// settings-section: <case>` starts a section's code, which
@@ -177,6 +177,57 @@ final class SettingsLayoutTests: XCTestCase {
         // The window builds its pages from Core's section list.
         let window = try String(contentsOf: appSources.appendingPathComponent("SettingsWindow.swift"), encoding: .utf8)
         XCTAssertTrue(window.contains("SettingsSection.sections(on: page)"))
+    }
+
+    /// What `save` writes, by key (less what an untouched suite already shows).
+    private func savedValues(_ save: (UserDefaults) -> Void) -> [String: NSObject] {
+        let empty = Set(TestDefaults.make(emptySuite).dictionaryRepresentation().keys)
+        let store = TestDefaults.make(suite)
+        save(store)
+        return store.dictionaryRepresentation().filter { !empty.contains($0.key) }.compactMapValues { $0 as? NSObject }
+    }
+
+    /// Advanced → Reset Appearance: with every value changed, the reset puts back exactly the
+    /// keys the registry calls look, and keeps every behaviour key.
+    func testAppearanceResetResetsLookOnly() {
+        var ui = UIPrefs()
+        ui.panelSize = .large; ui.textSize = .large; ui.alertUrgent = .bright; ui.alertOther = .subtle
+        ui.panelOpacity = 0.7; ui.panelHoverOpacity = 0.9; ui.pillOpacity = 0.5; ui.pillHoverOpacity = 0.6
+        ui.maxVisibleCards = 3; ui.cardBodies = .hidden; ui.compactLinks = true
+        ui.pillSize = .large; ui.pillDetail = .dot; ui.pillSplit = .priority; ui.pillShowNew = false
+        ui.previewSeconds = 5; ui.collapseOnClickOutside = false; ui.backdrop = 0.6; ui.expandedListHeight = 300
+        ui.theme = .ocean; ui.accent = .preset(.blue); ui.background = .solid
+        ui.arrivalUrgent = .bounce; ui.arrivalOther = .shake; ui.arrivalRepeats = 3; ui.arrivalSpeed = .fast
+        ui.urgentReminderMinutes = 5; ui.panelShape = .capsule; ui.cardDensity = .compact
+        var usage = UsagePrefs()
+        usage.inPanel = false; usage.onPill = false; usage.pillStyle = .rings; usage.pillArrangement = .row
+        usage.pillSize = .small; usage.pillNumbers = true; usage.providers = ["claude"]; usage.windows = .weekly
+        usage.hideUnderPct = 50; usage.warnPct = 90
+
+        let checks: [(String, (UserDefaults) -> Void, (UserDefaults) -> Void, (UserDefaults) -> Void)] = [
+            ("UIPrefs", { ui.save(to: $0) }, { AppearanceReset.ui(ui).save(to: $0) }, { UIPrefs().save(to: $0) }),
+            ("UsagePrefs", { usage.save(to: $0) }, { AppearanceReset.usage(usage).save(to: $0) }, { UsagePrefs().save(to: $0) }),
+        ]
+        for (owner, changed, reset, standard) in checks {
+            let before = savedValues(changed), after = savedValues(reset), defaults = savedValues(standard)
+            XCTAssertEqual(Set(before.keys), Set(defaults.keys), owner)
+            for key in defaults.keys.sorted() {
+                // The fixture changes every value, so a new field can't slip through unchecked.
+                XCTAssertNotEqual(before[key], defaults[key], "\(owner).\(key): change it in this test's fixture")
+                guard let placement = SettingsRegistry.placement(forKey: key) else {
+                    XCTFail("\(owner).\(key) isn't registered"); continue
+                }
+                switch placement.kind {
+                case .look: XCTAssertEqual(after[key], defaults[key], "\(key) is look: Reset Appearance must reset it")
+                case .behaviour: XCTAssertEqual(after[key], before[key], "\(key) is behaviour: Reset Appearance must keep it")
+                }
+            }
+        }
+        XCTAssertEqual(SettingsRegistry.placement(forKey: EdgeGlowMode.defaultsKey)?.kind, .look)
+        XCTAssertEqual(AppearanceReset.edgeGlow, EdgeGlowMode.standard)
+        XCTAssertFalse(AppearanceReset.isDefault(ui: ui, usage: UsagePrefs(), edgeGlow: .off))
+        XCTAssertFalse(AppearanceReset.isDefault(ui: UIPrefs(), usage: UsagePrefs(), edgeGlow: .urgent))
+        XCTAssertTrue(AppearanceReset.isDefault(ui: AppearanceReset.ui(ui), usage: AppearanceReset.usage(usage), edgeGlow: .off))
     }
 
     /// What this layout moved, and that the old page names still land.

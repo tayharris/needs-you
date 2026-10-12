@@ -244,3 +244,37 @@ public enum SettingsSection: String, CaseIterable, Sendable {
         allCases.filter { $0.tab == tab }
     }
 }
+
+/// Advanced → Reset Appearance: every look setting (the `.look` lines in
+/// `SettingsRegistry.all`, on the Appearance pages) back to its default, and nothing else.
+/// Behaviour settings that share a value type with look ones (how long new items show, the
+/// urgent reminder, Collapse when clicking elsewhere; whether the usage meters show, which
+/// providers and windows) keep their values. SettingsLayoutTests checks this against the
+/// registry, key by key.
+public enum AppearanceReset {
+    public static func ui(_ prefs: UIPrefs) -> UIPrefs {
+        var reset = UIPrefs.defaults
+        reset.previewSeconds = prefs.previewSeconds
+        reset.urgentReminderMinutes = prefs.urgentReminderMinutes
+        reset.collapseOnClickOutside = prefs.collapseOnClickOutside
+        return reset
+    }
+
+    public static func usage(_ prefs: UsagePrefs) -> UsagePrefs {
+        let standard = UsagePrefs()
+        var reset = prefs
+        reset.pillStyle = standard.pillStyle
+        reset.pillSize = standard.pillSize
+        reset.pillArrangement = standard.pillArrangement
+        reset.pillNumbers = standard.pillNumbers
+        reset.warnPct = standard.warnPct
+        return reset
+    }
+
+    public static let edgeGlow = EdgeGlowMode.standard
+
+    /// Whether every look setting is already at its default (the button is then disabled).
+    public static func isDefault(ui: UIPrefs, usage: UsagePrefs, edgeGlow: EdgeGlowMode) -> Bool {
+        Self.ui(ui) == ui && Self.usage(usage) == usage && edgeGlow == Self.edgeGlow
+    }
+}

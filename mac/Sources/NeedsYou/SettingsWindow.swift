@@ -1025,13 +1025,18 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             HStack {
-                LabelWithDetail("Appearance and alerts", "Theme, pill, panel and cards (with the open panel's height), opacity and alert style (not the edge glow or Usage meters), plus how long new items show, the urgent reminder and click-elsewhere, back to how they started.")
+                LabelWithDetail("Appearance", settings.appearanceIsDefault
+                                ? "Every setting under Appearance is at its default."
+                                : "Puts every setting under Appearance back to its default: Theme, Pill, Panel and cards (with the dragged height), Alert style (with the edge glow) and Usage meters.")
                 Spacer()
-                Button("Reset to defaults") { settings.ui = UIPrefs.defaults }
-                    .disabled(settings.ui == UIPrefs.defaults)
+                Button("Reset Appearance") { settings.resetAppearance() }
+                    .disabled(settings.appearanceIsDefault)
             }
         } header: {
             Text("Reset")
+        } footer: {
+            Text("Nothing else changes: what shows, alerts, rules, hubs and machines keep their settings.")
+                .font(.caption).foregroundStyle(.secondary)
         }
         Section {
             Toggle(isOn: $settings.developerMode) {
