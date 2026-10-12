@@ -32,7 +32,7 @@ Don't post:
 ## Setup on a machine (once)
 
 The person makes an **invite link** (Mac app: Settings → **Connect a machine** → **Create
-invite**; on a server hub: `needs-you-admin invite create`). It looks like
+invite**; on a server hub: `needs-you-admin invite create <name> --role sender`). It looks like
 `http://my-mac.example.ts.net:8765/join/nyi_...`. If you're an agent and were given one:
 
 1. Read the link. It's Markdown written for you: the install line, its options and the rules.
@@ -45,7 +45,7 @@ invite**; on a server hub: `needs-you-admin invite create`). It looks like
    `--orca` for Orca automations, `--context personal` if
    its items are personal. Only if the person asks: `--agent-instructions codex,gemini,opencode`
    (these rules in those agents' own instruction files) and `--mcp <agents>` (the MCP server,
-   registered with `claude`, `codex`, `gemini`, `opencode` or `copilot`).
+   registered with `claude`, `codex`, `gemini`, `opencode`, `copilot` or `cursor`).
 3. Run `curl -fsSL <join_url>/install.sh | bash -s -- --yes [options]`.
 4. Report the health line (`<hub url>  OK  hub=... token=<name> role=sender`), never the
    token. Then run `~/.local/bin/needs-you doctor` (the new `PATH` reaches new shells only)
@@ -63,6 +63,7 @@ NEEDS_YOU_URLS=http://my-mac.example.ts.net:8765,http://hub-a.example.ts.net:876
 NEEDS_YOU_URL=http://my-mac.example.ts.net:8765                                      # the first, for curl
 NEEDS_YOU_TOKEN=<this machine's token>
 NEEDS_YOU_DEFAULT_CONTEXT=work                                                       # if --context was given
+NEEDS_YOU_AUTO_UPDATE=1                                       # unless --no-auto-update: the flush runs needs-you update daily
 ```
 
 Re-running is safe and keeps the token unless `--force` is passed. Without a link,
@@ -231,7 +232,7 @@ needs-you resolve --key "work:deploy:api-v2.14"   # once you've acted on it
 
 Run `needs-you doctor --json` when you're unsure the machine is set up (a post queued instead
 of sending, `command not found`, a hook that never fires). It prints
-`{"ok": ..., "checks": [{"check", "status", "detail", "hint"}]}`. `status` is `OK`, `WARN`,
+`{"ok": ..., "version": ..., "checks": [{"check", "status", "detail", "hint"}]}`. `status` is `OK`, `WARN`,
 `FAIL` or `INFO`; on a `WARN` or `FAIL`, `hint` is one next step: a command to run, or what to
 ask the person for. It exits 1 on any `FAIL`, is read-only, never posts and never prints the
 token.

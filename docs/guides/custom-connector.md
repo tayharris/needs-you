@@ -46,7 +46,7 @@ needs-you resolve --key "acme-agent:devbox:3f9c2a:waiting"
 ```
 
 - It tries each hub in `NEEDS_YOU_URLS` in order (failover), and when none answers it queues the request in `~/.local/state/needs-you/outbox/` and **exits 0**; the next call or the 5-minute `needs-you flush` sends it.
-- It exits **2** when the hub refuses the request (a 4xx: bad field, bad token, volume guard) or the flags are wrong. A refused request is not queued, so test your connector (section 5) and wrap every call with `|| true` or ignore the exit code.
+- It exits **2** when the hub refuses the request (a 4xx: bad field, bad token, volume guard) or the flags are wrong. A refused request is not queued (except `429 rate_limited`, which the CLI queues and sends after the hub's `retry_after`, exit 0), so test your connector (section 5) and wrap every call with `|| true` or ignore the exit code.
 - Pass untrusted text as `--title=TEXT` / `--body=TEXT` (with `=`), so a value starting with `-` isn't read as an option, and call it with an argument list, never through `sh -c` with the text pasted in.
 - `needs-you --json add ...` prints the hub's response; `-q` prints nothing on success.
 
@@ -106,7 +106,7 @@ The app's own `needsyou://` actions (the card's "go there" button: Orca, a termi
 | `link` | no | object | `{"label", "url"}`, the same rules as an entry of `links` | none |
 | `done` | no | boolean | `true` or `false`; anything else is a 400 | `false` |
 
-**Same key, same card.** If an item with this `key` is open (not resolved, dismissed or expired), the post updates it in place and keeps its id. A re-post is your whole current view: every field is replaced, and fields you leave out go back to their defaults. The card re-animates only when `title`, `body`, `priority` or `steps` changed. Otherwise a new item is created.
+**Same key, same card.** If an item with this `key` is open (not resolved, dismissed or expired), the post updates it in place and keeps its id. A re-post is your whole current view: every field is replaced, and fields you leave out go back to their defaults. The card re-animates only when `title`, `body`, `priority`, `steps` or `question` changed. Otherwise a new item is created.
 
 **Response.** `201` when created, `200` when an open item with the key was updated. The body is the item plus two booleans, `created` and `changed`:
 
@@ -145,6 +145,7 @@ Every error has the body `{"error": "<code>", "message": "<text>", "field": "<fi
 | 413 | `too_large` | Body over 64 KiB | Shorten it (the field limits keep a valid item far below this) |
 | 421 | `misdirected` | The URL's host name isn't one this hub answers to | The CLI tries the next hub; check `NEEDS_YOU_URLS` |
 | 429 | `too_many_open` | This token already has 60 open items (`max_open_per_token`) and the post would create a new one. Re-posts of open keys still work | Something is looping: fix the keys (a timestamp or run id in the key?) and resolve what's open |
+| 429 | `rate_limited` | This token posted more than 120 times in a minute (re-posts count) | Something is looping; the CLI queues it and retries after `Retry-After`. With raw HTTP, wait that long |
 | 500 | `internal` | A hub bug | Report it; the hub's log has the details |
 
 ## 4. Map your tool's events
