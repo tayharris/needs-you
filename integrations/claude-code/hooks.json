@@ -7,6 +7,12 @@
         "hooks": [
           { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" notify", "async": true, "timeout": 30 }
         ]
+      },
+      {
+        "matcher": "quota_auto_resume_fired|elicitation_complete|auth_success",
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" resolve", "async": true, "timeout": 30 }
+        ]
       }
     ],
     "PermissionRequest": [
@@ -55,6 +61,13 @@
       {
         "hooks": [
           { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" stop", "async": true, "timeout": 30 }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"$HOME/.claude/hooks/needs-you-hook.sh\" compact", "async": true, "timeout": 30 }
         ]
       }
     ],

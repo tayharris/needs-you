@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude Code: cards clear when the wait is over, and API errors say which.** A usage-limit card now clears when Claude resumes on its own after the limit (`quota_auto_resume_fired`), an MCP sign-in card when the sign-in completes (`elicitation_complete`, `auth_success`) and Claude's own sign-in card on `auth_success`; each clears only its own card. The context card clears as soon as compaction finishes (`PostCompact`). An API-error card now reads the error the way Claude Code's docs name it, so it says **Claude's API is overloaded**, **Claude stopped on a server error** or **Claude stopped on an invalid request** instead of the generic API error (the hook read `error_type`, not the documented `error`, so rate-limit and sign-in cards could get the generic title too). The "Claude asks: …" card takes the turn's question from `Stop`'s `last_assistant_message` instead of the transcript, which may not have the last message yet; older Claude Code versions still read the transcript. Run `needs-you update` (or re-run `install-hooks.sh`) to get the new events ([guide](docs/guides/claude-code.md#the-hooks)).
+
 ## [0.5.1] - 2026-10-12
 
 A pre-release: server hubs now update themselves, checked the same way the Mac app's updates are; the pill and panel get a Shape (Rounded, Square, Capsule), card Density, a Solid background and accent swatches; Pill size now sizes the idle pill too; and Settings → Appearance holds the whole look. It's on the pre-release channel: on the Mac, Settings → Updates → **Releases and pre-releases** picks it up; everyone else stays on 0.3.2 until it's promoted. To turn on automatic updates for a server hub, re-run `install-hub.sh` on it once (it needs `gh` 2.64 or later, logged in; add `--update-channel prerelease` to follow pre-releases), then run `needs-you update` on sender machines.

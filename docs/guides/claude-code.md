@@ -59,9 +59,11 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 |---|---|---|
 | `Notification`, types `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input`, `quota_auto_resume_disabled` | `notify` | Posts the session's card. A `permission_prompt` or `idle_prompt` doesn't replace a more specific card from `PermissionRequest`. An `idle_prompt` or `agent_needs_input` posts nothing while the agent's own blocker from this session is open ([below](#one-card-for-one-wait)). |
 | `PermissionRequest` (any tool) | `notify` | Posts the session's card, titled by the tool: plan approval (with the plan's first lines), a question (with its text and choices), the program a command runs, the file an edit changes. Skipped when the request doesn't need your approval. |
-| `StopFailure` | `notify` | Posts the session's card, titled by the API error. |
+| `Notification`, types `quota_auto_resume_fired`, `elicitation_complete`, `auth_success` | `resolve` | Resolves only the card that event ends: the usage-limit card when Claude resumes after the limit, an MCP server's sign-in card when its sign-in completes, and Claude's own sign-in card (or an MCP one) on `auth_success`. Any other card stays. |
+| `StopFailure` | `notify` | Posts the session's card, titled by the API error (rate limit, overloaded, server error, invalid request, sign-in, billing, ...). |
 | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` | `resolve` | Resolves the session's card, if it posted one (also one still being posted when you replied). |
-| `Stop` | `stop` | Resolves the session's card (except an API-error card), then checks how full the context is and posts, updates or resolves the context card. |
+| `Stop` | `stop` | Resolves the session's card (except an API-error card), keeps the question the turn ended on (from `last_assistant_message`) for the "Claude asks" card, then checks how full the context is and posts, updates or resolves the context card. |
+| `PostCompact` | `compact` | Resolves the context card as soon as compaction finishes. |
 | `SessionStart` | `start` | Remembers the model. After `/clear`, compaction or `/resume`, resolves the earlier cards of this Claude process and its context card. |
 | `SessionEnd` | `end` | Resolves the session's card and its context card. |
 
@@ -79,7 +81,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | MCP server asks for input / a sign-in | **Claude needs an answer: my-repo** / **Claude needs you to sign in: my-repo** |
 | Claude Code's `agent_needs_input` notification | **Claude needs your input: my-repo** |
 | Usage limit, won't resume on its own | **Claude hit its usage limit: my-repo** |
-| Turn ended on an API error | **Claude hit a rate limit**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
+| Turn ended on an API error | **Claude hit a rate limit**, **Claude's API is overloaded**, **Claude stopped on a server error**, **Claude stopped on an invalid request**, **Claude needs you to sign in again**, **Claude stopped on a billing problem**, **Claude stopped on an API error**, ... |
 | Context at 80% or more (low priority, a card of its own) | **Claude's context is 85% full: my-repo**, suggesting `/compact` or `/clear` |
 
 Every title names the session when it has a name: **Claude wants to run git: Login fix (my-repo)**. A finished turn's card is a question only when Claude's last message ends with one (its last line ends with "?", outside code); anything else is "finished". The question and the name are Claude's words: cleaned, anything token-shaped redacted (a name with a token in it isn't shown), clamped. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Claude is waiting for you: my-repo** and no names.
@@ -95,7 +97,7 @@ The body holds Claude's notification text, the directory and host, and where the
 ### One card per session, cleared on its own
 
 - **Keys:** `agent:<host>:<session>` for the session's card, `agent:<host>:<session>:context` for the context card. `<session>` is the Orca terminal handle in Orca, otherwise Claude's session id. Re-posting updates the card, so a session that asks five times shows one card.
-- **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, or the end of the session. The context card clears once the context is back under the threshold.
+- **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, or the end of the session. A usage-limit card also clears when Claude resumes on its own after the limit, and a sign-in card when the sign-in completes. The context card clears once the context is back under the threshold, or when compaction finishes.
 - **Killed sessions** never send `SessionEnd`. The hook records the Claude process id in `~/.local/state/needs-you/claude-hooks/`; the 5-minute `needs-you flush` the installer schedules resolves the card once that process is gone. As a backstop, every card expires 48 hours after its last post ([details](claude-code-everywhere.md#when-a-session-dies)).
 
 ### One card for one wait

@@ -572,11 +572,80 @@ class FailureTests(HookHarness):
     def test_unknown_error_type(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "something_new"})
         self.assertEqual(self.opt(self.last(), "--title"), "Claude stopped on an API error: my-repo")
+        self.run_hook("notify", {"hook_event_name": "StopFailure", "error": "unknown"})
+        self.assertEqual(self.opt(self.last(), "--title"), "Claude stopped on an API error: my-repo")
+
+    def test_stop_failure_documented_fields(self):
+        # code.claude.com/docs/en/hooks: StopFailure carries `error` and `error_details` (the
+        # older error_type / error_message still work, above).
+        titles = {"overloaded": "Claude's API is overloaded",
+                  "server_error": "Claude stopped on a server error",
+                  "invalid_request": "Claude stopped on an invalid request",
+                  "rate_limit": "Claude hit a rate limit",
+                  "authentication_failed": "Claude needs you to sign in again"}
+        for err, title in titles.items():
+            with self.subTest(err):
+                self.run_hook("notify", {"hook_event_name": "StopFailure", "error": err,
+                                         "error_details": "529 Overloaded key=%s" % SECRET,
+                                         "last_assistant_message": "API Error: " + SECRET})
+                argv = self.last()
+                self.assertEqual(self.opt(argv, "--title"), title + ": my-repo")
+                self.assertEqual(self.opt(argv, "--event"), "failed")
+                self.assertIn("529 Overloaded", self.opt(argv, "--body"))
+                self.assertNotIn(SECRET, json.dumps(argv))
+                posted_item(argv)
 
     def test_usage_limit_notification(self):
         self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "quota_auto_resume_disabled",
                                  "message": "Usage limit reached"})
         self.assertEqual(self.opt(self.last(), "--title"), "Claude hit its usage limit: my-repo")
+
+    def wait_over(self, ntype):
+        """A Notification that says a wait is over, through the matcher entry that runs `resolve`."""
+        n = len(self.calls())
+        self.run_hook("resolve", {"hook_event_name": "Notification", "notification_type": ntype,
+                                  "message": "done"})
+        return self.calls()[n:]
+
+    def test_quota_auto_resume_fired_resolves_the_usage_limit_card(self):
+        for card in ({"hook_event_name": "Notification", "notification_type": "quota_auto_resume_disabled"},
+                     {"hook_event_name": "StopFailure", "error": "rate_limit"}):
+            with self.subTest(card):
+                self.run_hook("notify", card)
+                key = self.opt(self.last(), "--key")
+                self.assertEqual(self.marker()["topic"], "quota")
+                self.assertEqual(self.wait_over("auth_success"), [])  # not this card's end
+                self.assertEqual(self.wait_over("elicitation_complete"), [])
+                self.assertEqual(self.wait_over("quota_auto_resume_fired"), [["resolve", "--key", key]])
+                self.assertFalse(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
+
+    def test_sign_in_cards_resolve_on_auth_success_and_elicitation_complete(self):
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "elicitation_url_dialog"})
+        self.assertEqual(self.marker()["topic"], "url_signin")
+        self.assertEqual(self.wait_over("quota_auto_resume_fired"), [])
+        self.assertEqual(self.wait_over("elicitation_complete")[0][0], "resolve")
+        self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "elicitation_url_dialog"})
+        self.assertEqual(self.wait_over("auth_success")[0][0], "resolve")
+        for err in ("authentication_failed", "oauth_org_not_allowed"):
+            self.run_hook("notify", {"hook_event_name": "StopFailure", "error": err})
+            self.assertEqual(self.marker()["topic"], "auth")
+            self.assertEqual(self.wait_over("elicitation_complete"), [])  # an MCP sign-in, not Claude's
+            self.assertEqual(self.wait_over("auth_success")[0][0], "resolve")
+
+    def test_wait_over_notifications_leave_other_cards(self):
+        for card in ({"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": {"command": "ls"}},
+                     {"hook_event_name": "Notification", "notification_type": "idle_prompt"},
+                     {"hook_event_name": "Notification", "notification_type": "elicitation_dialog"},
+                     {"hook_event_name": "StopFailure", "error": "overloaded"}):
+            with self.subTest(card):
+                self.run_hook("notify", card)
+                self.assertNotIn("topic", self.marker())
+                for ntype in ("quota_auto_resume_fired", "elicitation_complete", "auth_success"):
+                    self.assertEqual(self.wait_over(ntype), [])
+                self.assertTrue(os.path.exists(os.path.join(self.state, "sess-1234-abcd")))
+                self.run_hook("resolve", {"hook_event_name": "UserPromptSubmit"})
+        # no card at all: no call
+        self.assertEqual(self.wait_over("auth_success"), [])
 
     def test_agent_needs_input_title_names_claude(self):
         self.run_hook("notify", {"hook_event_name": "Notification", "notification_type": "agent_needs_input"})
@@ -589,9 +658,15 @@ class FailureTests(HookHarness):
         self.assertEqual(modes, {"Notification": "notify", "PermissionRequest": "notify", "StopFailure": "notify",
                                  "UserPromptSubmit": "resolve", "PostToolUse": "resolve",
                                  # an approved tool that fails fires only PostToolUseFailure (2.1.294)
-                                 "PostToolUseFailure": "resolve", "Stop": "stop",
+                                 "PostToolUseFailure": "resolve", "Stop": "stop", "PostCompact": "compact",
                                  "SessionStart": "start", "SessionEnd": "end"})
         self.assertIn("quota_auto_resume_disabled", hooks["Notification"][0]["matcher"])
+        # the Notification types that end a wait run `resolve` (names from code.claude.com/docs/en/hooks)
+        over = hooks["Notification"][1]
+        self.assertEqual(over["hooks"][0]["command"].split()[-1], "resolve")
+        self.assertEqual(sorted(over["matcher"].split("|")),
+                         ["auth_success", "elicitation_complete", "quota_auto_resume_fired"])
+        self.assertTrue(over["hooks"][0]["async"])
         for groups in hooks.values():
             for h in groups[0]["hooks"]:
                 self.assertTrue(h["async"])
@@ -980,6 +1055,22 @@ class ContextTests(HookHarness):
         self.stop()
         self.assertEqual(self.context_calls()[-1][:1], ["resolve"])
         self.assertFalse(os.path.exists(os.path.join(self.state, "sess-1234-abcd.context")))
+
+    def test_post_compact_resolves_the_context_card(self):
+        # PostCompact (code.claude.com/docs/en/hooks: trigger, compact_summary): the card goes
+        # at once, not at the next Stop. The summary never reaches a card.
+        self.write([usage_line(170000)])
+        self.stop()
+        key = self.opt(self.context_calls()[-1], "--key")
+        n = len(self.calls())
+        self.run_hook("compact", {"hook_event_name": "PostCompact", "trigger": "auto",
+                                  "compact_summary": "summary " + SECRET})
+        self.assertEqual(self.calls()[n:], [["resolve", "--key", key]])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "sess-1234-abcd.context")))
+        # no card: no call
+        self.run_hook("compact", {"hook_event_name": "PostCompact", "trigger": "manual"})
+        self.assertEqual(len(self.calls()), n + 1)
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
 
     def test_reads_only_the_tail_and_skips_subagents(self):
         self.write([usage_line(190000), usage_line(5000, sidechain=True)], filler=40)

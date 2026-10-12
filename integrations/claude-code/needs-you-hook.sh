@@ -5,8 +5,13 @@
 #
 #   needs-you-hook.sh notify    Notification, PermissionRequest, StopFailure
 #                               -> needs-you add (kind needs)
-#   needs-you-hook.sh resolve   UserPromptSubmit, PostToolUse -> needs-you resolve
-#   needs-you-hook.sh stop      Stop: resolve, then the context-usage check
+#   needs-you-hook.sh resolve   UserPromptSubmit, PostToolUse -> needs-you resolve; the
+#                               Notification types quota_auto_resume_fired,
+#                               elicitation_complete and auth_success resolve only the
+#                               card they end (usage limit, MCP sign-in, sign-in)
+#   needs-you-hook.sh stop      Stop: resolve, keep the turn's question from
+#                               last_assistant_message, then the context-usage check
+#   needs-you-hook.sh compact   PostCompact: resolve the context card
 #   needs-you-hook.sh start     SessionStart: after /clear, compact or /resume,
 #                               resolve this process's earlier cards
 #   needs-you-hook.sh end       SessionEnd: resolve the session's cards
@@ -1641,6 +1646,44 @@ def write_title_cache(c):
         pass
 
 
+def turn_cache_path():
+    sid = re.sub(r"^\.", "_", re.sub(r"[^A-Za-z0-9._-]", "_", session)[:80])  # as the shell's sanitize
+    return os.path.join(os.environ["NY_STATE"], ".turn-" + sid) if sid else ""
+
+
+def stop_turn():
+    """Claude's Stop (the `turn` mode): keep what the idle_prompt card a minute later needs from
+    the turn's final message, last_assistant_message (the docs: the transcript isn't sure to
+    have it yet at Stop). Only turn_question()'s answer is kept, already redacted: the question
+    and its paragraph, or none. Private (mode 600), one file per session, replaced each Stop."""
+    path = turn_cache_path()
+    text = data.get("last_assistant_message")
+    if AGENT != "claude" or not path or not isinstance(text, str):
+        return 3
+    q, para = turn_question(text) if turn_text_on() else ("", "")
+    try:
+        write_private(path, json.dumps({"q": q, "para": para[-4000:]}))
+    except Exception:
+        return 1
+    return 0
+
+
+def read_turn_cache():
+    """(question, paragraph) that Claude's last Stop kept for this session, or None (an older
+    Claude Code, without last_assistant_message: the transcript is read instead)."""
+    path = turn_cache_path()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            c = json.loads(fh.read(64 * 1024))
+    except Exception:
+        return None
+    if not isinstance(c, dict) or not isinstance(c.get("q"), str) or not isinstance(c.get("para"), str):
+        return None
+    return c["q"], c["para"]
+
+
 def prompt_title():
     """UserPromptSubmit (the `title` mode): remember the session_title Claude Code sends with a
     prompt (live on 2.1.294 after /rename), for the session's later cards."""
@@ -1764,13 +1807,14 @@ def card_title(what):
     return clamp("%s: %s" % (what, name), MAX_TITLE)
 
 
-def turn_card(name, text, legacy_what, legacy_msg):
+def turn_card(name, text, legacy_what, legacy_msg, asked=None):
     """(kind, what, msg) for a finished turn: "<Agent> asks: <question>" when its final message
-    `text` ends on a question, else "<Agent> finished". With NEEDS_YOU_TURN_TEXT=0, the old
-    card (legacy_what, legacy_msg)."""
+    `text` ends on a question, else "<Agent> finished". `asked`: turn_question()'s answer for
+    that message, worked out already (Claude's Stop, read_turn_cache), in place of `text`.
+    With NEEDS_YOU_TURN_TEXT=0, the old card (legacy_what, legacy_msg)."""
     if not turn_text_on():
         return "notify", legacy_what, legacy_msg
-    q, para = turn_question(text)
+    q, para = asked if asked is not None else turn_question(text)
     if q:
         where = place_label()
         if len(where) > 40:
@@ -2152,9 +2196,13 @@ def notify_card():
     elif event == "StopFailure":
         kind = "failure"
         ev = "failed"
-        et = field("error_type")
+        # The docs name them error and error_details; error_type and error_message are older.
+        et = field("error") or field("error_type")
         what = {
             "rate_limit": "Claude hit a rate limit",
+            "overloaded": "Claude's API is overloaded",
+            "server_error": "Claude stopped on a server error",
+            "invalid_request": "Claude stopped on an invalid request",
             "authentication_failed": "Claude needs you to sign in again",
             "oauth_org_not_allowed": "Claude needs you to sign in again",
             "cloud_credential_error": "Claude's cloud credentials failed",
@@ -2163,7 +2211,7 @@ def notify_card():
             "max_output_tokens": "Claude stopped at its output limit",
             "model_not_found": "Claude stopped: model not found",
         }.get(et, "Claude stopped on an API error")
-        err = one_line(field("error_message"), 300)
+        err = one_line(field("error_details") or field("error_message"), 300)
         msg = ((err + "\n\n") if err else "") + "The turn ended and won't continue on its own; send a message to retry."
     else:
         prior = read_marker(os.environ["NY_MARKER"]).get("kind")
@@ -2184,9 +2232,12 @@ def notify_card():
         if ntype == "quota_auto_resume_disabled":
             kind = "failure"
         elif ntype == "idle_prompt" and turn_text_on():
-            # About a minute after any turn ended: finished, or a question it ended on (the
-            # transcript's last assistant text; the notification itself has none).
-            kind, what, msg = turn_card("Claude", claude_last_text(field("transcript_path")), what, msg)
+            # About a minute after any turn ended: finished, or a question it ended on. The
+            # notification has no text of the turn: the Stop before it kept its question (from
+            # last_assistant_message), else the transcript's last assistant text is read.
+            kept = read_turn_cache()
+            kind, what, msg = turn_card("Claude", "" if kept else claude_last_text(field("transcript_path")),
+                                        what, msg, kept)
             ev = card_event(kind, what)
     title = TITLE[0] or card_title(what)
     body = "\n\n".join(([msg] if msg else []) + where_lines())
@@ -2660,7 +2711,8 @@ def codex_usage():
 
 try:
     rc = {"notify": notify, "context": context, "ask": ask, "reply": reply,
-          "codex_usage": codex_usage, "title": prompt_title}.get(mode, lambda: 0)()
+          "codex_usage": codex_usage, "title": prompt_title,
+          "turn": stop_turn}.get(mode, lambda: 0)()
 except Exception:
     rc = 1
 raise SystemExit(rc)
@@ -2669,6 +2721,27 @@ PY
 
 case "$mode" in
   resolve)
+    # Claude Code's Notifications that say a wait is over: each ends one kind of card (the
+    # topic= notify wrote in the marker), and leaves any other card, and a post under way, alone.
+    #   quota_auto_resume_fired  Claude resumed after a usage limit: the usage-limit card
+    #   elicitation_complete     an MCP server's URL sign-in is done: that sign-in card
+    #   auth_success             a sign-in completed: Claude's own sign-in card, or an MCP one
+    # Only Claude's cards carry a topic: in another agent that runs these hooks (Grok) they
+    # resolve nothing.
+    case "$(json_str notification_type)" in
+      quota_auto_resume_fired) topics=" quota " ;;
+      elicitation_complete) topics=" url_signin " ;;
+      auth_success) topics=" auth url_signin " ;;
+      *) topics= ;;
+    esac
+    if [ -n "$topics" ]; then
+      topic=$(sed -n 's/^topic=//p' "$marker" 2>/dev/null | head -n 1)
+      case "$topics" in
+        *" ${topic:-none} "*) resolve_marker "$marker" "$key" ;;
+        *) log "resolve $key: a wait-over notification leaves the card (topic ${topic:-none})" ;;
+      esac
+      exit 0
+    fi
     # Codex's Interrupt hook is synchronous with a 1-3 s limit: don't wait on the hub.
     [ "$agent" = codex ] && resolve_bg=1
     cancel_posts
@@ -2685,10 +2758,25 @@ case "$mode" in
     cancel_posts stop
     grep -qs '^kind=failure$' "$marker" || resolve_marker "$marker" "$key"
     [ "$agent" = grok ] && exit 0  # its transcript isn't Claude's: no context card
+    # The turn's final message (last_assistant_message, Claude Code 2.1.47+): keep its question
+    # for the idle_prompt card about a minute later. Without it (an older Claude Code), drop
+    # what an earlier turn kept, so that card reads the transcript instead.
+    if [ "$agent" = claude ] && [ -n "$session_id" ]; then
+      case "$input" in
+        *'"last_assistant_message"'*) run_py turn >/dev/null ;;
+        *) rm -f "$state_dir/.turn-$(sanitize "$session_id")" ;;
+      esac
+    fi
     case "${NEEDS_YOU_CONTEXT_ALERT_PCT:-}" in
       0|0.0|off|no|false) resolve_marker "$ctx_marker" ;;
       *) run_py context >/dev/null; log "context $key -> $?" ;;
     esac
+    ;;
+
+  compact)
+    # PostCompact: the context is small again, so the "context is N% full" card goes now
+    # rather than at the next Stop. No card, no network call.
+    resolve_marker "$ctx_marker"
     ;;
 
   start)
@@ -2696,7 +2784,7 @@ case "$mode" in
     model=$(json_str model)
     if [ "$agent" = claude ] && [ -n "$model" ] && [ -n "$session_id" ] && mkdir -p "$state_dir" 2>/dev/null; then
       printf '%s' "$model" | cut -c1-200 >"$state_dir/.model-$(sanitize "$session_id")" 2>/dev/null
-      find "$state_dir" \( -name '.model-*' -o -name '.title-*' \) -mtime +7 -exec rm -f {} + 2>/dev/null
+      find "$state_dir" \( -name '.model-*' -o -name '.title-*' -o -name '.turn-*' \) -mtime +7 -exec rm -f {} + 2>/dev/null
     fi
     # Cline: a task starts or resumes (a new task has a new taskId): the finished cards of
     # earlier tasks in the same Cline (the lease's process) no longer apply.
@@ -2738,7 +2826,8 @@ case "$mode" in
     else
       resolve_marker "$marker" "$key"
       resolve_marker "$ctx_marker"
-      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")" "$state_dir/.title-$(sanitize "$session_id")"
+      [ -n "$session_id" ] && rm -f "$state_dir/.model-$(sanitize "$session_id")" "$state_dir/.title-$(sanitize "$session_id")" \
+        "$state_dir/.turn-$(sanitize "$session_id")"
     fi
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
@@ -2869,8 +2958,22 @@ case "$mode" in
     # cut off at the hook's limit, its request maybe on the hub already or still in the
     # outbox, to go out with the next run) leaves one too: resolving a card that never came
     # costs a request, a card nobody resolves stays for days.
+    # Which Claude Code Notification may end the card without a prompt or tool (resolve mode):
+    # a usage limit (quota_auto_resume_fired), Claude's own sign-in (auth_success) or an MCP
+    # server's URL sign-in (elicitation_complete, auth_success).
+    topic=
+    if [ "$agent" = claude ]; then
+      err=$(json_str error)
+      [ -n "$err" ] || err=$(json_str error_type)
+      case "$ntype:$(json_str hook_event_name):$err" in
+        quota_auto_resume_disabled:*|:StopFailure:rate_limit) topic=quota ;;
+        elicitation_url_dialog:*) topic=url_signin ;;
+        :StopFailure:authentication_failed|:StopFailure:oauth_org_not_allowed) topic=auth ;;
+      esac
+    fi
     case "$rc" in
-      0|1) write_marker "$marker" "$key" "kind=${kind:-notify}"; end_post ;;
+      0|1) write_marker "$marker" "$key" "kind=${kind:-notify}${topic:+
+topic=$topic}"; end_post ;;
     esac
     ;;
 esac
