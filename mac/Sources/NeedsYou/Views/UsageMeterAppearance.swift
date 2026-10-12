@@ -66,12 +66,27 @@ struct UsageMeterPillPreview: View {
     var body: some View {
         let warn = settings.usage.warnPct
         let now = Date()
+        let pills = Self.examples.map { UsageMeters.exampleBars(session: $0.0, weekly: $0.1, warnPct: warn, now: now) }
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-                ForEach(Array(Self.examples.enumerated()), id: \.offset) { _, pair in
-                    waiting(UsageMeters.exampleBars(session: pair.0, weekly: pair.1, warnPct: warn, now: now))
+            // Four in a row when they fit the window; a large pill with side-by-side meters
+            // and percentages doesn't, so then two by two, then one per line. A fixed row of
+            // four made the whole Settings page wider than its window.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 10) {
+                    ForEach(pills.indices, id: \.self) { waiting(pills[$0]) }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach([0, 2], id: \.self) { start in
+                        HStack(alignment: .center, spacing: 10) {
+                            ForEach(start..<min(start + 2, pills.count), id: \.self) { waiting(pills[$0]) }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(pills.indices, id: \.self) { waiting(pills[$0]) }
+                }
             }
             HStack(alignment: .center, spacing: 10) {
                 idle(UsageMeters.exampleBars(session: 31, weekly: 10, warnPct: warn, now: now))
