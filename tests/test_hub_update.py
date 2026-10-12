@@ -191,7 +191,7 @@ case "$1 $2" in
     fi
     file=$3; ref=""; prev=""
     for a in "$@"; do [ "$prev" = --source-ref ] && ref=$a; prev=$a; done
-    sum=$(sha256sum "$file" | cut -d' ' -f1)
+    sum=$( (sha256sum "$file" 2>/dev/null || shasum -a 256 "$file") | cut -d' ' -f1)
     printf '[{"verificationResult":{"statement":{"subject":[{"digest":{"sha256":"%%s"}}],"predicateType":"https://slsa.dev/provenance/v1"},"signature":{"certificate":{"sourceRepositoryURI":"https://github.com/tayharris/needs-you","sourceRepositoryRef":"%%s","buildSignerURI":"https://github.com/tayharris/needs-you/.github/workflows/release.yml@%%s","runnerEnvironment":"%(runner)s"}}}}]\\n' "$sum" "$ref" "$ref" ;;
   "api repos/tayharris/needs-you") echo false ;;
   *) exit 2 ;;
