@@ -10,6 +10,8 @@ Type=oneshot
 # drop-in) to check each release's build provenance; without it nothing is installed.
 ExecStart=/usr/bin/python3 /opt/needs-you/hub/needs_you_hub_update.py --mode system
 Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# systemd sets HOME only with User=; gh finds root's login (gh auth login as root) under it.
+Environment=HOME=/root
 UMask=0022
 NoNewPrivileges=true
 PrivateTmp=true
