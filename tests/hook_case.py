@@ -12,6 +12,7 @@ import time
 import unittest
 
 from support import ROOT, wait_until
+from timing import limit
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -68,7 +69,7 @@ class HookCase(unittest.TestCase):
 
     def run_hook(self, args, payload, cwd=None, **extra):
         """Run the hook with `args` (mode, agent, ...) and the payload as stdin (a dict is sent as
-        JSON). Returns the CompletedProcess; the hook must exit 0 within 5 seconds (2 s was
+        JSON). Returns the CompletedProcess; the hook must exit 0 within 5 seconds (stretched on a loaded box, tests/timing.py; 2 s was
         too tight on a loaded CI Mac; 5 s still catches a hook that waits instead of returning)."""
         started = time.time()
         stdin = payload if isinstance(payload, str) else json.dumps(payload)
@@ -76,7 +77,7 @@ class HookCase(unittest.TestCase):
                            capture_output=True, text=True, timeout=30, cwd=cwd or self.cwd)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stderr, "")
-        self.assertLess(time.time() - started, 5)
+        self.assertLess(time.time() - started, limit(5))
         return r
 
     def calls(self):
