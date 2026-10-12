@@ -981,16 +981,114 @@ def validate_status_input(data: Any, now_ms: int) -> Dict[str, Any]:
 # Config
 # ---------------------------------------------------------------------------
 
+# Every hub.json key (docs/guides/configuration.md lists them; tests/test_config_reference.py
+# keeps that page and this table in step): its kind, and for numbers the smallest value taken.
+# "num" and "int" also take a numeric string (the code always converted them), never a bool.
+CONFIG_KEYS: Dict[str, Tuple[str, Optional[float]]] = {
+    "bind": ("binds", None), "port": ("int", 0), "db": ("str", None), "hub_id": ("str", None),
+    "public_url": ("str", None), "peers": ("strs", None), "peer_secret": ("secret", None),
+    "peer_secret_file": ("str", None), "owner_token_file": ("str?", None),
+    "owner_token_name": ("str", None), "parent_pid": ("int?", 1), "install_dir": ("str", None),
+    "allowed_hosts": ("strs", None), "self_update_dir": ("str?", None),
+    "allow_any_interface": ("bool", None), "freebind": ("bool", None), "quiet": ("bool", None),
+    "access_log": ("bool", None),
+    "retention_days": ("num", 0), "text_retention_hours": ("num", 0),
+    "maintenance_seconds": ("num", 0), "vacuum_hours": ("num", 0),
+    "redeem_fail_limit": ("int", 0), "redeem_fail_window_seconds": ("num", 0),
+    "answer_rate_limit": ("int", 0), "answer_rate_window_seconds": ("num", 0),
+    "answer_read_rate_limit": ("int", 0), "answer_waits_per_token": ("int", 0),
+    "post_rate_limit": ("int", 0), "post_rate_window_seconds": ("num", 0),
+    "max_open_per_token": ("int", 0), "default_expiry_hours": ("num", 0),
+    "max_connections": ("int", 0), "request_read_seconds": ("num", 0),
+    "sse_heartbeat_seconds": ("num", 0.1),
+    "anti_entropy_seconds": ("num", 0), "outbox_poll_seconds": ("num", 0),
+    "retry_base_seconds": ("num", 0), "retry_max_seconds": ("num", 0),
+    "peer_timeout_seconds": ("num", 0.1), "update_request_interval_seconds": ("num", 0),
+}
+_KIND_TEXT = {
+    "binds": "an address or a list of addresses (strings)", "str": "a string",
+    "str?": "a string or null", "secret": "a string", "strs": "a list of strings",
+    "bool": "true or false", "int": "a whole number", "int?": "a whole number or null",
+    "num": "a number",
+}
+
+
+def _did_you_mean(name: str, known: Any) -> str:
+    import difflib
+    close = difflib.get_close_matches(name, list(known), n=1, cutoff=0.75)
+    return " (did you mean %s?)" % close[0] if close else ""
+
+
+def check_config_values(cfg: Dict[str, Any], where: str) -> List[str]:
+    """Problems with the values in `cfg` (a hub.json, flags and --set), each naming the key and
+    what it takes (`where` names the file in the unknown-key warnings); numeric strings become numbers. Never quotes a value: one may be the secret.
+    Unknown keys are warned about on stderr and otherwise ignored."""
+    errors: List[str] = []
+    for key in sorted(cfg):
+        spec = CONFIG_KEYS.get(key)
+        if spec is None:
+            sys.stderr.write("needs-you-hub: %s: unknown key %r%s; ignored\n"
+                             % (where, str(key)[:64], _did_you_mean(str(key), CONFIG_KEYS)))
+            continue
+        kind, low = spec
+        v = cfg[key]
+        if v is None and kind.endswith("?"):
+            continue
+        ok = True
+        if kind == "binds":
+            ok = isinstance(v, str) or (isinstance(v, list) and all(isinstance(b, str) for b in v))
+        elif kind in ("str", "str?", "secret"):
+            ok = isinstance(v, str)
+        elif kind == "strs":
+            ok = isinstance(v, list) and all(isinstance(s, str) for s in v)
+            if key == "allowed_hosts" and isinstance(v, str):
+                ok = True  # "a,b": the comma form NEEDS_YOU_HUB_ALLOWED_HOSTS uses too
+        elif kind == "bool":
+            ok = isinstance(v, bool)
+        elif kind in ("int", "int?", "num"):
+            n: Any = v
+            if isinstance(v, str):
+                try:
+                    n = int(v.strip()) if kind != "num" else float(v.strip())
+                except ValueError:
+                    n = None
+            if isinstance(n, bool) or not isinstance(n, (int, float)) or n != n:
+                ok = False
+            elif kind != "num" and isinstance(n, float) and not n.is_integer():
+                ok = False
+            else:
+                n = int(n) if kind != "num" else n
+                if (low is not None and n < low) or (key == "port" and n > 65535):
+                    errors.append("%s must be %s%s" % (
+                        key, "a whole number from 0 to 65535" if key == "port" else _KIND_TEXT[kind],
+                        "" if key == "port" else " of at least %g" % low))
+                    continue
+                cfg[key] = n
+        if not ok:
+            errors.append("%s must be %s" % (key, _KIND_TEXT[kind]))
+    return errors
+
+
 def load_config(path: Optional[str], overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {}
     if path:
-        with open(path, "r", encoding="utf-8") as fh:
-            cfg = json.load(fh)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except ValueError as e:
+            raise SystemExit("%s isn't valid JSON (%s)" % (path, e))
+        except OSError as e:
+            raise SystemExit("can't read the config %s (%s)" % (path, e.strerror or e))
         if not isinstance(cfg, dict):
-            raise SystemExit("config must be a JSON object")
+            raise SystemExit("%s must be a JSON object" % path)
+        # null means "not set" (the default applies) for every key
+        cfg = {k: v for k, v in cfg.items() if v is not None}
     for k, v in (overrides or {}).items():
         if v is not None:
             cfg[k] = v
+    errors = check_config_values(cfg, path or "config")
+    if errors:
+        raise SystemExit("%s: %s (see docs/guides/configuration.md)" % (path or "config", "; ".join(errors)))
     if not cfg.get("peer_secret") and os.environ.get("NEEDS_YOU_PEER_SECRET"):
         cfg["peer_secret"] = os.environ["NEEDS_YOU_PEER_SECRET"]
     if cfg.get("peer_secret_file") and not cfg.get("peer_secret"):
@@ -5129,6 +5227,37 @@ def join_checksums(hub: Hub) -> str:
 # main
 # ---------------------------------------------------------------------------
 
+def check_update_settings(conf_dir: Optional[str]) -> None:
+    """--check-config: hub-update.json next to the config, by the updater's own rules. A bad
+    value turns automatic updates off rather than stopping anything, so it's a warning."""
+    path = os.path.join(conf_dir, UPDATE_SETTINGS_FILE) if conf_dir else ""
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError, UnicodeDecodeError):
+        raw = None
+    if not isinstance(raw, dict):
+        sys.stderr.write("needs-you-hub: %s isn't a JSON object, so automatic updates are off\n" % path)
+        return
+    sys.dont_write_bytecode = True  # a check writes nothing, not even a __pycache__
+    sys.path.insert(0, HUB_DIR)
+    try:
+        import needs_you_hub_update as upd  # type: ignore
+    except ImportError:
+        return
+    finally:
+        sys.path.pop(0)
+    for key in sorted(raw):
+        if key not in upd.SETTINGS_KEYS:
+            sys.stderr.write("needs-you-hub: %s: unknown key %r%s; ignored\n"
+                             % (path, str(key)[:64], _did_you_mean(str(key), upd.SETTINGS_KEYS)))
+    problems = upd.settings_problems(raw)
+    if problems:
+        sys.stderr.write("needs-you-hub: %s: %s, so automatic updates are off\n" % (path, "; ".join(problems)))
+
+
 def _parse_set(values: List[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for kv in values or []:
@@ -5176,6 +5305,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--quiet", action="store_true", default=None, help="no access log")
     p.add_argument("--set", action="append", metavar="KEY=VALUE", default=[],
                    help="any other config key (VALUE is JSON if it parses, else a string)")
+    p.add_argument("--check-config", action="store_true",
+                   help="check the config (file, flags and --set) and exit: 0 when the hub would "
+                        "start with it, 1 with what's wrong (never the secret)")
     args = p.parse_args(argv)
     overrides = _parse_set(args.set)
     for k in ("port", "db", "hub_id", "public_url", "peer_secret_file", "owner_token_file",
@@ -5188,6 +5320,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.peer:
         overrides["peers"] = args.peer
     cfg = load_config(args.config, overrides)
+    if args.check_config:
+        check_bind(cfg)
+        check_update_settings(cfg.get("self_update_dir"))
+        print("hub config OK%s" % (": " + args.config if args.config else ""))
+        return 0
     hub = Hub(cfg)
     sys.stderr.write("needs-you-hub %s (%s) listening on %s, public %s, %d peer(s)\n"
                      % (VERSION, hub.hub_id, ", ".join(s_url(s) for s in hub.servers),

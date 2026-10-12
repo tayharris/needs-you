@@ -101,6 +101,26 @@ def parse_time(s: Any) -> Optional[datetime.datetime]:
         return None
 
 
+SETTINGS_KEYS = ("auto_update", "channel", "soak_hours", "gh")
+
+
+def settings_problems(raw: Dict[str, Any]) -> List[str]:
+    """What's wrong in hub-update.json, each naming the key and what it takes (never a value).
+    Unknown keys aren't problems (the hub's --check-config warns about them)."""
+    out = []
+    if "auto_update" in raw and not isinstance(raw["auto_update"], bool):
+        out.append("auto_update must be true or false")
+    if raw.get("channel", "stable") not in CHANNELS:
+        out.append("channel must be one of %s" % ", ".join(CHANNELS))
+    soak = raw.get("soak_hours", DEFAULT_SOAK_HOURS)
+    if isinstance(soak, bool) or not isinstance(soak, (int, float)) or not 0 <= soak <= MAX_SOAK_HOURS:
+        out.append("soak_hours must be a number of hours from 0 to %d" % MAX_SOAK_HOURS)
+    gh = raw.get("gh", "")
+    if not isinstance(gh, str) or (gh and not os.path.isabs(gh)):
+        out.append('gh must be "" (gh on PATH) or an absolute path')
+    return out
+
+
 def load_settings(conf_dir: str) -> Dict[str, Any]:
     """hub-update.json, with defaults for what's missing. Anything malformed turns updates off
     (the strict reading of a file we can't trust)."""
@@ -118,20 +138,12 @@ def load_settings(conf_dir: str) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         out["why_off"] = "%s isn't a JSON object" % path
         return out
-    ok = True
-    if raw.get("channel", "stable") not in CHANNELS:
-        ok = False
-    soak = raw.get("soak_hours", DEFAULT_SOAK_HOURS)
-    if isinstance(soak, bool) or not isinstance(soak, (int, float)) or not 0 <= soak <= MAX_SOAK_HOURS:
-        ok = False
-    gh = raw.get("gh", "")
-    if not isinstance(gh, str) or (gh and not os.path.isabs(gh)):
-        ok = False
-    if not ok:
-        out["why_off"] = "%s has a bad channel, soak_hours or gh" % path
+    problems = [p for p in settings_problems(raw) if not p.startswith("auto_update")]
+    if problems:
+        out["why_off"] = "%s: %s, so automatic updates are off" % (path, "; ".join(problems))
         return out
     out.update(auto_update=raw.get("auto_update") is True, channel=raw.get("channel", "stable"),
-               soak_hours=soak, gh=gh)
+               soak_hours=raw.get("soak_hours", DEFAULT_SOAK_HOURS), gh=raw.get("gh", ""))
     if not out["auto_update"]:
         out["why_off"] = "automatic updates are off in %s" % path
     return out
