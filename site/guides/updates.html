@@ -37,7 +37,7 @@
   → the Mac app sees it (within 6 h), waits 2 h, verifies, installs when you're away
   → its hub now serves the new CLI, hook, skill and Orca snippet (/dl/manifest.json)
   → senders run `needs-you update` (daily on their own by default, by hand, or scripts/rollout.sh)
-  → Settings → Updates: "1 of 4 machines out of date"</code></pre></div>
+  → Settings → Updates → Machines and hubs: "1 of 4 machines out of date", Update all</code></pre></div>
 <h2 id="the-mac-app">The Mac app <a class="anchor" href="#the-mac-app" aria-label="Link to this section">#</a></h2>
 <p><strong>Settings → Updates.</strong> It shows this app's version, the last check and its result, and:</p>
 <div class="table-wrap"><table class="doc-table">
@@ -85,9 +85,11 @@ needs-you update --rollback  # put back the files the last update replaced</code
 needs-you update --disable-auto   # turn it off (NEEDS_YOU_AUTO_UPDATE=0); changes nothing else</code></pre></div>
 <p>Machines set up before this was the default have it off. <code>needs-you doctor</code> warns when such a machine is older than its hub ("nothing updates this machine on its own") and prints <code>needs-you update --enable-auto</code> as the fix; re-running the invite one-liner turns it on too, and adds the flush schedule if it's missing.</p>
 <p>Why it's on: an update is code, but every file must match both the hub's manifest and the GitHub release built by the release workflow, so a hub can't push files of its own. Without <code>gh</code> the remaining gap is build provenance (that the release's files came from the release workflow, not from someone with write access to the release); install <code>gh</code> on the sender to close it.</p>
-<p><strong>Asked from the Mac (Request update).</strong> In <strong>Settings → Machines</strong> (the machine list), a sender
-whose CLI is older than the Mac app, or hasn't reported a version, has a <strong>Request update</strong>
-button. It marks that machine's token "update requested" on each of your owner hubs, and the
+<p><strong>Asked from the Mac (Request update).</strong> In <strong>Settings → Updates → Machines and hubs</strong>, and on
+<strong>Settings → Machines</strong> (the machine list), a sender whose CLI is older than the Mac app, or
+hasn't reported a version, has a <strong>Request update</strong> button. <strong>Update all</strong> on the Updates page
+asks every such machine (seen in the last 14 days, no request pending) at once, along with the
+server hubs that are behind (<a href="#server-hubs">below</a>). It marks that machine's token "update requested" on each of your owner hubs, and the
 machine's next post, resolve, flush or token-checked health call gets <code>"update_requested": true</code>
 back. Then:</p>
 <ul>
@@ -102,11 +104,25 @@ says "Up to date". "Up to date" means at least the Mac app's own version: that i
 serves, so it's the newest the machine can get from it. The request is a flag, never a URL or a
 command, and is kept per hub, not replicated (the app sends it to every owner hub it has). From
 a server hub's shell: <code>needs-you-admin token request-update &lt;name&gt;</code> and <code>token clear-update &lt;name&gt;</code>. Why this is safe: <a data-repo="/blob/main/docs/security/request-update.md" href="https://github.com/tayharris/needs-you/blob/main/docs/security/request-update.md">request-update.md</a>.</p>
-<p><strong>Every request</strong> a sender makes carries <code>X-Needs-You-Client: cli=…; hook=…; skill=…; orca=…</code>, so <strong>Settings → Updates → Sender machines</strong> on the Mac shows each machine's versions, when it was last seen, and "N of M machines out of date". <code>needs-you doctor</code> has an <code>update</code> line with the local versions against the hub's.</p>
+<p><strong>Every request</strong> a sender makes carries <code>X-Needs-You-Client: cli=…; hook=…; skill=…; orca=…</code>, so <strong>Settings → Updates → Machines and hubs</strong> on the Mac shows each machine's versions, when it was last seen, and "N of M machines out of date". <code>needs-you doctor</code> has an <code>update</code> line with the local versions against the hub's.</p>
 <p><strong>Orca prompts</strong> point at <code>~/.config/needs-you/orca-snippet.md</code> instead of carrying a copy (<a data-repo="/blob/main/integrations/orca/README.md#prompt-block" href="https://github.com/tayharris/needs-you/blob/main/integrations/orca/README.md#prompt-block">integrations/orca</a>), so an update reaches every automation on its next run. Prompts pasted before this change carry the old full text: replace them with the pointer once.</p>
 <p><strong>Many machines at once:</strong> <code>scripts/rollout.sh devbox ci-runner</code> (or a list in <code>~/.config/needs-you/hosts</code>, one SSH alias per line) runs <code>needs-you update</code> and <code>needs-you doctor</code> on each over SSH, in parallel, and prints a table. <code>--check</code> only reports. A machine without the CLI is listed; set it up with an invite link.</p>
 <h2 id="server-hubs">Server hubs <a class="anchor" href="#server-hubs" aria-label="Link to this section">#</a></h2>
 <p>A server hub serves its own checkout or tarball on <code>/dl</code>, so its senders follow it, not the Mac. A hub installed by <code>install-hub.sh</code> (0.5.1 or later) <strong>updates itself</strong>: every 6 hours it installs the newest stable release, 24 hours after it's published, once its checksums and build provenance check out, and rolls back if the new version doesn't come up. It needs <code>gh</code> 2.64 or later, logged in. <code>--update-channel prerelease</code>, <code>--update-soak-hours N</code> and <code>--no-auto-update</code> change that (<a href="hub.html#automatic-updates">Server hubs</a>). A hub installed before 0.5.1 gets it the next time <code>install-hub.sh</code> is run on it.</p>
+<p><strong>Asked from the Mac.</strong> <strong>Settings → Updates → Machines and hubs</strong> lists each server hub too:
+the hubs paired with this Mac's built-in hub (Settings → Built-in hub → Always-on hub) and any
+other hub the app has an owner token for, with its version, which channel it follows, and what
+its updater last did ("updated from 0.5.0 2h ago"). A hub older than the newest release this app
+knows of (its own version, or a newer one its update check saw) says so, with <strong>Request update</strong>;
+<strong>Update all</strong> includes it. The request goes to that hub with the app's owner token and carries
+nothing (no URL, version or command): the hub's own updater runs at once, installs the newest
+release on its channel with every check above, and skips only the wait after a release. The row
+then says "Update requested", "Updating to 0.5.2…", "Up to date", or "Last update failed:" with
+the updater's reason (a release that fails its checks or doesn't come up is rolled back and
+never retried). A hub can be asked once per 15 minutes. A hub with automatic updates off says so
+and has no button (<code>install-hub.sh --auto-update</code> there turns them on); a hub from before this
+change shows its version and "Too old to be asked: re-run install-hub.sh on it once." Design
+and safety: <a data-repo="/blob/main/docs/adr/0013-hub-update-requests.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0013-hub-update-requests.md">ADR 0013</a>, <a href="hub.html#update-now-from-the-mac">Server hubs</a>.</p>
     <p class="doc-source note">This page is <a data-repo="/blob/main/docs/guides/updates.md" href="https://github.com/tayharris/needs-you/blob/main/docs/guides/updates.md">docs/guides/updates.md</a> in the repo. View or edit it on GitHub.</p>
   </main>
 

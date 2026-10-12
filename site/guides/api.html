@@ -42,6 +42,7 @@
         <li><a href="#invites">Invites</a></li>
         <li><a href="#tokens">Tokens</a></li>
         <li><a href="#peers">Peers</a></li>
+        <li><a href="#hub-updates">Hub updates</a></li>
         <li><a href="#housekeeping">Housekeeping</a></li>
         <li><a href="#replication-between-hubs">Replication between hubs</a></li>
       </ul>
@@ -74,7 +75,7 @@ Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a
 <tbody>
 <tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code></td></tr>
 <tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>GET /v1/stream</code>, <code>GET /v1/status</code></td></tr>
-<tr><td><code>owner</code></td><td>everything <code>reader</code> can, plus invites (<code>/v1/invites</code>), tokens (<code>/v1/tokens</code>) and peers (<code>/v1/peers</code>): list, create, revoke, remove and request updates (the Mac app)</td></tr>
+<tr><td><code>owner</code></td><td>everything <code>reader</code> can, plus invites (<code>/v1/invites</code>), tokens (<code>/v1/tokens</code>) and peers (<code>/v1/peers</code>): list, create, revoke, remove and request updates (the Mac app); and asking a server hub to update itself (<code>/v1/hub/update</code>)</td></tr>
 </tbody>
 </table></div>
 <p><code>GET /v1/health</code>, <code>POST /v1/invites/redeem</code> (the invite code is the credential),
@@ -107,11 +108,12 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>409</td><td><code>self</code></td><td>A hub tried to replicate to itself, or to redeem its own peer invite</td></tr>
 <tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer</td></tr>
 <tr><td>409</td><td><code>peer_outdated</code></td><td>A hub redeeming a peer invite has an older schema than the inviting hub (<a href="#peer-invites">peer invites</a>)</td></tr>
+<tr><td>409</td><td><code>unavailable</code></td><td><code>POST /v1/hub/update</code> on a hub that can't update itself (<a href="#hub-updates">hub updates</a>)</td></tr>
 <tr><td>409</td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code>, <code>question_changed</code>, <code>already_answered</code></td><td>An answer that can't be taken (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>421</td><td><code>misdirected</code></td><td>The <code>Host</code> header names something this hub isn't (below). Clients fail over to their next hub URL</td></tr>
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB (8 MiB for <code>/v1/replicate</code>)</td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>The token already has 60 open items (the volume guard)</td></tr>
-<tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds)</td></tr>
+<tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds), or a second <code>POST /v1/hub/update</code> within 15 minutes (with <code>Retry-After</code>)</td></tr>
 <tr><td>400</td><td><code>secret_in_text</code></td><td>A status key, label, detail, account or source field looks like a token or key (<a href="#status-records-usage-meters">status records</a>)</td></tr>
 <tr><td>429</td><td><code>too_many_status</code>, <code>too_fast</code></td><td>A status write over the live-status limits, or a second write to one status key within 10 s (with <code>Retry-After</code>)</td></tr>
 <tr><td>429</td><td><code>rate_limited</code></td><td>Too many status sets and clears from one token (120 a minute by default, apart from posts; with <code>Retry-After</code>)</td></tr>
@@ -843,6 +845,49 @@ the last use of the same invite within the replication delay (normally under a s
 the retry backoff if a hub is unreachable), both succeed, so a link can set up one machine
 more than <code>uses</code>. Each extra machine still gets its own revocable token. Keep <code>uses</code> and
 <code>ttl_hours</code> small.</p>
+<h2 id="hub-updates">Hub updates <a class="anchor" href="#hub-updates" aria-label="Link to this section">#</a></h2>
+<p>A server hub installed by <code>install-hub.sh</code> updates itself with its checked updater
+(<a href="hub.html#automatic-updates">Server hubs</a>). The owner can ask it to do so now and see how that went
+(<a data-repo="/blob/main/docs/adr/0013-hub-update-requests.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0013-hub-update-requests.md">ADR 0013</a>). Local to each hub: nothing here replicates, and
+the Mac app sends the request to the hub it means, at that hub's own URL.</p>
+<h3 id="get-v1hubupdate-owner"><code>GET /v1/hub/update</code> (owner) <a class="anchor" href="#get-v1hubupdate-owner" aria-label="Link to this section">#</a></h3>
+<div class="code"><pre><code class="language-json">{"version": "0.5.1", "available": true, "auto_update": true, "channel": "stable", "reason": null,
+ "state": "updated", "requested_at": null, "requested": true,
+ "started_at": "2026-10-12T09:00:01.000Z", "finished_at": "2026-10-12T09:01:30.000Z",
+ "from_version": "0.5.0", "target": "0.5.1", "message": "upgraded the hub from 0.5.0 to 0.5.1",
+ "next_request_at": "2026-10-12T09:15:00.000Z"}</code></pre></div>
+<ul>
+<li><code>version</code>: the hub's running version.</li>
+<li><code>available</code>: whether this hub can update itself on request. It needs the updater's settings
+(<code>hub-update.json</code> next to the hub's config file, as <code>install-hub.sh</code> writes it) with
+<code>auto_update</code> on. The Mac app's own hub and hubs run by hand are <code>false</code>; <code>reason</code> then says
+why in a sentence (<code>null</code> otherwise). <code>auto_update</code> and <code>channel</code> are what that file says
+(<code>null</code> without it).</li>
+<li><code>state</code>: <code>idle</code> (nothing known yet), <code>requested</code> (asked, the updater hasn't started),
+<code>checking</code> (the updater is running), <code>updating</code> (it is installing <code>target</code>), <code>updated</code>
+(it installed <code>target</code>), <code>up_to_date</code> (nothing newer on the channel; <code>message</code> says what it
+found), <code>off</code> (automatic updates were off when it ran) or <code>failed</code> (it refused or rolled back;
+<code>message</code> says why). Clients treat an unknown state like <code>idle</code>. A <code>checking</code> or <code>updating</code>
+state over 30 minutes old reads as <code>failed</code> ("didn't finish").</li>
+<li><code>requested_at</code>: when a pending request was made (<code>null</code> when none is pending). <code>requested</code>:
+whether the last run was one the owner asked for. <code>started_at</code>, <code>finished_at</code>, <code>from_version</code>,
+<code>target</code>, <code>message</code>: the updater's last run (<code>null</code> when unknown). <code>message</code> is at most 300
+characters of the updater's log line, redacted like the access log.</li>
+<li><code>next_request_at</code>: the earliest time another <code>POST</code> is accepted (<code>null</code> when now).</li>
+</ul>
+<h3 id="post-v1hubupdate-owner"><code>POST /v1/hub/update</code> (owner) <a class="anchor" href="#post-v1hubupdate-owner" aria-label="Link to this section">#</a></h3>
+<p>Asks this hub to update now. <strong>No body is read</strong>: the request carries no URL, version, channel
+or command, and only sets a flag on the hub. The hub's own updater does the work exactly as on
+its timer (newest release on the configured channel, its SHA-256 sums, manifest and build
+provenance checked, a failed release never retried, rollback when the new version doesn't come
+up), except that it doesn't wait out the soak time. It starts within seconds (the
+<code>needs-you-hub-update.path</code> unit), or on the next timer run.</p>
+<p>Response <code>202</code> with the body of <code>GET /v1/hub/update</code> (<code>state: "requested"</code>). <code>200</code> with the same
+body, and nothing new recorded, while a request is pending or the updater is running.
+<code>409 unavailable</code> when <code>available</code> is <code>false</code>. <code>429 rate_limited</code> (with <code>Retry-After</code>) within 15
+minutes of the last accepted request (<code>update_request_interval_seconds</code>); the updater also
+ignores a request within 10 minutes of the last one it honoured. Only an owner token is
+accepted: a sender or reader token is a <code>403</code>, a peer secret a <code>401</code>.</p>
 <h2 id="housekeeping">Housekeeping <a class="anchor" href="#housekeeping" aria-label="Link to this section">#</a></h2>
 <p>The hub cleans up after itself every 10 minutes (<code>maintenance_seconds</code>):</p>
 <ul>
