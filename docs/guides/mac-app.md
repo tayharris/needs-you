@@ -79,8 +79,9 @@ While something isn't set up yet, the open panel shows a **setup tip**: a card l
 | **Reach this Mac from your other machines** | The hub on this Mac listens on `127.0.0.1` only (no Tailscale) and you have server hubs or cards from other machines | **Open Settings**, and the [Tailscale guide](tailscale.md) |
 | **Install the Claude Code hooks on this Mac** | `~/.claude` exists but `~/.claude/settings.json` doesn't use the needs-you hook, after the first sender connected | **Copy agent prompt**, and the [Claude Code guide](claude-code.md) |
 | **Get cards from Linear, Jira and GitHub** | Something has posted, the hooks tip isn't up, and no card has come from the Linear, Jira, GitHub or expiry poller yet | **Open Settings** ([Integrations](#cards-from-your-tools)) |
+| **The hub on this Mac isn't answering** | The built-in hub started but hasn't answered for 30 s | **Restart hub**, **Open Settings** (a status card: it shows even with setup tips off, and can't be dismissed) |
 
-Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Connect a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
+Setup tips stay on this Mac: they're never sent to a hub, never count in the pill or the menu bar, never spring out or pulse, and aren't in the menu bar menu or the shortcut's "top card". A tip goes for good once its condition is met (turning the hub off later doesn't bring the first one back), or when you click **Dismiss**. **Settings → Panel → Setup tips** turns them off (all but the hub one) and has **Show Again** for dismissed ones. The card only says the prompt was copied; the invite link is only on the clipboard (and in **Settings → Connect a machine**, which shows the invite it made). While no hub is set up at all, clicking the **Set up Needs You** pill opens the panel with the first tip (with tips off, it opens Settings as before).
 
 ### Orca worktrees
 
@@ -212,7 +213,7 @@ Everything is in **Settings** (right-click the pill → **Settings…**). How th
 | Bypass rules | Alerts → **Bypass rules**, or an agent card's **…** menu | None; up to 50 |
 | Where new items spring out | Alerts → On the work screen | The pill's display (default), The display you're working on |
 
-The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Appearance → Alert style → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the look, theme and alerts back (not the edge glow or the usage meters).
+The Appearance pages show a sample as you change things: the pill on Pill, a card on Panel and cards, and on Theme the pill and the open panel on a sample desktop that stays the same, so only the panel changes with the theme. Alert style shows a new item arriving on a sample pill: the pill springs out to the item's preview with your arrival animation, at your plays and speed, then goes back with the new count. **Appearance → Alert style → Preview on the pill** (**Urgent** or **Normal**) does the same on the real pill with a sample item, without posting anything; like everything on the pill, it never takes focus. **Advanced → Reset to defaults** puts the theme, pill, panel and cards (with the dragged height), opacity and alert style back, plus how long new items show, the urgent reminder and click-elsewhere (not the edge glow, the usage meters, delivery or bypass rules).
 
 ### Themes
 
@@ -289,7 +290,7 @@ Under **Needs You**:
 - **Panel:** whether the floating panel and menu bar icon show, snap to corners, opening at launch and closing on a click elsewhere, which usage meters show and where, setup tips, Orca worktrees, the keyboard shortcut.
 - **Alerts:** how long new items stay out and the urgent reminder, delivery and focus, snooze and hidden-panel rules, bypass rules, which display new items spring out on, the work / personal schedule.
 - **Integrations:** **Cards from your tools** (below), **Jump to iTerm2 and Terminal tabs** ([Terminal button](#terminal-button)), live updates from the hub, and how to start sending usage meters.
-- **Updates** ([guide](updates.md)) and **Advanced** (reset the look and alerts; **Developer mode**, below; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
+- **Updates** ([guide](updates.md)) and **Advanced** (reset the appearance; **Developer mode**, below; the data folder, `~/Library/Application Support/NeedsYou/`, with **Show in Finder**).
 
 ### Cards from your tools
 
@@ -308,10 +309,10 @@ For bug reports and contributing: **Settings → Advanced → Developer mode** (
 
 Nothing copied carries a token, peer secret or invite code: the item has none, and anything shaped like one in a card's text is masked (`ny_<redacted>`).
 
-Built in, not settings yet:
+Fixed times, each with a switch (all on by default):
 
-- **Work hours:** weekdays 7:00–18:00 = work, everything else = personal. Items with the other context don't vanish; they show as the faint second number.
-- **Start of day:** at 7:30 on weekdays the panel opens once with open work items (or on the first check after 7:30 if the Mac was asleep).
-- **Live updates:** uses the hub's event stream when available, otherwise polls every 30 s.
+- **Work hours:** weekdays 7:00–18:00 = work, everything else = personal (**Settings → Alerts → Switch work / personal on a schedule**). Items with the other context don't vanish; they show as the faint second number.
+- **Start of day:** at 7:30 on weekdays the panel opens once with open work items, or on the first check after 7:30 if the Mac was asleep (**Settings → Alerts → Start-of-day summary**).
+- **Live updates:** uses the hub's event stream when available, otherwise polls every 30 s (**Settings → Integrations → Live updates from the hub**).
 
 [mac/README.md](../../mac/README.md) is authoritative for the details.

@@ -1,6 +1,6 @@
 # Trying needs-you: the install guide
 
-Thanks for trying needs-you before it's public. This page is everything you need: getting access, installing the Mac app, connecting a machine, what to try, and how to tell us what went wrong. It takes about 15 minutes, plus a few more per extra machine.
+Thanks for trying needs-you early. This page is everything you need: getting access, installing the Mac app, connecting a machine, what to try, and how to tell us what went wrong. It takes about 15 minutes, plus a few more per extra machine.
 
 **What it is.** One inbox for "you have to do something". AI agents (Claude Code), servers, cron jobs and CI post a short item when they're blocked on you; your Mac shows it in a small floating pill with a link to where you act, and it goes away once it's handled.
 
@@ -43,7 +43,7 @@ cd ~/Downloads
 shasum -a 256 -c SHA256SUMS --ignore-missing     # the DMG's line should say OK
 ```
 
-Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `release-manifest.json`): they're for servers and for the app's updater.
+Ignore the other assets (`needs-you-server-…`, `needs-you-cli-…`, `install-hub.sh`, `release-manifest.json` and its `.sig`): they're for servers and for the app's updater.
 
 ## 3. Install and first launch
 
@@ -138,7 +138,7 @@ Tick off what you get to; anything that surprises you is worth a report. With a 
   The pill springs out with the title, then goes back to idle after the resolve.
 - [ ] **Re-post the same key** with a different title: the card updates instead of duplicating.
 - [ ] **Claude Code:** in a Claude Code session on a connected machine, ask for something that needs a permission prompt (e.g. "run `ls` in a new folder"). A card "Claude wants to run …" appears; once you answer in Claude, it clears itself. Leave a session idle for about a minute after a turn: "Claude finished: <session name> (<project>)", or "Claude asks: <question>" when Claude's last message ended on a question; `/rename` the session and the next card uses the new name.
-- [ ] **Card buttons:** **Done**, **Dismiss**, snooze, and the **Terminal** / **VS Code** buttons on agent cards ([claude-code-everywhere.md](claude-code-everywhere.md#buttons)).
+- [ ] **Card buttons:** **Done**, **Dismiss**, snooze, and the "go there" button on agent cards, named for the terminal or editor (**iTerm2**, **tmux**, **VS Code**, ...) ([claude-code-everywhere.md](claude-code-everywhere.md#buttons)).
 - [ ] **Never steals focus:** keep typing in another app while cards arrive. Not a single keystroke should go to the pill. If one does, that's the most important bug you can report.
 - [ ] **Work and personal:** post one item with `--context work` and one with `--context personal`. Outside work hours (weekdays 7:00–18:00) the work item shows only as the faint second number.
 - [ ] **Focus and snooze:** right-click the pill → **Focus** (Agents and urgent only, Urgent only, Everything later) and **Snooze**.
@@ -162,17 +162,17 @@ Please include:
 - **What you did, what you expected, what happened.** Screenshots of the pill or Settings help (crop out item text you'd rather not share).
 - **Your setup:** hub on this Mac or not, Tailscale or not, which machines you connected and how (one-liner or agent prompt).
 - **On a sender:** the output of `needs-you doctor` (it never prints the token).
-- **The app's log** from the last hour. This saves it to your Desktop with invite codes, tokens, tailnet names and tailnet addresses masked:
+- **The app's log** from the last hour. This saves it to your Desktop with invite codes, tokens, peer secrets, tailnet names and tailnet addresses masked:
 
   ```bash
   log show --info --last 1h --style compact --predicate 'subsystem == "app.needsyou.mac"' |
-    sed -E 's/nyi?_[A-Za-z0-9_-]+/<redacted>/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/<host>.<tailnet>.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g' \
+    sed -E 's/ny[ip]?_[A-Za-z0-9_-]+/<redacted>/g; s/[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net/<host>.<tailnet>.ts.net/g; s/100\.[0-9]+\.[0-9]+\.[0-9]+/100.x.x.x/g; s/fd7a:115c:a1e0:[0-9a-f:]+/fd7a:x/g' \
     > ~/Desktop/needs-you-log.txt
   ```
 
   Skim it before attaching; it should hold nothing private, but you're the judge. Info lines don't stay in the log long, so run it soon after the problem. For a problem you can repeat, record it live instead: run `log stream --info --style compact --predicate 'subsystem == "app.needsyou.mac"'` (piped through the same `sed`), reproduce, then press Ctrl-C.
 
-**Never paste** a token (`ny_…`), an invite link or code (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env` or `~/Library/Application Support/NeedsYou/`. If one slips into an issue, tell the owner: revoking it takes a click in **Settings → Machines**.
+**Never paste** a token (`ny_…`), a peer secret (`nyp_…`), an invite link or code (`nyi_…`, `/join/…`), or the contents of `~/.config/needs-you/env` or `~/Library/Application Support/NeedsYou/`. If one slips into an issue, tell the owner: revoking it takes a click in **Settings → Machines**.
 
 Security problems: don't open an issue; tell the owner directly ([SECURITY.md](../../SECURITY.md)).
 
