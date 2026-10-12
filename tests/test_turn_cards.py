@@ -289,13 +289,23 @@ class ClaudeTurns(HookCase):
             fh.write((json.dumps(entry("assistant", "Done.")) + "\n").encode())
         self.assertEqual(self.idle_at(path), "Claude finished: Big one (my-repo)")
         self.assertEqual(self.cache()["offset"], os.path.getsize(path))
-        times = []
+        # The hook's own start-up on this box right now, from a tiny transcript: a busy machine
+        # slows both sides alike, so the guard compares with that, not with a fixed second.
+        small = os.path.join(self.home, "small.jsonl")
+        self.write_lines(small, [entry("custom-title", "Small"), entry("assistant", "Done.")])
+        base, times = [], []
         for _ in range(3):
+            started = time.time()
+            self.idle_at(small)
+            base.append(time.time() - started)
             self.write_lines(path, [entry("assistant", "More.")], "a")
             started = time.time()
             self.assertEqual(self.idle_at(path), "Claude finished: Big one (my-repo)")
             times.append(time.time() - started)
-        self.assertLess(min(times), 1.0, times)  # the hook's own start-up, not 48 MB of reading
+            # The cache moved to the end: the next card reads only what was added after it.
+            self.assertEqual(self.cache()["offset"], os.path.getsize(path))
+        # A loose guard only (start-up dominates; 48 MB reads in a fraction of it).
+        self.assertLess(min(times), 2 * min(base) + 0.5, (times, base))
 
     def test_session_title_from_the_prompt(self):
         # UserPromptSubmit carries session_title after /rename (live, 2.1.294): kept for the cards.
