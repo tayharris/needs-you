@@ -1,6 +1,6 @@
 # GitHub Copilot CLI
 
-A card appears on your Mac when a GitHub Copilot CLI session needs you: it asks for permission to run a command or fetch a page, it asks you a question, or it finished its turn and is waiting for your next message. The card clears itself when you answer, the next tool runs, you send your next prompt, or the session ends.
+A card appears on your Mac when a GitHub Copilot CLI session needs you: it asks for permission to run a command or fetch a page, it asks you a question, it finished its turn and is waiting for your next message, or it stopped on an error it can't recover from. The card clears itself when you answer, the next tool runs, you send your next prompt, or the session ends.
 
 Quickest: add `--copilot-hooks user --alerts` to an invite link's one-liner (or paste the link's agent prompt into Copilot CLI; it names the flag):
 
@@ -38,10 +38,13 @@ echo 'NEEDS_YOU_AGENT_ALERTS=1' >> ~/.config/needs-you/env   # every session on 
 | Any other permission prompt | **Copilot needs your approval: my-repo** |
 | An MCP server asks you something | **Copilot asks “Which Jira project should the issue go to?”: my-repo** |
 | Turn finished, waiting for you | **Copilot finished: my-repo** |
+| Stopped on an error it can't recover from | **Copilot stopped on a model error: my-repo** (or **a tool error**, **an error**) |
 
 Copilot gives the hook no text of the turn, so its turn card always says finished. `NEEDS_YOU_TURN_TEXT=0` keeps the old **Copilot is waiting for you** card (and no session name).
 
 One card per session, updated in place. Command lines, URLs, prompts and tool output aren't sent: a permission card names at most the program. An MCP server's question (`elicitation_dialog`) is on its card, cleaned, token-shaped text redacted and clamped (`NEEDS_YOU_AGENT_QUESTIONS=0` keeps it off). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only the permission and question cards.
+
+An error card names at most the error's type (such as `RateLimitError`), never its message. Errors Copilot recovers from by itself post nothing. The card stays when the turn or the session ends on the error, and clears on your next prompt (or, once Copilot has exited, within 5 minutes). Hooks installed before this was added don't send errors: run `needs-you update`, then restart Copilot CLI.
 
 If you **cancel** a permission prompt with Esc, Copilot runs no hook, so that card stays until your next prompt or the end of the session.
 

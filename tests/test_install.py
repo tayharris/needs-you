@@ -653,7 +653,7 @@ class InstallScript(HubTestCase):
         for label in ("Cursor (~/.cursor/hooks.json; finished turns only)", "Cline (", "Aider ("):
             self.assertIn(label, r.stdout)
         with open(os.path.join(self.home, ".cursor", "hooks.json")) as fh:
-            self.assertEqual(sorted(json.load(fh)["hooks"]), ["beforeSubmitPrompt", "sessionEnd", "stop"])
+            self.assertEqual(sorted(json.load(fh)["hooks"]), ["afterAgentResponse", "beforeSubmitPrompt", "sessionEnd", "stop"])
         self.assertTrue(os.access(os.path.join(self.home, ".cursor", "hooks", "needs-you-hook.sh"), os.X_OK))
         self.assertTrue(os.access(os.path.join(self.home, "Documents", "Cline", "Hooks", "TaskComplete"), os.X_OK))
         with open(os.path.join(self.home, ".aider.conf.yml")) as fh:

@@ -5,6 +5,9 @@
     "notification": [
       { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" notify copilot", "matcher": "permission_prompt|elicitation_dialog", "timeoutSec": 10 }
     ],
+    "errorOccurred": [
+      { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" notify copilot", "timeoutSec": 10 }
+    ],
     "agentStop": [
       { "type": "command", "bash": "\"${COPILOT_HOME:-$HOME/.copilot}/hooks/needs-you-hook.sh\" notify copilot", "timeoutSec": 10 }
     ],

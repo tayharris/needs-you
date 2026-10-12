@@ -1,6 +1,6 @@
 # needs-you for GitHub Copilot CLI
 
-When a GitHub Copilot CLI session asks for permission (a shell command, a web fetch, any other tool), asks you a question, or finishes its turn and waits for your next message, a `needs` item appears on your Mac. It's resolved when you send the next prompt, a tool finishes, or the session ends.
+When a GitHub Copilot CLI session asks for permission (a shell command, a web fetch, any other tool), asks you a question, finishes its turn and waits for your next message, or stops on an error it can't recover from, a `needs` item appears on your Mac. It's resolved when you send the next prompt, a tool finishes, or the session ends.
 
 It uses Copilot CLI's [hooks](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference) (every `*.json` in `~/.copilot/hooks/`, or `$COPILOT_HOME/hooks/`) and the same `needs-you-hook.sh` as the [Claude Code integration](../claude-code/README.md), started with a `copilot` argument. Opt-in, keys, links, leases and expiry work as described there.
 
@@ -34,8 +34,9 @@ The file uses Copilot's camelCase events, whose payloads name the session `sessi
 | `notification`, matcher `permission_prompt` | `notify copilot` | `needs-you add`: **Copilot wants to run make** (the program from the message `Run command: …`), **Copilot wants to fetch a page** (`Fetch URL: …`), else **Copilot needs your approval** |
 | `notification`, matcher `elicitation_dialog` | `notify copilot` | `needs-you add`: **Copilot asks “<the MCP server's message>”** (redacted, clamped), else **Copilot asked you a question** |
 | `agentStop` | `notify copilot` | `needs-you add`: **Copilot finished** (the turn ended; `agentStop` carries no text of the turn, so never a question). `NEEDS_YOU_AGENT_TURN_CARDS=0` keeps only permission and question cards |
+| `errorOccurred` | `notify copilot` | `recoverable: false` only: `needs-you add` with `--event failed`: **Copilot stopped on a model error** (`errorContext` `model_call`), **Copilot stopped on a tool error** (`tool_execution`), else **Copilot stopped on an error**. The body names at most `error.name` when it's a plain class name (`RateLimitError`); `error.message` and `error.stack` are never sent. A recoverable error posts nothing: Copilot goes on by itself. An `agentStop` after it doesn't replace the card with "finished", and it isn't skipped while the agent's own item for the session is open |
 | `userPromptSubmitted`, `postToolUse`, `postToolUseFailure` | `resolve copilot` | `needs-you resolve`, only if this session posted something |
-| `sessionEnd` | `end copilot` | resolves the session's card |
+| `sessionEnd` | `end copilot` | resolves the session's card. With `reason: error` the cards stay (the error card may still be being posted); the 5-minute `needs-you flush` clears them once Copilot has exited |
 
 - **Key:** `agent:<short-hostname>:<id>`, `<id>` being `$ORCA_TERMINAL_HANDLE` or Copilot's `sessionId`.
 - **Never sent:** the notification message beyond the program name (it holds the whole command line or URL), prompts, tool arguments or tool output.

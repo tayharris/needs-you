@@ -21,7 +21,7 @@ import time
 import unittest
 
 from hook_case import BASH, HOOK, REAL_HOME, SECRET, HookCase, opt
-from support import CLI, ROOT, free_port
+from support import CLI, ROOT, free_port, wait_until
 from test_cli_update import UpdateCase, current_files, read
 
 CONV = "8e1f4d2c-6b7a-4c39-9a51-0f3e2d1c4b5a"
@@ -102,6 +102,68 @@ class CursorHook(HookCase):
                                       is_background_agent=False, final_status="completed"))
         self.assertEqual(self.wait_calls(2)[-1], ["resolve", "--key", key])
 
+    def turn_file(self):
+        return os.path.join(self.state, ".turn-" + CONV)
+
+    def after_response(self, text):
+        # afterAgentResponse (cursor.com/docs/hooks): the common fields plus `text`
+        r = self.hook("turn", self.payload("afterAgentResponse", text=text))
+        self.assertEqual(r.stdout, "{}\n")
+        self.assertTrue(self.wait_turn_file())
+
+    def wait_turn_file(self):
+        return wait_until(lambda: os.path.exists(self.turn_file()), timeout=10)
+
+    def test_cursor_asks_from_after_agent_response(self):
+        self.after_response("I changed the schema with token=%s.\n\nShould I run the migration too?" % SECRET)
+        self.assertEqual(os.stat(self.turn_file()).st_mode & 0o777, 0o600)
+        with open(self.turn_file()) as fh:
+            self.assertNotIn(SECRET, fh.read())
+        self.hook("notify", self.payload("stop", status="completed"))
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(opt(argv, "--title"), "Cursor asks: Should I run the migration too? · my-repo")
+        self.assertEqual(opt(argv, "--event"), "question")
+        self.assertTrue(opt(argv, "--body").startswith("Should I run the migration too?"))
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
+        # a new prompt drops it: the next turn without a reply text is "finished"
+        self.hook("resolve", self.payload("beforeSubmitPrompt", prompt="yes"))
+        self.assertTrue(wait_until(lambda: not os.path.exists(self.turn_file()), timeout=10))
+        self.wait_calls(2)
+        self.hook("notify", self.payload("stop", status="completed"))
+        self.assertEqual(opt(self.wait_calls(3)[-1], "--title"), "Cursor finished: my-repo")
+        # a statement: finished
+        self.after_response("Done. The migration ran.")
+        self.hook("notify", self.payload("stop", status="completed"))
+        self.assertEqual(opt(self.wait_calls(4)[-1], "--title"), "Cursor finished: my-repo")
+        # NEEDS_YOU_TURN_TEXT=0: the old card
+        self.after_response("Shall I?")
+        self.hook("notify", self.payload("stop", status="completed"), NEEDS_YOU_TURN_TEXT="0")
+        self.assertEqual(opt(self.wait_calls(5)[-1], "--title"), "Cursor finished: my-repo")
+
+    def test_session_end_on_an_error(self):
+        # sessionEnd reason error (cursor.com/docs/hooks): the error card, never error_message
+        end = self.payload("sessionEnd", session_id=CONV, reason="error", duration_ms=5,
+                           is_background_agent=False, final_status="error",
+                           error_message="upstream said key=%s" % SECRET)
+        r = self.hook("end", end)
+        self.assertEqual(r.stdout, "{}\n")
+        argv = self.wait_calls(1)[-1]
+        self.assertEqual(argv[0], "add")
+        self.assertEqual(opt(argv, "--title"), "Cursor stopped on an error: my-repo")
+        self.assertEqual(opt(argv, "--event"), "failed")
+        self.assertNotIn(SECRET, json.dumps(self.calls()))
+        self.assertNotIn("upstream said", json.dumps(self.calls()))
+        self.wait_marker(CONV)
+        self.assertEqual(self.read_marker(CONV)["kind"], "failure")
+        # a second sessionEnd on the error keeps that card (stop status error, then sessionEnd)
+        self.hook("end", end)
+        time.sleep(0.8)
+        self.assertEqual(len(self.calls()), 1)
+        self.assertTrue(os.path.exists(self.marker(CONV)))
+        # any other reason clears it as before
+        self.hook("end", dict(end, reason="completed", error_message=None))
+        self.assertEqual(self.wait_calls(2)[-1][0], "resolve")
+
     def test_no_card_once_cursor_has_exited(self):
         # cursor-agent -p ends its turn and exits: nobody is waiting.
         self.hook("notify", self.payload("stop", status="completed"), NY_HOOK_PPID=self.gone_pid())
@@ -164,6 +226,7 @@ class CursorHooksJson(unittest.TestCase):
         self.assertRegex(doc["_needs_you_version"], r"^\d+\.\d+\.\d+$")
         self.assertEqual({ev: h[0]["command"] for ev, h in doc["hooks"].items()},
                          {"stop": "./hooks/needs-you-hook.sh notify cursor",
+                          "afterAgentResponse": "./hooks/needs-you-hook.sh turn cursor",
                           "beforeSubmitPrompt": "./hooks/needs-you-hook.sh resolve cursor",
                           "sessionEnd": "./hooks/needs-you-hook.sh end cursor"})
         # Cursor blocks the action when a permission hook prints nothing or invalid JSON.

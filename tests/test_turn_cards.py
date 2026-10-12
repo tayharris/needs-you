@@ -78,6 +78,51 @@ class ClaudeTurns(HookCase):
                          *(filler + [entry("ai-title", "Later auto title"), entry("assistant", "Done.")]))
         self.assertEqual(opt(argv, "--title"), "Claude finished: Login fix (prod) (my-repo)")
 
+    def stop(self, payload_extra, **env):
+        payload = {"session_id": CLAUDE_SID, "cwd": self.cwd, "hook_event_name": "Stop",
+                   "stop_hook_active": False, "transcript_path": os.path.join(self.home, "transcript.jsonl")}
+        payload.update(payload_extra)
+        self.run_hook(["stop"], payload, NEEDS_YOU_CONTEXT_ALERT_PCT="0", **env)
+
+    def turn_file(self):
+        return os.path.join(self.state, ".turn-" + CLAUDE_SID)
+
+    def test_last_assistant_message_from_stop(self):
+        # code.claude.com/docs/en/hooks: Stop's last_assistant_message is the final reply, and
+        # the transcript may not have it yet at Stop. The idle_prompt card uses it over the
+        # transcript (which here still ends on an older turn).
+        self.stop({"last_assistant_message": "Built it.\n\nShould I deploy to staging now? key=%s" % SECRET})
+        with open(self.turn_file()) as fh:  # the question must end the message
+            self.assertEqual(json.load(fh), {"q": "", "para": ""})
+        self.stop({"last_assistant_message": "Built it with key=%s.\n\nShould I deploy to staging now?" % SECRET})
+        self.assertEqual(os.stat(self.turn_file()).st_mode & 0o777, 0o600)
+        with open(self.turn_file()) as fh:
+            kept = fh.read()
+        self.assertNotIn(SECRET, kept)
+        self.assertNotIn("Built it", kept)  # only the question's paragraph
+        argv = self.idle(entry("assistant", "Old turn. All done."))
+        self.assertEqual(opt(argv, "--title"), "Claude asks: Should I deploy to staging now? · my-repo")
+        self.assertNotIn(SECRET, json.dumps(argv))
+        # a statement: finished, though the transcript's tail ends on a question
+        self.stop({"last_assistant_message": "Deployed. All green."})
+        argv = self.idle(entry("assistant", "Shall I run it?"))
+        self.assertEqual(opt(argv, "--title"), "Claude finished: my-repo")
+        # an older Claude Code (no last_assistant_message): the transcript again
+        self.stop({})
+        self.assertFalse(os.path.exists(self.turn_file()))
+        argv = self.idle(entry("assistant", "Shall I run it?"))
+        self.assertEqual(opt(argv, "--title"), "Claude asks: Shall I run it? · my-repo")
+        # SessionEnd removes it
+        self.stop({"last_assistant_message": "Shall I run it?"})
+        self.assertTrue(os.path.exists(self.turn_file()))
+        self.run_hook(["end"], {"session_id": CLAUDE_SID, "hook_event_name": "SessionEnd"})
+        self.assertFalse(os.path.exists(self.turn_file()))
+
+    def test_last_assistant_message_with_turn_text_off(self):
+        self.stop({"last_assistant_message": "Shall I run it?"}, NEEDS_YOU_TURN_TEXT="0")
+        argv = self.idle(entry("assistant", "Shall I run it?"), NEEDS_YOU_TURN_TEXT="0")
+        self.assertEqual(opt(argv, "--title"), "Claude is waiting for you: my-repo")
+
     def test_no_title_no_transcript(self):
         argv = self.idle(entry("assistant", "Done."))
         self.assertEqual(opt(argv, "--title"), "Claude finished: my-repo")

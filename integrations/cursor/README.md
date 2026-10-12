@@ -30,15 +30,16 @@ The installer backs `hooks.json` up, removes any needs-you entries (a `command` 
 
 | Cursor event | Hook mode | Action | Prints |
 |---|---|---|---|
-| `stop`, `status: completed` | `notify cursor` | `needs-you add`: **Cursor finished** (no text of the turn in the payload) | `{}` |
+| `afterAgentResponse` | `turn cursor` | nothing posted: when the reply's `text` ends on a question, keeps that question and its paragraph (redacted) in `~/.local/state/needs-you/claude-hooks/.turn-<conversation_id>` (mode 600) for the `stop` card. `beforeSubmitPrompt` and `sessionEnd` remove it | `{}` |
+| `stop`, `status: completed` | `notify cursor` | `needs-you add`: **Cursor asks: <question> · my-repo** when the turn's reply ended on a question (as for Claude's turn cards), else **Cursor finished** | `{}` |
 | `stop`, `status: error` | `notify cursor` | `needs-you add`: **Cursor stopped on an error** | `{}` |
 | `stop`, `status: aborted` | `notify cursor` | nothing (you stopped it) | `{}` |
 | `beforeSubmitPrompt` | `resolve cursor` | `needs-you resolve`, only if this chat posted something | `{"continue":true}` |
-| `sessionEnd` | `end cursor` | resolves the chat's card | `{}` |
+| `sessionEnd` | `end cursor` | resolves the chat's card. With `reason: error`: keeps the error card `stop` posted, else posts **Cursor stopped on an error** (`--event failed`); `error_message` and `final_status` are never sent | `{}` |
 
 - **Key:** `agent:<short-hostname>:<conversation_id>`.
 - **Project:** the first of `workspace_roots` (a user hook's working directory is `~/.cursor`).
-- **Never sent:** `user_email` (Cursor sends it to every hook), prompts, attachments, the transcript.
+- **Never sent:** `user_email` (Cursor sends it to every hook), prompts, attachments, the transcript, a reply's text beyond the question it ends on (redacted, clamped), `sessionEnd`'s `error_message`.
 - **Source:** `--agent cursor`. On the Mac the card gets a `cursor://file/...` button.
 - **No permission hooks.** `preToolUse`, `beforeShellExecution`, `beforeMCPExecution`, `beforeReadFile`, `beforeTabFileRead` and `subagentStart` block the action when a hook's output is empty or invalid; none is registered, and `needs-you doctor` warns if one names the hook.
 - **Output.** Cursor reads each hook's stdout as its answer. The hook prints its one line before anything else (also when alerts are off or the input is unreadable), so `beforeSubmitPrompt` always gets `{"continue":true}`: the docs don't say what an empty answer means there. Then it hands the work to a background copy and exits 0.
