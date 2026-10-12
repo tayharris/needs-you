@@ -209,17 +209,208 @@ class Config:
                or f.get("NEEDS_YOU_URLS") or f.get("NEEDS_YOU_URL") or "")
         self.urls = [u.strip().rstrip("/") for u in raw.split(",") if u.strip()]
         self.token = get("NEEDS_YOU_TOKEN")
-        try:
-            self.timeout = float(get("NEEDS_YOU_TIMEOUT", "3"))
-        except ValueError:
+        raw_timeout = get("NEEDS_YOU_TIMEOUT", "3")
+        if setting_problem("NEEDS_YOU_TIMEOUT", raw_timeout):
+            warn_bad_setting("NEEDS_YOU_TIMEOUT", raw_timeout, 3)
             self.timeout = 3.0
+        else:
+            self.timeout = float(raw_timeout)
         self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
         ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
+        warn_bad_setting("NEEDS_YOU_DEFAULT_CONTEXT", ctx, "work")
         self.default_context = ctx if ctx in ("work", "personal") else "work"
 
     @property
     def ok(self) -> bool:
         return bool(self.urls and self.token)
+
+
+# ---------------------------------------------------------------------------
+# Every NEEDS_YOU_* variable, for `doctor` (unknown names, bad values, lines in the env file
+# that nothing reads). docs/guides/configuration.md is the same list for people, and
+# tests/test_config_reference.py fails when the two, or the code, drift apart.
+#
+# name: (where, rule). where: "both" (the environment, else the env file), "env" (the
+# environment only: a line in the env file does nothing), "internal" (needs-you sets it for
+# its own child processes, or it's a test seam), "hub" (a hub reads it, never a sender), "dev"
+# (building, releasing and testing needs-you). rule: what a value must look like (see
+# setting_problem); "" takes anything.
+# ---------------------------------------------------------------------------
+
+_ON = ("1", "true", "yes", "on")
+_OFF = ("0", "false", "no", "off")
+_PRIOS = ("urgent", "normal", "low")
+_CONTEXTS = ("work", "personal")
+_SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$"
+SETTINGS: Dict[str, Tuple[str, Any]] = {
+    # the CLI (and everything that runs it)
+    "NEEDS_YOU_URLS": ("both", "urls"),
+    "NEEDS_YOU_URL": ("both", "urls"),
+    "NEEDS_YOU_TOKEN": ("both", "secret"),
+    "NEEDS_YOU_TIMEOUT": ("both", ("num", 0.1, None)),
+    "NEEDS_YOU_HOST": ("both", ("re", _SAFE_NAME, "a host name: letters, digits, '.', '_', '@' or '-'")),
+    "NEEDS_YOU_DEFAULT_CONTEXT": ("both", ("enum", _CONTEXTS)),
+    "NEEDS_YOU_OUTBOX_MAX": ("both", ("int", 1, None)),
+    "NEEDS_YOU_OUTBOX_MAX_DAYS": ("both", ("num", 0.01, None)),
+    "NEEDS_YOU_AUTO_UPDATE": ("both", "onoff"),
+    "NEEDS_YOU_UPDATE_HUB": ("both", "url"),
+    "NEEDS_YOU_UPDATE_REQUIRE_RELEASE_MATCH": ("both", "onoff"),
+    "NEEDS_YOU_ORCA_USAGE": ("both", "onoff"),
+    "NEEDS_YOU_ORCA_BIN": ("both", "exe"),
+    "NEEDS_YOU_ORCA_TIMEOUT": ("both", ("num", 1, 60)),
+    "NEEDS_YOU_CONFIG": ("env", ""),
+    "NEEDS_YOU_ENV_FILE": ("env", ""),
+    "NEEDS_YOU_OUTBOX": ("env", ""),
+    "NEEDS_YOU_GH": ("env", ""),
+    "NEEDS_YOU_BIN_DIR": ("env", ""),
+    # the agent hooks (needs-you-hook.sh) and the usage helper
+    "NEEDS_YOU_AGENT_ALERTS": ("both", ("enum", _ON + _OFF, "case")),
+    "NEEDS_YOU_AGENT_CONTEXT": ("both", ("enum", _CONTEXTS, "case")),
+    "NEEDS_YOU_AGENT_PRIORITY": ("both", ("enum", _PRIOS, "case")),
+    "NEEDS_YOU_AGENT_LINK": ("both", ("re", r"^(?i:none)$|=", "none, or Label=url-template")),
+    "NEEDS_YOU_AGENT_EXPIRY_HOURS": ("both", ("num", None, None)),
+    "NEEDS_YOU_AIDER_EXPIRY_HOURS": ("both", ("num", None, None)),
+    "NEEDS_YOU_AGENT_TURN_CARDS": ("both", "onoff"),
+    "NEEDS_YOU_AGENT_QUESTIONS": ("both", "onoff"),
+    "NEEDS_YOU_TURN_TEXT": ("both", "onoff"),
+    "NEEDS_YOU_ANSWER_TIMEOUT": ("both", ("re", r"^(?i:0|off|no|false)$|^[0-9]+$",
+                                          "seconds (30 to 3600), or 0/off")),
+    "NEEDS_YOU_CONTEXT_ALERT_PCT": ("both", ("re", r"^(?i:off|no|false)$|^[0-9]+(\.[0-9]+)?$",
+                                            "a percentage (0 or off: no card)")),
+    "NEEDS_YOU_CONTEXT_WINDOW": ("both", ("int", 1, None)),
+    "NEEDS_YOU_SSH_ALIAS": ("both", ("re", _SAFE_NAME, "an ssh host alias: letters, digits, '.', '_', '@' or '-'")),
+    "NEEDS_YOU_ORCA_ENVIRONMENT": ("both", ("re", r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$",
+                                            "an Orca environment name: letters, digits, spaces, '.', '_' or '-'")),
+    "NEEDS_YOU_USAGE_ALERT_PCT": ("both", ("num", 0, 100)),
+    "NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT": ("both", ("num", 0, 100)),
+    "NEEDS_YOU_USAGE_ACCOUNT": ("both", ("re", r"^[A-Za-z0-9._-]{0,40}$", "up to 40 letters, digits, '.', '_' or '-'")),
+    "NEEDS_YOU_USAGE_METER": ("both", "onoff"),
+    "NEEDS_YOU_BIN": ("both", "exe"),
+    "NEEDS_YOU_HOOK_LOG": ("env", ""),
+    "NEEDS_YOU_CLI": ("env", ""),
+    "NEEDS_YOU_OPENCODE_HOOK": ("env", ""),
+    # GitHub poller
+    "NEEDS_YOU_GITHUB_INCLUDE": ("both", ""),
+    "NEEDS_YOU_GITHUB_EXCLUDE": ("both", ""),
+    "NEEDS_YOU_GITHUB_CONTEXTS": ("both", ""),
+    "NEEDS_YOU_GITHUB_REASONS": ("both", ""),
+    "NEEDS_YOU_GITHUB_INTERVAL": ("both", ("num", 1, None)),
+    "NEEDS_YOU_GITHUB_PR_DAYS": ("both", ("int", 1, None)),
+    "NEEDS_YOU_GITHUB_MAX_CARDS": ("both", ("int", 1, None)),
+    "NEEDS_YOU_GITHUB_PROJECT_STATUSES": ("both", ""),
+    "NEEDS_YOU_GITHUB_PROJECT_FIELD": ("both", ""),
+    "NEEDS_YOU_GITHUB_SECURITY": ("both", "onoff"),
+    "NEEDS_YOU_GITHUB_SECURITY_SEVERITIES": ("both", ""),
+    "NEEDS_YOU_GITHUB_SECURITY_PRIORITY": ("both", ("enum", _PRIOS)),
+    "NEEDS_YOU_GITHUB_GH": ("both", "exe"),
+    # Linear poller
+    "NEEDS_YOU_LINEAR_KEY": ("env", "secret"),
+    "NEEDS_YOU_LINEAR_KEY_FILE": ("both", ""),
+    "NEEDS_YOU_LINEAR_CATEGORIES": ("both", ""),
+    "NEEDS_YOU_LINEAR_STATUSES": ("both", ""),
+    "NEEDS_YOU_LINEAR_TEAMS": ("both", ""),
+    "NEEDS_YOU_LINEAR_INTERVAL": ("both", ("num", 1, None)),
+    "NEEDS_YOU_LINEAR_MAX_CARDS": ("both", ("int", 1, None)),
+    "NEEDS_YOU_LINEAR_MAX_AGE_H": ("both", ("num", 1, None)),
+    "NEEDS_YOU_LINEAR_API": ("both", "url"),
+    # Jira poller
+    "NEEDS_YOU_JIRA_SITE": ("both", "url"),
+    "NEEDS_YOU_JIRA_AUTH": ("both", ("enum", ("cloud", "dc"))),
+    "NEEDS_YOU_JIRA_EMAIL": ("both", ""),
+    "NEEDS_YOU_JIRA_TOKEN_FILE": ("both", ""),
+    "NEEDS_YOU_JIRA_CA_FILE": ("both", "file"),
+    "NEEDS_YOU_JIRA_EVENTS": ("both", ""),
+    "NEEDS_YOU_JIRA_STATUSES": ("both", ""),
+    "NEEDS_YOU_JIRA_PROJECTS": ("both", ""),
+    "NEEDS_YOU_JIRA_JQL_EXTRA": ("both", ""),
+    "NEEDS_YOU_JIRA_WATCHING": ("both", "onoff"),
+    "NEEDS_YOU_JIRA_INTERVAL": ("both", ("num", 1, None)),
+    "NEEDS_YOU_JIRA_MAX_CARDS": ("both", ("int", 1, None)),
+    # expiry poller
+    "NEEDS_YOU_EXPIRY_CONFIG": ("both", ""),
+    "NEEDS_YOU_EXPIRY_DAYS": ("both", ""),
+    "NEEDS_YOU_EXPIRY_CONTEXT": ("both", ("enum", _CONTEXTS)),
+    "NEEDS_YOU_EXPIRY_FAILS": ("both", ("int", 1, None)),
+    "NEEDS_YOU_EXPIRY_INTERVAL": ("both", ("num", 1, None)),
+    "NEEDS_YOU_EXPIRY_MAX_CARDS": ("both", ("int", 1, None)),
+    "NEEDS_YOU_EXPIRY_TIMEOUT": ("both", ("num", 1, 60)),
+    "NEEDS_YOU_EXPIRY_RDAP_BOOTSTRAP": ("both", "url"),
+    # set by needs-you for its own child processes, or seams for the tests
+    "NEEDS_YOU_AGENT_SESSION": ("internal", ""),
+    "NEEDS_YOU_WATCH_PID": ("internal", ""),
+    "NEEDS_YOU_INSTALLER": ("internal", ""),
+    "NEEDS_YOU_HOOK_PLATFORM": ("internal", ""),
+    "NEEDS_YOU_HOOK_TTY": ("internal", ""),
+    "NEEDS_YOU_HUB_UPDATE_NOW": ("internal", ""),
+    "NEEDS_YOU_INSTALL_CHECK_OWNERSHIP": ("internal", ""),
+    "NEEDS_YOU_RELEASE_OFFLINE": ("internal", ""),
+    # read by a hub or its admin tool, never by a sender
+    "NEEDS_YOU_PEER_SECRET": ("hub", "secret"),
+    "NEEDS_YOU_HUB_ALLOWED_HOSTS": ("hub", ""),
+    "NEEDS_YOU_HUB_CONFIG": ("hub", ""),
+    # building, releasing and testing needs-you
+    "NEEDS_YOU_DIST": ("dev", ""),
+    "NEEDS_YOU_SKIP_APP": ("dev", ""),
+    "NEEDS_YOU_TAG": ("dev", ""),
+    "NEEDS_YOU_TESTS_RESULT": ("dev", ""),
+    "NEEDS_YOU_VERSION": ("dev", ""),
+    "NEEDS_YOU_PYTHON39": ("dev", ""),
+    "NEEDS_YOU_LINT_BASE": ("dev", ""),
+    "NEEDS_YOU_LEAK_PATTERNS": ("dev", ""),
+}
+CONFIG_DOC = "docs/guides/configuration.md"
+
+
+def setting_problem(name: str, value: str) -> str:
+    """"" when `value` is fine for `name`, else what the variable takes (never the value)."""
+    rule = SETTINGS.get(name, ("", ""))[1]
+    v = value.strip()
+    if not rule or not v or rule == "secret":
+        return ""
+    if rule == "onoff":
+        return "" if v.lower() in _ON + _OFF else "1/true/yes/on or 0/false/no/off"
+    if rule in ("urls", "url"):
+        parts = [u.strip() for u in v.split(",") if u.strip()] if rule == "urls" else [v]
+        ok = parts and all(re.match(r"^https?://[^\s/?#@]+(?:/[^\s?#]*)?$", u) for u in parts)
+        return "" if ok else ("http(s)://host:port URLs, comma-separated" if rule == "urls"
+                              else "an http(s):// URL")
+    if rule in ("exe", "file"):
+        p = os.path.expanduser(v)
+        if rule == "exe" and not (os.path.isfile(p) and os.access(p, os.X_OK)):
+            return "the path of an executable file (none there)"
+        if rule == "file" and not os.path.isfile(p):
+            return "the path of a file (none there)"
+        return ""
+    kind = rule[0]
+    if kind == "enum":
+        choices, cased = rule[1], len(rule) > 2
+        return "" if (v if cased else v.lower()) in choices else ("one of " + ", ".join(choices)
+                                                                   + (" (lowercase)" if cased else ""))
+    if kind == "re":
+        return "" if re.search(rule[1], v) else rule[2]
+    if kind in ("num", "int"):
+        lo, hi = rule[1], rule[2]
+        what = "a whole number" if kind == "int" else "a number"
+        if lo is not None and hi is not None:
+            what += " from %g to %g" % (lo, hi)
+        elif lo is not None:
+            what += " of at least %g" % lo
+        try:
+            n = float(v)
+        except ValueError:
+            return what
+        if n != n or n in (float("inf"), float("-inf")) or (kind == "int" and not n.is_integer()):
+            return what
+        if (lo is not None and n < lo) or (hi is not None and n > hi):
+            return what
+    return ""
+
+
+def warn_bad_setting(name: str, value: str, using: Any) -> None:
+    """The CLI's own reads: a bad value is named (never printed) with what it takes."""
+    why = setting_problem(name, value)
+    if why:
+        warn("%s takes %s; using %s (see %s)" % (name, why, using, CONFIG_DOC))
 
 
 def warn(msg: Any) -> None:
@@ -1179,10 +1370,19 @@ def queue(method: str, path: str, body: Optional[Dict[str, Any]]) -> str:
 
 
 def _env_number(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name) or default)
-    except ValueError:
+    """A number from the environment, else the env file (bad: named on stderr, default used)."""
+    raw = (os.environ.get(name) or read_env_file(config_path()).get(name) or "").strip()
+    if not raw:
         return default
+    try:
+        n = float(raw)
+    except ValueError:
+        n = float("nan")
+    if n != n or n in (float("inf"), float("-inf")):
+        warn_bad_setting(name, raw, "%g" % default)
+        return default
+    warn_bad_setting(name, raw, "the nearest value it takes")
+    return n
 
 
 def _prune_dir(d: str, max_files: int, max_age_s: float) -> int:
@@ -3899,8 +4099,6 @@ def health(cfg: Config, queued: int) -> int:
 FLUSH_LABEL = "io.needs-you.flush"
 CRON_TAG = "# needs-you-flush"
 HOOK_MARKER = "orca terminal switch"  # present in every hook since agent cards name the Orca terminal
-_ON = ("1", "true", "yes", "on")
-_OFF = ("0", "false", "no", "off")
 
 
 def _tilde(path: str) -> str:
@@ -4038,7 +4236,8 @@ class Doctor:
         return "", ""
 
     def run(self) -> List[Dict[str, str]]:
-        for step in (self.config, self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
+        for step in (self.config, self.settings, self.key_files, self.hub_config,
+                     self.path, self.hubs, self.outbox, self.hooks, self.project_hooks,
                      self.codex_hooks, self.gemini_hooks, self.opencode_plugin, self.copilot_hooks,
                      self.cursor_hooks, self.cline_hooks, self.aider_notifications, self.kimi_hooks,
                      self.grok_hooks, self.skill,
@@ -4106,6 +4305,161 @@ class Doctor:
             if st is not None:
                 hint = _new_invite(force=True)
         self.add("config", status, "; ".join(parts), hint)
+
+    # -- settings: names and values (never the values themselves) ----------
+    def settings(self) -> None:
+        import difflib
+        problems: List[str] = []
+        seen: Dict[str, int] = {}
+        try:
+            with open(self.env_path, "r", encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except (OSError, UnicodeDecodeError):
+            lines = []
+        for n, line in enumerate(lines, 1):
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s.startswith("export "):
+                s = s[len("export "):].strip()
+            if "=" not in s:  # maybe a bare token pasted in: say where, never what
+                problems.append("line %d isn't NAME=VALUE, so it's ignored" % n)
+                continue
+            seen[s.split("=", 1)[0].strip()] = seen.get(s.split("=", 1)[0].strip(), 0) + 1
+        from_env = sorted(k for k in os.environ if k.startswith("NEEDS_YOU_"))
+        for name, count in sorted(seen.items()):
+            where = "env file"
+            spec = SETTINGS.get(name)
+            if spec is None:
+                close = difflib.get_close_matches(name, list(SETTINGS), n=1, cutoff=0.8)
+                if not name.startswith("NEEDS_YOU_"):
+                    problems.append("%s (%s): needs-you reads only NEEDS_YOU_* names from this file"
+                                    % (clean(name)[:64], where))
+                else:
+                    problems.append("%s (%s): not a needs-you setting%s" % (
+                        clean(name)[:64], where, " (did you mean %s?)" % close[0] if close else ""))
+                continue
+            kind = spec[0]
+            if count > 1:
+                problems.append("%s is on %d lines of the env file; the last one wins" % (name, count))
+            if kind == "env":
+                problems.append("%s (%s): read only from the environment, so this line does nothing%s"
+                                % (name, where, "; put the key in the key file instead (chmod 600)"
+                                   if name == "NEEDS_YOU_LINEAR_KEY" else ""))
+            elif kind == "internal":
+                problems.append("%s (%s): needs-you sets it itself; remove the line" % (name, where))
+            elif kind in ("hub", "dev"):
+                problems.append("%s (%s): %s, never a sender: this line does nothing" % (
+                    name, where, "read by a hub" if kind == "hub" else "for building and testing needs-you"))
+            elif not os.environ.get(name):
+                why = setting_problem(name, self.file.get(name, ""))
+                if why:
+                    problems.append("%s (%s) takes %s" % (name, where, why))
+        for name in from_env:
+            spec = SETTINGS.get(name)
+            if spec is None:
+                close = difflib.get_close_matches(name, list(SETTINGS), n=1, cutoff=0.8)
+                problems.append("%s (environment): not a needs-you setting%s" % (
+                    clean(name)[:64], " (did you mean %s?)" % close[0] if close else ""))
+            elif spec[0] in ("both", "env"):
+                why = setting_problem(name, os.environ.get(name, ""))
+                if why:
+                    problems.append("%s (environment) takes %s" % (name, why))
+        n_file = sum(1 for k in seen if k.startswith("NEEDS_YOU_"))
+        detail = "%d in the env file, %d in the environment" % (n_file, len(from_env))
+        if problems:
+            self.add("settings", "WARN", detail + "; " + "; ".join(problems),
+                     "fix or remove those lines in %s (or your shell profile); every setting, with what it "
+                     "takes: %s" % (_tilde(self.env_path), CONFIG_DOC))
+        else:
+            self.add("settings", "OK", detail + ": every name known, every value fine")
+
+    # -- the pollers' key and token files: theirs to refuse, ours to explain --
+    def key_files(self) -> None:
+        conf_base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        files = []
+        for var, default, label in (
+                ("NEEDS_YOU_LINEAR_KEY_FILE", os.path.join(os.path.dirname(self.env_path), "linear-key"),
+                 "Linear key"),
+                ("NEEDS_YOU_JIRA_TOKEN_FILE", os.path.join(conf_base, "needs-you", "jira-token"), "Jira token")):
+            given, _ = self.setting(var)
+            path = os.path.expanduser(given) if given else default
+            if given or os.path.lexists(path):
+                files.append((label, path, bool(given)))
+        if not files:
+            return
+        parts, hints, status = [], [], "OK"
+        for label, path, given in files:
+            try:
+                st = os.lstat(path)
+            except OSError:
+                parts.append("%s file %s doesn't exist" % (label, _tilde(path)))
+                status = "WARN"
+                continue
+            import stat as _stat
+            mode = st.st_mode & 0o777
+            if _stat.S_ISLNK(st.st_mode):
+                parts.append("%s file %s is a symlink, which the poller refuses" % (label, _tilde(path)))
+                hints.append("replace %s with the file itself" % _sh(path))
+                status = "WARN"
+            elif not _stat.S_ISREG(st.st_mode):
+                parts.append("%s file %s isn't a regular file" % (label, _tilde(path)))
+                status = "WARN"
+            elif st.st_uid != os.geteuid():
+                parts.append("%s file %s isn't owned by you, so the poller refuses it" % (label, _tilde(path)))
+                status = "WARN"
+            elif mode & 0o077:
+                parts.append("%s file %s (mode %o): others can read or write it, so the poller refuses it"
+                             % (label, _tilde(path), mode))
+                hints.append("run: chmod 600 %s" % _sh(path))
+                status = "WARN"
+            else:
+                parts.append("%s file %s (mode %o)" % (label, _tilde(path), mode))
+        self.add("key files", status, "; ".join(parts), "; ".join(hints))
+
+    # -- a hub on this machine: its hub.json (and hub-update.json) ---------
+    def hub_config(self) -> None:
+        import subprocess
+        conf_base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(self.home, ".config")
+        for conf, code, private in (
+                (os.path.join(conf_base, "needs-you", "hub.json"),
+                 os.path.join(self.home, ".local", "share", "needs-you", "hub", "needs_you_hub.py"), True),
+                ("/etc/needs-you/hub.json", "/opt/needs-you/hub/needs_you_hub.py", False)):
+            try:
+                st = os.stat(conf)
+            except OSError:
+                continue
+            mode = st.st_mode & 0o777
+            label = "hub config" if private else "hub config (system)"
+            if mode & (0o077 if private else 0o007):
+                want = "600" if private else "640"
+                self.add(label, "WARN", "%s (mode %o): it holds the peer secret, and others can read it"
+                         % (_tilde(conf), mode), "run: %schmod %s %s" % ("" if private else "sudo ", want, _sh(conf)))
+                continue
+            check = "%s -B %s --check-config --config %s" % (_sh(sys.executable), _sh(code), _sh(conf))
+            if not os.access(conf, os.R_OK):
+                self.add(label, "INFO", "%s (mode %o); this user can't read it to check it" % (_tilde(conf), mode),
+                         "to check it: sudo " + check)
+                continue
+            if not os.path.isfile(code):
+                self.add(label, "INFO", "%s (mode %o); no hub code at %s to check it with"
+                         % (_tilde(conf), mode, _tilde(code)))
+                continue
+            try:
+                r = subprocess.run([sys.executable, "-B", code, "--check-config", "--config", conf],
+                                   capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)
+                out, rc = (r.stderr or "").strip(), r.returncode
+            except (OSError, subprocess.SubprocessError) as e:
+                out, rc = "couldn't run the check (%s)" % type(e).__name__, 1
+            out = clean(" ".join(out.split()))[:400]
+            if rc != 0:
+                self.add(label, "FAIL", "the hub won't start with it: %s" % out,
+                         "fix it (every key: %s), check it again with: %s, then restart the hub" % (CONFIG_DOC, check))
+            elif out:
+                self.add(label, "WARN", "%s (mode %o): %s" % (_tilde(conf), mode, out),
+                         "fix it (every key: %s), then restart the hub" % CONFIG_DOC)
+            else:
+                self.add(label, "OK", "%s (mode %o): every key known, every value fine" % (_tilde(conf), mode))
 
     # -- PATH --------------------------------------------------------------
     def path(self) -> None:
@@ -6135,10 +6489,14 @@ def orca_usage(cfg: Config, quiet: bool = False, as_json: bool = False, dry_run:
     if not orca:
         complain("orca usage: the Orca CLI isn't on PATH (or NEEDS_YOU_ORCA_BIN); nothing sent")
         return 0
+    raw_timeout = _setting(cfg, "NEEDS_YOU_ORCA_TIMEOUT")
     try:
-        timeout = float(_setting(cfg, "NEEDS_YOU_ORCA_TIMEOUT") or ORCA_USAGE_TIMEOUT)
+        timeout = float(raw_timeout or ORCA_USAGE_TIMEOUT)
     except ValueError:
         timeout = ORCA_USAGE_TIMEOUT
+    if not quiet:
+        warn_bad_setting("NEEDS_YOU_ORCA_TIMEOUT", raw_timeout, "%g s" % min(max(timeout, 1.0), 60.0)
+                         if timeout == timeout else "%g s" % ORCA_USAGE_TIMEOUT)
     timeout = min(max(timeout, 1.0), 60.0) if timeout == timeout else ORCA_USAGE_TIMEOUT
     result, err = orca_run(orca, ["account", "list"], timeout=timeout)
     if result is None:
