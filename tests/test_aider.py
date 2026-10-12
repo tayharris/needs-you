@@ -20,6 +20,7 @@ import unittest
 from hook_case import BASH, HOOK, REAL_HOME, HookCase, opt
 from support import CLI, ROOT, free_port
 from test_cli_update import UpdateCase, current_files, read
+from timing import limit
 
 
 class AiderHook(HookCase):
@@ -44,7 +45,7 @@ class AiderHook(HookCase):
         finally:
             os.close(wfd)
         self.assertEqual((p.returncode, out, err), (0, b"", b""))
-        self.assertLess(time.time() - started, 5)
+        self.assertLess(time.time() - started, limit(5))
 
     def test_waiting_card(self):
         self.run_like_aider()

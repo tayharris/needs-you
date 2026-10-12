@@ -23,6 +23,7 @@ import unittest
 from hook_case import fixture, posted_item
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
+from timing import limit
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -77,7 +78,7 @@ class CopilotHook(unittest.TestCase):
         # Copilot parses stdout as the hook's JSON answer (a notification's additionalContext
         # would reach the model): it stays empty, and the hook doesn't hold Copilot up.
         self.assertEqual((r.stdout, r.stderr), ("", ""))
-        self.assertLess(time.time() - started, 5)
+        self.assertLess(time.time() - started, limit(5))
         return r
 
     def calls(self):

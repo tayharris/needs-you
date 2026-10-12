@@ -10,6 +10,7 @@ import unittest
 import urllib.parse
 
 from support import FakeClock, HubTestCase, hubmod, request, wait_until
+from timing import limit
 
 QUESTION = {"id": "toolu_01", "answerable": True, "items": [
     {"header": "Database", "text": "Which database?", "options": [
@@ -285,7 +286,7 @@ class AnswerSecurity(AnswerCase):
         started = time.time()
         status, err = request("GET", url, sender, timeout=10)
         self.assertEqual((status, err.get("error")), (429, "rate_limited"))
-        self.assertLess(time.time() - started, 1.5)  # refused at once, not held
+        self.assertLess(time.time() - started, limit(1.5))  # refused at once, not held
         t.join(10)
         self.assertEqual(first["r"][0], 204)
 

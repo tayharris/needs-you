@@ -17,6 +17,7 @@ import unittest
 
 from hook_case import choice_texts, fixture, has_opt, posted_item, step_texts
 from support import CLI, ROOT, hubmod, wait_until
+from timing import limit
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -570,7 +571,7 @@ class FailureTests(HookHarness):
                 started = time.time()
                 self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",
                                          "error_message": chunk * (100000 // len(chunk))})
-                self.assertLess(time.time() - started, 8)
+                self.assertLess(time.time() - started, limit(8))
 
     def test_stop_failure_card(self):
         self.run_hook("notify", {"hook_event_name": "StopFailure", "error_type": "rate_limit",

@@ -21,6 +21,7 @@ import unittest
 from hook_case import fixture, choice_texts
 from support import CLI, ROOT, HubTestCase, free_port, request, wait_until
 from test_cli_update import UpdateCase, current_files, read
+from timing import limit
 
 BASH = shutil.which("bash") or "/bin/bash"
 HOOK = os.path.join(ROOT, "integrations", "claude-code", "needs-you-hook.sh")
@@ -223,7 +224,7 @@ class CodexHook(CodexHookBase):
                 fh.write("#!/bin/sh\nsleep 5\n")
             os.chmod(slow, 0o755)
             self.run_hook(mode, {"hook_event_name": event, "reason": "other"}, NEEDS_YOU_BIN=slow)
-            self.assertLess(time.time() - started, 2.5, event)
+            self.assertLess(time.time() - started, limit(2.5), event)
             self.assertEqual(len(self.calls()), n)
             self.assertFalse(os.path.exists(os.path.join(self.state, "019a-codex-sess")))
 
