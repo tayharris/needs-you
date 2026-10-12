@@ -412,6 +412,8 @@ public enum ConnectError: Error, LocalizedError, Equatable {
     case http(status: Int, message: String?)
     case invalidResponse
     case tokenStore
+    /// The hub has no /v1/hub/update (it predates ADR 0013).
+    case hubTooOld
 
     public var errorDescription: String? {
         switch self {
@@ -433,6 +435,8 @@ public enum ConnectError: Error, LocalizedError, Equatable {
             return "The hub sent a response this app doesn't understand. Is it up to date?"
         case .tokenStore:
             return "Couldn't save the token to ~/Library/Application Support/NeedsYou/tokens.json."
+        case .hubTooOld:
+            return "This hub is too old to be asked to update. Update it once by hand (re-run install-hub.sh), or wait for its automatic update."
         }
     }
 }
@@ -579,6 +583,32 @@ public struct InviteClient: Sendable {
         let data = try await ownerRequest(method, path: "v1/tokens/" + id + "/request-update", hub: hub, token: token,
                                           notFound: .http(status: 404, message: "not on this hub, or the hub is too old to request updates"))
         return (try? JSONDecoder().decode(Body.self, from: data))?.at.flatMap(HubJSON.parseDate)
+    }
+
+    /// GET /v1/hub/update (ADR 0013): a server hub's version and update state. A hub that
+    /// predates it is `ConnectError.hubTooOld`.
+    public func hubUpdateStatus(hub: URL, token: String) async throws -> HubUpdateStatus {
+        let data = try await ownerRequest("GET", path: "v1/hub/update", hub: hub, token: token, notFound: .hubTooOld)
+        guard let status = try? JSONDecoder().decode(HubUpdateStatus.self, from: data) else { throw ConnectError.invalidResponse }
+        return status
+    }
+
+    /// POST /v1/hub/update: asks that hub to update now. No body: the request names nothing
+    /// (no URL, version or command); the hub's own checked updater does the work.
+    @discardableResult
+    public func requestHubUpdate(hub: URL, token: String) async throws -> HubUpdateStatus {
+        let data = try await ownerRequest("POST", path: "v1/hub/update", hub: hub, token: token, notFound: .hubTooOld)
+        guard let status = try? JSONDecoder().decode(HubUpdateStatus.self, from: data) else { throw ConnectError.invalidResponse }
+        return status
+    }
+
+    /// GET /v1/health without a token: the version of a hub too old for /v1/hub/update.
+    public func hubVersion(hub: URL) async throws -> String? {
+        guard HubTransportPolicy.allows(hub) else { throw ConnectError.httpNotAllowed(host: hub.host ?? hub.absoluteString) }
+        var request = URLRequest(url: hub.appendingPathComponent("v1/health"))
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let data = try await send(request, hub: hub, notFound: .hubTooOld)
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["version"] as? String
     }
 
     private func ownerRequest(_ method: String, path: String, hub: URL, token: String,

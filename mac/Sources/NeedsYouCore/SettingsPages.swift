@@ -96,7 +96,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .integrations:
             return "Cards from Linear, Jira, GitHub and expiry dates, the Terminal button, live updates, and sending usage meters."
         case .updates:
-            return "This app's version, automatic updates, and which machines are out of date."
+            return "This app's version, automatic updates, and which machines and hubs are out of date, with Request update for each."
         case .advanced:
             return "Reset the appearance and alerts, developer mode, and where settings and data are kept."
         }

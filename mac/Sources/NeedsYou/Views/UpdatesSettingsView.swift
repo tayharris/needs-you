@@ -1,12 +1,14 @@
 import NeedsYouCore
 import SwiftUI
 
-/// Settings → Updates: this app's version, the update checks and installs, and which
-/// sender machines are behind. Lives in the Settings window only, never in the panel.
+/// Settings → Updates: this app's version, the update checks and installs, and which sender
+/// machines and server hubs are behind, with Request update for each. Lives in the Settings
+/// window only, never in the panel.
 // settings-section: updates
 struct UpdatesSettingsView: View {
     @ObservedObject var updates: UpdateController
     @ObservedObject var connect: ConnectController
+    let settings: AppSettings
 
     var body: some View {
         Group {
@@ -35,7 +37,7 @@ struct UpdatesSettingsView: View {
             }
             versionSection
             settingsSection
-            SenderRolloutSection(updates: updates, connect: connect)
+            MachinesAndHubsSection(updates: updates, connect: connect, settings: settings)
         }
     }
 
@@ -169,43 +171,165 @@ struct UpdatesSettingsView: View {
     }
 }
 
-/// "2 of 5 machines out of date": sender tokens seen recently whose CLI is older than this
-/// app (each machine reports its versions on every request; GET /v1/tokens lists them).
-struct SenderRolloutSection: View {
+/// Machines and hubs (ADR 0013): each sender machine (GET /v1/tokens, as on Settings →
+/// Machines) and each server hub (the local hub's peers and other owner hubs, GET
+/// /v1/hub/update), its version and whether it's behind, Request update per row and Update all
+/// for the ones behind. Senders are judged against this app's version (what its hub serves on
+/// /dl); hubs against the newest release this app knows (they update from GitHub).
+struct MachinesAndHubsSection: View {
     @ObservedObject var updates: UpdateController
     @ObservedObject var connect: ConnectController
+    @StateObject private var fleet: HubFleetController
+    @State private var now = Date()
+
+    init(updates: UpdateController, connect: ConnectController, settings: AppSettings) {
+        self.updates = updates
+        self.connect = connect
+        _fleet = StateObject(wrappedValue: HubFleetController(settings: settings))
+    }
+
+    private var senderTarget: SemVer? { updates.current }
+    private var hubTarget: SemVer? { FleetTarget.newest(app: updates.current, seen: updates.decision?.seenVersion) }
+
+    private var accessBusy: Bool {
+        if case .working = connect.accessStatus { return true }
+        return false
+    }
 
     var body: some View {
         Section {
             if !connect.canInvite {
                 Text("Needs an owner token (the hub on this Mac has one).").font(.caption).foregroundStyle(.secondary)
             } else {
-                let status = RolloutStatus(tokens: connect.accessTokens, target: updates.current, now: Date())
+                let summary = FleetSummary(tokens: connect.accessTokens, senderTarget: senderTarget,
+                                           hubs: fleet.hubs, hubTarget: hubTarget, now: now)
                 HStack {
-                    Text(status.summary)
+                    Text(summary.text).fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Refresh") { connect.refreshAccess() }
-                }
-                ForEach(status.rows) { row in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.name)
-                            Text(row.detail).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if row.behind {
-                            Text("out of date").font(.caption).foregroundStyle(.orange)
-                        }
+                    Button("Refresh") { refresh() }
+                        .disabled(fleet.loading)
+                    Button(summary.updateAllCount > 0 ? "Update all (\(summary.updateAllCount))" : "Update all") {
+                        connect.requestUpdates(summary.tokensToAsk)
+                        let hubs = summary.hubsToAsk
+                        Task { await fleet.requestAll(hubs) }
                     }
+                    .disabled(summary.updateAllCount == 0 || accessBusy || !fleet.busy.isEmpty)
+                    .help("Asks every machine and hub that's behind to update: machines from this Mac's hub, hubs from GitHub with their own checks.")
+                }
+                ForEach(senderRows) { token in
+                    senderRow(token)
+                }
+                ForEach(fleet.hubs) { hub in
+                    hubRow(hub)
+                }
+                if let message = fleet.message {
+                    Text(message).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                if case .failure(let text) = connect.accessStatus {
+                    Text(text).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                } else if case .success(let text) = connect.accessStatus {
+                    Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
         } header: {
-            Text("Sender machines")
+            Text("Machines and hubs")
         } footer: {
-            Text("Senders update themselves from this Mac's hub once a day (needs-you update, run by the 5-minute flush). scripts/rollout.sh updates a list of SSH hosts at once.")
+            Text("Senders update themselves from this Mac's hub once a day (needs-you update, run by the 5-minute flush); Request update asks one to do it on its next call. Server hubs update themselves from GitHub every 6 hours; Request update asks one to do it now, with every check and without the wait after a release. scripts/rollout.sh updates a list of SSH hosts at once.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .onAppear { if connect.canInvite { connect.refreshAccess() } }
+        .task {
+            guard connect.canInvite else { return }
+            connect.refreshAccess()
+            while !Task.isCancelled {
+                now = Date()
+                await fleet.refresh()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+    }
+
+    private func refresh() {
+        connect.refreshAccess()
+        Task { await fleet.refresh() }
+    }
+
+    /// Sender machines seen in the last 14 days, the ones behind first.
+    private var senderRows: [TokenSummary] {
+        let status = RolloutStatus(tokens: connect.accessTokens, target: senderTarget, now: now)
+        let byID = Dictionary(connect.accessTokens.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return status.rows.compactMap { byID[$0.id] }
+    }
+
+    private func senderRow(_ token: TokenSummary) -> some View {
+        let row = RolloutStatus(tokens: [token], target: senderTarget, now: now).rows.first
+        return HStack {
+            Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(token.name)
+                Text(row?.detail ?? "").font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if row?.behind == true, token.updateRequestedAt == nil {
+                Text("out of date").font(.caption).foregroundStyle(.orange)
+            }
+            MachineUpdateButton(token: token, connect: connect)
+        }
+    }
+
+    private func hubRow(_ hub: FleetHub) -> some View {
+        let state = HubUpdateState(hub: hub, target: hubTarget)
+        return HStack(alignment: .top) {
+            Image(systemName: "server.rack").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(hub.name)
+                Text(hub.detail(now: now)).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                hubNote(state)
+            }
+            Spacer()
+            hubControl(hub, state: state)
+        }
+    }
+
+    @ViewBuilder
+    private func hubNote(_ state: HubUpdateState) -> some View {
+        switch state {
+        case .unknown(let why), .unavailable(let why):
+            Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        case .failed(let why):
+            Text("Last update failed: \(why)").font(.caption).foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        case .tooOld:
+            Text("Too old to be asked: re-run install-hub.sh on it once.").font(.caption).foregroundStyle(.secondary)
+        default:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func hubControl(_ hub: FleetHub, state: HubUpdateState) -> some View {
+        switch state {
+        case .current:
+            Text("Up to date").font(.caption).foregroundStyle(.secondary)
+        case .requested(let at):
+            Text(at.map { MachineUpdateState.requestedLabel($0, now: now) } ?? "Update requested")
+                .font(.caption).foregroundStyle(.secondary)
+        case .working(let text):
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(text).font(.caption).foregroundStyle(.secondary)
+            }
+        case .outdated, .failed:
+            Button("Request update") { Task { await fleet.request(hub) } }
+                .disabled(fleet.busy.contains(hub.id))
+                .help("Asks this hub to update now. Its own updater installs the newest checked release on its channel (sums, manifest, build provenance), without the wait after a release, and rolls back if it doesn't come up.")
+        case .unavailable, .tooOld:
+            Text("out of date").font(.caption).foregroundStyle(.orange)
+        case .unknown:
+            EmptyView()
+        }
     }
 }

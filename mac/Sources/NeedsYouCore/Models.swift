@@ -500,3 +500,80 @@ public enum HubJSON {
         return (wrapped.items, wrapped.serverTime.flatMap(parseDate), wrapped.more ?? false, next)
     }
 }
+
+// MARK: - Hub updates (ADR 0013)
+
+/// `GET`/`POST /v1/hub/update` (owner): a server hub's version, whether it can update itself on
+/// request, and how its updater's last run went. Every field is optional on the wire: an
+/// unknown `state` reads as `idle`, a wrong type drops that field.
+public struct HubUpdateStatus: Decodable, Equatable, Sendable {
+    public enum State: String, Sendable {
+        case idle, requested, checking, updating, updated, off, failed
+        case upToDate = "up_to_date"
+    }
+
+    public var version: String?
+    public var available: Bool
+    public var autoUpdate: Bool?
+    public var channel: String?
+    public var reason: String?
+    public var state: State
+    public var requestedAt: Date?
+    public var requested: Bool
+    public var startedAt: Date?
+    public var finishedAt: Date?
+    public var fromVersion: String?
+    public var target: String?
+    public var message: String?
+    public var nextRequestAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case version, available, channel, reason, state, requested, target, message
+        case autoUpdate = "auto_update"
+        case requestedAt = "requested_at"
+        case startedAt = "started_at"
+        case finishedAt = "finished_at"
+        case fromVersion = "from_version"
+        case nextRequestAt = "next_request_at"
+    }
+
+    public init(version: String?, available: Bool, state: State = .idle, reason: String? = nil,
+                requestedAt: Date? = nil, target: String? = nil, message: String? = nil,
+                finishedAt: Date? = nil, fromVersion: String? = nil, channel: String? = "stable") {
+        self.version = version
+        self.available = available
+        self.autoUpdate = available
+        self.channel = channel
+        self.reason = reason
+        self.state = state
+        self.requestedAt = requestedAt
+        self.requested = false
+        self.startedAt = nil
+        self.finishedAt = finishedAt
+        self.fromVersion = fromVersion
+        self.target = target
+        self.message = message
+        self.nextRequestAt = nil
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func string(_ k: CodingKeys) -> String? { ((try? c.decodeIfPresent(String.self, forKey: k)) ?? nil) }
+        func bool(_ k: CodingKeys) -> Bool? { ((try? c.decodeIfPresent(Bool.self, forKey: k)) ?? nil) }
+        func date(_ k: CodingKeys) -> Date? { string(k).flatMap(HubJSON.parseDate) }
+        version = string(.version)
+        available = bool(.available) ?? false
+        autoUpdate = bool(.autoUpdate)
+        channel = string(.channel)
+        reason = string(.reason)
+        state = string(.state).flatMap(State.init(rawValue:)) ?? .idle
+        requestedAt = date(.requestedAt)
+        requested = bool(.requested) ?? false
+        startedAt = date(.startedAt)
+        finishedAt = date(.finishedAt)
+        fromVersion = string(.fromVersion)
+        target = string(.target)
+        message = string(.message)
+        nextRequestAt = date(.nextRequestAt)
+    }
+}

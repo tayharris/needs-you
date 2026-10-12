@@ -62,8 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Self-update (docs/roadmap/rollout-updates.md). Checks and installs never activate
         // the app; Settings → Updates has the detail, the open panel's footer one quiet line.
         updates = UpdateController(defaults: settings.defaults, model: model)
-        let updates = self.updates!, connect = self.connect!
-        settingsWindow.extraSettings[.updates] = { AnyView(UpdatesSettingsView(updates: updates, connect: connect)) }
+        let updates = self.updates!, connect = self.connect!, appSettings = self.settings!
+        settingsWindow.extraSettings[.updates] = { AnyView(UpdatesSettingsView(updates: updates, connect: connect, settings: appSettings)) }
 
         panel = PanelController(model: model)
         menuBar = MenuBarController(model: model)

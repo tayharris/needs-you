@@ -57,6 +57,7 @@ let entries =
     + testEntries(UpdaterTests.self, UpdaterTests.allTests)
     + testEntries(RolloutStatusTests.self, RolloutStatusTests.allTests)
     + testEntries(MachineUpdateTests.self, MachineUpdateTests.allTests, async: MachineUpdateTests.asyncTests)
+    + testEntries(FleetUpdatesTests.self, FleetUpdatesTests.allTests, async: FleetUpdatesTests.asyncTests)
     + testEntries(PillContentTests.self, PillContentTests.allTests)
     + testEntries(PillMetricsTests.self, PillMetricsTests.allTests)
     + testEntries(PillNewCountTests.self, PillNewCountTests.allTests)
