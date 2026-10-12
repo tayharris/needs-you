@@ -250,6 +250,31 @@ class NextSteps(DoctorTestCase):
         self.assertTrue(checks["config"]["hint"].endswith(
             "then run: curl -fsSL <invite link>/install.sh | bash -s -- --yes"), checks["config"]["hint"])
         self.assertIn("config check above", checks["hubs"]["hint"])
+        # Never set up: the installer's one line puts it on PATH and adds the flush too, so
+        # those lines point at it instead of a hand fix each (a first run's doctor).
+        self.assertIn("invite installer", checks["path"]["hint"])
+        self.assertNotIn("ln -sf", checks["path"]["hint"])
+        if sys.platform != "darwin":  # an empty crontab (a stub: never this machine's own)
+            bindir = os.path.join(self.tmp, "emptycron")
+            os.makedirs(bindir)
+            with open(os.path.join(bindir, "crontab"), "w") as fh:
+                fh.write("#!/bin/sh\nexit 1\n")
+            os.chmod(os.path.join(bindir, "crontab"), 0o755)
+            r, data, checks = self.doctor_json(extra_env={"PATH": bindir + ":" + MINIMAL_PATH})
+        self.assertEqual(checks["flush schedule"]["status"], "WARN")
+        self.assertIn("invite installer", checks["flush schedule"]["hint"])
+        self.assertNotIn("<invite link>", checks["claude skill"]["hint"])
+
+    def test_just_installed_shell_is_info_not_warn(self):
+        """Right after the installer: the profile has the PATH line, only this shell lacks it."""
+        self.write_env(["NEEDS_YOU_URLS=%s" % self.hub.url, "NEEDS_YOU_TOKEN=%s" % self.sender])
+        os.makedirs(os.path.join(self.home, ".local", "bin"))
+        os.symlink(CLI, os.path.join(self.home, ".local", "bin", "needs-you"))
+        with open(os.path.join(self.home, ".zshrc"), "w") as fh:
+            fh.write('export PATH="$HOME/.local/bin:$PATH"  # added by needs-you\n')
+        r, data, checks = self.doctor_json(extra_env={"SHELL": "/bin/zsh"})
+        self.assertEqual(checks["path"]["status"], "INFO", checks["path"])
+        self.assertIn("open a new terminal", checks["path"]["hint"])
 
     def test_rejected_token_asks_for_a_new_link(self):
         bogus = "nyt_bogus_SECRET_VALUE_0123456789abcdef"
@@ -308,7 +333,9 @@ class NextSteps(DoctorTestCase):
         os.makedirs(os.path.join(self.home, ".local", "bin"))
         os.symlink(CLI, os.path.join(self.home, ".local", "bin", "needs-you"))
         r, data, checks = self.doctor_json(extra_env={"SHELL": "/bin/bash"})
-        self.assertIn(">> ~/.bashrc", checks["path"]["hint"])
+        # the profile the installer writes: ~/.bash_profile for bash on macOS
+        self.assertIn(">> ~/.bash_profile" if sys.platform == "darwin" else ">> ~/.bashrc",
+                      checks["path"]["hint"])
         self.assertIn("~/.local/bin/needs-you by its full path", checks["path"]["hint"])
 
     def test_hooks_rerun_the_installer_with_their_flag(self):
