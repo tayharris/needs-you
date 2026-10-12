@@ -444,7 +444,8 @@ struct SettingsView: View {
             }
             .disabled(settings.demoForcedByEnvironment)
             if settings.demoForcedByEnvironment {
-                Text("Demo mode is on via NEEDS_YOU_DEMO=1.").font(.caption).foregroundStyle(.secondary)
+                Text("On because the app was started with NEEDS_YOU_DEMO=1. Start it without that to turn demo mode off.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         } header: {
             Text("Demo")
@@ -755,8 +756,9 @@ struct SettingsView: View {
                 Button("Refresh") { connect.refreshAccess() }
                     .disabled(isWorking(connect.accessStatus))
             }
-            if connect.accessTokens.isEmpty {
-                Text("Press Refresh to list them.").font(.caption).foregroundStyle(.secondary)
+            if connect.accessTokens.isEmpty && !isWorking(connect.accessStatus) {
+                Text("Not listed yet. Press Refresh; if the hub can't be reached, the reason shows below.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(MachineRowText.ordered(connect.accessTokens)) { token in
                 MachineRow(token: token, connect: connect) { pendingRevoke = .token(token) }

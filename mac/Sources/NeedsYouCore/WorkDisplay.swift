@@ -39,7 +39,8 @@ public enum PreviewDisplay: String, CaseIterable, Sendable {
     }
 }
 
-/// Settings → Alerts → On the work screen: a click-through glow around that display's edge.
+/// Settings → Appearance → Alert style → Edge glow: a click-through glow around the edge of
+/// the display that Alerts → On the work screen picks.
 public enum EdgeGlowMode: String, CaseIterable, Sendable {
     case off
     case urgent
