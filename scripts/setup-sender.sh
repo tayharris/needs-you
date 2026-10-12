@@ -635,7 +635,8 @@ PY
     case "$code" in
       2??) info "posted test item to $HEALTHY (key setup:$HOST_SHORT:test)" ;;
       401|403) warn "test item refused (HTTP $code): the token isn't valid on $HEALTHY" ;;
-      *) warn "test item failed (HTTP $code): $(head -c 300 "$RESP_FILE" 2>/dev/null)" ;;
+      # The hub's reply, printable ASCII only and cut short: a reply is never written raw to the terminal.
+      *) warn "test item failed (HTTP $code): $(head -c 200 "$RESP_FILE" 2>/dev/null | LC_ALL=C tr -c ' -~' '?')" ;;
     esac
     rm -f "$RESP_FILE"
   fi
