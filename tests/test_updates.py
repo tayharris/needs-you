@@ -404,6 +404,12 @@ class HubUpdateRequests(HubTestCase):
         body = call_status("GET", self.url, self.owner)[1]
         self.assertEqual((body["state"], body["target"], body["from_version"]), ("failed", "0.5.1", "0.5.0"))
         self.assertNotIn("nyp_aaaa", body["message"])  # redacted like the access log
+        self.write_status(state="failed", started_at=now - 5000, finished_at=now,
+                          message="gh: HTTP 401 for ghp_" + "b" * 36 + " and github_pat_" + "c" * 30)
+        body = call_status("GET", self.url, self.owner)[1]
+        self.assertNotIn("ghp_bbbb", body["message"])
+        self.assertNotIn("github_pat_cccc", body["message"])
+        self.assertIn("<github-token>", body["message"])
         self.write_status(state="updating", started_at=now - 31 * 60 * 1000, target="0.5.1")
         body = call_status("GET", self.url, self.owner)[1]
         self.assertEqual(body["state"], "failed")

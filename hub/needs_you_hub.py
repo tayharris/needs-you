@@ -4411,6 +4411,9 @@ UPDATE_REQUEST_FILE = "hub-update-request"
 UPDATE_STATES = ("checking", "updating", "updated", "up_to_date", "off", "failed")
 UPDATE_STALE_MS = 30 * 60 * 1000
 _UPDATE_VERSION_RE = re.compile(r"^\d{1,6}\.\d{1,6}\.\d{1,6}$")
+# The updater scrubs its status line; this repeats it for GitHub tokens, should a file from an
+# older updater (or a hand-edited one) still hold one.
+_GITHUB_TOKEN_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})")
 
 
 class SelfUpdate:
@@ -4484,7 +4487,8 @@ class SelfUpdate:
         return {"state": state if state in UPDATE_STATES else None, "requested": raw.get("requested") is True,
                 "started_at": ms("started_at"), "finished_at": ms("finished_at"),
                 "from_version": ver("from_version"), "target": ver("target"),
-                "message": redact_log(msg[:300]) if isinstance(msg, str) and msg else None}
+                "message": redact_log(_GITHUB_TOKEN_RE.sub("<github-token>", msg))[:300]
+                if isinstance(msg, str) and msg else None}
 
     def pending_since(self) -> Optional[int]:
         """When the pending request was made, or None. Only a regular file counts."""
