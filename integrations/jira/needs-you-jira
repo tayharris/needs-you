@@ -203,6 +203,50 @@ def site_slug(host: str) -> str:
     return KEY_SAFE.sub("-", host)[:60] or "jira"
 
 
+# --- needs-you settings (begin) ---
+# The same in every poller (tests/test_config_reference.py checks): a value a setting doesn't
+# take is named on stderr with what it does take, and the default is used. Never the value
+# itself: one may be a secret pasted into the wrong line. docs/guides/configuration.md lists
+# every setting.
+def setting_num(get: Any, name: str, default: Any, low: float, high: Optional[float] = None,
+                whole: bool = False) -> Any:
+    raw = (get(name) or "").strip()
+    if not raw:
+        return default
+    what = ("a whole number" if whole else "a number") + (
+        " of at least %g" % low if high is None else " from %g to %g" % (low, high))
+    try:
+        v = float(raw)
+    except ValueError:
+        v = float("nan")
+    if v != v or v in (float("inf"), float("-inf")) or (whole and not v.is_integer()):
+        warn("%s takes %s; using %g" % (name, what, default))
+        return default
+    if v < low or (high is not None and v > high):
+        v = max(low, v) if high is None else min(max(low, v), high)
+        warn("%s takes %s; using %g" % (name, what, v))
+    return int(v) if whole else v
+
+
+def setting_choice(get: Any, name: str, default: str, choices: Tuple[str, ...]) -> str:
+    raw = (get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw not in choices:
+        warn("%s takes one of %s; using %s" % (name, ", ".join(choices), default))
+        return default
+    return raw
+
+
+def setting_items(name: str, bad: int, what: str) -> None:
+    """`bad` items of a comma-separated setting weren't `what`: they're ignored."""
+    if bad:
+        warn("%s: %d item%s %s %s, so %s ignored" % (name, bad, "" if bad == 1 else "s",
+                                                    "isn't" if bad == 1 else "aren't", what,
+                                                    "it's" if bad == 1 else "they're"))
+# --- needs-you settings (end) ---
+
+
 class Config:
     def __init__(self) -> None:
         if os.environ.get("NEEDS_YOU_CONFIG"):
@@ -212,8 +256,7 @@ class Config:
         f = read_env_file(path)
         get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
         self.errors: List[str] = []
-        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
-        self.default_context = ctx if ctx in ("work", "personal") else "work"
+        self.default_context = setting_choice(get, "NEEDS_YOU_DEFAULT_CONTEXT", "work", ("work", "personal"))
         self.host = get("NEEDS_YOU_HOST") or socket.gethostname().split(".")[0]
         local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
         self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
@@ -256,10 +299,14 @@ class Config:
             self.errors.append("NEEDS_YOU_JIRA_CA_FILE is not a file: %s" % self.ca_file)
 
         raw = [EVENT_ALIASES.get(e.lower(), e.lower()) for e in _csv(get("NEEDS_YOU_JIRA_EVENTS"))]
+        what = "an event (%s)" % ", ".join(ALL_EVENTS)
         if raw and all(e.startswith("-") for e in raw):
             off = {EVENT_ALIASES.get(e[1:], e[1:]) for e in raw}
+            setting_items("NEEDS_YOU_JIRA_EVENTS", len(off - set(ALL_EVENTS)), "-" + what)
             self.events = {e for e in ALL_EVENTS if e not in off}
         elif raw:
+            setting_items("NEEDS_YOU_JIRA_EVENTS", sum(1 for e in raw if e not in ALL_EVENTS),
+                          what + " (or only -event items, to turn some off)")
             self.events = {e for e in raw if e in ALL_EVENTS}
         else:
             self.events = set(ALL_EVENTS)
@@ -297,14 +344,8 @@ class Config:
             self.jql_extra = ""
             self.errors.append(str(e))
         self.watching = get("NEEDS_YOU_JIRA_WATCHING", "0").strip().lower() in ("1", "true", "yes", "on")
-        try:
-            self.interval_min = max(1.0, float(get("NEEDS_YOU_JIRA_INTERVAL", "5")))
-        except ValueError:
-            self.interval_min = 5.0
-        try:
-            self.max_cards = max(1, int(get("NEEDS_YOU_JIRA_MAX_CARDS", "20")))
-        except ValueError:
-            self.max_cards = 20
+        self.interval_min = setting_num(get, "NEEDS_YOU_JIRA_INTERVAL", 5.0, 1)
+        self.max_cards = setting_num(get, "NEEDS_YOU_JIRA_MAX_CARDS", 20, 1, whole=True)
 
     def scope(self) -> str:
         """What decides which issues are tracked: when it changes, new issues are taken in

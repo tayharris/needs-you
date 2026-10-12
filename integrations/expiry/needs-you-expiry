@@ -148,25 +148,70 @@ def link_ok(url: str) -> bool:
     return (len(url) <= 2000 and bool(LINK_RAW_RE.fullmatch(url)) and bool(HTTPS_HOST_RE.match(url)))
 
 
-def parse_thresholds(raw: str) -> List[Tuple[float, str]]:
-    """'30=low,7=normal,1=urgent' -> [(1, urgent), (7, normal), (30, low)], nearest first."""
+def parse_thresholds(raw: str, name: str = "") -> List[Tuple[float, str]]:
+    """'30=low,7=normal,1=urgent' -> [(1, urgent), (7, normal), (30, low)], nearest first.
+    With `name`, items that aren't days=priority are named on stderr."""
     out: Dict[float, str] = {}
+    bad = 0
     for part in (raw or "").split(","):
+        if not part.strip():
+            continue
         days, _, prio = part.strip().partition("=")
         try:
             d = float(days)
         except ValueError:
-            continue
+            d = 0.0
         if d > 0 and prio.strip().lower() in PRIORITIES:
             out[d] = prio.strip().lower()
+        else:
+            bad += 1
+    if name:
+        setting_items(name, bad, "days=urgent|normal|low with days above 0")
     return sorted(out.items()) or parse_thresholds(DEFAULT_DAYS)
 
 
-def _int(get: Any, name: str, default: int, low: int) -> int:
-    try:
-        return max(low, int(get(name, str(default))))
-    except ValueError:
+# --- needs-you settings (begin) ---
+# The same in every poller (tests/test_config_reference.py checks): a value a setting doesn't
+# take is named on stderr with what it does take, and the default is used. Never the value
+# itself: one may be a secret pasted into the wrong line. docs/guides/configuration.md lists
+# every setting.
+def setting_num(get: Any, name: str, default: Any, low: float, high: Optional[float] = None,
+                whole: bool = False) -> Any:
+    raw = (get(name) or "").strip()
+    if not raw:
         return default
+    what = ("a whole number" if whole else "a number") + (
+        " of at least %g" % low if high is None else " from %g to %g" % (low, high))
+    try:
+        v = float(raw)
+    except ValueError:
+        v = float("nan")
+    if v != v or v in (float("inf"), float("-inf")) or (whole and not v.is_integer()):
+        warn("%s takes %s; using %g" % (name, what, default))
+        return default
+    if v < low or (high is not None and v > high):
+        v = max(low, v) if high is None else min(max(low, v), high)
+        warn("%s takes %s; using %g" % (name, what, v))
+    return int(v) if whole else v
+
+
+def setting_choice(get: Any, name: str, default: str, choices: Tuple[str, ...]) -> str:
+    raw = (get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw not in choices:
+        warn("%s takes one of %s; using %s" % (name, ", ".join(choices), default))
+        return default
+    return raw
+
+
+def setting_items(name: str, bad: int, what: str) -> None:
+    """`bad` items of a comma-separated setting weren't `what`: they're ignored."""
+    if bad:
+        warn("%s: %d item%s %s %s, so %s ignored" % (name, bad, "" if bad == 1 else "s",
+                                                    "isn't" if bad == 1 else "aren't", what,
+                                                    "it's" if bad == 1 else "they're"))
+# --- needs-you settings (end) ---
 
 
 class Config:
@@ -175,20 +220,14 @@ class Config:
         f = read_env_file(path)
         get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
         self.list_path = get("NEEDS_YOU_EXPIRY_CONFIG") or os.path.join(os.path.dirname(path), "expiry.conf")
-        ctx = get("NEEDS_YOU_EXPIRY_CONTEXT") or get("NEEDS_YOU_DEFAULT_CONTEXT", "work")
-        ctx = ctx.strip().lower()
-        self.context = ctx if ctx in ("work", "personal") else "work"
-        self.thresholds = parse_thresholds(get("NEEDS_YOU_EXPIRY_DAYS", DEFAULT_DAYS))
-        self.fails_before_card = _int(get, "NEEDS_YOU_EXPIRY_FAILS", 2, 1)
-        self.max_cards = _int(get, "NEEDS_YOU_EXPIRY_MAX_CARDS", 20, 1)
-        try:
-            self.interval_h = max(1.0, float(get("NEEDS_YOU_EXPIRY_INTERVAL", "24")))
-        except ValueError:
-            self.interval_h = 24.0
-        try:
-            self.timeout = min(60.0, max(1.0, float(get("NEEDS_YOU_EXPIRY_TIMEOUT", "10"))))
-        except ValueError:
-            self.timeout = 10.0
+        contexts = ("work", "personal")
+        self.context = setting_choice(get, "NEEDS_YOU_EXPIRY_CONTEXT",
+                                      setting_choice(get, "NEEDS_YOU_DEFAULT_CONTEXT", "work", contexts), contexts)
+        self.thresholds = parse_thresholds(get("NEEDS_YOU_EXPIRY_DAYS", DEFAULT_DAYS), "NEEDS_YOU_EXPIRY_DAYS")
+        self.fails_before_card = setting_num(get, "NEEDS_YOU_EXPIRY_FAILS", 2, 1, whole=True)
+        self.max_cards = setting_num(get, "NEEDS_YOU_EXPIRY_MAX_CARDS", 20, 1, whole=True)
+        self.interval_h = setting_num(get, "NEEDS_YOU_EXPIRY_INTERVAL", 24.0, 1)
+        self.timeout = setting_num(get, "NEEDS_YOU_EXPIRY_TIMEOUT", 10.0, 1, 60)
         # Tests point this at a loopback http server; then (only then) RDAP servers on
         # loopback http are allowed too. Anything else must be https.
         self.bootstrap_url = get("NEEDS_YOU_EXPIRY_RDAP_BOOTSTRAP", BOOTSTRAP_URL)

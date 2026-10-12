@@ -155,6 +155,50 @@ def _max_prio(*ps: str) -> str:
     return max((p for p in ps if p in PRIORITIES), key=PRIORITIES.index, default="low")
 
 
+# --- needs-you settings (begin) ---
+# The same in every poller (tests/test_config_reference.py checks): a value a setting doesn't
+# take is named on stderr with what it does take, and the default is used. Never the value
+# itself: one may be a secret pasted into the wrong line. docs/guides/configuration.md lists
+# every setting.
+def setting_num(get: Any, name: str, default: Any, low: float, high: Optional[float] = None,
+                whole: bool = False) -> Any:
+    raw = (get(name) or "").strip()
+    if not raw:
+        return default
+    what = ("a whole number" if whole else "a number") + (
+        " of at least %g" % low if high is None else " from %g to %g" % (low, high))
+    try:
+        v = float(raw)
+    except ValueError:
+        v = float("nan")
+    if v != v or v in (float("inf"), float("-inf")) or (whole and not v.is_integer()):
+        warn("%s takes %s; using %g" % (name, what, default))
+        return default
+    if v < low or (high is not None and v > high):
+        v = max(low, v) if high is None else min(max(low, v), high)
+        warn("%s takes %s; using %g" % (name, what, v))
+    return int(v) if whole else v
+
+
+def setting_choice(get: Any, name: str, default: str, choices: Tuple[str, ...]) -> str:
+    raw = (get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw not in choices:
+        warn("%s takes one of %s; using %s" % (name, ", ".join(choices), default))
+        return default
+    return raw
+
+
+def setting_items(name: str, bad: int, what: str) -> None:
+    """`bad` items of a comma-separated setting weren't `what`: they're ignored."""
+    if bad:
+        warn("%s: %d item%s %s %s, so %s ignored" % (name, bad, "" if bad == 1 else "s",
+                                                    "isn't" if bad == 1 else "aren't", what,
+                                                    "it's" if bad == 1 else "they're"))
+# --- needs-you settings (end) ---
+
+
 class Config:
     def __init__(self) -> None:
         if os.environ.get("NEEDS_YOU_CONFIG"):
@@ -168,46 +212,55 @@ class Config:
         self.key_file = get("NEEDS_YOU_LINEAR_KEY_FILE") or (default_key if os.path.lexists(default_key) else "")
         self.key_file = os.path.expanduser(self.key_file)
         self.key_env = "" if self.key_file else os.environ.get("NEEDS_YOU_LINEAR_KEY", "")
-        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
-        self.default_context = ctx if ctx in ("work", "personal") else "work"
+        self.default_context = setting_choice(get, "NEEDS_YOU_DEFAULT_CONTEXT", "work", ("work", "personal"))
 
         raw = [r.lower() for r in _csv(get("NEEDS_YOU_LINEAR_CATEGORIES"))]
+        what = "a category (%s)" % ", ".join(EVENTS)
         if raw and all(r.startswith("-") for r in raw):
             off = {EVENT_ALIASES.get(r[1:], "") for r in raw}
+            setting_items("NEEDS_YOU_LINEAR_CATEGORIES", sum(1 for r in raw if r[1:] not in EVENT_ALIASES),
+                          "-" + what)
             self.events = {e for e in EVENTS if e not in off}
         elif raw:
+            setting_items("NEEDS_YOU_LINEAR_CATEGORIES", sum(1 for r in raw if r not in EVENT_ALIASES),
+                          what + " (or only -category items, to turn some off)")
             self.events = {EVENT_ALIASES[r] for r in raw if r in EVENT_ALIASES}
         else:
             self.events = set(EVENTS)
 
         self.statuses: Dict[str, str] = {}
+        bad = 0
         for pair in _csv(get("NEEDS_YOU_LINEAR_STATUSES")):
             name, _, p = pair.rpartition("=")
             p = p.strip().lower()
             if name.strip() and (p in PRIORITIES or p == "off"):
                 self.statuses[name.strip().lower()] = p
+            else:
+                bad += 1
+        setting_items("NEEDS_YOU_LINEAR_STATUSES", bad, "Name=urgent|normal|low|off")
 
         self.teams: Dict[str, Tuple[str, str]] = {}
+        bad = 0
         for pair in _csv(get("NEEDS_YOU_LINEAR_TEAMS")):
             team, _, rest = pair.partition("=")
             c, p = self.default_context, "low"
-            for part in rest.split(":"):
+            ok = bool(team.strip())
+            for part in rest.split(":") if rest.strip() else []:
                 part = part.strip().lower()
                 if part in ("work", "personal"):
                     c = part
                 elif part in PRIORITIES:
                     p = part
+                else:
+                    ok = False
+            bad += not ok
             if team.strip():
                 self.teams[team.strip().upper()] = (c, p)
+        setting_items("NEEDS_YOU_LINEAR_TEAMS", bad, "KEY=work|personal:urgent|normal|low")
 
-        def num(name: str, default: float, low: float) -> float:
-            try:
-                return max(low, float(get(name, str(default))))
-            except ValueError:
-                return default
-        self.interval_min = num("NEEDS_YOU_LINEAR_INTERVAL", 5, 1)
-        self.max_cards = int(num("NEEDS_YOU_LINEAR_MAX_CARDS", 20, 1))
-        self.max_age_s = num("NEEDS_YOU_LINEAR_MAX_AGE_H", 24, 1) * 3600
+        self.interval_min = setting_num(get, "NEEDS_YOU_LINEAR_INTERVAL", 5.0, 1)
+        self.max_cards = setting_num(get, "NEEDS_YOU_LINEAR_MAX_CARDS", 20, 1, whole=True)
+        self.max_age_s = setting_num(get, "NEEDS_YOU_LINEAR_MAX_AGE_H", 24.0, 1) * 3600
         self.api = get("NEEDS_YOU_LINEAR_API", API_URL)
         local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
         self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")

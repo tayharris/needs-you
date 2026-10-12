@@ -156,6 +156,50 @@ def _csv(value: str) -> List[str]:
     return [p.strip() for p in (value or "").split(",") if p.strip()]
 
 
+# --- needs-you settings (begin) ---
+# The same in every poller (tests/test_config_reference.py checks): a value a setting doesn't
+# take is named on stderr with what it does take, and the default is used. Never the value
+# itself: one may be a secret pasted into the wrong line. docs/guides/configuration.md lists
+# every setting.
+def setting_num(get: Any, name: str, default: Any, low: float, high: Optional[float] = None,
+                whole: bool = False) -> Any:
+    raw = (get(name) or "").strip()
+    if not raw:
+        return default
+    what = ("a whole number" if whole else "a number") + (
+        " of at least %g" % low if high is None else " from %g to %g" % (low, high))
+    try:
+        v = float(raw)
+    except ValueError:
+        v = float("nan")
+    if v != v or v in (float("inf"), float("-inf")) or (whole and not v.is_integer()):
+        warn("%s takes %s; using %g" % (name, what, default))
+        return default
+    if v < low or (high is not None and v > high):
+        v = max(low, v) if high is None else min(max(low, v), high)
+        warn("%s takes %s; using %g" % (name, what, v))
+    return int(v) if whole else v
+
+
+def setting_choice(get: Any, name: str, default: str, choices: Tuple[str, ...]) -> str:
+    raw = (get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw not in choices:
+        warn("%s takes one of %s; using %s" % (name, ", ".join(choices), default))
+        return default
+    return raw
+
+
+def setting_items(name: str, bad: int, what: str) -> None:
+    """`bad` items of a comma-separated setting weren't `what`: they're ignored."""
+    if bad:
+        warn("%s: %d item%s %s %s, so %s ignored" % (name, bad, "" if bad == 1 else "s",
+                                                    "isn't" if bad == 1 else "aren't", what,
+                                                    "it's" if bad == 1 else "they're"))
+# --- needs-you settings (end) ---
+
+
 class Config:
     def __init__(self) -> None:
         if os.environ.get("NEEDS_YOU_CONFIG"):
@@ -167,46 +211,50 @@ class Config:
         get = lambda k, d="": os.environ.get(k) or f.get(k) or d  # noqa: E731
         self.include = [s.lower() for s in _csv(get("NEEDS_YOU_GITHUB_INCLUDE"))]
         self.exclude = [s.lower() for s in _csv(get("NEEDS_YOU_GITHUB_EXCLUDE"))]
-        ctx = get("NEEDS_YOU_DEFAULT_CONTEXT", "work").strip().lower()
-        self.default_context = ctx if ctx in ("work", "personal") else "work"
+        self.default_context = setting_choice(get, "NEEDS_YOU_DEFAULT_CONTEXT", "work", ("work", "personal"))
         self.contexts: Dict[str, str] = {}
+        bad = 0
         for pair in _csv(get("NEEDS_YOU_GITHUB_CONTEXTS")):
             owner, _, c = pair.partition("=")
-            if c.strip().lower() in ("work", "personal"):
+            if c.strip().lower() in ("work", "personal") and owner.strip():
                 self.contexts[owner.strip().lower()] = c.strip().lower()
+            else:
+                bad += 1
+        setting_items("NEEDS_YOU_GITHUB_CONTEXTS", bad, "owner=work or owner=personal")
         raw = _csv(get("NEEDS_YOU_GITHUB_REASONS"))
         if raw and all(r.startswith("-") for r in raw):
             off = {r[1:].lower() for r in raw}
+            setting_items("NEEDS_YOU_GITHUB_REASONS", len(off - set(ALL_REASONS)),
+                          "-reason (reasons: %s)" % ", ".join(ALL_REASONS))
             self.reasons = {r for r in ALL_REASONS if r not in off}
         elif raw:
             self.reasons = {r.lower() for r in raw if r.lower() in ALL_REASONS}
+            setting_items("NEEDS_YOU_GITHUB_REASONS", sum(1 for r in raw if r.lower() not in ALL_REASONS),
+                          "a reason (%s; or only -reason items, to turn some off)" % ", ".join(ALL_REASONS))
         else:
             self.reasons = set(ALL_REASONS)
-        try:
-            self.interval_min = max(1.0, float(get("NEEDS_YOU_GITHUB_INTERVAL", "5")))
-        except ValueError:
-            self.interval_min = 5.0
-        try:
-            self.pr_days = max(1, int(get("NEEDS_YOU_GITHUB_PR_DAYS", "14")))
-        except ValueError:
-            self.pr_days = 14
-        try:
-            self.max_cards = max(1, int(get("NEEDS_YOU_GITHUB_MAX_CARDS", "20")))
-        except ValueError:
-            self.max_cards = 20
+        self.interval_min = setting_num(get, "NEEDS_YOU_GITHUB_INTERVAL", 5.0, 1)
+        self.pr_days = setting_num(get, "NEEDS_YOU_GITHUB_PR_DAYS", 14, 1, whole=True)
+        self.max_cards = setting_num(get, "NEEDS_YOU_GITHUB_MAX_CARDS", 20, 1, whole=True)
         # Projects statuses: "Blocked=urgent,In Review" -> {"blocked": ("Blocked", "urgent"), ...}
         self.project_statuses: Dict[str, Tuple[str, str]] = {}
+        bad = 0
         for pair in _csv(get("NEEDS_YOU_GITHUB_PROJECT_STATUSES")):
             name, _, prio = pair.rpartition("=") if "=" in pair else (pair, "", "normal")
             name, prio = " ".join(name.split()), prio.strip().lower()
+            if prio not in PRIORITIES:
+                bad += 1
             if name:
                 self.project_statuses[name.lower()] = (name, prio if prio in PRIORITIES else "normal")
+        setting_items("NEEDS_YOU_GITHUB_PROJECT_STATUSES", bad,
+                      "Name or Name=urgent|normal|low (a bad priority is normal)")
         self.project_field = " ".join(get("NEEDS_YOU_GITHUB_PROJECT_FIELD", "Status").split()) or "Status"
         self.security = get("NEEDS_YOU_GITHUB_SECURITY").strip().lower() in ("1", "true", "yes", "on")
         sev = [s.lower() for s in _csv(get("NEEDS_YOU_GITHUB_SECURITY_SEVERITIES", "critical"))]
+        setting_items("NEEDS_YOU_GITHUB_SECURITY_SEVERITIES", sum(1 for s in sev if s not in SEVERITIES),
+                      "a severity (%s)" % ", ".join(SEVERITIES))
         self.security_severities = [s for s in SEVERITIES if s in sev] or ["critical"]
-        prio = get("NEEDS_YOU_GITHUB_SECURITY_PRIORITY", "low").strip().lower()
-        self.security_priority = prio if prio in PRIORITIES else "low"
+        self.security_priority = setting_choice(get, "NEEDS_YOU_GITHUB_SECURITY_PRIORITY", "low", tuple(PRIORITIES))
         self.gh = get("NEEDS_YOU_GITHUB_GH") or shutil.which("gh") or ""
         local = os.path.join(os.path.expanduser("~"), ".local", "bin", "needs-you")
         self.cli = get("NEEDS_YOU_BIN") or shutil.which("needs-you") or (local if os.path.exists(local) else "")
