@@ -2879,6 +2879,18 @@ case "$mode" in
     # Cline: a task starts or resumes (a new task has a new taskId): the finished cards of
     # earlier tasks in the same Cline (the lease's process) no longer apply.
     [ "$agent" = cline ] && resolve_marker "$marker"
+    # A new agent process in the same Orca pane (the handle names the pane, so every session
+    # there shares one key): the card the earlier process left (it was killed, or is
+    # suspended) was about a session that is over here. The earlier session's SessionEnd, when
+    # it came, already resolved it; a card of this process's own stays.
+    if [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && [ -f "$marker" ]; then
+      lease
+      if [ -n "$lease_pid" ] &&
+         { [ "$(sed -n 's/^pid=//p' "$marker" 2>/dev/null)" != "$lease_pid" ] ||
+           [ "$(sed -n 's/^start=//p' "$marker" 2>/dev/null)" != "$lease_start" ]; }; then
+        resolve_marker "$marker" "$key"
+      fi
+    fi
     case "$agent:$(json_str source)" in
       *:clear|*:compact|*:resume|cline:*)
         # A new conversation in the same Claude process: cards from before it
