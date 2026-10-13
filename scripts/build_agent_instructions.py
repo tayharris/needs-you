@@ -46,6 +46,8 @@ REWRITES = [
      "in Claude Code, including \"Other\" (the person's own words, typed on the Mac, reach you as the "
      "answer like a typed \"Other\" in the terminal), so prefer it over asking in plain text when there "
      "are a few clear choices.", ""),
+    # The skill's slash form is Claude Code's.
+    (" Invoked as the `/needs-you` command with the argument critical, do the same; with normal, undo it.", ""),
 ]
 
 
