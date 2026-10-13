@@ -152,6 +152,14 @@ STATUS_SECRET_RE = re.compile(r"(?:\bny[ip]?_[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z
                               r"|glpat-[\w-]{16,}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}"
                               r"|\b[0-9A-Fa-f]{32,}\b)")
 _KEY_RUN_RE = re.compile(r"[A-Za-z0-9+/_=-]{32,}")
+# Notes (ADR 0014, docs/API.md "Notes"): one markdown document per hub cluster, replicated,
+# never purged. Readers replace it (with base_rev), senders only append a line to a section.
+NOTES_ID = "nt_main"
+MAX_NOTES_TEXT = 12000
+MAX_NOTES_LINE = 300
+NOTES_SECTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 '&/._-]{0,39}\Z")
+NOTES_DEFAULT_SECTION = "Inbox"
+_NOTES_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)[ \t#]*$")
 # GET /v1/items/answer holds a request at most this long while there is no answer.
 ANSWER_WAIT_MAX_SECONDS = 25.0
 MAX_REQUEST_BYTES = 64 * 1024
@@ -988,6 +996,86 @@ def validate_status_input(data: Any, now_ms: int) -> Dict[str, Any]:
     return out
 
 
+def _notes_secret_check(text: str, path: str) -> None:
+    if STATUS_SECRET_RE.search(text) or OWN_SECRET_RE.search(text):
+        raise ApiError(400, "secret_in_text", "%s looks like it contains a token or key; notes never "
+                       "carry secrets" % path, path)
+
+
+def validate_notes_text(raw: Any, path: str = "text") -> str:
+    """A whole notes document: markdown, line breaks and tabs allowed, nothing else from the
+    control range, no bidi or line separator characters, nothing token-shaped."""
+    if not isinstance(raw, str):
+        raise _invalid(path, "%s must be a string" % path)
+    text = raw.replace("\r\n", "\n").replace("\r", "\n")
+    if len(text) > MAX_NOTES_TEXT:
+        raise _invalid(path, "%s is longer than %d characters" % (path, MAX_NOTES_TEXT))
+    if _CTRL_RE.search(text) or _SPOOF_RE.search(text) or _LINE_SEP_RE.search(text):
+        raise _invalid(path, "%s contains control characters" % path)
+    _notes_secret_check(text, path)
+    return text
+
+
+def validate_notes_append(data: Any) -> Dict[str, Any]:
+    """A POST /v1/notes/append body: {"text": one line, "section"?: name, "check"?: bool}."""
+    if not isinstance(data, dict):
+        raise ApiError(400, "invalid", "body must be a JSON object")
+    line = _str_field(data, "text", MAX_NOTES_LINE, required=True)
+    if _LINE_SEP_RE.search(line):
+        raise _invalid("text", "text contains a line break (U+2028/U+2029)")
+    _notes_secret_check(line, "text")
+    section = data.get("section")
+    section = NOTES_DEFAULT_SECTION if section is None else section
+    if not isinstance(section, str) or not NOTES_SECTION_RE.match(section.strip()):
+        raise _invalid("section", "section is 1-40 letters, digits, spaces and ' & / . _ -")
+    check = data.get("check", True)
+    if not isinstance(check, bool):
+        raise _invalid("check", "check must be true or false")
+    return {"text": line, "section": section.strip(), "check": check}
+
+
+def notes_append_line(doc: str, line: str, section: str, check: bool = True) -> str:
+    """`doc` with `line` added as the last entry under the heading `section` (any level, case
+    ignored, outside code fences), or under a new `## section` at the end."""
+    entry = ("- [ ] " if check else "- ") + line
+    lines = doc.split("\n") if doc else []
+    fence = False
+    start = level = -1
+    end = len(lines)
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+            continue
+        m = None if fence else _NOTES_HEADING_RE.match(ln)
+        if not m:
+            continue
+        if start < 0:
+            if m.group(2).strip().casefold() == section.casefold():
+                start, level = i, len(m.group(1))
+        elif len(m.group(1)) <= level:
+            end = i
+            break
+    if start < 0:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        return "\n".join(lines + ([""] if lines else []) + ["## " + section, entry]) + "\n"
+    at = start + 1
+    for i in range(start + 1, end):
+        if lines[i].strip():
+            at = i + 1
+    lines.insert(at, entry)
+    out = "\n".join(lines)
+    return out if out.endswith("\n") else out + "\n"
+
+
+def notes_rev(rec: Optional[Dict[str, Any]]) -> str:
+    """The document's revision: "" while there is none, else a hash of the text and the write."""
+    if not rec:
+        return ""
+    raw = "%s\n%s\n%s" % (rec["updated_at"], rec.get("updated_by") or "", rec["text"])
+    return "r" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -1439,6 +1527,19 @@ CREATE INDEX IF NOT EXISTS status_seq ON status(seq);
 CREATE INDEX IF NOT EXISTS status_expires ON status(expires_at);
 CREATE INDEX IF NOT EXISTS status_token ON status(token_id, expires_at);
 """,
+    # 12: notes (ADR 0014): one markdown document (id nt_main), replicated LWW, never purged.
+    """
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  text TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  seq INTEGER NOT NULL,
+  local_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS notes_seq ON notes(seq);
+""",
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 DB_BACKUPS_KEPT = 2
@@ -1451,6 +1552,7 @@ TOKEN_COLS = ("id", "name", "role", "hash", "created_at", "updated_at", "revoked
               "updated_by", "seq")
 STATUS_COLS = ("id", "token_id", "key", "type", "label", "state", "progress", "detail", "usage", "source",
                "created_at", "updated_at", "expires_at", "updated_by", "seq", "local_at")
+NOTES_COLS = ("id", "text", "created_at", "updated_at", "updated_by", "seq", "local_at")
 INVITE_COLS = ("id", "name", "role", "hash", "uses", "used", "created_at", "expires_at",
                "revoked_at", "created_by", "updated_at", "updated_by", "seq")
 
@@ -2123,11 +2225,17 @@ class Store:
 
     def changes_with_status(self, after: int, limit: int) -> Tuple[
             List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], int, bool]:
-        """Every record stored after `after` in seq order (items, tokens, invites, statuses)."""
+        items, toks, invs, sts, _notes, next_after, more = self.changes_every(after, limit)
+        return items, toks, invs, sts, next_after, more
+
+    def changes_every(self, after: int, limit: int) -> Tuple[
+            List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]],
+            List[Dict[str, Any]], int, bool]:
+        """Every record stored after `after` in seq order (items, tokens, invites, statuses, notes)."""
         with self.lock:
             rows = []
             for kind, table in (("item", "items"), ("token", "tokens"), ("invite", "invites"),
-                                ("status", "status")):
+                                ("status", "status"), ("note", "notes")):
                 # Peer invites name this hub and stay on it (ADR 0012); an older peer would
                 # also hold replication on their unknown role.
                 local = " AND role != 'peer'" if kind == "invite" else ""
@@ -2140,7 +2248,7 @@ class Store:
         next_after = merged[-1][1]["seq"] if merged else after
         return ([r for k, r in merged if k == "item"], [r for k, r in merged if k == "token"],
                 [r for k, r in merged if k == "invite"], [r for k, r in merged if k == "status"],
-                next_after, more)
+                [r for k, r in merged if k == "note"], next_after, more)
 
     # -- statuses (ADR 0011) ---------------------------------------------
 
@@ -2240,6 +2348,73 @@ class Store:
                 if row:  # deleted by housekeeping: not sent
                     out.append(dict(row))
         return out
+
+    # -- notes (ADR 0014) ------------------------------------------------
+
+    def _write_notes(self, rec: Dict[str, Any]) -> None:
+        rec = dict(rec)
+        rec["seq"] = self.next_seq()
+        rec["local_at"] = self.now_ms()
+        self.conn.execute("INSERT OR REPLACE INTO notes(%s) VALUES(%s)"
+                          % (",".join(NOTES_COLS), ",".join("?" for _ in NOTES_COLS)),
+                          tuple(rec.get(c) for c in NOTES_COLS))
+
+    def get_notes(self) -> Optional[Dict[str, Any]]:
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM notes WHERE id = ?", (NOTES_ID,)).fetchone()
+        return dict(row) if row else None
+
+    def _save_notes(self, row: Any, text: str) -> Dict[str, Any]:
+        now = self.now_ms()
+        rec = {"id": NOTES_ID, "text": text, "created_at": row["created_at"] if row else now,
+               "updated_at": self.bump(row["updated_at"] if row else None), "updated_by": self.hub_id}
+        self._write_notes(rec)
+        self.enqueue("note", NOTES_ID)
+        return rec
+
+    def put_notes(self, text: str, base_rev: str) -> Tuple[Dict[str, Any], bool]:
+        """Replace the document (validated text) if `base_rev` is its current revision.
+        Returns (record, changed). Raises 409 conflict for a stale base_rev."""
+        with self.tx() as c:
+            row = c.execute("SELECT * FROM notes WHERE id = ?", (NOTES_ID,)).fetchone()
+            cur = dict(row) if row else None
+            rev = notes_rev(cur)
+            if base_rev != rev:
+                raise ApiError(409, "conflict", "the notes changed since you read them (rev %s); read "
+                               "them again and reapply your edit" % (rev or "none"))
+            if cur is not None and cur["text"] == text:
+                return cur, False
+            rec = self._save_notes(row, text)
+        return self.get_notes() or rec, True
+
+    def append_notes(self, line: str, section: str, check: bool) -> Dict[str, Any]:
+        """Add one line under `section`. Raises 400 notes_full past MAX_NOTES_TEXT."""
+        with self.tx() as c:
+            row = c.execute("SELECT * FROM notes WHERE id = ?", (NOTES_ID,)).fetchone()
+            text = notes_append_line(row["text"] if row else "", line, section, check)
+            if len(text) > MAX_NOTES_TEXT:
+                raise ApiError(400, "notes_full", "the notes are full (%d characters); the person "
+                               "has to clear some first" % MAX_NOTES_TEXT)
+            rec = self._save_notes(row, text)
+        return self.get_notes() or rec
+
+    def apply_notes(self, rec: Any) -> bool:
+        """Apply a replicated notes record (LWW on updated_at, updated_by). Raises ApiError/
+        ValueError for one this hub can't read (the caller skips it)."""
+        rec = normalise_notes_record(rec)
+        with self.tx() as c:
+            row = c.execute("SELECT * FROM notes WHERE id = ?", (rec["id"],)).fetchone()
+            if row is not None and not self.newer(rec["updated_at"], rec["updated_by"],
+                                                  row["updated_at"], row["updated_by"]):
+                return False
+            self._write_notes(rec)
+        return True
+
+    def notes_records_for(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not any(r["kind"] == "note" for r in rows):
+            return []
+        rec = self.get_notes()
+        return [rec] if rec else []
 
     # -- invites ---------------------------------------------------------
 
@@ -2933,9 +3108,9 @@ class Store:
         read raises Unreadable, so replication fails closed and retries rather than letting
         the hubs disagree about who may do what. Anything else (a locked database) raises
         too, so the batch is retried."""
-        if kind == "status":
+        if kind in ("status", "note"):
             try:
-                return self.apply_status(rec), None
+                return (self.apply_status if kind == "status" else self.apply_notes)(rec), None
             except ApiError as e:
                 reason = e.message
             except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as e:
@@ -3389,6 +3564,35 @@ def normalise_status_record(rec: Any, now_ms: int) -> Dict[str, Any]:
             "expires_at": fields["expires_at"], "updated_by": by}
 
 
+def notes_public(rec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """GET /v1/notes: the document, or an empty one (rev "") while none was written."""
+    if not rec:
+        return {"id": NOTES_ID, "text": "", "rev": "", "created_at": None, "updated_at": None}
+    return {"id": rec["id"], "text": rec["text"], "rev": notes_rev(rec),
+            "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"])}
+
+
+def notes_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
+    out = notes_public(rec)
+    out["updated_by"] = rec.get("updated_by") or ""
+    return out
+
+
+def normalise_notes_record(rec: Any) -> Dict[str, Any]:
+    """A replicated notes record as a row, checked as a PUT body is. An id other than nt_main
+    (a later hub's second list) is refused, so it is skipped rather than misread."""
+    if not isinstance(rec, dict) or not utf8_ok(rec):
+        raise ValueError("a notes record must be a JSON object of text")
+    if rec.get("id") != NOTES_ID:
+        raise _invalid("id", "unknown notes id")
+    text = validate_notes_text(rec.get("text"))
+    by = rec.get("updated_by")
+    if not isinstance(by, str) or len(by) > 64:
+        raise _invalid("updated_by", "updated_by must be a hub id")
+    return {"id": NOTES_ID, "text": text, "created_at": parse_ts(rec.get("created_at")),
+            "updated_at": parse_ts(rec.get("updated_at")), "updated_by": by}
+
+
 def token_wire(rec: Dict[str, Any]) -> Dict[str, Any]:
     return {"id": rec["id"], "name": rec["name"], "role": rec["role"], "hash": rec["hash"],
             "created_at": fmt_ts(rec["created_at"]), "updated_at": fmt_ts(rec["updated_at"]),
@@ -3518,7 +3722,8 @@ class PeerWorker(threading.Thread):
             items, toks, invs = self.hub.store.records_for(rows)
             payload = {"from_hub": self.hub.hub_id, "items": [item_wire(r) for r in items],
                        "tokens": [token_wire(r) for r in toks], "invites": [invite_wire(r) for r in invs],
-                       "statuses": [status_wire(r) for r in self.hub.store.status_records_for(rows)]}
+                       "statuses": [status_wire(r) for r in self.hub.store.status_records_for(rows)],
+                       "notes": [notes_wire(r) for r in self.hub.store.notes_records_for(rows)]}
             # The peer refuses bodies over MAX_REPLICATE_BYTES (413), and would refuse the same
             # rows on every retry: send fewer rows instead. One record is far below the limit.
             if len(rows) == 1 or len(json.dumps(payload)) <= PUSH_MAX_BYTES:
@@ -3604,11 +3809,11 @@ class PeerWorker(threading.Thread):
                 changed = False
                 skipped: List[Dict[str, Any]] = []
                 for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items"),
-                                  ("status", "statuses")):
+                                  ("status", "statuses"), ("note", "notes")):
                     recs = resp.get(key) or []
                     for rec in recs if isinstance(recs, list) else []:
                         did, skip = self.hub.store.apply_record(kind, rec)
-                        changed = changed or (did and kind == "item")
+                        changed = changed or (did and kind in ("item", "note"))
                         if skip is not None:
                             skipped.append(skip)
                 if changed:
@@ -3825,6 +4030,10 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/v1/status/") and method in ("PUT", "DELETE"):
                 key = urllib.parse.unquote(path[len("/v1/status/"):])
                 return self._put_status(key) if method == "PUT" else self._clear_status(key)
+            if path == "/v1/notes" and method in ("GET", "HEAD", "PUT"):
+                return self._put_notes() if method == "PUT" else self._get_notes()
+            if path == "/v1/notes/append" and method == "POST":
+                return self._append_notes()
             if path == "/v1/stream" and method == "GET":
                 return self._stream(query)
             if path == "/v1/replicate" and method == "POST":
@@ -4182,6 +4391,43 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(200, {"statuses": statuses, "server_time": fmt_ts(st.now_ms())}, {"ETag": tag})
 
+    def _get_notes(self) -> None:
+        self._auth("reader")
+        out = notes_public(self.hub.store.get_notes())
+        tag = '"%s"' % (out["rev"] or "none")
+        if (self.headers.get("If-None-Match") or "").strip() == tag:
+            self.send_response(304)
+            self.send_header("ETag", tag)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        self._send(200, out, {"ETag": tag})
+
+    def _put_notes(self) -> None:
+        tok = self._auth("reader")
+        self._hold_back(tok, self.hub.post_limiter, "notes writes")
+        data = self._body()
+        if not isinstance(data, dict):
+            raise ApiError(400, "invalid", "body must be a JSON object")
+        base = data.get("base_rev")
+        if not isinstance(base, str):
+            raise _invalid("base_rev", "base_rev is required: the rev you read (\"\" when there were no notes)")
+        rec, changed = self.hub.store.put_notes(validate_notes_text(data.get("text")), base)
+        if changed:
+            self.hub.notify()
+        self._send(200, notes_public(rec))
+
+    def _append_notes(self) -> None:
+        tok = self._auth(None)
+        if tok["role"] not in ("sender",) + READ_ROLES:
+            raise ApiError(403, "forbidden", "this endpoint needs a sender or reader token")
+        self._hold_back(tok, self.hub.post_limiter, "posts")
+        fields = validate_notes_append(self._body())
+        rec = self.hub.store.append_notes(fields["text"], fields["section"], fields["check"])
+        self.hub.notify()
+        # The rev only: a sender may add a line but never reads the list (ADR 0014).
+        self._send(200, {"ok": True, "rev": notes_rev(rec)})
+
     def _resolve(self) -> None:
         self._auth("sender")
         data = self._body()
@@ -4400,11 +4646,11 @@ class Handler(BaseHTTPRequestHandler):
             if kind != "item":
                 for rec in recs:  # before applying anything: fail closed, the pusher retries
                     check_security_record(kind, rec)
-        statuses = data.get("statuses") or []
-        if not isinstance(statuses, list):
-            raise ApiError(400, "invalid", "statuses must be an array", "statuses")
+        for key in ("statuses", "notes"):
+            if data.get(key) is not None and not isinstance(data[key], list):
+                raise ApiError(400, "invalid", "%s must be an array" % key, key)
         for kind, key in (("token", "tokens"), ("invite", "invites"), ("item", "items"),
-                          ("status", "statuses")):
+                          ("status", "statuses"), ("note", "notes")):
             for rec in data.get(key) or []:
                 changed, skip = self.hub.store.apply_record(kind, rec)
                 applied += 1 if changed else 0
@@ -4428,13 +4674,14 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             raise ApiError(400, "invalid", "after/limit must be integers")
         st = self.hub.store
-        items, toks, invs, sts, next_after, more = st.changes_with_status(after, limit)
+        items, toks, invs, sts, notes, next_after, more = st.changes_every(after, limit)
         self._send(200, {"hub_id": self.hub.hub_id, "epoch": st.epoch(), "max_seq": st.max_seq(),
                          "next_after": next_after, "more": more,
                          "items": [item_wire(r) for r in items],
                          "tokens": [token_wire(r) for r in toks],
                          "invites": [invite_wire(r) for r in invs],
-                         "statuses": [status_wire(r) for r in sts]})
+                         "statuses": [status_wire(r) for r in sts],
+                         "notes": [notes_wire(r) for r in notes]})
 
 
 def connection_limit(cfg: Dict[str, Any]) -> int:

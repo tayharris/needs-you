@@ -707,6 +707,27 @@ class Statuses(HubCase):
         self.assertEqual(code, 304)
 
 
+class Notes(HubCase):
+    """Notes (ADR 0014): one document per hub. Only checks that write nothing, since the suite
+    may run against a hub whose notes someone keeps."""
+
+    def test_read_roles_and_refusals(self):
+        status, doc = call("GET", "/v1/notes", Env.reader)
+        self.assertEqual(status, 200, doc)
+        self.assertEqual(doc["id"], "nt_main")
+        self.assertIsInstance(doc["text"], str)
+        self.assertIsInstance(doc["rev"], str)
+        self.assertError(call("GET", "/v1/notes", Env.sender), 403, "forbidden")
+        self.assertError(call("PUT", "/v1/notes", Env.sender, {"text": "x", "base_rev": doc["rev"]}), 403, "forbidden")
+        self.assertError(call("PUT", "/v1/notes", Env.reader, {"text": "x", "base_rev": "r-stale"}), 409, "conflict")
+        self.assertError(call("PUT", "/v1/notes", Env.reader, {"text": "x"}), 400, "invalid", "base_rev")
+        self.assertError(call("POST", "/v1/notes/append", Env.sender, {"text": "x", "section": "## no"}),
+                         400, "invalid", "section")
+        self.assertError(call("POST", "/v1/notes/append", Env.sender, {"text": "nyp_" + "s" * 20}),
+                         400, "secret_in_text", "text")
+        self.assertEqual(call("GET", "/v1/notes", Env.reader)[1]["rev"], doc["rev"], "nothing was written")
+
+
 # -- replication (needs the peer secret) -------------------------------------------
 
 class Replication(HubCase):
