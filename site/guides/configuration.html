@@ -111,6 +111,7 @@
 <tr><td><code>NEEDS_YOU_AGENT_LINK</code></td><td>automatic editor links</td><td><code>none</code>, or one link <code>Label=url-template</code> (<code>{handle}</code>, <code>{session}</code>, <code>{cwd}</code>, <code>{host}</code>)</td></tr>
 <tr><td><code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code></td><td><code>48</code></td><td>Hours a card lives after its last post; <code>0</code> never expires</td></tr>
 <tr><td><code>NEEDS_YOU_AIDER_EXPIRY_HOURS</code></td><td><code>1</code></td><td>The same for Aider's cards</td></tr>
+<tr><td><code>NEEDS_YOU_FINISHED_EXPIRY_HOURS</code></td><td><code>3</code></td><td>Hours a finished turn's card ("Claude finished: …", "Codex finished its turn and is waiting for your next message", and the same for every agent) lives after its last post, never longer than <code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code>; <code>0</code> uses that one. Approvals, questions and errors keep the long expiry</td></tr>
 <tr><td><code>NEEDS_YOU_AGENT_TURN_CARDS</code></td><td>on</td><td><em>on/off</em>: "finished its turn" cards (Codex, Gemini, opencode, Copilot, Grok, Kimi, Cursor, Cline; for Aider, its only card)</td></tr>
 <tr><td><code>NEEDS_YOU_TURN_TEXT</code></td><td>on</td><td><em>on/off</em>: a turn card names the session and shows the question the turn ended on; off keeps the plain card</td></tr>
 <tr><td><code>NEEDS_YOU_AGENT_QUESTIONS</code></td><td>on</td><td><em>on/off</em>: questions answerable from the card</td></tr>

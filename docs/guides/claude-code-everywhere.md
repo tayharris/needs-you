@@ -159,6 +159,8 @@ A killed session (closed terminal, `kill`, reboot, OOM) never tells the hook it 
 - **Process lease.** When the hook posts a card it records the Claude process id and start time in `~/.local/state/needs-you/claude-hooks/`. `needs-you flush`, which the installer runs every 5 minutes, resolves the card once that process is gone or its pid belongs to a newer process.
 - **Expiry.** Each card expires 48 hours after its last post, for a machine that never comes back to run the flush. `NEEDS_YOU_AGENT_EXPIRY_HOURS` changes it; `0` never expires.
 
+A session that is still running but that you left at its prompt (you went on in another terminal) sends nothing and keeps its process, so neither of those clears its card. A finished turn's card therefore expires sooner: 3 hours after its last post (`NEEDS_YOU_FINISHED_EXPIRY_HOURS`, never later than `NEEDS_YOU_AGENT_EXPIRY_HOURS`; `0` uses that one). Cards that really wait on you (permission prompts, questions, plans, errors) keep the long expiry.
+
 ## Settings
 
 Put these in `~/.config/needs-you/env` on the machine where Claude runs (or in the environment, which wins). The hook reads the file on every event, so no restart is needed.
@@ -173,6 +175,7 @@ Put these in `~/.config/needs-you/env` on the machine where Claude runs (or in t
 | `NEEDS_YOU_CONTEXT_ALERT_PCT` | `80` | Context card threshold in percent; `0` off. Installer: `--context-alert` |
 | `NEEDS_YOU_CONTEXT_WINDOW` | `200000`, or `1000000` for a `[1m]` model | Context window in tokens, for the threshold |
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | Card expiry after its last post; `0` never |
+| `NEEDS_YOU_FINISHED_EXPIRY_HOURS` | `3` | A finished turn's card expires this soon instead (never later than the above); `0`: the above |
 | `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: its name in the Mac's Orca. Installer: `--orca-environment` |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
 | `NEEDS_YOU_HOOK_LOG` | unset | Append a debug line per event to this file. Environment only: a line in the env file does nothing |

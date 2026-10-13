@@ -58,6 +58,7 @@ The hook every agent shares (`needs-you-hook.sh`: Claude Code, Codex, Gemini, Co
 | `NEEDS_YOU_AGENT_LINK` | automatic editor links | `none`, or one link `Label=url-template` (`{handle}`, `{session}`, `{cwd}`, `{host}`) |
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | Hours a card lives after its last post; `0` never expires |
 | `NEEDS_YOU_AIDER_EXPIRY_HOURS` | `1` | The same for Aider's cards |
+| `NEEDS_YOU_FINISHED_EXPIRY_HOURS` | `3` | Hours a finished turn's card ("Claude finished: …", "Codex finished its turn and is waiting for your next message", and the same for every agent) lives after its last post, never longer than `NEEDS_YOU_AGENT_EXPIRY_HOURS`; `0` uses that one. Approvals, questions and errors keep the long expiry |
 | `NEEDS_YOU_AGENT_TURN_CARDS` | on | *on/off*: "finished its turn" cards (Codex, Gemini, opencode, Copilot, Grok, Kimi, Cursor, Cline; for Aider, its only card) |
 | `NEEDS_YOU_TURN_TEXT` | on | *on/off*: a turn card names the session and shows the question the turn ended on; off keeps the plain card |
 | `NEEDS_YOU_AGENT_QUESTIONS` | on | *on/off*: questions answerable from the card |

@@ -91,7 +91,7 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 - **Cards that never go away:** the sender never calls `resolve`. Fix the sender, then clear the card with **Done** on the Mac.
 - **A sender that went away** (a killed agent session, a machine that's gone, an automation that crashed) can't resolve its cards. Safety nets, in the order they kick in:
   - Agent hooks record the agent's process. The 5-minute `needs-you flush` on that machine resolves the card once the process is gone ([Claude Code](claude-code.md)).
-  - Agent cards expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`; Aider's after an hour). Each new post pushes it out.
+  - Agent cards expire 48 hours after their last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`; Aider's after an hour; a finished turn's card after 3, `NEEDS_YOU_FINISHED_EXPIRY_HOURS`). Each new post pushes it out.
   - Scheduled automations post with `--expires-in` of about twice their interval, so a blocker they stop reporting drops off by itself ([Orca](orca.md)).
   - On the Mac, a card waiting 4 hours or more shows its age, and its **…** menu has **Dismiss All from &lt;host&gt;** for a machine that went away ([Mac app](mac-app.md)).
 - **A card keeps re-animating:** the title, body or priority changes on every post (e.g. a counter or time in the title). Put changing details in the body sparingly, or keep them out.

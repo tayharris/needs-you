@@ -116,6 +116,13 @@
 #                             re-post (default 48; 0 = never), a backstop for
 #                             a session that dies on a machine that never
 #                             runs `needs-you flush` again
+#   NEEDS_YOU_FINISHED_EXPIRY_HOURS  a finished turn's card ("Claude finished: ...", "<Agent>
+#                             is waiting for your next message"; source.event finished)
+#                             expires this soon after its last post instead (default 3;
+#                             0 = NEEDS_YOU_AGENT_EXPIRY_HOURS): a session left idle in its
+#                             terminal sends no resolve. Never longer than that expiry.
+#                             Approvals, questions and errors keep the long one; Aider's
+#                             card keeps NEEDS_YOU_AIDER_EXPIRY_HOURS
 #   NEEDS_YOU_CONTEXT_ALERT_PCT  post a low-priority card suggesting /compact
 #                             or /clear once the session's context is this
 #                             full, in percent (default 80; 0 = off)
@@ -313,7 +320,7 @@ for var in NEEDS_YOU_AGENT_CONTEXT NEEDS_YOU_AGENT_PRIORITY NEEDS_YOU_AGENT_LINK
            NEEDS_YOU_CONTEXT_ALERT_PCT NEEDS_YOU_CONTEXT_WINDOW NEEDS_YOU_AGENT_TURN_CARDS \
            NEEDS_YOU_AIDER_EXPIRY_HOURS NEEDS_YOU_AGENT_QUESTIONS NEEDS_YOU_ANSWER_TIMEOUT \
            NEEDS_YOU_USAGE_ALERT_PCT NEEDS_YOU_USAGE_WEEKLY_ALERT_PCT NEEDS_YOU_USAGE_ACCOUNT \
-           NEEDS_YOU_USAGE_METER NEEDS_YOU_TURN_TEXT; do
+           NEEDS_YOU_USAGE_METER NEEDS_YOU_TURN_TEXT NEEDS_YOU_FINISHED_EXPIRY_HOURS; do
   if [ -z "${!var:-}" ]; then
     val=$(file_val "$var")
     printf -v "$var" '%s' "$val"
@@ -967,16 +974,35 @@ def base_args(key, title, body, priority, event=""):
     # --opt=value: a title, body or project starting with "-" isn't taken for an option
     args += ["--priority", priority, "--title=" + title[:100], "--body=" + body[:2000],
              "--agent", AGENT_ID, "--project=" + project]
-    # Aider has no "the person answered" event: its card lasts an hour unless re-posted.
-    name, default = (("NEEDS_YOU_AIDER_EXPIRY_HOURS", 1.0) if AGENT == "aider"
-                     else ("NEEDS_YOU_AGENT_EXPIRY_HOURS", 48.0))
-    try:
-        expiry = float(os.environ.get(name) or default)
-    except ValueError:
-        expiry = default
+    expiry = card_expiry(event)
     if expiry > 0:
         args += ["--expires-in", "%g" % expiry]
     return args
+
+
+def expiry_setting(name, default):
+    try:
+        hours = float(os.environ.get(name) or default)
+    except ValueError:
+        return default
+    return hours if hours == hours and abs(hours) != float("inf") else default
+
+
+def card_expiry(event):
+    """Hours a card lives after its last post (0: no expiry). Aider has no "the person answered"
+    event: its card lasts an hour unless re-posted. A finished turn's card goes after
+    NEEDS_YOU_FINISHED_EXPIRY_HOURS (3): nothing resolves it while the session sits idle in its
+    terminal (the person moved on to another one), and a many-hours-old "finished" is noise.
+    Every other card (an approval, a question, an error) keeps NEEDS_YOU_AGENT_EXPIRY_HOURS (48),
+    a backstop for a machine that never runs `needs-you flush` again."""
+    if AGENT == "aider":
+        return expiry_setting("NEEDS_YOU_AIDER_EXPIRY_HOURS", 1.0)
+    expiry = expiry_setting("NEEDS_YOU_AGENT_EXPIRY_HOURS", 48.0)
+    if event == "finished":
+        finished = expiry_setting("NEEDS_YOU_FINISHED_EXPIRY_HOURS", 3.0)
+        if finished > 0 and (expiry <= 0 or finished < expiry):
+            expiry = finished
+    return expiry
 
 
 QUESTION_POSTED = [None]  # the `question` field the last post carried (None: the steps form)
@@ -2905,6 +2931,18 @@ case "$mode" in
     # Cline: a task starts or resumes (a new task has a new taskId): the finished cards of
     # earlier tasks in the same Cline (the lease's process) no longer apply.
     [ "$agent" = cline ] && resolve_marker "$marker"
+    # A new agent process in the same Orca pane (the handle names the pane, so every session
+    # there shares one key): the card the earlier process left (it was killed, or is
+    # suspended) was about a session that is over here. The earlier session's SessionEnd, when
+    # it came, already resolved it; a card of this process's own stays.
+    if [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && [ -f "$marker" ]; then
+      lease
+      if [ -n "$lease_pid" ] &&
+         { [ "$(sed -n 's/^pid=//p' "$marker" 2>/dev/null)" != "$lease_pid" ] ||
+           [ "$(sed -n 's/^start=//p' "$marker" 2>/dev/null)" != "$lease_start" ]; }; then
+        resolve_marker "$marker" "$key"
+      fi
+    fi
     case "$agent:$(json_str source)" in
       *:clear|*:compact|*:resume|cline:*)
         # A new conversation in the same Claude process: cards from before it

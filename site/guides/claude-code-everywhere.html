@@ -175,6 +175,7 @@ fi</code></pre></div>
 <li><strong>Process lease.</strong> When the hook posts a card it records the Claude process id and start time in <code>~/.local/state/needs-you/claude-hooks/</code>. <code>needs-you flush</code>, which the installer runs every 5 minutes, resolves the card once that process is gone or its pid belongs to a newer process.</li>
 <li><strong>Expiry.</strong> Each card expires 48 hours after its last post, for a machine that never comes back to run the flush. <code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code> changes it; <code>0</code> never expires.</li>
 </ul>
+<p>A session that is still running but that you left at its prompt (you went on in another terminal) sends nothing and keeps its process, so neither of those clears its card. A finished turn's card therefore expires sooner: 3 hours after its last post (<code>NEEDS_YOU_FINISHED_EXPIRY_HOURS</code>, never later than <code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code>; <code>0</code> uses that one). Cards that really wait on you (permission prompts, questions, plans, errors) keep the long expiry.</p>
 <h2 id="settings">Settings <a class="anchor" href="#settings" aria-label="Link to this section">#</a></h2>
 <p>Put these in <code>~/.config/needs-you/env</code> on the machine where Claude runs (or in the environment, which wins). The hook reads the file on every event, so no restart is needed.</p>
 <div class="table-wrap"><table class="doc-table">
@@ -188,6 +189,7 @@ fi</code></pre></div>
 <tr><td><code>NEEDS_YOU_CONTEXT_ALERT_PCT</code></td><td><code>80</code></td><td>Context card threshold in percent; <code>0</code> off. Installer: <code>--context-alert</code></td></tr>
 <tr><td><code>NEEDS_YOU_CONTEXT_WINDOW</code></td><td><code>200000</code>, or <code>1000000</code> for a <code>[1m]</code> model</td><td>Context window in tokens, for the threshold</td></tr>
 <tr><td><code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code></td><td><code>48</code></td><td>Card expiry after its last post; <code>0</code> never</td></tr>
+<tr><td><code>NEEDS_YOU_FINISHED_EXPIRY_HOURS</code></td><td><code>3</code></td><td>A finished turn's card expires this soon instead (never later than the above); <code>0</code>: the above</td></tr>
 <tr><td><code>NEEDS_YOU_ORCA_ENVIRONMENT</code></td><td>unset</td><td>On a paired Orca server: its name in the Mac's Orca. Installer: <code>--orca-environment</code></td></tr>
 <tr><td><code>NEEDS_YOU_BIN</code></td><td><code>needs-you</code> on <code>PATH</code>, else <code>~/.local/bin/needs-you</code></td><td>CLI path</td></tr>
 <tr><td><code>NEEDS_YOU_HOOK_LOG</code></td><td>unset</td><td>Append a debug line per event to this file. Environment only: a line in the env file does nothing</td></tr>
