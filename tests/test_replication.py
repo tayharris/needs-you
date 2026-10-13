@@ -401,7 +401,7 @@ class LastWriterWins(HubTestCase):
     def test_peer_question_this_hub_would_refuse_is_dropped(self):
         h = self.make_hub("hub-x", start=False)
         st = h.store
-        bad = {"items": [{"text": "x" * 600}]}
+        bad = {"items": [{"text": "x" * (hubmod.MAX_QUESTION_TEXT + 1)}]}
         self.assertTrue(st.apply_item(self.rec(question=bad)))
         wire = hubmod.item_wire(st.get_item(self.rec()["id"]))
         self.assertIsNone(wire["question"])
