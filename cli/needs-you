@@ -33,6 +33,11 @@
                                                      helpers and pollers. Never queued: with no hub
                                                      reachable it says so and exits 0
   needs-you status clear --key KEY                   end that status now
+  needs-you notes add TEXT [--section NAME] [--plain]
+                                                     add one line to the person's notes (ADR 0014),
+                                                     a checkbox under "## Inbox" (or NAME) unless
+                                                     --plain; for a todo they keep, not an alert.
+                                                     Queued like add; a sender can't read the notes
   needs-you flush                                    send anything queued in the outbox, and
                                                      resolve Claude Code cards whose session ended
   needs-you health                                   check each configured hub and the token
@@ -1475,7 +1480,7 @@ def _lock(wait: float = 0.0):  # type: ignore[no-untyped-def]
         return None
 
 
-QUEUED_PATHS = ("/v1/items", "/v1/items/resolve")  # the only requests the CLI queues
+QUEUED_PATHS = ("/v1/items", "/v1/items/resolve", "/v1/notes/append")  # the only requests the CLI queues
 
 
 def _remove(path: str) -> None:
@@ -2044,7 +2049,9 @@ def deliver(cfg: Config, method: str, path: str, body: Dict[str, Any], quiet: bo
     if as_json:
         print(json.dumps(resp, sort_keys=True))
     elif not quiet:
-        if path.endswith("/resolve"):
+        if path == "/v1/notes/append":
+            print("added to the notes via %s" % url)
+        elif path.endswith("/resolve"):
             ids = [clean(i.get("id")) for i in resp.get("items", [])]
             if ids:
                 print("resolved %s via %s" % (", ".join(ids), url))
@@ -2480,6 +2487,12 @@ def _main(argv: Optional[List[str]] = None) -> int:
     ss.add_argument("--host", help="source host (default: this machine's hostname)")
     sc = ssub.add_parser("clear", help="end a status now")
     sc.add_argument("--key", required=True)
+    np_ = sub.add_parser("notes", help="the person's notes beside the alerts (ADR 0014): add a todo line")
+    nsub = np_.add_subparsers(dest="notes_cmd")
+    na = nsub.add_parser("add", help="add one line (a checkbox by default) under a section of the notes")
+    na.add_argument("text", help="one line, <= 300 chars; markdown links are fine")
+    na.add_argument("--section", default="Inbox", help="the ## heading to add under (default Inbox; made if missing)")
+    na.add_argument("--plain", action="store_true", help="a plain bullet, not a checkbox")
     add_run_parser(sub)
     sub.add_parser("flush", help="send queued items now")
     sub.add_parser("health", help="check hubs and token")
@@ -2627,6 +2640,16 @@ def _main(argv: Optional[List[str]] = None) -> int:
         watch_waiter(os.environ.get("NEEDS_YOU_WATCH_PID", ""))
         flush(cfg)  # a queued post of this item goes out first
         return answer_wait(cfg, args.key, args.timeout, args.quiet, args.question_id)
+    if args.cmd == "notes":
+        if getattr(args, "notes_cmd", None) != "add":
+            warn("notes: use `notes add TEXT`")
+            return 2
+        text = " ".join(args.text.split())
+        if not text:
+            warn("notes add: the text must not be empty")
+            return 2
+        return deliver(cfg, "POST", "/v1/notes/append",
+                       {"text": text, "section": args.section, "check": not args.plain}, args.quiet, args.json)
     if args.cmd == "resolve":
         if not (args.key if args.key is not None else args.id).strip():
             warn("resolve: --key/--id must not be empty")
