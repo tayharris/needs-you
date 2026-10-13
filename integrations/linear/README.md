@@ -30,7 +30,7 @@ What it posted is in `~/.local/state/needs-you/linear.json` (mode 600; no key, j
 
 ## Cards
 
-`<ctx>` is `work` or `personal` (see `NEEDS_YOU_LINEAR_TEAMS`). Key: `<ctx>:linear:<ISSUE-ID>`, for example `work:linear:ACME-123`.
+`<ctx>` is `work` or `personal` (see `NEEDS_YOU_LINEAR_CONTEXTS` and `NEEDS_YOU_LINEAR_TEAMS`). Key: `<ctx>:linear:<ISSUE-ID>`, for example `work:linear:ACME-123`.
 
 | Latest event (`source.event`) | Linear category | Title | Priority floor | Link |
 |---|---|---|---|---|
@@ -59,6 +59,7 @@ In `~/.config/needs-you/env` (or the environment).
 | `NEEDS_YOU_LINEAR_CATEGORIES` | all | Events to post: `assigned,status,comment,mention` or Linear's names (`assignments,statusChanges,commentsAndReplies,mentions`); or turn some off: `-mention` |
 | `NEEDS_YOU_LINEAR_STATUSES` | `*=low` | Priority by the issue's current status: `Blocked=urgent,In Review=normal,*=low`. `Backlog=off` posts no status-change card for that status (comments and mentions still do) |
 | `NEEDS_YOU_LINEAR_TEAMS` | every team, `NEEDS_YOU_DEFAULT_CONTEXT` (else `work`), base `low` | Per team key: context and base priority, `ACME=work:normal,OPS=work:urgent`. When set, only these teams are watched |
+| `NEEDS_YOU_LINEAR_CONTEXTS` | the team's `NEEDS_YOU_LINEAR_TEAMS` context, else the default | Only the context, per team key: `ACME=work,HOME=personal`, `*` for the rest. Never changes which teams are watched; wins over `NEEDS_YOU_LINEAR_TEAMS`. Settings → Integrations on the Mac makes this line for you |
 | `NEEDS_YOU_LINEAR_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |
 | `NEEDS_YOU_LINEAR_MAX_CARDS` | `20` | Cap on open cards from this poller |
 | `NEEDS_YOU_LINEAR_MAX_AGE_H` | `24` | A card with nothing new for this many hours resolves |

@@ -92,6 +92,7 @@ If a run prints an error, fix what it names, or tell me if it needs me.</code></
 <h2 id="tune-it">Tune it <a class="anchor" href="#tune-it" aria-label="Link to this section">#</a></h2>
 <p>Settings go in <code>~/.config/needs-you/env</code>:</p>
 <div class="code"><pre><code class="language-bash">NEEDS_YOU_LINEAR_TEAMS=ACME=work:normal,OPS=work:urgent      # which teams to watch, their context and base priority
+NEEDS_YOU_LINEAR_CONTEXTS=ACME=work,*=personal                # only work or personal, per team (never which are watched)
 NEEDS_YOU_LINEAR_STATUSES=Blocked=urgent,In Review=normal,Backlog=off,*=low   # priority by status; off = no status-change card
 NEEDS_YOU_LINEAR_CATEGORIES=-mention                         # turn events off (or list the ones you want)</code></pre></div>
 <p>Each card carries its event (<code>assigned</code>, <code>status</code>, <code>comment</code>, <code>mention</code>) as <code>source.event</code>, so the Mac's alert rules can treat them differently: for example, comments on <code>work:linear:</code> cards <strong>Always later</strong>, and one issue <strong>Treat as urgent</strong> while you're on it (<a href="mac-app.html#focus-heads-down-except-what-you-choose">Mac app guide</a>).</p>

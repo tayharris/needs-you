@@ -75,7 +75,7 @@ gh api -H 'Accept: application/vnd.github.raw' repos/tayharris/needs-you/content
 <p>Within 5 minutes the cards from the dry run appear on your Mac. Each one has a link to the place you act (the PR's files, the run's "Review deployments" page, the failing check's logs) and, where it takes more than one action, numbered steps. When you merge, review or fix the thing, the card goes away on the next run.</p>
 <h2 id="tune-it">Tune it <a class="anchor" href="#tune-it" aria-label="Link to this section">#</a></h2>
 <p>Settings go in <code>~/.config/needs-you/env</code>:</p>
-<div class="code"><pre><code class="language-bash">NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's cards are work or personal
+<div class="code"><pre><code class="language-bash">NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's (or owner/repo's) cards are work or personal
 NEEDS_YOU_GITHUB_EXCLUDE=acme/huge-monorepo            # owners or repos to ignore
 NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want); -merged: no "Merged" FYIs</code></pre></div>
 <h3 id="projects-statuses-and-dependabot-alerts-opt-in">Projects statuses and Dependabot alerts (opt-in) <a class="anchor" href="#projects-statuses-and-dependabot-alerts-opt-in" aria-label="Link to this section">#</a></h3>

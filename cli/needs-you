@@ -309,6 +309,7 @@ SETTINGS: Dict[str, Tuple[str, Any]] = {
     "NEEDS_YOU_LINEAR_CATEGORIES": ("both", ""),
     "NEEDS_YOU_LINEAR_STATUSES": ("both", ""),
     "NEEDS_YOU_LINEAR_TEAMS": ("both", ""),
+    "NEEDS_YOU_LINEAR_CONTEXTS": ("both", ""),
     "NEEDS_YOU_LINEAR_INTERVAL": ("both", ("num", 1, None)),
     "NEEDS_YOU_LINEAR_MAX_CARDS": ("both", ("int", 1, None)),
     "NEEDS_YOU_LINEAR_MAX_AGE_H": ("both", ("num", 1, None)),
@@ -322,6 +323,7 @@ SETTINGS: Dict[str, Tuple[str, Any]] = {
     "NEEDS_YOU_JIRA_EVENTS": ("both", ""),
     "NEEDS_YOU_JIRA_STATUSES": ("both", ""),
     "NEEDS_YOU_JIRA_PROJECTS": ("both", ""),
+    "NEEDS_YOU_JIRA_CONTEXTS": ("both", ""),
     "NEEDS_YOU_JIRA_JQL_EXTRA": ("both", ""),
     "NEEDS_YOU_JIRA_WATCHING": ("both", "onoff"),
     "NEEDS_YOU_JIRA_INTERVAL": ("both", ("num", 1, None)),
@@ -2544,6 +2546,14 @@ def _main(argv: Optional[List[str]] = None) -> int:
     og.add_argument("--disable", dest="orca_disable", action="store_true",
                     help="usage: stop (NEEDS_YOU_ORCA_USAGE=0) and clear the ones it sent")
 
+    cx = sub.add_parser("context", help="work or personal for a poller's cards, per Linear team, Jira project, "
+                        "GitHub owner or repo (writes the env file; the Mac's Settings → Integrations makes these lines)")
+    cx.add_argument("source", nargs="?", choices=sorted(CONTEXT_SETTINGS), help="the poller; none: list them all")
+    cx.add_argument("name", nargs="?", metavar="NAME",
+                    help="team key (ACME), project key, owner or owner/repo; * for the rest (expiry: only *)")
+    cx.add_argument("context", nargs="?", choices=("work", "personal", "default"),
+                    help="default removes NAME's entry")
+
     args = p.parse_args(argv)
     if args.cmd == "post":  # the docs say "post an item"; agents guess it
         args.cmd = "add"
@@ -2570,6 +2580,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return install_mcp(args.agents, args.dry_run, args.quiet)
     if args.cmd == "install-instructions":
         return install_instructions(args.agents, args.source, args.dry_run, args.quiet)
+    if args.cmd == "context":  # the env file only: no hub, no outbox
+        return context_command(args.source, args.name, args.context, args.quiet)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
     if args.cmd == "orca" and args.orca_what == "usage":  # statuses: never queued
@@ -3870,6 +3882,70 @@ def set_env_setting(name: str, value: str) -> None:
         out.append("%s=%s" % (name, value))
     os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     _write_atomic(path, ("\n".join(out) + "\n").encode("utf-8"), 0o600)
+
+
+# `needs-you context`: each poller's work/personal setting. A map ("KEY=work,*=personal") for
+# the pollers that have one; expiry has a single value (only "*").
+CONTEXT_SETTINGS: Dict[str, str] = {
+    "linear": "NEEDS_YOU_LINEAR_CONTEXTS",
+    "jira": "NEEDS_YOU_JIRA_CONTEXTS",
+    "github": "NEEDS_YOU_GITHUB_CONTEXTS",
+    "expiry": "NEEDS_YOU_EXPIRY_CONTEXT",
+}
+_CONTEXT_NAME = {
+    "linear": r"^(\*|[A-Za-z0-9][A-Za-z0-9_-]{0,31})$",
+    "jira": r"^(\*|[A-Za-z][A-Za-z0-9_]{0,30})$",
+    "github": r"^(\*|[A-Za-z0-9][A-Za-z0-9-]{0,38}(/[A-Za-z0-9._-]{1,100})?)$",
+    "expiry": r"^\*$",
+}
+
+
+def _context_map(value: str) -> List[Tuple[str, str]]:
+    out: List[Tuple[str, str]] = []
+    for pair in value.split(","):
+        k, sep, v = pair.partition("=")
+        if sep and k.strip():
+            out.append((k.strip(), v.strip()))
+    return out
+
+
+def context_command(source: Optional[str], name: Optional[str], ctx: Optional[str], quiet: bool) -> int:
+    """`needs-you context [SOURCE [NAME work|personal|default]]`: list, or set one entry,
+    keeping every other entry and every other line of the env file."""
+    f = read_env_file(config_path())
+    if not name:
+        for src in ([source] if source else sorted(CONTEXT_SETTINGS)):
+            var = CONTEXT_SETTINGS[src]
+            print("%-7s %s=%s" % (src, var, clean(f.get(var, ""))))
+        return 0
+    if not ctx:
+        warn("context: say work, personal or default after %s" % clean(name))
+        return 2
+    if not source or not re.match(_CONTEXT_NAME[source], name):
+        warn("context: %s isn't a name %s takes%s" % (clean(name)[:60], source,
+                                                " (expiry takes only *)" if source == "expiry" else ""))
+        return 2
+    var = CONTEXT_SETTINGS[source]
+    if source == "expiry":
+        value = "" if ctx == "default" else ctx
+    else:
+        upper = source in ("linear", "jira")
+        norm = (lambda k: k.upper()) if upper else (lambda k: k.lower())  # noqa: E731
+        key = norm(name)
+        entries = [(k, v) for k, v in _context_map(f.get(var, "")) if norm(k) != key]
+        if ctx != "default":
+            entries.append((key, ctx))
+        value = ",".join("%s=%s" % kv for kv in entries)
+    try:
+        set_env_setting(var, value)
+    except OSError as e:
+        warn("couldn't write %s (%s)" % (config_path(), type(e).__name__))
+        return 1
+    if not quiet:
+        print("%s=%s in %s; the poller's next run uses it" % (var, value, _tilde(config_path())))
+    if os.environ.get(var, "").strip():
+        warn("%s is set in this shell's environment, which overrides the file" % var)
+    return 0
 
 
 def set_auto_update(on: bool, quiet: bool = False) -> bool:

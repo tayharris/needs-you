@@ -44,6 +44,9 @@ Config (environment, else ~/.config/needs-you/env):
                              Unset: every status change, low.
   NEEDS_YOU_JIRA_PROJECTS    ACME=work:normal,OPS=work:urgent: the projects to watch (only these),
                              each one's context and base priority. Unset: every project.
+  NEEDS_YOU_JIRA_CONTEXTS    ACME=work,HOME=personal,*=personal: only the context, never which
+                             projects are watched; wins over NEEDS_YOU_JIRA_PROJECTS. "*" is every
+                             other project (default NEEDS_YOU_DEFAULT_CONTEXT, else work)
   NEEDS_YOU_JIRA_JQL_EXTRA   more JQL, added as "AND (<it>)", so it can only narrow the search:
                              'labels != noise'. Refused if its quotes or parentheses don't balance
                              or it has ORDER BY.
@@ -338,6 +341,16 @@ class Config:
                 continue
             self.projects[key] = (c, prio)
 
+        # Context only, per project ("*": the rest). Never narrows what's watched.
+        self.contexts: Dict[str, str] = {}
+        for pair in _csv(get("NEEDS_YOU_JIRA_CONTEXTS")):
+            key, _, c = pair.partition("=")
+            key, c = key.strip().upper(), c.strip().lower()
+            if not (key == "*" or PROJECT_KEY.match(key)) or c not in ("work", "personal"):
+                self.errors.append("NEEDS_YOU_JIRA_CONTEXTS: %r isn't KEY=work|personal" % safe_text(pair, 40))
+                continue
+            self.contexts[key] = c
+
         try:
             self.jql_extra = check_jql_extra(get("NEEDS_YOU_JIRA_JQL_EXTRA"))
         except ConfigError as e:
@@ -354,7 +367,11 @@ class Config:
         return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
     def project_rule(self, project: str) -> Tuple[str, str]:
-        return self.projects.get(project, (self.default_context, "low"))
+        # NEEDS_YOU_JIRA_CONTEXTS for this project, else its NEEDS_YOU_JIRA_PROJECTS context,
+        # else NEEDS_YOU_JIRA_CONTEXTS's "*", else the default.
+        key = project.upper()
+        ctx, prio = self.projects.get(key, (self.contexts.get("*", self.default_context), "low"))
+        return self.contexts.get(key, ctx), prio
 
     def status_rule(self, status: str) -> Optional[str]:
         """The priority for an issue in this status, or None for no status card."""

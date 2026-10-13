@@ -161,7 +161,7 @@
 <tbody>
 <tr><td><code>NEEDS_YOU_GITHUB_INCLUDE</code></td><td>every repo</td><td><code>owner</code> or <code>owner/repo</code>, comma-separated</td></tr>
 <tr><td><code>NEEDS_YOU_GITHUB_EXCLUDE</code></td><td>none</td><td>The same; wins over include</td></tr>
-<tr><td><code>NEEDS_YOU_GITHUB_CONTEXTS</code></td><td><code>NEEDS_YOU_DEFAULT_CONTEXT</code></td><td><code>owner=work</code> or <code>owner=personal</code>, comma-separated</td></tr>
+<tr><td><code>NEEDS_YOU_GITHUB_CONTEXTS</code></td><td><code>NEEDS_YOU_DEFAULT_CONTEXT</code></td><td><code>owner=work</code>, <code>owner/repo=personal</code> or <code>*=work</code>, comma-separated; a repo wins over its owner. <code>needs-you context github acme/side personal</code> sets one entry</td></tr>
 <tr><td><code>NEEDS_YOU_GITHUB_REASONS</code></td><td>all</td><td>Reasons to post (<code>review</code>, <code>deploy</code>, <code>ci</code>, <code>mention</code>, <code>assign</code>, <code>merge</code>, <code>changes</code>, <code>conflict</code>, <code>checks</code>, <code>merged</code>), or only <code>-reason</code> items to turn some off</td></tr>
 <tr><td><code>NEEDS_YOU_GITHUB_INTERVAL</code></td><td><code>5</code></td><td>Minutes between runs, at least 1; cards expire after 3 times this</td></tr>
 <tr><td><code>NEEDS_YOU_GITHUB_PR_DAYS</code></td><td><code>14</code></td><td>Only your PRs updated in this many days, a whole number of at least 1</td></tr>
@@ -184,6 +184,7 @@
 <tr><td><code>NEEDS_YOU_LINEAR_CATEGORIES</code></td><td>all</td><td><code>assigned</code>, <code>status</code>, <code>comment</code>, <code>mention</code>, comma-separated, or only <code>-category</code> items</td></tr>
 <tr><td><code>NEEDS_YOU_LINEAR_STATUSES</code></td><td><code>*=low</code></td><td><code>Name=priority</code> or <code>Name=off</code>, comma-separated; <code>*</code> is every other status</td></tr>
 <tr><td><code>NEEDS_YOU_LINEAR_TEAMS</code></td><td>every team, default context, <code>low</code></td><td><code>KEY=context:priority</code>, comma-separated</td></tr>
+<tr><td><code>NEEDS_YOU_LINEAR_CONTEXTS</code></td><td>the team's <code>NEEDS_YOU_LINEAR_TEAMS</code> context, else default context</td><td><code>KEY=work|personal</code> or <code>*=work|personal</code>, comma-separated; only the context, never which teams are watched. <code>needs-you context linear ACME personal</code> sets one entry</td></tr>
 <tr><td><code>NEEDS_YOU_LINEAR_INTERVAL</code></td><td><code>5</code></td><td>Minutes between runs, at least 1</td></tr>
 <tr><td><code>NEEDS_YOU_LINEAR_MAX_CARDS</code></td><td><code>20</code></td><td>Cards open at once, a whole number of at least 1</td></tr>
 <tr><td><code>NEEDS_YOU_LINEAR_MAX_AGE_H</code></td><td><code>24</code></td><td>Notifications older than this many hours are skipped, at least 1</td></tr>
@@ -203,6 +204,7 @@
 <tr><td><code>NEEDS_YOU_JIRA_EVENTS</code></td><td>all</td><td><code>status</code>, <code>comment</code>, <code>assigned</code>, <code>mention</code>, comma-separated, or only <code>-event</code> items</td></tr>
 <tr><td><code>NEEDS_YOU_JIRA_STATUSES</code></td><td>every status, <code>low</code></td><td><code>Name=priority</code> or <code>Name=off</code>, comma-separated; <code>*</code> is every other status</td></tr>
 <tr><td><code>NEEDS_YOU_JIRA_PROJECTS</code></td><td>every project, default context, <code>low</code></td><td><code>KEY=context[:priority]</code>, comma-separated</td></tr>
+<tr><td><code>NEEDS_YOU_JIRA_CONTEXTS</code></td><td>the project's <code>NEEDS_YOU_JIRA_PROJECTS</code> context, else default context</td><td><code>KEY=work|personal</code> or <code>*=work|personal</code>, comma-separated; only the context, never which projects are watched. <code>needs-you context jira ACME personal</code> sets one entry</td></tr>
 <tr><td><code>NEEDS_YOU_JIRA_JQL_EXTRA</code></td><td>none</td><td>A JQL clause ANDed on, up to 500 characters, no <code>ORDER BY</code></td></tr>
 <tr><td><code>NEEDS_YOU_JIRA_WATCHING</code></td><td>off</td><td><em>on/off</em>: issues you watch too</td></tr>
 <tr><td><code>NEEDS_YOU_JIRA_INTERVAL</code></td><td><code>5</code></td><td>Minutes between runs, at least 1</td></tr>
@@ -216,7 +218,7 @@
 <tbody>
 <tr><td><code>NEEDS_YOU_EXPIRY_CONFIG</code></td><td><code>expiry.conf</code> next to the env file</td><td>The list of certificates, domains and keys</td></tr>
 <tr><td><code>NEEDS_YOU_EXPIRY_DAYS</code></td><td><code>30=low,7=normal,1=urgent</code></td><td><code>days=priority</code>, comma-separated</td></tr>
-<tr><td><code>NEEDS_YOU_EXPIRY_CONTEXT</code></td><td><code>NEEDS_YOU_DEFAULT_CONTEXT</code>, else <code>work</code></td><td>A context</td></tr>
+<tr><td><code>NEEDS_YOU_EXPIRY_CONTEXT</code></td><td><code>NEEDS_YOU_DEFAULT_CONTEXT</code>, else <code>work</code></td><td>A context. <code>needs-you context expiry "*" personal</code> sets it</td></tr>
 <tr><td><code>NEEDS_YOU_EXPIRY_FAILS</code></td><td><code>2</code></td><td>Failed runs in a row before a "checks failing" card, a whole number of at least 1</td></tr>
 <tr><td><code>NEEDS_YOU_EXPIRY_INTERVAL</code></td><td><code>24</code></td><td><strong>Hours</strong> between runs, at least 1</td></tr>
 <tr><td><code>NEEDS_YOU_EXPIRY_MAX_CARDS</code></td><td><code>20</code></td><td>Cards open at once, a whole number of at least 1</td></tr>
