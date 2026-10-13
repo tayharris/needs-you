@@ -227,8 +227,8 @@ class AskMode(unittest.TestCase):
             # Security review 0.2: the question and the choices' descriptions must reach the
             # card whole too, or the person answers something they were only partly shown.
             "a question the card would cut short": qs(q("Delete these?\n" + "\n".join(
-                "- file%d" % i for i in range(12)) + "\nand drop the production database", ["Yes", "No"])),
-            "a question over the card's length": qs(q("Proceed? " + "word " * 120 + "(this deletes prod)",
+                "- file%d" % i for i in range(30)) + "\nand drop the production database", ["Yes", "No"])),
+            "a question over the card's length": qs(q("Proceed? " + "word " * 220 + "(this deletes prod)",
                                                       ["Yes", "No"])),
             "a question it would redact": qs(q("Use ghp_abcdefghijklmnopqrstuvwxyz0123 to push?", ["Yes", "No"])),
             "a header it would cut": qs(dict(q("Which?", ["A", "B"]), header="H" * 40)),
@@ -242,7 +242,7 @@ class AskMode(unittest.TestCase):
             "multi_select where Claude reads multiSelect": {"questions": [dict(
                 q("Which?", ["A", "B"]), multiSelect=False, multi_select=True)]},
             "a description it would cut": {"questions": [{"question": "Which?", "header": "H", "options": [
-                {"label": "A", "description": "fine " * 50 + "but wipes the disk"}, {"label": "B"}]}]},
+                {"label": "A", "description": "fine " * 110 + "but wipes the disk"}, {"label": "B"}]}]},
         }
         for name, ti in cases.items():
             with self.subTest(name):
@@ -285,6 +285,55 @@ class AskMode(unittest.TestCase):
         self.assertEqual(self.ask(ans=answer(["SQLite"], ["Auth"]), NEEDS_YOU_BIN=old), "")
         self.assertEqual(self.waits(), [])
         self.assertTrue(has_opt(self.adds()[-1], "--steps-json"))  # the choices as steps instead
+
+    def test_long_questions_and_descriptions_are_answerable_whole(self):
+        # Seen live (2026-10-13): a quarter of Claude's question cards were read-only because a
+        # question ran past 500 characters or a description past 200. Both now fit (1,000 and
+        # 500 characters, 24 lines), so such a card answers, showing every word.
+        text = "\n".join("Line %d of the context for this decision, with some detail." % i for i in range(14))
+        text += "\nWhich way should the rollout go?"
+        desc = "Ships it now behind the flag; " + "the reviewer signs off later and nothing else changes. " * 7
+        desc = desc.strip()
+        self.assertTrue(200 < len(desc) <= 500 and 500 < len(text) <= 1000)
+        ti = {"questions": [{"question": text, "header": "Rollout", "multiSelect": False,
+                             "options": [{"label": "Now", "description": desc},
+                                         {"label": "Later", "description": "Waits for the review."}]}]}
+        out = self.ask(ti, ans=answer(["Now"]))
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["decision"]["updatedInput"]["answers"],
+                         {text: "Now"})
+        q = posted_item(self.adds()[-1])["question"]  # the hub takes it
+        self.assertTrue(q["answerable"])
+        self.assertEqual(q["items"][0]["text"], text)  # every line, uncut
+        self.assertEqual(q["items"][0]["options"][0]["description"], desc)
+
+    def test_an_older_hub_gets_the_question_cut_to_its_limits(self):
+        # A hub before 0.5.4 refuses a question past 500 characters or a description past 200
+        # (400, the CLI's exit 2): the card goes again with the field cut to those, read-only.
+        old = os.path.join(self.home, "old-hub-needs-you")
+        with open(old, "w") as fh:
+            fh.write("#!/usr/bin/env python3\nimport json, os, sys\n"
+                     "with open(os.environ['FAKE_CLI_LOG'], 'a') as fh:\n"
+                     "    fh.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                     "q = [json.loads(a.split('=', 1)[1]) for a in sys.argv if a.startswith('--question-json=')]\n"
+                     "big = any(len(it['text']) > 500 or any(len(o['description']) > 200 for o in it['options'])\n"
+                     "          for x in q for it in x['items'])\n"
+                     "sys.exit(2 if big else 0)\n")
+        os.chmod(old, 0o755)
+        ti = {"questions": [{"question": "Which?", "header": "H", "multiSelect": False, "options": [
+            {"label": "A", "description": "long " * 60}, {"label": "B"}]}]}
+        self.assertEqual(self.ask(ti, ans=answer(["A"]), NEEDS_YOU_BIN=old), "")
+        self.assertEqual(self.waits(), [])  # read-only there: nothing waits
+        sent = [json.loads(opt(a, "--question-json")) for a in self.adds()]
+        self.assertEqual(len(sent), 2)
+        self.assertTrue(sent[0]["answerable"])
+        self.assertFalse(sent[1].get("answerable"))
+        self.assertEqual(len(sent[1]["items"][0]["options"][0]["description"]), 200)
+        # A question that fits an older hub as it is goes once, answerable as before.
+        os.remove(self.log)
+        self.ask(NEEDS_YOU_BIN=old)
+        self.assertEqual(len(self.adds()), 1)
+        self.assertTrue(json.loads(opt(self.adds()[0], "--question-json"))["answerable"])
+        self.assertEqual(len(self.waits()), 1)
 
     def test_no_post_no_wait(self):
         failing = os.path.join(self.home, "down-needs-you")

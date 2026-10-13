@@ -43,7 +43,8 @@ function str(v) {
 }
 
 // The question and its choices, for the card (the hook cleans, redacts and clamps them):
-// only these fields, and only so much of each, so the hook's input stays small.
+// only these fields, and only so much of each, so the hook's input stays small. Each cut is
+// past the hub's limit, so the hook still sees text it must cut and keeps that card read-only.
 function questions(list) {
   if (!Array.isArray(list)) return []
   return list.slice(0, 10).filter((q) => q && typeof q === "object").map((q) => ({
@@ -51,7 +52,7 @@ function questions(list) {
     header: str(q.header).slice(0, 200),
     options: (Array.isArray(q.options) ? q.options : []).slice(0, 20)
       .filter((o) => o && typeof o === "object")
-      .map((o) => ({ label: str(o.label).slice(0, 200), description: str(o.description).slice(0, 400) })),
+      .map((o) => ({ label: str(o.label).slice(0, 200), description: str(o.description).slice(0, 1000) })),
     multiple: q.multiple === true,
   }))
 }

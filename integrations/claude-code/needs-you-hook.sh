@@ -1045,10 +1045,12 @@ def post(args, links, steps=None, asked=None, steps_body=None):
     """Post the card. With `asked` (a question card): with its `question` field, and if the
     CLI or hub refuses that (an older one), again with the choices as steps and `steps_body`."""
     if asked is not None and asked.question:
-        rc = post(args + ["--question-json=" + json.dumps(asked.question, ensure_ascii=False)], links)
-        if rc != 2:
-            QUESTION_POSTED[0] = asked.question if rc == 0 else None
-            return rc
+        # An older hub refuses a question past its limits (400): then the field cut to them.
+        for q in [asked.question] + ([asked.legacy] if asked.legacy else []):
+            rc = post(args + ["--question-json=" + json.dumps(q, ensure_ascii=False)], links)
+            if rc != 2:
+                QUESTION_POSTED[0] = q if rc == 0 else None
+                return rc
         args = [("--body=" + (steps_body or "")[:MAX_BODY]) if a.startswith("--body=") else a for a in args]
         steps = asked.steps
     elif asked is not None:
@@ -1143,7 +1145,11 @@ MAX_TITLE, MAX_BODY, MAX_STEPS, MAX_STEP = 100, 2000, 10, 200  # the hub's limit
 QUESTION_BUDGET = 1200  # of the body, for the question text: the "where" lines follow it
 # The hub's limits for the `question` field (docs/API.md)
 MAX_QUESTIONS, MAX_OPTIONS = 4, 8
-MAX_QUESTION_HEADER, MAX_QUESTION_TEXT, MAX_OPTION_LABEL = 30, 500, 80
+MAX_QUESTION_HEADER, MAX_QUESTION_TEXT, MAX_OPTION_LABEL, MAX_OPTION_DESCRIPTION = 30, 1000, 80, 500
+MAX_QUESTION_LINES = 24  # of a question's text in the field: the Mac shows it all
+# Hubs before 0.5.4 took 500-character questions and 200-character descriptions: a card one of
+# those refuses is posted again with the field cut to them (read-only where that cuts text).
+LEGACY_QUESTION_LIMITS = (500, 200, 8)
 # --- needs-you redaction (begin) ---
 # Token-shaped text in anything untrusted that reaches a card becomes "[redacted]". The same
 # block, byte for byte, is in integrations/claude-code/needs-you-hook.sh, cli/needs-you,
@@ -1323,8 +1329,10 @@ class Asked(object):
     """A question card's structured part: the item's `question` field (docs/API.md), and for a
     CLI or hub that refuses it, the choices as steps with the body that goes with them."""
 
-    def __init__(self, question, steps, steps_msg):
+    def __init__(self, question, steps, steps_msg, legacy=None):
         self.question, self.steps, self.steps_msg = question, steps, steps_msg
+        # The field cut to an older hub's limits, when that differs: posted if `question` is refused.
+        self.legacy = legacy if legacy != question else None
 
 
 def answer_timeout():
@@ -1336,10 +1344,16 @@ def answer_timeout():
     return min(max(t, 30), 3600)
 
 
-def answerable_as_is(questions, field):
+def question_limits(legacy=False):
+    """(question text, option description, question lines) the `question` field is cut to."""
+    return LEGACY_QUESTION_LIMITS if legacy else (MAX_QUESTION_TEXT, MAX_OPTION_DESCRIPTION, MAX_QUESTION_LINES)
+
+
+def answerable_as_is(questions, field, legacy=False):
     """Only a question the card can show whole may be answered from it: every question kept,
     each with 1-8 options, and every label exactly as the agent wrote it (not cut, cleaned or
     redacted), so the labels the person clicks are the agent's own."""
+    text_max, desc_max, lines_max = question_limits(legacy)
     if not field or len(field["items"]) != len(questions):
         return False
     for (header, text, opts, _), item in zip(questions, field["items"]):
@@ -1352,13 +1366,13 @@ def answerable_as_is(questions, field):
             return False
         # The question, its header and each choice's description reach the card whole too
         # (only cleaned): never answered from a card that showed part of what was asked.
-        if not (shown_whole(text, MAX_QUESTION_TEXT, True) and shown_whole(header, MAX_QUESTION_HEADER)
-                and all(shown_whole(desc, MAX_STEP) for _, desc in opts)):
+        if not (shown_whole(text, text_max, True, lines_max) and shown_whole(header, MAX_QUESTION_HEADER)
+                and all(shown_whole(desc, desc_max) for _, desc in opts)):
             return False
     return True
 
 
-def shown_whole(value, limit, block=False):
+def shown_whole(value, limit, block=False, max_lines=8):
     """Is agent text shown on the card as written: nothing redacted, cut or left out?"""
     if not isinstance(value, str) or not value.strip():
         return True
@@ -1369,19 +1383,21 @@ def shown_whole(value, limit, block=False):
         # text: either would show the person something other than what the agent asked.
         if re.search(r"(?m)^\s*(```|~~~)", value) or _MD_LINKISH.search(clean(value)):
             return False
-        return text_block(value, limit) == text_block(value, 1 << 30, 1 << 30)
+        return text_block(value, limit, max_lines) == text_block(value, 1 << 30, 1 << 30)
     return one_line(value, limit) == one_line(value, 1 << 30)
 
 
-def question_field(questions, qid="", answerable=False, allow_other=False):
+def question_field(questions, qid="", answerable=False, allow_other=False, legacy=False):
     """The `question` field for `questions` (the hub's limits: 4 questions, 8 options), or None.
+    `legacy`: cut to an older hub's limits (LEGACY_QUESTION_LIMITS).
     With `answerable` (the opencode plugin waits for an answer): marked answerable, with its
     expiry, when the question fits whole (answerable_as_is). With `allow_other` too (the agent
     takes typed words for every question: Claude's and opencode's "Other"), each question of
     an answerable card says so, and the person can type an answer on the Mac."""
+    text_max, desc_max, lines_max = question_limits(legacy)
     items = []
     for header, text, opts, multi in questions:
-        t = text_block(text, MAX_QUESTION_TEXT) or one_line(header, MAX_QUESTION_TEXT)
+        t = text_block(text, text_max, lines_max) or one_line(header, text_max)
         if not t or len(items) == MAX_QUESTIONS:
             continue
         item = {"text": t, "multi_select": bool(multi), "options": []}
@@ -1391,14 +1407,14 @@ def question_field(questions, qid="", answerable=False, allow_other=False):
         for label, desc in opts:
             lb = one_line(label, MAX_OPTION_LABEL)
             if lb and len(item["options"]) < MAX_OPTIONS:
-                item["options"].append({"label": lb, "description": one_line(desc, MAX_STEP)})
+                item["options"].append({"label": lb, "description": one_line(desc, desc_max)})
         items.append(item)
     if not items:
         return None
     out = {"items": items}
     if one_line(qid, 200):
         out["id"] = one_line(qid, 200)
-    if answerable and answerable_as_is(questions, out):
+    if answerable and answerable_as_is(questions, out, legacy):
         out["answerable"] = True
         out["expires_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + answer_timeout()))
         if allow_other:
@@ -1454,10 +1470,13 @@ def question_card(name, questions, qid="", answerable=False, allow_other=False):
     listed += parts[len(listed):]  # "+N more questions"
     msg = clamp("\n\n".join([p for p in listed if p] + [tail]), QUESTION_BUDGET + 400)
     field_ = question_field(questions, qid, answerable, allow_other)
+    legacy = question_field(questions, qid, answerable, allow_other, legacy=True)
+    if legacy and field_ and "expires_at" in legacy and "expires_at" in field_:
+        legacy["expires_at"] = field_["expires_at"]  # one wait, whichever field is taken
     if field_ and field_.get("answerable"):
         msg = clamp(msg[:-len(tail)] + "Pick here or answer in %s." % name, QUESTION_BUDGET + 400) \
             if msg.endswith(tail) else msg
-    return what, msg, Asked(field_, choice_steps(name, questions), steps_msg)
+    return what, msg, Asked(field_, choice_steps(name, questions), steps_msg, legacy)
 
 
 def choice_steps(name, questions):
