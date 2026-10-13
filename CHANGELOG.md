@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **A team of agents on one machine no longer goes quiet.** The noisy-sender guard (after 6 pop-ups in an hour from one sender, the rest only brighten the pill) counted every Claude Code, Codex or other hook session on a machine as one sender, so a few busy sessions' permission prompts used up the hour and the next agent's question arrived without a preview. Each agent session is now its own sender; a looping script or poller is still held as before.
+
 ### Added
 
 - **Notes beside the alerts.** The open panel has a second view, **Notes**: a short list of your own todos and reminders as markdown checkboxes, with links. Switch with the checklist button in the header (or **Notes** in the menu bar), tick a box with a click, and **Edit…** opens the notes in their own window with a live preview. They never count, animate or notify. Agents can add a line when you ask them to (`needs-you notes add "…" [--section Today]`) but can't read the list. The notes sync between your hubs; a hub needs this version for them ([guide](docs/guides/mac-app.md#notes), [API](docs/API.md#notes), [ADR 0014](docs/adr/0014-notes.md)).

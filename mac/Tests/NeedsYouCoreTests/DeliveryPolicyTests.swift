@@ -429,7 +429,27 @@ final class NoisySenderGuardTests: XCTestCase {
         ("testSendersAreSeparate", testSendersAreSeparate),
         ("testBounded", testBounded),
         ("testDisplayName", testDisplayName),
+        ("testAgentSessionsAreSeparateSenders", testAgentSessionsAreSeparateSenders),
     ]
+
+    /// A team of agents on one machine: each session has its own budget, so one busy
+    /// session's permission prompts don't quiet another's question.
+    func testAgentSessionsAreSeparateSenders() {
+        var g = NoisySenderGuard(threshold: 2)
+        let a = item("a", key: "agent:devbox:1a2b3c4d-0000", host: "devbox", agent: "claude-code")
+        let aContext = item("a2", key: "agent:devbox:1a2b3c4d-0000:context", host: "devbox", agent: "claude-code")
+        let b = item("b", key: "agent:devbox:term_9f8e7d6c-1111", host: "devbox", agent: "claude-code")
+        XCTAssertTrue(g.admit(a, now: now))
+        XCTAssertTrue(g.admit(aContext, now: now))
+        XCTAssertFalse(g.admit(a, now: now), "the same session's third interrupt is held")
+        XCTAssertTrue(g.admit(b, now: now), "another session is its own sender")
+        XCTAssertEqual(g.heldSenders(now: now), ["devbox|claude-code|1a2b3c4d-0000"])
+        XCTAssertEqual(NoisySenderGuard.displayName("devbox|claude-code|1a2b3c4d-0000"), "devbox · claude-code · session 1a2b3c4d")
+        XCTAssertEqual(NoisySenderGuard.displayName("devbox|claude-code|term_9f8e7d6c-1111"), "devbox · claude-code · session 9f8e7d6c")
+        // Not an agent hook's key: by host and agent, as before.
+        let cron = item("c", key: "work:sync:nightly", host: "devbox", agent: "claude-code")
+        XCTAssertEqual(NoisySenderGuard.senderID(cron), "devbox|claude-code")
+    }
 
     func testHoldsAfterThresholdForTheHour() {
         var g = NoisySenderGuard()

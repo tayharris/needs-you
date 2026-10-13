@@ -287,6 +287,10 @@ public struct RuleBook: Equatable, Sendable {
 /// `threshold` times in a sliding hour is held to ambient until the oldest of those falls
 /// out of the window. Keeps a looping automation from defeating the tiers; the hub's
 /// open-item limit stays the hard cap. In memory only, bounded to `maxSenders`.
+///
+/// The agent hooks' cards (`agent:<host>:<session>[:…]`) count per session: a team of
+/// agents on one machine is many senders, each asking its own questions, and one busy
+/// session must not quiet the others' prompts.
 public struct NoisySenderGuard: Sendable {
     public static let defaultThreshold = 6
     public static let defaultWindow: TimeInterval = 3600
@@ -301,14 +305,30 @@ public struct NoisySenderGuard: Sendable {
         self.window = window
     }
 
-    /// `devbox|orca:redo-fixer`; items without a source share one bucket.
+    /// `devbox|orca:redo-fixer`, or `devbox|claude-code|<session>` for an agent hook's card;
+    /// items without a source share one bucket.
     public static func senderID(_ item: Item) -> String {
-        "\(item.source?.host ?? "")|\(item.source?.agent ?? "")"
+        let base = "\(item.source?.host ?? "")|\(item.source?.agent ?? "")"
+        guard let session = agentSession(item.key) else { return base }
+        return base + "|" + session
     }
 
-    /// `devbox · orca:redo-fixer`, or "an unnamed sender".
+    /// The session of an agent hook's key, `agent:<host>:<session>[:…]`, or nil.
+    static func agentSession(_ key: String?) -> String? {
+        guard let key, key.hasPrefix("agent:") else { return nil }
+        let parts = key.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count >= 3, !parts[2].isEmpty else { return nil }
+        return String(parts[2])
+    }
+
+    /// `devbox · orca:redo-fixer`, `devbox · claude-code · session 1a2b3c4d`, or "an unnamed sender".
     public static func displayName(_ senderID: String) -> String {
-        let parts = senderID.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init).filter { !$0.isEmpty }
+        let fields = senderID.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+        var parts = fields.prefix(2).filter { !$0.isEmpty }
+        if fields.count == 3, !fields[2].isEmpty {
+            let session = fields[2].hasPrefix("term_") ? String(fields[2].dropFirst(5)) : fields[2]
+            parts.append("session " + session.prefix(8))
+        }
         return parts.isEmpty ? "an unnamed sender" : parts.joined(separator: " · ")
     }
 
