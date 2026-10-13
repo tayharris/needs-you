@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PanelController!
     private var settingsWindow: SettingsWindowController!
     private var answerWindow: AnswerWindowController!
+    private var notesWindow: NotesWindowController!
     private var hotKeys: HotKeyController!
     private var phase3: Phase3Controller?
     private var localHub: LocalHubController!
@@ -53,6 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The other one: the user clicked "Other…" / "Answer…" on a question card, to type.
         answerWindow = AnswerWindowController(model: model)
         model.openAnswerWindowHandler = { [weak self] item, question in self?.answerWindow.show(item: item, question: question) }
+        // And the third (ADR 0014): the user clicked Edit in the panel's Notes, to type.
+        notesWindow = NotesWindowController(model: model)
+        model.openNotesWindowHandler = { [weak self] in self?.notesWindow.show() }
         // Setup cards: a click on a card's button (Settings may activate the app then).
         model.setupActionHandler = { [weak self] action, tip in self?.runSetup(action, tip: tip) }
         model.setupProbeHandler = { [weak self] in self?.connect.refreshAccess() }

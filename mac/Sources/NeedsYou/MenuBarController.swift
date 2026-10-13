@@ -137,6 +137,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         show.state = MenuBarFormat.panelMenuChecked(visibility: model.visibility, now: now) ? .on : .off
         menu.addItem(show)
+        if model.notes != nil {
+            let n = model.openNotesCount
+            menu.addItem(ClosureMenuItem(title: "Notes" + (n > 0 ? "  \(n)" : "")) { [weak model] in model?.showNotes() })
+        }
 
         let snooze = NSMenuItem(title: "Snooze", action: nil, keyEquivalent: "")
         let sub = NSMenu()

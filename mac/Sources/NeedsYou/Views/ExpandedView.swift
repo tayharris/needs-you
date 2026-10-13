@@ -13,7 +13,13 @@ struct ExpandedView: View {
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
             ScrollViewReader { reader in
                 ScrollView(.vertical) {
-                    CardList(model: model)
+                    Group {
+                        if model.notesMode {
+                            NotesList(model: model)
+                        } else {
+                            CardList(model: model)
+                        }
+                    }
                         .padding(model.metrics.listPadding)
                         .background(
                             GeometryReader { proxy in
@@ -121,18 +127,39 @@ struct ExpandedHeader: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            // The title stays whole: with big counts the switch gets tighter first ("99+",
-            // less padding, then "W"/"P"); only a very long custom title is still cut.
-            ViewThatFits(in: .horizontal) {
-                titleAndSwitch(.regular)
-                titleAndSwitch(.compact)
-                titleAndSwitch(.initials)
-                HStack(spacing: 5) {
-                    title.truncationMode(.tail).layoutPriority(-1)
-                    ContextSwitch(model: model, style: .initials).fixedSize()
+            if model.notesMode {
+                Text("Notes")
+                    .font(.system(size: model.metrics.headerFont, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                if model.openNotesCount > 0 {
+                    Text("\(model.openNotesCount)").monospacedDigit()
+                        .font(.system(size: model.metrics.headerFont - 1))
+                        .foregroundStyle(Theme.muted)
+                }
+            } else {
+                // The title stays whole: with big counts the switch gets tighter first ("99+",
+                // less padding, then "W"/"P"); only a very long custom title is still cut.
+                ViewThatFits(in: .horizontal) {
+                    titleAndSwitch(.regular)
+                    titleAndSwitch(.compact)
+                    titleAndSwitch(.initials)
+                    HStack(spacing: 5) {
+                        title.truncationMode(.tail).layoutPriority(-1)
+                        ContextSwitch(model: model, style: .initials).fixedSize()
+                    }
                 }
             }
             Spacer(minLength: 4)
+            // Notes ⇄ cards (ADR 0014): a click, nothing activates.
+            Button { model.toggleNotesMode() } label: {
+                Image(systemName: model.notesMode ? "bell" : "checklist")
+                    .font(.system(size: model.metrics.headerFont - 1, weight: .medium))
+                    .frame(width: 18, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(model.notesMode ? "Back to the alerts" : "Notes: your own short list")
             Menu {
                 ForEach(SnoozeOption.panelChoices) { option in
                     Button(option.title) { model.snoozePanel(option) }

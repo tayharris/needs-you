@@ -79,6 +79,23 @@ final class AppModel: ObservableObject {
     /// Never counted, animated or announced; empty from a hub that predates them.
     @Published private(set) var statuses: [StatusRecord] = []
     private var statusETag: String?
+    /// The notes (GET /v1/notes, ADR 0014), nil before the first fetch or from a hub that
+    /// predates them. Never counted, animated or announced.
+    @Published private(set) var notes: NotesDocument?
+    private var notesETag: String?
+    private var notesRefreshing = false
+    /// Saves run one after another, each on the rev the last one left.
+    private var notesSaveChain: Task<Void, Never>?
+    /// Why the last checkbox save didn't stick, shown above the notes until the next one.
+    @Published private(set) var notesProblem: String?
+    /// The open panel shows the notes instead of the cards (the header's checklist button).
+    @Published var notesMode = false {
+        didSet { if notesMode != oldValue { settings.defaults.set(notesMode, forKey: AppModel.notesModeKey) } }
+    }
+    static let notesModeKey = "notesMode"
+    /// Set by the app delegate: opens the notes window. Only `openNotesWindow` calls it, from
+    /// an explicit click on the Notes view's Edit button.
+    var openNotesWindowHandler: (() -> Void)?
     private var orcaFetching = false
     /// The Later section in the expanded panel is open.
     @Published var showLater = false
@@ -223,6 +240,7 @@ final class AppModel: ObservableObject {
         self.settings = settings
         localHost = LocalHubController.localHostName()
         visibility = settings.panelHidden ? .hidden : .shown
+        notesMode = settings.defaults.bool(forKey: AppModel.notesModeKey)
         refreshPalette()
         settings.$ui
             .map { [$0.theme.rawValue, $0.accent.storageString] }
@@ -548,6 +566,9 @@ final class AppModel: ObservableObject {
         typedAnswersRefused = false
         statuses = []
         statusETag = nil
+        notes = nil
+        notesETag = nil
+        notesProblem = nil
 
         if settings.isDemo {
             var seed: [Item]?
@@ -696,6 +717,7 @@ final class AppModel: ObservableObject {
             recordSetupProgress()
             if isExpanded { markVisibleSeen() }
             refreshStatusesInBackground(generation: generation)
+            refreshNotesInBackground(generation: generation)
         } catch {
             guard generation == feedGeneration else { return }
             let many = feedHubCount > 1
@@ -733,6 +755,133 @@ final class AppModel: ObservableObject {
             statusETag = etag
             if records != statuses { statuses = records }
         }
+    }
+
+    // MARK: Notes (ADR 0014)
+
+    private func refreshNotesInBackground(generation: Int) {
+        guard !notesRefreshing else { return }
+        notesRefreshing = true
+        Task { [weak self] in
+            await self?.refreshNotes(generation: generation)
+            self?.notesRefreshing = false
+        }
+    }
+
+    /// After a good items poll: the same hub's notes. A failure keeps the last copy.
+    private func refreshNotes(generation: Int) async {
+        guard let notesFeed = feed as? NotesFeed,
+              let fetch = try? await notesFeed.fetchNotes(etag: notesETag),
+              generation == feedGeneration else { return }
+        switch fetch {
+        case .unchanged: break
+        case .unsupported:
+            notes = nil
+            notesETag = nil
+        case let .fresh(doc, etag):
+            notesETag = etag
+            if doc != notes { notes = doc }
+        }
+    }
+
+    /// Unticked checkboxes, for the header's badge.
+    var openNotesCount: Int { notes.map { NotesText.openCount($0.text) } ?? 0 }
+
+    /// The open panel switches between the cards and the notes (a click: nothing activates).
+    func toggleNotesMode() {
+        notesMode.toggle()
+        if notesMode { pollNow() }
+    }
+
+    /// The menu bar's Notes: open the panel on the notes.
+    func showNotes() {
+        notesMode = true
+        if !isExpanded { showExpanded() }
+        pollNow()
+    }
+
+    /// A click on a checkbox: flip that line here at once, then save the whole document on
+    /// the rev it was read at. If the notes changed meanwhile (409), redo the click on a
+    /// fresh copy once; otherwise say why and take the hub's copy back.
+    func toggleNoteCheckbox(index: Int, text: String, checked: Bool) {
+        guard let doc = notes, let flipped = NotesText.toggle(doc.text, index: index, expect: text) else { return }
+        let first = NotesDocument(text: flipped, rev: doc.rev, updatedAt: doc.updatedAt)
+        notes = first
+        notesProblem = nil
+        let previous = notesSaveChain
+        let generation = feedGeneration
+        notesSaveChain = Task { [weak self] in
+            await previous?.value
+            await self?.saveToggle(first: first, text: text, checked: checked, generation: generation)
+        }
+    }
+
+    /// `checked`: the box's state before the click.
+    private func saveToggle(first: NotesDocument, text: String, checked: Bool, generation: Int) async {
+        guard let notesFeed = feed as? NotesFeed, generation == feedGeneration else { return }
+        for attempt in 0..<2 {
+            // The first try sends the copy the click made; a retry redoes it on a fresh one.
+            var base = first
+            if attempt > 0 {
+                guard case let .fresh(doc, etag)? = try? await notesFeed.fetchNotes(etag: nil) else { break }
+                notesETag = etag
+                guard let index = NotesText.find(doc.text, expect: text, checked: checked),
+                      let flipped = NotesText.toggle(doc.text, index: index, expect: text) else {
+                    notes = doc   // that line is gone or was flipped elsewhere
+                    return
+                }
+                base = NotesDocument(text: flipped, rev: doc.rev, updatedAt: doc.updatedAt)
+            }
+            do {
+                switch try await notesFeed.saveNotes(text: base.text, baseRev: base.rev) {
+                case let .saved(doc):
+                    guard generation == feedGeneration else { return }
+                    notesETag = nil
+                    notes = doc
+                    return
+                case .conflict:
+                    continue
+                case let .refused(_, message):
+                    notesProblem = message.isEmpty ? "The hub refused the change." : message
+                }
+            } catch {
+                notesProblem = "Couldn't save: \((error as? LocalizedError)?.errorDescription ?? "hub unreachable")."
+            }
+            break
+        }
+        notesETag = nil
+        pollNow()  // take the hub's copy back
+    }
+
+    /// The Edit button's save (from the notes window): the whole text on the rev the window
+    /// opened with.
+    func saveNotes(text: String, baseRev: String) async -> NotesSave? {
+        guard let notesFeed = feed as? NotesFeed else { return nil }
+        let generation = feedGeneration
+        await notesSaveChain?.value
+        guard let result = try? await notesFeed.saveNotes(text: text, baseRev: baseRev) else { return nil }
+        if case let .saved(doc) = result, generation == feedGeneration {
+            notesETag = nil
+            notes = doc
+            notesProblem = nil
+        }
+        return result
+    }
+
+    /// The hub's copy now (the notes window's Reload after a conflict).
+    func reloadNotes() async -> NotesDocument? {
+        guard let notesFeed = feed as? NotesFeed,
+              case let .fresh(doc, etag)? = try? await notesFeed.fetchNotes(etag: nil) else { return nil }
+        notesETag = etag
+        notes = doc
+        return doc
+    }
+
+    /// A click on the Notes view's Edit button: the one notes control that activates the
+    /// app (CLAUDE.md rule 2, ADR 0014): typing needs a key window, and the panel never is one.
+    func openNotesWindow() {
+        guard notes != nil else { return }
+        openNotesWindowHandler?()
     }
 
     private func tick() {
@@ -977,6 +1126,8 @@ final class AppModel: ObservableObject {
     func expand(byUser: Bool = false, focusing clicked: String? = nil) {
         // Automatic expansions (NEEDS_YOU_EXPAND, the morning summary) never undo a hide.
         if visibility == .hidden && !byUser && !peeking { return }
+        // Opened at a card (a preview, the menu) or by the morning summary: the cards, not the notes.
+        if clicked != nil || !byUser { notesMode = false }
         if byUser, let target = ExpandFocus.target(clicked: clicked, items: needsItems,
                                                    lastOpenedAt: settings.pillLastOpenedAt, freshAt: store.freshAt) {
             focus(on: target)
