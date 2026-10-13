@@ -307,3 +307,31 @@ by what the agent offered; typed words aren't. Rule 7 now reads:
   content only; an answer on the other id is lost when its content was older. Rare (two hubs
   took the first post of a key and the answer within one replication delay); left as a
   documented limit.
+
+## Amendment (2026-10-13): room for Claude's long questions, and read-only cards that say so
+
+The owner reported that a Claude question card showed its choices but a click on one did
+nothing useful. On the day, 14 of 51 Claude Code `AskUserQuestion` cards on the owner's hubs
+were posted read-only (`answerable: false`), every one because the hook had cut a question
+past 500 characters or a choice's description past 200 (the hub's limits), and B3 never answers
+a card that showed part of what was asked. The Mac drew those choices as faint rows with a
+border, which read as buttons. No card had been answered from the Mac at all.
+
+- **Limits.** `question.items[].text` is now at most 1,000 characters and
+  `options[].description` at most 500 ([API.md](../API.md#post-v1items-sender)); the hooks put
+  up to 24 lines of a question in the field. This loosens validation (compatible for clients;
+  an older hub refuses the longer field with `400`, and a record from a newer hub with one
+  loses its question there, as for any question it would refuse). The rule that a card answers
+  only what it shows whole is unchanged.
+- **Older hubs.** When a hub refuses the field, the hook posts it once more cut to the old
+  limits (read-only where that cuts text, as before) before falling back to steps. The opencode
+  plugin's own cuts are past the hub's limits, so the hook still sees text it must cut.
+- **Read-only cards say so.** A question card that can't answer draws its choices as a plain
+  bulleted list, not button-like rows, with a line saying why: the agent doesn't wait for the
+  card, the question was cut short to fit it, or the agent stopped waiting. Pick in the
+  agent's terminal.
+- **Plain-text questions stay read-only.** A question Claude ends its turn on (the Stop hook's
+  "Claude asks:" card) has no tool call waiting; answering it would mean typing into the
+  session, and Claude Code has no supported way to do that from outside. The skill and the
+  agent guide now tell agents to ask choices with `AskUserQuestion`, kept within the limits
+  above, and never as a list of options in plain text at the end of a turn.

@@ -356,6 +356,7 @@ struct QuestionList: View {
                                 } else {
                                     OptionRow(option: option, font: font, chosen: chosen, clickable: false,
                                               multiSelect: false)
+                                        .help(chosen ? "Chosen" : "The agent's choice, to read: pick it in the agent's terminal")
                                 }
                             }
                         }
@@ -364,6 +365,13 @@ struct QuestionList: View {
                     TypedAnswerRow(item: item, index: index, question: q, model: model, font: font,
                                    answering: answering, locked: locked, typed: selection.texts[index])
                 }
+            }
+            if let note = QuestionDisplay.readOnlyNote(item, answering: answering, now: model.now) {
+                // Read-only choices say so: they are a list to read, not buttons.
+                Label(note, systemImage: "info.circle")
+                    .font(.system(size: model.metrics.metaFont))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             AnswerFooter(item: item, question: question, model: model, answering: answering,
                          state: state, selection: selection)
@@ -489,7 +497,9 @@ private struct TypedAnswerRow: View {
 }
 
 /// One choice: its label, and its description in a fainter colour below it. Clickable rows
-/// get a stronger outline; a chosen one (picked, or the answer given) is tinted.
+/// get a stronger outline; a chosen one (picked, or the answer given) is tinted. A row that
+/// is neither (a read-only question's choice) is a plain bulleted line, so it never looks
+/// like a button.
 struct OptionRow: View {
     let option: ItemQuestionOption
     let font: CGFloat
@@ -499,7 +509,13 @@ struct OptionRow: View {
     @State private var hovering = false
 
     var body: some View {
+        let plain = !clickable && !chosen
         HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if plain {
+                Text("\u{2022}")
+                    .font(Theme.body(font))
+                    .foregroundStyle(Theme.muted)
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(option.label)
                     .font(Theme.body(font).weight(.semibold))
@@ -519,14 +535,14 @@ struct OptionRow: View {
                     .foregroundStyle(Theme.normal)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, plain ? 2 : 8)
+        .padding(.vertical, plain ? 1 : 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(chosen ? Theme.normal.opacity(0.16) : Theme.text.opacity(clickable ? (hovering ? 0.16 : 0.1) : 0.06)))
+            .fill(chosen ? Theme.normal.opacity(0.16) : Theme.text.opacity(clickable ? (hovering ? 0.16 : 0.1) : 0)))
         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .strokeBorder(chosen ? Theme.normal.opacity(0.6) : (clickable ? Theme.linkStroke : Theme.hairline),
-                          lineWidth: chosen || clickable ? 1 : 0.5))
+            .strokeBorder(chosen ? Theme.normal.opacity(0.6) : (clickable ? Theme.linkStroke : Color.clear),
+                          lineWidth: chosen || clickable ? 1 : 0))
         .contentShape(Rectangle())
         .onHover { hovering = clickable && $0 }
     }

@@ -20,6 +20,7 @@ final class QuestionDisplayTests: XCTestCase {
         ("testBodyLeavesOutTheQuestion", testBodyLeavesOutTheQuestion),
         ("testBodyWithoutQuestionIsUnchanged", testBodyWithoutQuestionIsUnchanged),
         ("testLegacyStepsKeepWorking", testLegacyStepsKeepWorking),
+        ("testReadOnlyNote", testReadOnlyNote),
     ]
 
     private let db = ItemQuestionItem(header: "Database", text: "Which database should we use?",
@@ -148,5 +149,38 @@ final class QuestionDisplayTests: XCTestCase {
         ticks.toggle(i, 0)
         ticks.toggle(i, 1)
         XCTAssertTrue(ticks.allTicked(i))
+    }
+
+    func testReadOnlyNote() {
+        // A card whose choices can't be clicked says so, and why, instead of looking like
+        // buttons that do nothing (the owner's report, 2026-10-13).
+        let now = Date(timeIntervalSince1970: 1000)
+        let readOnly = item(ItemQuestion(items: [db]))
+        XCTAssertEqual(QuestionDisplay.readOnlyNote(readOnly, answering: false, now: now),
+                       "The agent's choices, to read: this card can't send one. Pick in the agent's terminal.")
+        // Cut to fit (the hook's "…"): the card never answers what it showed only in part.
+        var cutDB = db
+        cutDB.options[0].detail = "Relational, robust, and then some more words th\u{2026}"
+        XCTAssertEqual(QuestionDisplay.readOnlyNote(item(ItemQuestion(items: [cutDB])), answering: false, now: now),
+                       "Cut short to fit the card, so it can't be answered here: pick in the agent's terminal.")
+        var cutText = db
+        cutText.text = "Which database should we\u{2026}"
+        XCTAssertTrue(QuestionDisplay.readOnlyNote(item(ItemQuestion(items: [cutText])), answering: false, now: now)?
+                        .hasPrefix("Cut short") == true)
+        // The agent stopped waiting.
+        let expired = item(ItemQuestion(id: "q", items: [db], answerable: true, expiresAt: Date(timeIntervalSince1970: 999)))
+        XCTAssertEqual(QuestionDisplay.readOnlyNote(expired, answering: false, now: now),
+                       "The agent stopped waiting for the card: answer in its terminal.")
+        // No note while the card answers, once answered, when closed, or without choices.
+        XCTAssertNil(QuestionDisplay.readOnlyNote(readOnly, answering: true, now: now))
+        var answered = readOnly
+        answered.answer = [ItemAnswer(selected: ["Postgres"])]
+        XCTAssertNil(QuestionDisplay.readOnlyNote(answered, answering: false, now: now))
+        var closed = readOnly
+        closed.status = .resolved
+        XCTAssertNil(QuestionDisplay.readOnlyNote(closed, answering: false, now: now))
+        XCTAssertNil(QuestionDisplay.readOnlyNote(item(ItemQuestion(items: [ItemQuestionItem(text: "Why?")])),
+                                                  answering: false, now: now))
+        XCTAssertNil(QuestionDisplay.readOnlyNote(item(nil), answering: false, now: now))
     }
 }

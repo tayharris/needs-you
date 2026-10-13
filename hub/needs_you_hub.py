@@ -117,10 +117,12 @@ MAX_STEP_TEXT = 200
 MAX_QUESTION_ID = 200
 MAX_QUESTION_ITEMS = 4
 MAX_QUESTION_HEADER = 30
-MAX_QUESTION_TEXT = 500
+# Claude's AskUserQuestion often writes a long question and long option descriptions; a card
+# answers only what it shows whole (ADR 0009 amendment 2026-10-13), so these fit them.
+MAX_QUESTION_TEXT = 1000
 MAX_QUESTION_OPTIONS = 8
 MAX_OPTION_LABEL = 80
-MAX_OPTION_DESCRIPTION = 200
+MAX_OPTION_DESCRIPTION = 500
 # An answer's own words ("Other"), for a question item with allow_other: one line.
 MAX_ANSWER_TEXT = 1000
 # needs-you's own secrets (tokens, invite codes, peer secrets): never in item text (hard rule

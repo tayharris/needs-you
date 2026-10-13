@@ -336,7 +336,12 @@ is data). The CLI queues an add like a post and exits 0. `POST /v1/notes/append`
 The hooks post a `needs` item when a session waits on the person (a permission prompt, a plan
 approval, a question, input, or a stop on an API error) and resolve it as soon as the session
 moves again. A question card shows the question and the choices the agent offered (redacted
-and clamped; the person answers in the agent), a plan card the plan's first lines. They're
+and clamped; the person answers in the agent), a plan card the plan's first lines. Claude
+Code's `AskUserQuestion` and opencode's question cards can be answered with a click when the
+card shows the question whole (at most 4 questions of 8 options, each question under 1,000
+characters and 24 lines, each description under 500, labels under 80, nothing redacted), so an
+agent asks its choices with that tool rather than in plain text at the end of its turn: a
+question in a final message gets only a read-only card, answered in the terminal. They're
 quiet unless the session is opted in (`--alerts`, which writes `NEEDS_YOU_AGENT_ALERTS=1`, or
 a session Orca starts). An agent that posts its own blockers doesn't duplicate them.
 
