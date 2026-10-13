@@ -22,11 +22,11 @@ Each run:
 3. **What's still yours:** a second search, `assignee = currentUser() AND statusCategory != Done`. An issue that was yours and isn't in it any more was unassigned (or left your filter), and its card resolves.
 4. **Comments:** only for an issue whose `updated` moved since the last run, `GET /issue/<KEY>/comment` (newest 50). New comments are the ones with a higher id than the last one seen. Their bodies are searched for a mention of you and never copied anywhere.
 5. **Diff:** the status, assignee and comments are compared with the last run's saved state. The latest event by **someone else** sets the issue's card. A later change of **yours** (a comment, a transition, assigning it to yourself) clears it: you've already acted.
-6. **Cards:** one per issue, updated in place. A card is re-posted on every run while it stands, with `--expires-in` of 3x the interval (15 minutes), so a poller that stops leaves nothing stale behind. Re-posting identical content doesn't re-animate a card.
+6. **Cards:** one per issue, updated in place. A card is posted when a new event sets it, and only then, so a card you resolve (**Done**) or dismiss on the Mac stays closed until the issue has something new; a new event updates the card if it's open, or brings it back if you closed it. It expires 24 hours after its latest event, when the poller would clear it anyway.
 
 The **first run** only records your open issues and posts nothing, so installing it never posts a burst of old changes. The same goes for issues that come into view because you changed `NEEDS_YOU_JIRA_PROJECTS`, `_JQL_EXTRA` or `_WATCHING`.
 
-It posts through the `needs-you` CLI, so the outbox and hub failover apply. While the outbox has a backlog (no hub reachable), unchanged cards aren't renewed, so a sleeping Mac doesn't fill it.
+It posts through the `needs-you` CLI, so the outbox and hub failover apply.
 
 What it remembers is in `~/.local/state/needs-you/jira.json` (mode 600): your account id, each open issue's key, status, summary, `updated` and last comment id, and what it posted. No token and no comment text.
 
@@ -68,7 +68,7 @@ In `~/.config/needs-you/env` (or the environment).
 | `NEEDS_YOU_JIRA_PROJECTS` | every project, default context, low | `ACME=work:normal,OPS=work:urgent`: only these projects, each one's context (and key prefix) and base priority. An entry that doesn't parse is a config error, as above |
 | `NEEDS_YOU_JIRA_JQL_EXTRA` | none | More JQL to narrow the searches, such as `labels != noise` (see below) |
 | `NEEDS_YOU_JIRA_WATCHING` | `0` | `1`: issues you watch count too (status, comment and mention cards; no `assigned`) |
-| `NEEDS_YOU_JIRA_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |
+| `NEEDS_YOU_JIRA_INTERVAL` | `5` | Minutes between runs. Match your schedule |
 | `NEEDS_YOU_JIRA_MAX_CARDS` | `20` | Cap on open cards from this poller |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | Path to the CLI |
 
