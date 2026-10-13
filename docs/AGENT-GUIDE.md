@@ -337,6 +337,14 @@ a session Orca starts). An agent that posts its own blockers doesn't duplicate t
 
 Open sessions load new hooks after a restart.
 
+**When the person says a session is critical** ("this is critical", "ping me the second you're
+stuck"), run `needs-you session priority urgent` in that session. The hooks then post its cards
+(permission prompts, questions, "finished", errors) as `urgent` for 12 hours (`--hours`, at most
+168) or until the session ends; `needs-you session priority normal` or `clear` undoes it. It's a
+local file keyed by the session the hooks use (found as for one card per wait above), and it
+sends nothing. Your own items still take `--priority`. Exit 2: not inside a session the hooks
+know; say so rather than guessing a `--session` id.
+
 ## Orca automations
 
 Automations are agent prompts on a schedule; they get a block of text saying when to `add`,

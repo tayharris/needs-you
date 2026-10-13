@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Mark a session critical.** Say "this is critical" to Claude (or `/needs-you critical` with the skill) and it runs `needs-you session priority urgent`: that session's hook cards (permission prompts, questions, "finished", errors) then come in `urgent`, breaking through snooze, for 12 hours or until the session ends; `needs-you session priority normal` or `clear` undoes it. A local file the hooks read, keyed by the session; nothing new on the wire. Codex, opencode, Gemini CLI and Kimi sessions use the same command ([guide](docs/guides/claude-code.md#marking-a-session-critical)).
+
 ## [0.5.3] - 2026-10-12
 
 A pre-release: easier to set up and to keep current. **Settings → Updates → Machines and hubs** lists every sender machine and server hub with its version, with **Request update** and **Update all**, and a server hub can now be asked to update at once (with every check its timer makes). Every install command also comes as plain lines that a browser console can't break, the installers and `needs-you doctor` say what comes next, every setting is on one [Configuration](docs/guides/configuration.md) page and a bad one is named instead of ignored, Settings pages say what each choice does, and Claude Code's error cards say which error. On the Mac, Settings → Updates → **Releases and pre-releases** picks it up; stable stays on 0.5.1 until it's promoted. 0.5.2 was tagged but never released (its build's tests timed out on a busy machine), so this is the first release with these changes. Upgrade server hubs (they update themselves on the pre-release channel; on stable they wait for the promotion), then run `needs-you update` on sender machines for the new hooks.

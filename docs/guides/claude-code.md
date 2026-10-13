@@ -110,6 +110,12 @@ The note goes away when the item is resolved with the CLI on this machine (`need
 
 Codex, Gemini CLI and opencode work the same way: their "turn ended" card is skipped while the agent's own item is open. Codex gives its commands `$CODEX_SESSION_ID`, the needs-you opencode plugin sets `$NEEDS_YOU_AGENT_SESSION` for them (any connector can, see the [custom connector guide](custom-connector.md#one-card-for-one-wait)), and for Gemini CLI and Kimi Code, which give their commands no session id, the CLI notes the item for the agent process instead (Kimi: commands its Bash tool runs, which it marks with `TERM=dumb`). Copilot CLI, Grok, Cursor, Cline and Aider don't tell the agent's commands their session id, so for them this works only in Orca, where the terminal handle names the session for both the CLI and the hook.
 
+### Marking a session critical
+
+When one session matters more than the rest, tell Claude so: "this is critical", or `/needs-you critical` with the skill installed. Claude runs `needs-you session priority urgent`, and from then on that session's cards (permission prompts, questions, "finished", errors) come in `urgent`, which breaks through snooze. Other sessions keep `NEEDS_YOU_AGENT_PRIORITY`. It lasts 12 hours (`--hours` to change it, at most 168) or until the session ends; "it's not critical any more" or `/needs-you normal` undoes it (`needs-you session priority normal`, or `clear` for this machine's default). The card that was up when you typed has already cleared by then, so the next one is the first `urgent` one.
+
+It's a local file, `~/.local/state/needs-you/session-priority/<session>`, keyed by the same session as the cards; nothing is sent until a card is. From another shell, name the session: `needs-you session priority urgent --session <id>`. Codex, opencode and Gemini CLI read it too (with the needs-you instructions installed, `--agent-instructions`, they know the command); for agents whose commands don't know their session, it works only in Orca.
+
 The hooks always exit 0 and print nothing, so they can't block a tool call, keep Claude from stopping, or put text into the conversation. When no hub answers, the CLI queues the post and the flush sends it later.
 
 ## Turning the hooks on
@@ -135,7 +141,7 @@ Set in the environment or as lines in `~/.config/needs-you/env`:
 
 ```bash
 NEEDS_YOU_AGENT_CONTEXT=personal      # default: NEEDS_YOU_DEFAULT_CONTEXT, else work
-NEEDS_YOU_AGENT_PRIORITY=low          # urgent | normal | low; default normal
+NEEDS_YOU_AGENT_PRIORITY=low          # urgent | normal | low; default normal (one session: see "Marking a session critical")
 NEEDS_YOU_AGENT_LINK='Cursor=cursor://file{cwd}'     # one link instead of the automatic ones; none = no editor links
 NEEDS_YOU_SSH_ALIAS=devbox            # this host's name in the Mac's ~/.ssh/config: a Remote-SSH button
 NEEDS_YOU_CONTEXT_ALERT_PCT=80        # context card threshold in percent; 0 = off
