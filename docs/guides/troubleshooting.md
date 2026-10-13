@@ -227,7 +227,7 @@ Grok-specific causes:
 - **"Jira redirected":** the site URL is wrong (`http` vs `https`, a missing context path), or your Jira sends API calls to a browser login. The poller never follows a redirect, so the token isn't sent anywhere else.
 - **"must be an https:// URL":** `NEEDS_YOU_JIRA_SITE` must start with `https://`. A Data Center site on plain `http` isn't supported.
 - **"NEEDS_YOU_JIRA_JQL_EXTRA …":** your extra JQL has unbalanced quotes or parentheses, `ORDER BY`, or a line break; the poller does nothing until it's fixed. A JQL error from Jira itself ("HTTP 400 … ") quotes Jira's message.
-- **A card that doesn't clear:** it clears when the issue is Done, no longer yours, when you comment or move it yourself, after 24 hours with nothing new, or 15 minutes after the poller stops.
+- **A card that doesn't clear:** it clears when the issue is Done, no longer yours, when you comment or move it yourself, or after 24 hours with nothing new (also when the poller has stopped). Or close it on the Mac: it stays closed until the issue has something new.
 - **Too many cards:** narrow it with `NEEDS_YOU_JIRA_PROJECTS`, `NEEDS_YOU_JIRA_STATUSES` (`Backlog=off`), `NEEDS_YOU_JIRA_EVENTS` or `NEEDS_YOU_JIRA_JQL_EXTRA` ([integrations/jira](../../integrations/jira/README.md#config)).
 
 ## Orca automations
