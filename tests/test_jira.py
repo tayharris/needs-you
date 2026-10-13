@@ -348,6 +348,21 @@ class CloudPoller(JiraBase):
         exp = calendar.timegm(time.strptime(c2["expires_at"][:19], "%Y-%m-%dT%H:%M:%S"))
         self.assertAlmostEqual(exp, time.time() + 24 * 3600, delta=120)  # a day after its latest event
 
+    def test_state_from_an_older_version_posts_nothing_again(self):
+        self.baseline()
+        self.world.comment("ACME-2", 10005, minute=6)
+        self.poll()
+        before = self.open_items()[self.key("ACME-2")]
+        with open(self.state) as fh:
+            st = json.load(fh)
+        for v in st["posted"].values():
+            v.pop("at", None)  # what 0.5.3 and earlier saved
+        with open(self.state, "w") as fh:
+            json.dump(st, fh)
+        self.poll()
+        self.poll()
+        self.assertEqual(self.open_items()[self.key("ACME-2")]["updated_at"], before["updated_at"])
+
     def test_status_rules_and_project_priority(self):
         cfg = {"NEEDS_YOU_JIRA_STATUSES": "Blocked=urgent,In Review=normal,Backlog=off",
                "NEEDS_YOU_JIRA_PROJECTS": "ACME=personal:low"}

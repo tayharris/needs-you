@@ -864,8 +864,12 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
             # the person closed opens a new item, so the same notifications are never posted
             # twice: closing the card sticks while Linear still lists them unread. (A sender
             # can't read items, so it can't tell an open card from a closed one.) An entry from
-            # before "n" was kept has no list: everything behind it counts as new, once.
-            done = set(prev.get("n") or []) if isinstance(prev.get("n"), list) else set()
+            # before "n" was kept has no list: the notifications behind it now were posted
+            # already, so they're taken as done (an upgrade never re-posts anything).
+            if prev and not isinstance(prev.get("n"), list):
+                prev["n"] = ids
+                continue
+            done = set(prev.get("n") or [])
             if prev and not (set(ids) - done):
                 prev["n"] = ids  # forget the ones read since, so the list stays small
                 continue

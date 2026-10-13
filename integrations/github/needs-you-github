@@ -1073,9 +1073,10 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
         h = card_hash(c)
         prev = posted.get(key) or {}
         # Once per condition: an unchanged card is never re-posted, so one the person closed
-        # stays closed. "once" marks cards posted this way; older state (renewed every run on
-        # a short expiry) gets one more post with the long expiry, then sticks.
-        if prev.get("h") == h and (prev.get("once") or c["src"] == "health"):
+        # stays closed. Older state (renewed every run) has no "once": an unchanged card there
+        # was posted already, so it's marked and skipped (an upgrade never re-posts anything).
+        if prev.get("h") == h:
+            prev["once"] = 1
             continue
         if dry_run:
             print("%s %s [%s] %s" % ("post" if prev.get("h") != h else "repost", key, c["priority"], c["title"]))

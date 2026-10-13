@@ -1075,6 +1075,9 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
             # the card sticks. (A sender can't read items, so it can't tell open from closed.)
             if prev and prev.get("at") == c["at"]:
                 continue
+            if prev and "at" not in prev:
+                prev["at"] = c["at"]  # saved before "at" was kept: posted already, never again
+                continue
             # It lives until its latest event is MAX_AGE_H old, when it would resolve anyway.
             expires_h = max(0.05, (c["at"] + MAX_AGE_H * 3600 - now) / 3600.0)
         if dry_run:

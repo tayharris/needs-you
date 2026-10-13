@@ -292,7 +292,7 @@ class LinearPoller(HubTestCase):
         exp = calendar.timegm(time.strptime(it["expires_at"][:19], "%Y-%m-%dT%H:%M:%S"))
         self.assertAlmostEqual(exp, time.time() - 20 * 60 + 24 * 3600, delta=120)
 
-    def test_state_from_an_older_version_posts_once(self):
+    def test_state_from_an_older_version_posts_nothing_again(self):
         self.poll()
         with open(self.state) as fh:
             st = json.load(fh)
@@ -302,11 +302,8 @@ class LinearPoller(HubTestCase):
             json.dump(st, fh)
         before = self.open_items()["work:linear:ACME-3"]
         self.poll()
-        after = self.open_items()["work:linear:ACME-3"]
-        self.assertEqual(after["id"], before["id"])
-        self.assertNotEqual(after["updated_at"], before["updated_at"])
         self.poll()
-        self.assertEqual(self.open_items()["work:linear:ACME-3"]["updated_at"], after["updated_at"])
+        self.assertEqual(self.open_items()["work:linear:ACME-3"]["updated_at"], before["updated_at"])
 
     def test_deleted_notification_resolves(self):
         self.poll()

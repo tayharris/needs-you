@@ -244,7 +244,7 @@ class GithubPoller(HubTestCase):
         self.poll()
         self.assertIn(key, self.open_items())
 
-    def test_state_from_before_posts_each_card_once_more(self):
+    def test_state_from_before_posts_nothing_again(self):
         self.poll()
         with open(self.state) as fh:
             st = json.load(fh)
@@ -254,12 +254,9 @@ class GithubPoller(HubTestCase):
             json.dump(st, fh)
         before = {k: v["updated_at"] for k, v in self.open_items().items()}
         self.poll()
-        after = self.open_items()
-        renewed = [k for k in before if after[k]["updated_at"] != before[k]]
-        self.assertTrue(renewed, "re-posted once with the long expiry")
-        again = {k: v["updated_at"] for k, v in after.items()}
-        self.poll()
-        self.assertEqual({k: v["updated_at"] for k, v in self.open_items().items()}, again)
+        self.assertEqual({k: v["updated_at"] for k, v in self.open_items().items()}, before)
+        with open(self.state) as fh:
+            self.assertTrue(all(v.get("once") for v in json.load(fh)["posted"].values()))
 
     def test_conditional_request_and_304_keeps_cards(self):
         self.poll()

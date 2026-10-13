@@ -6,7 +6,8 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
-- **A GitHub card you close stays closed.** The GitHub poller re-posted every card on every run (every 5 minutes) to keep a 15-minute expiry moving, so a "Resolve conflicts" or "Fix failing checks" card you dismissed came back within minutes while the PR still had the problem. A card is now posted once per condition, again only when it changes (another check fails, a new review), and expires after 7 days as a safety net. Right after the update, each open GitHub card is posted once more; after that it sticks ([guide](docs/guides/github.md)).
+- **A GitHub card you close stays closed.** The GitHub poller re-posted every card on every run (every 5 minutes) to keep a 15-minute expiry moving, so a "Resolve conflicts" or "Fix failing checks" card you dismissed came back within minutes while the PR still had the problem. A card is now posted once per condition, again only when it changes (another check fails, a new review), and expires after 7 days as a safety net. Updating posts nothing again: a card the old version already posted counts as posted ([guide](docs/guides/github.md)).
+- **Updating the Linear or Jira poller no longer re-posts its open cards.** 0.6.0 posted each one once more after the update, because the older state didn't record which notifications or events a card was for; now what's behind a card at the update counts as posted ([Linear](docs/guides/linear.md), [Jira](docs/guides/jira.md)).
 
 ## [0.6.0] - 2026-10-13
 
