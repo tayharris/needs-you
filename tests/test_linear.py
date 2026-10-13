@@ -4,6 +4,7 @@ config, the cap, the poller-failing card, the hub being down, opt-in, the key fi
 permissions, and that the key never reaches output, state or items."""
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import re
@@ -206,7 +207,7 @@ class LinearPoller(HubTestCase):
         self.assertEqual(len(self.fake.requests), 1)
         self.assertEqual(self.fake.requests[0]["auth"], KEY)
 
-    def test_dedupe_renew_and_update_in_place(self):
+    def test_dedupe_and_update_in_place(self):
         self.poll()
         first = self.open_items()
         self.poll()
@@ -214,8 +215,7 @@ class LinearPoller(HubTestCase):
         self.assertEqual(len(self.all_items()), len(first))
         for k in first:
             self.assertEqual(first[k]["id"], second[k]["id"])
-            self.assertEqual(first[k]["content_updated_at"], second[k]["content_updated_at"])
-            self.assertGreaterEqual(second[k]["expires_at"], first[k]["expires_at"])
+            self.assertEqual(first[k]["updated_at"], second[k]["updated_at"])  # nothing new: not re-posted
         # The second run asked about the notifications behind its cards.
         self.assertIn("tracked: notifications", self.fake.requests[-1]["query"])
         # A new comment on ACME-1: same card, new title, body and event.
@@ -246,11 +246,67 @@ class LinearPoller(HubTestCase):
 
     def test_one_read_of_two_keeps_the_card(self):
         self.poll()
+        before = self.open_items()["work:linear:ACME-2"]
         self.fake.touch("n2b", readAt=iso(time.time()))
         self.poll()
         two = self.open_items()["work:linear:ACME-2"]
-        self.assertEqual(two["title"], "ACME-2 moved to In Review: Billing flag rename")
-        self.assertEqual(two["source"]["event"], "status")
+        self.assertEqual(two["id"], before["id"])
+        self.assertEqual(two["updated_at"], before["updated_at"])  # nothing new, so no re-post
+        # Both read: it resolves.
+        self.fake.touch("n2a", readAt=iso(time.time()))
+        self.poll()
+        self.assertNotIn("work:linear:ACME-2", self.open_items())
+
+    def close(self, key: str, how: str) -> None:
+        it = self.open_items()[key]
+        code = request("PATCH", self.hub.url + "/v1/items/" + it["id"], self.reader, {"status": how})[0]
+        self.assertEqual(code, 200)
+
+    def test_closed_on_the_mac_stays_closed(self):
+        self.poll()
+        self.close("work:linear:ACME-3", "resolved")    # Done
+        self.close("work:linear:ACME-2", "dismissed")   # Dismiss
+        for _ in range(3):  # still unread in Linear, run after run
+            self.poll()
+        self.assertNotIn("work:linear:ACME-3", self.open_items())
+        self.assertNotIn("work:linear:ACME-2", self.open_items())
+        self.assertEqual(len([i for i in self.all_items() if i["key"] == "work:linear:ACME-3"]), 1)
+        # A notification Linear updates (read elsewhere, then unread; snoozed and back) is not new.
+        self.fake.touch("n3", archivedAt=None)
+        self.poll()
+        self.assertNotIn("work:linear:ACME-3", self.open_items())
+        # A genuinely new mention is a new card.
+        self.fake.notifs.append(notif("n3b", "ACME-3", "mentions", "Safari layout", mins_ago=0))
+        self.poll()
+        three = self.open_items()["work:linear:ACME-3"]
+        self.assertEqual(three["title"], "You were mentioned in ACME-3: Safari layout")
+        self.assertEqual(three["body"], "2 mentions, status In Progress")
+        self.assertEqual(len([i for i in self.all_items() if i["key"] == "work:linear:ACME-3"]), 2)
+        self.poll()
+        self.assertEqual(self.open_items()["work:linear:ACME-3"]["updated_at"], three["updated_at"])
+        self.assertNotIn("work:linear:ACME-2", self.open_items())
+
+    def test_expires_with_its_newest_notification(self):
+        self.poll()
+        it = self.open_items()["work:linear:ACME-3"]          # n3: 20 minutes old
+        exp = calendar.timegm(time.strptime(it["expires_at"][:19], "%Y-%m-%dT%H:%M:%S"))
+        self.assertAlmostEqual(exp, time.time() - 20 * 60 + 24 * 3600, delta=120)
+
+    def test_state_from_an_older_version_posts_once(self):
+        self.poll()
+        with open(self.state) as fh:
+            st = json.load(fh)
+        for v in st["posted"].values():
+            v.pop("n", None)  # what 0.5.3 and earlier saved
+        with open(self.state, "w") as fh:
+            json.dump(st, fh)
+        before = self.open_items()["work:linear:ACME-3"]
+        self.poll()
+        after = self.open_items()["work:linear:ACME-3"]
+        self.assertEqual(after["id"], before["id"])
+        self.assertNotEqual(after["updated_at"], before["updated_at"])
+        self.poll()
+        self.assertEqual(self.open_items()["work:linear:ACME-3"]["updated_at"], after["updated_at"])
 
     def test_deleted_notification_resolves(self):
         self.poll()
@@ -376,7 +432,7 @@ class LinearPoller(HubTestCase):
         self.poll()
         n = len([f for f in os.listdir(self.outbox) if f.endswith(".json")])
         self.assertEqual(n, 4)
-        self.poll()  # unchanged cards aren't renewed while the outbox has a backlog
+        self.poll()  # nothing new: nothing more queued
         self.assertEqual(len([f for f in os.listdir(self.outbox) if f.endswith(".json")]), n)
 
     def test_not_opted_in_does_nothing(self):

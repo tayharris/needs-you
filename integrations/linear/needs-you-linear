@@ -14,9 +14,11 @@ page of new notifications):
   2. viewer.assignedIssues (not done or canceled), so an issue that leaves it (done,
      canceled or unassigned from you) clears its card.
   3. One card per issue, key <context>:linear:<ISSUE-ID>, titled by the latest event, with a
-     count line as its body. It is re-posted while it holds (so its --expires-in keeps
-     moving), and resolved when every notification behind it is read, archived or snoozed,
-     the issue is done, canceled or no longer yours, or after 24 h with nothing new.
+     count line as its body. It is posted when a notification arrives that it hasn't posted
+     for, and only then: never again for the same notifications, so a card you resolve or
+     dismiss stays closed while Linear still lists them unread. It expires when the newest
+     notification behind it is 24 h old, and is resolved sooner when every notification
+     behind it is read, archived or snoozed, or the issue is done, canceled or no longer yours.
 
 The key is read from a file (mode 600, owned by you) and sent only to the API URL; it is
 never logged, printed, stored in the state file or passed to another program. Everything
@@ -35,7 +37,7 @@ Config (environment, else ~/.config/needs-you/env):
                               "Backlog=off" posts no status-change card for that status
   NEEDS_YOU_LINEAR_TEAMS      team key=context:priority, "ACME=work:normal,OPS=work:urgent". When set,
                               also the list of teams to watch (default: every team, default context)
-  NEEDS_YOU_LINEAR_INTERVAL   minutes between runs (default 5); cards expire after 3x this
+  NEEDS_YOU_LINEAR_INTERVAL   minutes between runs (default 5)
   NEEDS_YOU_LINEAR_MAX_CARDS  at most this many cards open at once (default 20; urgent first)
   NEEDS_YOU_LINEAR_MAX_AGE_H  a card with nothing new for this many hours resolves (default 24)
   NEEDS_YOU_LINEAR_API        the GraphQL URL (default https://api.linear.app/graphql; https, or http
@@ -45,8 +47,8 @@ Config (environment, else ~/.config/needs-you/env):
 Priority is the highest of the status rule, the team's base and the event's floor (comment
 and mention: normal; assigned and status: low).
 
-State: ~/.local/state/needs-you/linear.json (mode 600): what it posted, the notifications
-behind open cards, the time of the last run. No key.
+State: ~/.local/state/needs-you/linear.json (mode 600): what it posted and for which
+notifications, the notifications behind open cards, the time of the last run. No key.
 Python 3.9+ standard library only.
 """
 from __future__ import annotations
@@ -137,14 +139,6 @@ def read_env_file(path: str) -> Dict[str, str]:
 
 def state_base() -> str:
     return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
-
-
-def outbox_has_backlog() -> bool:
-    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
-    try:
-        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
-    except OSError:
-        return False
 
 
 def _csv(value: str) -> List[str]:
@@ -678,7 +672,8 @@ def issue_card(cfg: Config, ident: str, info: Dict[str, Any], notifs: List[Dict[
     links = [("Comment", url)] if url else ([("Issue", info["u"])] if info.get("u") else [])
     return {"key": KEY_SAFE.sub("-", "%s:linear:%s" % (ctx, ident))[:200], "title": title[:TITLE_MAX],
             "priority": prio, "context": ctx, "project": team, "event": ev, "src": "linear",
-            "links": [[label, u] for label, u in links], "body": _sentence(", ".join(parts))}
+            "links": [[label, u] for label, u in links], "body": _sentence(", ".join(parts)),
+            "ids": sorted(n["id"] for n in notifs), "at": max(n["c"] for n in notifs)}
 
 
 # ---------------------------------------------------------------------------
@@ -831,19 +826,31 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
     if not dry_run and not cfg.cli:
         warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
         return
-    expires_h = 3 * cfg.interval_min / 60.0
-    backlog = outbox_has_backlog()
     for key, c in sorted(desired.items()):
         h = card_hash(c)
         prev = posted.get(key) or {}
-        changed = prev.get("h") != h
-        if not changed and (backlog or (c["src"] == "health" and prev)):
-            continue  # hub unreachable: don't fill the outbox with renewals
+        ids = c.get("ids") or []
+        if c["src"] == "health":
+            if prev and prev.get("h") == h:
+                continue  # posted once; it has no expiry
+            expires_h = None
+        else:
+            # Post only for a notification this card hasn't been posted for. A re-post of a key
+            # the person closed opens a new item, so the same notifications are never posted
+            # twice: closing the card sticks while Linear still lists them unread. (A sender
+            # can't read items, so it can't tell an open card from a closed one.) An entry from
+            # before "n" was kept has no list: everything behind it counts as new, once.
+            done = set(prev.get("n") or []) if isinstance(prev.get("n"), list) else set()
+            if prev and not (set(ids) - done):
+                prev["n"] = ids  # forget the ones read since, so the list stays small
+                continue
+            # It lives until its newest notification is MAX_AGE_H old, when it would resolve anyway.
+            expires_h = max(0.05, (float(c["at"]) + cfg.max_age_s - now) / 3600.0)
         if dry_run:
-            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+            print("post %s [%s] %s" % (key, c["priority"], c["title"]))
             continue
-        if post(cfg, c, None if c["src"] == "health" else expires_h):
-            posted[key] = {"h": h, "t": now, "src": c["src"]}
+        if post(cfg, c, expires_h):
+            posted[key] = {"h": h, "t": now, "src": c["src"], "n": ids}
     for key in sorted(set(posted) - set(desired)):
         if errors and (posted[key] or {}).get("src") == "linear":
             continue  # couldn't look: leave it to its expiry
