@@ -287,6 +287,9 @@ VALIDATION = [
     ("expires_at", _with(expires_at="tomorrow"), "expires_at"),
     ("question no items", _with(question={"items": []}), "question.items"),
     ("question text missing", _with(question={"items": [{"options": []}]}), "question.items[0].text"),
+    ("question text 1001", _with(question={"items": [{"text": "q" * 1001}]}), "question.items[0].text"),
+    ("option description 501", _with(question={"items": [{"text": "q", "options": [{"label": "A", "description": "d" * 501}]}]}),
+     "question.items[0].options[0].description"),
     ("question nine options", _with(question={"items": [{"text": "q", "options": [{"label": str(i)} for i in range(9)]}]}),
      "question.items[0].options"),
     ("answerable without options", _with(question={"items": [{"text": "q"}], "answerable": True}), "question.answerable"),
@@ -336,6 +339,20 @@ class Validation(HubCase):
         self.assertIs(body["question"]["answerable"], False)
         self.assertIsNotNone(body["expires_at"])  # info: default expiry
         self.assertEqual(len(body["id"]), 26)
+        call("POST", "/v1/items/resolve", Env.sender, {"id": body["id"]})
+
+    def test_a_question_at_its_limits_is_taken_whole(self):
+        """A 1,000-character question with 8 options of 500-character descriptions (ADR 0009
+        amendment 2026-10-13): taken and returned as sent, answerable."""
+        items = [{"text": "q" * 1000, "header": "h" * 30, "options": [
+            {"label": ("l%d" % j) * 20, "description": "d" * 500} for j in range(8)]} for _ in range(4)]
+        status, body = post({"key": key("q-limits"), "title": "a long question",
+                             "question": {"id": "q1", "answerable": True, "items": items}})
+        self.assertEqual(status, 201, body)
+        got = body["question"]["items"]
+        self.assertEqual([it["text"] for it in got], [it["text"] for it in items])
+        self.assertEqual([o["description"] for it in got for o in it["options"]], ["d" * 500] * 32)
+        self.assertIs(body["question"]["answerable"], True)
         call("POST", "/v1/items/resolve", Env.sender, {"id": body["id"]})
 
     def test_source_event_is_kept_and_unknown_source_keys_dropped(self):

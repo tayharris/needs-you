@@ -239,9 +239,9 @@ REFUSED = [
     ("q-label-too-long", {"title": "t", "question": {"items": [{"text": "q", "options": [{"label": "x" * 81}]}]}},
      "question.items[0].options[0].label"),
     ("q-description-too-long", {"title": "t", "question": {"items": [{"text": "q", "options": [
-        {"label": "a", "description": "x" * 201}]}]}}, "question.items[0].options[0].description"),
+        {"label": "a", "description": "x" * 501}]}]}}, "question.items[0].options[0].description"),
     ("q-header-too-long", {"title": "t", "question": {"items": [{"header": "x" * 31, "text": "q"}]}}, "question.items[0].header"),
-    ("q-text-too-long", {"title": "t", "question": {"items": [{"text": "x" * 501}]}}, "question.items[0].text"),
+    ("q-text-too-long", {"title": "t", "question": {"items": [{"text": "x" * 1001}]}}, "question.items[0].text"),
     ("q-no-items", {"title": "t", "question": {"items": []}}, "question.items"),
     ("q-multi-string", {"title": "t", "question": {"items": [{"text": "q", "multi_select": "yes"}]}},
      "question.items[0].multi_select"),

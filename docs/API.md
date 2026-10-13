@@ -309,9 +309,9 @@ click, or the words they type where the sender takes them (`allow_other`)
   "id": "toolu_01ABC",            // optional, ≤ 200 chars: the agent's own id for the request
   "items": [{                     // 1–4 questions, in order
     "header": "Database",         // optional, ≤ 30 chars, one line
-    "text": "Which database should we use?",  // required, 1–500 chars; newlines allowed
+    "text": "Which database should we use?",  // required, 1–1,000 chars; newlines allowed
     "options": [                  // 0–8; none for a free-text question
-      {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 200, one line each
+      {"label": "Postgres", "description": "Durable"}  // label 1–80 chars, description ≤ 500, one line each
     ],
     "multi_select": false,        // true: the agent takes several options
     "allow_other": false          // optional: true when the sender also takes the person's own words
