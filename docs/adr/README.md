@@ -17,6 +17,7 @@ Short records of decisions that shape the code: Context, Decision, Consequences,
 | [0011](0011-status-records.md) | Status records apart from items: a quiet progress strip and usage meters (`PUT /v1/status/<key>`, never counted or animated) | Accepted for usage meters (progress strip deferred) |
 | [0012](0012-mac-hub-peers.md) | The Mac's hub peers with always-on hubs, set up by a one-use peer invite with a secret bound to each link | Accepted (on merge) |
 | [0013](0013-hub-update-requests.md) | The owner can ask a server hub to update now: an owner-only flag (`POST /v1/hub/update`, no body read) that the hub's checked updater picks up without the soak | Accepted |
+| [0014](0014-notes.md) | Notes beside the alerts: one markdown document per hub cluster (`/v1/notes`), readers edit it with a rev check, senders only append; the panel ticks checkboxes and a third typing window edits | Accepted |
 
 Template:
 

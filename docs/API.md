@@ -27,8 +27,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
 
   | Role | Can call |
   |---|---|
-  | `sender` | `POST /v1/items`, `POST /v1/items/resolve`, `GET /v1/items/answer`, `PUT`/`DELETE /v1/status/<key>` |
-  | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `POST /v1/items/{id}/answer`, `GET /v1/stream`, `GET /v1/status` |
+  | `sender` | `POST /v1/items`, `POST /v1/items/resolve`, `GET /v1/items/answer`, `PUT`/`DELETE /v1/status/<key>`, `POST /v1/notes/append` |
+  | `reader` | `GET /v1/items`, `GET /v1/items/{id}`, `PATCH /v1/items/{id}`, `POST /v1/items/{id}/answer`, `GET /v1/stream`, `GET /v1/status`, `GET`/`PUT /v1/notes`, `POST /v1/notes/append` |
   | `owner` | everything `reader` can, plus invites (`/v1/invites`), tokens (`/v1/tokens`) and peers (`/v1/peers`): list, create, revoke, remove and request updates (the Mac app); and asking a server hub to update itself (`/v1/hub/update`) |
 
   `GET /v1/health`, `POST /v1/invites/redeem` (the invite code is the credential),
@@ -60,7 +60,7 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 403 | `forbidden` | Valid token, wrong role for the endpoint, or typed answer `text` from a reader token ([answers](#post-v1itemsidanswer-reader)) |
   | 404 | `not_found` | Unknown endpoint, unknown id (`GET`/`PATCH /v1/items/{id}`, `POST /v1/items/{id}/answer`), no item for this token on `GET /v1/items/answer`, unknown invite code, nothing to revoke, withdraw or remove (`/v1/invites/…`, `/v1/tokens/…`, `/v1/peers/…`), a file not on the `/dl` list, or replication on a hub with no peer secret |
   | 409 | `self` | A hub tried to replicate to itself, or to redeem its own peer invite |
-  | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite |
+  | 409 | `conflict` | A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite; a `PUT /v1/notes` whose `base_rev` is stale ([notes](#notes)) |
   | 409 | `peer_outdated` | A hub redeeming a peer invite has an older schema than the inviting hub ([peer invites](#peer-invites)) |
   | 409 | `unavailable` | `POST /v1/hub/update` on a hub that can't update itself ([hub updates](#hub-updates)) |
   | 409 | `not_open`, `not_answerable`, `question_expired`, `question_changed`, `already_answered` | An answer that can't be taken ([answers](#post-v1itemsidanswer-reader)) |
@@ -68,7 +68,8 @@ This is the exact contract implemented by `hub/needs_you_hub.py`. The design rat
   | 413 | `too_large` | Body over 64 KiB (8 MiB for `/v1/replicate`) |
   | 429 | `too_many_open` | The token already has 60 open items (the volume guard) |
   | 429 | `rate_limited` | Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), too many answer reads (`GET /v1/items/answer`, 120 a minute by default, or more than 4 long polls open at once), or too many `POST /v1/items` from one token (120 a minute by default; with `Retry-After` in seconds), or a second `POST /v1/hub/update` within 15 minutes (with `Retry-After`) |
-  | 400 | `secret_in_text` | A status key, label, detail, account or source field looks like a token or key ([status records](#status-records-usage-meters)), or an answer's typed `text` holds a needs-you token, invite code or peer secret ([answers](#post-v1itemsidanswer-reader)) |
+  | 400 | `secret_in_text` | A status key, label, detail, account or source field, or notes text, looks like a token or key ([status records](#status-records-usage-meters), [notes](#notes)), or an answer's typed `text` holds a needs-you token, invite code or peer secret ([answers](#post-v1itemsidanswer-reader)) |
+  | 400 | `notes_full` | A `POST /v1/notes/append` would take the notes past 12,000 characters ([notes](#notes)) |
   | 429 | `too_many_status`, `too_fast` | A status write over the live-status limits, or a second write to one status key within 10 s (with `Retry-After`) |
   | 429 | `rate_limited` | Too many status sets and clears from one token (120 a minute by default, apart from posts; with `Retry-After`) |
   | 500 | `internal` | Bug; details are in the hub's log |
@@ -656,6 +657,57 @@ changed. A hub that predates statuses answers `404`; clients treat that as "no s
 Expiry is computed, never written, as for items. Housekeeping deletes a status an hour after
 its `expires_at`; nothing is kept for history.
 
+## Notes
+
+The **notes** are one markdown document the person keeps beside the alerts: a short todo list
+and reminders ([ADR 0014](adr/0014-notes.md)). They are not items: they never count, notify or
+make a card, and are never purged. Every hub holds the same document; it replicates (below).
+
+```json
+{"id": "nt_main", "text": "## Today\n- [ ] review [ACME-123](https://linear.app/acme/issue/ACME-123)\n",
+ "rev": "r1af93f33f02dd2ad", "created_at": "2026-10-13T09:00:00.000Z", "updated_at": "2026-10-13T09:41:10.000Z"}
+```
+
+`text` is at most 12,000 characters of markdown. It may hold line breaks (`\r\n` is stored as
+`\n`) and tabs, nothing else from the control range, no bidi controls and no U+2028/U+2029;
+token-shaped text is refused (`400 secret_in_text`, the patterns of a status's text). Clients
+render it as they render a card body, plus `- [ ]` / `- [x]` checkboxes: links only from the
+allow-list, no HTML, no images. `rev` changes with every write and is the same on every hub
+for the same version.
+
+### `GET /v1/notes` (reader)
+
+The document. Before anything was written: `{"id": "nt_main", "text": "", "rev": "",
+"created_at": null, "updated_at": null}`. The response carries an `ETag` (`"<rev>"`, or
+`"none"`); `If-None-Match` with it gets `304` while nothing changed. A hub that predates notes
+answers `404`; clients treat that as "no notes here".
+
+### `PUT /v1/notes` (reader)
+
+`{"text": "...", "base_rev": "<the rev you read>"}` replaces the document. `base_rev` is
+required (`""` when there were no notes). If the document changed since, `409 conflict`: read
+it again and reapply the edit. Unchanged text is not a write (the `rev` stays). Response `200`
+with the stored document. Writes count toward the token's post rate (`429 rate_limited`).
+
+### `POST /v1/notes/append` (sender or reader)
+
+`{"text": "one line", "section": "Inbox", "check": true}` adds one line to the document:
+`- [ ] <text>` (or `- <text>` with `"check": false`) as the last entry under the first heading
+named `section` (any level, case ignored, not inside a code fence), or under a new
+`## <section>` at the end when there is none.
+
+| Field | Rule |
+|---|---|
+| `text` | required, one line, <= 300 chars, trimmed; markdown links are fine |
+| `section` | optional, default `Inbox`: 1-40 letters, digits, spaces and `' & / . _ -` |
+| `check` | optional boolean, default `true` |
+
+Response `200 {"ok": true, "rev": "..."}`: the new `rev` only, never the text, so a sender can
+add to the notes but never read them. When the result would pass 12,000 characters,
+`400 notes_full` and nothing changes. Appends count toward the token's post rate
+(`429 rate_limited`, [ADR 0010](adr/0010-input-tightening-and-post-rate.md)). The CLI queues
+an append in its outbox like a post (`needs-you notes add`).
+
 ## Invites
 
 An invite is a link that sets up one or more machines. Redeeming it mints a **new token per
@@ -1122,14 +1174,21 @@ day past the future limits for clock skew) and that its `id` is the one derived 
 item. One it can't read is listed in `skipped` with `"kind": "status"` and dropped (statuses
 are short-lived: no quarantine). A hub that already holds 256 live statuses skips new ones.
 Hubs that predate statuses ignore the array, so a mixed mesh keeps working and their own
-clients just see no meters. Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
+clients just see no meters.
+
+**Notes** travel the same way in a `notes` array: the public document plus `updated_by`. The
+receiver checks the text as a `PUT` body would be, accepts only the `id` `nt_main` (a later
+hub's second list is skipped, `"kind": "note"`), and applies it by last writer wins on
+`(updated_at, updated_by)`. The `base_rev` check is per hub: two hubs written before they sync
+keep the later write. Hubs that predate notes ignore the array. Token records carry `id`, `name`, `role`, `hash` (sha256 hex, never the
 token), `created_at`, `updated_at`, `revoked_at` and `updated_by`.
 
 ### Push: `POST /v1/replicate`
 
 ```json
 {"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ],
- "invites": [ ...invite records... ], "statuses": [ ...status records... ]}
+ "invites": [ ...invite records... ], "statuses": [ ...status records... ],
+ "notes": [ ...the notes document, when it changed... ]}
 ```
 
 Response `{"ok": true, "applied": <n>, "hub_id": "hub-b", "skipped": [...]}`; `409 self` if
@@ -1175,7 +1234,7 @@ Every stored version gets a per-hub sequence number. The response is
 
 ```json
 {"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
- "items": [ ... ], "tokens": [ ... ], "invites": [ ... ], "statuses": [ ... ]}
+ "items": [ ... ], "tokens": [ ... ], "invites": [ ... ], "statuses": [ ... ], "notes": [ ... ]}
 ```
 
 Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
