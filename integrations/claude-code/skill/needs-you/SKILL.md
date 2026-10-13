@@ -1,6 +1,7 @@
 ---
 name: needs-you
-description: Tell the user, through their needs-you inbox, when you are blocked on a decision, approval or access only they can give, when a long job they're waiting on finishes, or when something broke that they need to know about today. Use the `needs-you` CLI (or curl) to post, and resolve what you posted once it's handled. Don't use it for progress updates.
+description: Tell the user, through their needs-you inbox, when you are blocked on a decision, approval or access only they can give, when a long job they're waiting on finishes, or when something broke that they need to know about today. Use the `needs-you` CLI (or curl) to post, and resolve what you posted once it's handled. Don't use it for progress updates. When the user says this session or task is critical, mark it so the hooks' cards come in urgent.
+argument-hint: "[critical | normal]"
 ---
 <!-- needs-you-version: 0.5.3 -->
 
@@ -90,6 +91,16 @@ If the needs-you hooks are installed, they post and resolve permission prompts, 
 ## Notes: when they ask you to put something on their list
 
 "Remind me to…", "add it to my list": `needs-you notes add "<one line>" [--section Today]` adds a checkbox to the person's own notes (the Mac panel's Notes view). Never instead of a card for a blocker, at most a line or two per session, no secrets. You can't read the notes, and that's by design.
+
+## When the person says it's critical
+
+When the person says this session or task is critical or urgent ("this is critical", "tell me the moment you're stuck"), run:
+
+```bash
+needs-you session priority urgent
+```
+
+The hooks then post this session's cards (permission prompts, questions, "finished", errors) as `urgent`, which breaks through snooze, for 12 hours or until the session ends. `needs-you session priority normal` or `clear` undoes it (`clear`: back to this machine's default); `--hours 4` makes it shorter. It sends nothing and only changes the hooks' cards for this session; the hooks' card from before the person spoke already cleared when they typed, so the next one comes in urgent. Cards you post yourself still take `--priority`: give this session's blockers `urgent` too. Confirm in one line of your reply. Exit 2 means you're not in a session the hooks know: say so, don't guess an id. Invoked as the `/needs-you` command with the argument critical, do the same; with normal, undo it.
 
 ## Rules
 

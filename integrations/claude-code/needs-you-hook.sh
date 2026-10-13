@@ -87,7 +87,9 @@
 # file the CLI reads, $NEEDS_YOU_CONFIG or $XDG_CONFIG_HOME/needs-you/env,
 # by default ~/.config/needs-you/env; NEEDS_YOU_ENV_FILE overrides it here):
 #   NEEDS_YOU_AGENT_CONTEXT   work | personal       (default: NEEDS_YOU_DEFAULT_CONTEXT, else work)
-#   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal)
+#   NEEDS_YOU_AGENT_PRIORITY  urgent | normal | low (default: normal). One session's own
+#                             override wins: `needs-you session priority urgent`, run in
+#                             the session ("this one is critical"; 12 h, or until it ends)
 #   NEEDS_YOU_AGENT_LINK      "Label=url-template", placeholders {handle},
 #                             {session}, {cwd}, {host}. Example:
 #                             "VS Code=vscode://file{cwd}". Unset: the hook
@@ -351,6 +353,9 @@ ctx_marker="$state_dir/$id.context"
 # so the CLI notes its items under pid-<the Gemini process> with start=, matched to the lease.
 items_base="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-items"
 items_dir="$items_base/$id"
+# `needs-you session priority urgent` (the person said this session is critical): the
+# priority of this session's cards, read by agent_priority() below; removed at SessionEnd.
+prio_base="${XDG_STATE_HOME:-$HOME/.local/state}/needs-you/session-priority"
 
 # items_open DIR [START]: an unexpired record in DIR (with START: only one for that process).
 items_open() {
@@ -1093,9 +1098,37 @@ def post(args, links, steps=None, asked=None, steps_body=None):
     return rc
 
 
+PRIORITIES = ("urgent", "normal", "low")
+
+
+def session_priority():
+    """The priority `needs-you session priority` set for this session ("" if none or expired):
+    <state>/session-priority/<id> (priority=, expires=); for Gemini CLI and Kimi, whose commands
+    know only the agent process, pid-<pid> with that process's start=."""
+    base = os.path.join(os.path.dirname(os.environ.get("NY_STATE", "").rstrip("/")), "session-priority")
+    sid = os.environ.get("NY_ID", "")
+    names = [(sid, None)] if sid not in ("", ".", "..") else []
+    if os.environ.get("NY_PID") and os.environ.get("NY_START"):
+        names.append(("pid-" + os.environ["NY_PID"], " ".join(os.environ["NY_START"].split())))
+    for name, start in names:
+        path = os.path.join(base, name)
+        if os.path.islink(path):
+            continue
+        rec = read_marker(path)
+        try:
+            live = float(rec.get("expires") or 0) > time.time()
+        except ValueError:
+            live = False
+        if live and rec.get("priority") in PRIORITIES and (start is None or rec.get("start") == start):
+            return rec["priority"]
+    return ""
+
+
 def agent_priority():
-    p = os.environ.get("NEEDS_YOU_AGENT_PRIORITY") or "normal"
-    return p if p in ("urgent", "normal", "low") else "normal"
+    """This session's override (`needs-you session priority`), else NEEDS_YOU_AGENT_PRIORITY,
+    else normal."""
+    p = session_priority() or os.environ.get("NEEDS_YOU_AGENT_PRIORITY") or "normal"
+    return p if p in PRIORITIES else "normal"
 
 
 # ---------------------------------------------------------------- tool summaries
@@ -2895,10 +2928,14 @@ case "$mode" in
     fi
     # The session is over, so nothing of its waits on input any more. (The agent's own items
     # stay open on the hub until it, or a later run, resolves them.)
-    case "$id" in .|..) ;; *) rm -rf "$items_dir" ;; esac
+    case "$id" in .|..) ;; *) rm -rf "$items_dir"; rm -f "$prio_base/$id" ;; esac
     if { [ "$agent" = gemini ] || [ "$agent" = kimi ]; } && [ -d "$items_base" ]; then
       lease
       [ -n "$lease_pid" ] && rm -rf "$items_base/pid-$lease_pid"
+    fi
+    if { [ "$agent" = gemini ] || [ "$agent" = kimi ]; } && [ -d "$prio_base" ]; then
+      lease
+      [ -n "$lease_pid" ] && rm -f "$prio_base/pid-$lease_pid"
     fi
     ;;
 

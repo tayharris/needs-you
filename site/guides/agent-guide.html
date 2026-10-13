@@ -365,6 +365,13 @@ a session Orca starts). An agent that posts its own blockers doesn't duplicate t
 </tbody>
 </table></div>
 <p>Open sessions load new hooks after a restart.</p>
+<p><strong>When the person says a session is critical</strong> ("this is critical", "ping me the second you're
+stuck"), run <code>needs-you session priority urgent</code> in that session. The hooks then post its cards
+(permission prompts, questions, "finished", errors) as <code>urgent</code> for 12 hours (<code>--hours</code>, at most
+168) or until the session ends; <code>needs-you session priority normal</code> or <code>clear</code> undoes it. It's a
+local file keyed by the session the hooks use (found as for one card per wait above), and it
+sends nothing. Your own items still take <code>--priority</code>. Exit 2: not inside a session the hooks
+know; say so rather than guessing a <code>--session</code> id.</p>
 <h2 id="orca-automations">Orca automations <a class="anchor" href="#orca-automations" aria-label="Link to this section">#</a></h2>
 <p>Automations are agent prompts on a schedule; they get a block of text saying when to <code>add</code>,
 <code>resolve</code> and <code>done</code>. The installer's <code>--orca</code> writes it to

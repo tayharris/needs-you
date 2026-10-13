@@ -7,6 +7,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 ### Added
 
 - **Notes beside the alerts.** The open panel has a second view, **Notes**: a short list of your own todos and reminders as markdown checkboxes, with links. Switch with the checklist button in the header (or **Notes** in the menu bar), tick a box with a click, and **Edit…** opens the notes in their own window with a live preview. They never count, animate or notify. Agents can add a line when you ask them to (`needs-you notes add "…" [--section Today]`) but can't read the list. The notes sync between your hubs; a hub needs this version for them ([guide](docs/guides/mac-app.md#notes), [API](docs/API.md#notes), [ADR 0014](docs/adr/0014-notes.md)).
+- **Mark a session critical.** Say "this is critical" to Claude (or `/needs-you critical` with the skill) and it runs `needs-you session priority urgent`: that session's hook cards (permission prompts, questions, "finished", errors) then come in `urgent`, breaking through snooze, for 12 hours or until the session ends; `needs-you session priority normal` or `clear` undoes it. A local file the hooks read, keyed by the session; nothing new on the wire. Codex, opencode, Gemini CLI and Kimi sessions use the same command ([guide](docs/guides/claude-code.md#marking-a-session-critical)).
 
 ## [0.5.3] - 2026-10-12
 

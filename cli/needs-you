@@ -1956,6 +1956,116 @@ def note_session_item(key: str, open_: bool, expires_in: Optional[float] = None)
         pass
 
 
+# ---------------------------------------------------------------------------
+# session priority: "this one is critical", for an agent session's hook cards
+# ---------------------------------------------------------------------------
+
+SESSION_PRIORITY_HOURS = 12.0
+SESSION_PRIORITY_MAX_HOURS = 168.0
+SESSION_PRIORITY_VALUES = ("urgent", "normal", "low")
+
+
+def session_priority_dir() -> str:
+    return os.path.join(state_dir(), "session-priority")
+
+
+def _hook_session_name(raw: str) -> str:
+    """The session as the hook names its files: _session_name, and a leading "." becomes "_"."""
+    name = _session_name(raw)
+    return "_" + name[1:] if name.startswith(".") else name
+
+
+def _prune_session_priorities(d: str, now: float) -> None:
+    """Drop expired overrides (sessions that ended without a SessionEnd)."""
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return
+    for n in names:
+        p = os.path.join(d, n)
+        try:
+            exp = float(_read_lease(p).get("expires") or 0)
+        except ValueError:
+            exp = 0
+        if exp < now:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def session_priority(value: Optional[str], hours: Optional[float], session: Optional[str],
+                     quiet: bool, as_json: bool) -> int:
+    """`needs-you session priority [urgent|normal|low|clear] [--hours H] [--session ID]`: the
+    priority the hooks give this agent session's cards (waiting, question, finished, error) in
+    place of NEEDS_YOU_AGENT_PRIORITY, until it expires (default 12 h) or the session ends. A
+    local file the hook reads (<state dir>/session-priority/<session>, the session named as the
+    hook names it); nothing is sent. No value: print the current one."""
+    if value == "critical":
+        value = "urgent"
+    start = ""
+    if session is not None:
+        name = _hook_session_name(session.strip())
+    else:
+        name, start = agent_session()
+        if name and not start:
+            name = _hook_session_name(name)
+    if not name:
+        warn("session priority: not inside an agent session the hooks know (no $CLAUDE_CODE_SESSION_ID, "
+             "$CODEX_SESSION_ID, $NEEDS_YOU_AGENT_SESSION or Orca terminal); pass --session ID")
+        return 2
+    if hours is not None and not 0 < hours <= SESSION_PRIORITY_MAX_HOURS:
+        warn("--hours must be more than 0 and at most %g" % SESSION_PRIORITY_MAX_HOURS)
+        return 2
+    d = session_priority_dir()
+    path = os.path.join(d, name)
+    now = time.time()
+    if os.path.islink(d) or (os.path.lexists(d) and not os.path.isdir(d)):
+        warn("session priority: %s is not a directory" % _tilde(d))
+        return 1
+    if value is None:
+        rec = {} if os.path.islink(path) else _read_lease(path)
+        try:
+            exp = float(rec.get("expires") or 0)
+        except ValueError:
+            exp = 0
+        live = (rec.get("priority") in SESSION_PRIORITY_VALUES and exp > now
+                and rec.get("start", "") == start)
+        out = {"session": name, "priority": rec["priority"] if live else None,
+               "expires_at": int(exp) if live else None}
+        if as_json:
+            print(json.dumps(out, sort_keys=True))
+        elif not quiet:
+            print("session %s: %s" % (name, "%s for %s more" % (out["priority"], _age(exp - now)) if live
+                                      else "no override (NEEDS_YOU_AGENT_PRIORITY, else normal)"))
+        return 0
+    h = hours if hours is not None else SESSION_PRIORITY_HOURS
+    try:
+        if os.path.lexists(path):
+            os.remove(path)
+        if value != "clear":
+            os.makedirs(d, mode=0o700, exist_ok=True)
+            _prune_session_priorities(d, now)
+            text = "priority=%s\nexpires=%d\n" % (value, now + h * 3600)
+            if start:  # a process (Gemini CLI, Kimi), not a session id: the hook checks it's the same one
+                text += "start=%s\n" % start
+            _write_atomic(path, text.encode("utf-8"), 0o600)
+    except OSError as e:
+        warn("session priority: %s" % e)
+        return 1
+    if as_json:
+        print(json.dumps({"session": name, "priority": None if value == "clear" else value,
+                          "expires_at": None if value == "clear" else int(now + h * 3600)}, sort_keys=True))
+    elif quiet:
+        pass
+    elif value == "clear":
+        print("session %s: priority override cleared" % name)
+    else:
+        print("session %s: its cards now post as %s for %s, or until the session ends "
+              "(`needs-you session priority clear` undoes it)" % (name, value, _age(h * 3600)))
+    return 0
+
+
 def _move_failed(path: str) -> None:
     """Keep a refused entry in outbox/failed/ for a person to look at. Never through a
     symlink out of the outbox: then the entry is just deleted."""
@@ -2531,6 +2641,17 @@ def _main(argv: Optional[List[str]] = None) -> int:
                     help="the text: the hub's /dl/%s" % INSTR_DL)
     ii.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
     uh.add_argument("--dry-run", action="store_true", help="say what would change; change nothing")
+    se = sub.add_parser("session", help="this agent session's hook cards: `session priority urgent` posts its "
+                        "waiting, question and finished cards as urgent (local; nothing is sent)")
+    se.add_argument("session_what", choices=("priority",), metavar="priority")
+    se.add_argument("session_value", nargs="?", choices=SESSION_PRIORITY_VALUES + ("critical", "clear"),
+                    metavar="urgent|normal|low|clear",
+                    help="the priority for its cards (critical = urgent); clear: back to the default; "
+                         "none: print it")
+    se.add_argument("--hours", type=float, metavar="H",
+                    help="how long it lasts (default %g, at most %g); it also ends with the session"
+                    % (SESSION_PRIORITY_HOURS, SESSION_PRIORITY_MAX_HOURS))
+    se.add_argument("--session", metavar="ID", help="the session id (default: this command's agent session)")
     dp = sub.add_parser("doctor", help="check this machine's setup (read-only; never posts)")
     dp.add_argument("--json", dest="doctor_json", action="store_true",
                     help="machine-readable: {ok, version, checks: [{check, status, detail, hint}]}")
@@ -2583,6 +2704,8 @@ def _main(argv: Optional[List[str]] = None) -> int:
         return install_mcp(args.agents, args.dry_run, args.quiet)
     if args.cmd == "install-instructions":
         return install_instructions(args.agents, args.source, args.dry_run, args.quiet)
+    if args.cmd == "session":  # a local file the hooks read: no hub, no outbox
+        return session_priority(args.session_value, args.hours, args.session, args.quiet, args.json)
     if args.cmd == "doctor":  # before the flush below: doctor changes nothing
         return doctor(cfg, args.json or args.doctor_json)
     if args.cmd == "orca" and args.orca_what == "usage":  # statuses: never queued

@@ -132,7 +132,7 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 |---|---|---|
 | `NEEDS_YOU_AGENT_ALERTS` | unset | `1` opts in, `0` opts out (see above) |
 | `NEEDS_YOU_AGENT_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | `work` or `personal` |
-| `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low` |
+| `NEEDS_YOU_AGENT_PRIORITY` | `normal` | `urgent`, `normal` or `low`. One session overrides it with `needs-you session priority urgent` (below) |
 | `NEEDS_YOU_AGENT_LINK` | unset (automatic editor links) | One link instead, `Label=url-template`. Placeholders: `{handle}`, `{session}`, `{cwd}`, `{host}` (URL-encoded). A template using `{handle}` is skipped outside Orca. `none`: no editor links. |
 | `LC_NEEDS_YOU_TERM` | unset | On an SSH host: the Mac terminal tab, as the link's query (`app=iterm&session=<UUID>`, `app=wezterm&pane=<n>`, `app=terminal&tty=/dev/ttys<n>`, `app=tmux&pane=<n>[&host=<terminal>]`). Set in the Mac's shell, never on the host |
 | `NEEDS_YOU_SSH_ALIAS` | unset | This host's name in the Mac's `~/.ssh/config` / Remote-SSH list; adds the Remote-SSH folder link |
@@ -157,6 +157,10 @@ NEEDS_YOU_SSH_ALIAS=devbox
 # Cursor instead of VS Code on the Mac
 NEEDS_YOU_AGENT_LINK='Cursor=cursor://file{cwd}'
 ```
+
+### One session critical
+
+`needs-you session priority urgent`, run inside a session (the skill does it when you say "this is critical", or on `/needs-you critical`), makes the hooks post that session's cards as `urgent` for 12 hours (`--hours H`, at most 168) or until `SessionEnd`. `normal`/`low` set those instead, `clear` goes back to `NEEDS_YOU_AGENT_PRIORITY`, and no value prints the current one. The CLI finds the session as for [one card per wait](../../docs/guides/claude-code.md#one-card-for-one-wait) (`$ORCA_TERMINAL_HANDLE`, `$CLAUDE_CODE_SESSION_ID`, `$CODEX_SESSION_ID`, `$NEEDS_YOU_AGENT_SESSION`, the Gemini or Kimi process), or `--session ID`, and writes `~/.local/state/needs-you/session-priority/<session>` (`priority=`, `expires=`; mode 0600). The hook's `agent_priority()` reads it for every agent's cards; the context and usage cards stay `low`. Nothing is sent, and no wire field changes.
 
 ### Guarantees
 
