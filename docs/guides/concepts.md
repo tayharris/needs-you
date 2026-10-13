@@ -64,15 +64,16 @@ One invite link installs the CLI and, with the options you pick, the hooks, the 
 
 ## The Settings pages, by task
 
-The sidebar group **Hubs and machines** has four pages:
+The sidebar group **Setup**, right under General, is where alerts come from. Its first page, **Connect a machine**, opens with a **Setup** overview: add a sender, add an always-on hub, Machines, and the tools that send cards, each a click away.
 
 | You want to | Page |
 |---|---|
-| Check the built-in hub is running, copy its address, or turn it off | **Built-in hub** |
 | Set up a sender (a server or agent machine) or another Mac | **Connect a machine** (menu: **Connect a Machine…**) |
+| Check the built-in hub is running, copy its address, turn it off, or add an always-on server hub | **Built-in hub** |
 | See which senders and Macs are connected, revoke one or a link | **Machines** (only with an owner token) |
-| Use a server hub or someone else's hub, or add a hub by URL and token | **Other hubs (advanced)** |
+| See which tools (Linear, Jira, GitHub, expiry) send cards and for what, set work or personal for each, set up another | **Integrations** |
+| Use someone else's hub, or add a hub by URL and token | **Other hubs (advanced)** |
 
 Everything about how the pill and the cards look is in the **Appearance** group (Theme, Pill, Panel and cards, Alert style, Usage meters), and what shows and what may interrupt you under **Needs You** (Panel, Alerts): [Mac app → Make it yours](mac-app.md#make-it-yours).
 
-Older builds called these pages Your inbox (before that, This Mac), Invite a machine, Access, and Join a hub plus Hubs (manual), under a group called Inbox and machines.
+Older builds called these pages Your inbox (before that, This Mac), Invite a machine, Access, and Join a hub plus Hubs (manual), under a group called Inbox and machines (later Hubs and machines, before it held Integrations too).

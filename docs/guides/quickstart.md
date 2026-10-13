@@ -24,7 +24,7 @@ A faint pill appears in a corner of the screen. That's the idle state. Until som
 
 ## 2. Local Claude Code as a sender (2 minutes)
 
-Make an invite: right-click the pill → **Settings…**, then on the **Connect a machine** page (under **Hubs and machines** in the sidebar; the menu bar menu's **Connect a Machine…** opens it too) keep *A server or agent that sends alerts*, enter a machine name, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and three copy buttons, **Agent prompt**, **Shell one-liner** and **Plain lines** (the same install for a browser console, which can drop a pasted `|`). The agent prompt reads:
+Make an invite: right-click the pill → **Settings…**, then on the **Connect a machine** page (under **Setup** in the sidebar; the menu bar menu's **Connect a Machine…** opens it too) keep *A server or agent that sends alerts*, enter a machine name, set **Uses** and **Expires after**, and click **Create invite**. The app shows the join link and three copy buttons, **Agent prompt**, **Shell one-liner** and **Plain lines** (the same install for a browser console, which can drop a pasted `|`). The agent prompt reads:
 
 ```
 Set up needs-you alerts on this machine: read http://my-mac.example.ts.net:8765/join/nyi_... and follow it. If this machine runs Claude Code, use --claude-hooks user --skill --alerts. [...] Then run ~/.local/bin/needs-you doctor and, for each WARN or FAIL line, run the next step printed under it, or tell me if it needs me. If the installer says the link is unknown, expired or used up, ask me for a new one.
