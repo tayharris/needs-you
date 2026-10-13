@@ -116,6 +116,25 @@ public enum QuestionDisplay {
         return joined.isEmpty ? nil : joined
     }
 
+    /// Under a question card whose choices can't be clicked (`answering` false: the sender
+    /// doesn't wait for an answer from the card, or no longer does), why, and where to answer,
+    /// so the choices don't read as buttons that do nothing. nil while the card can answer,
+    /// once it has an answer, when it's closed, or when it offers no choices.
+    public static func readOnlyNote(_ item: Item, answering: Bool, now: Date) -> String? {
+        guard !answering, item.status == .open, item.answer == nil, let q = item.question,
+              visible(q).contains(where: { !$0.options.isEmpty }) else { return nil }
+        if q.answerable, let exp = q.expiresAt, exp <= now {
+            return "The agent stopped waiting for the card: answer in its terminal."
+        }
+        let cut = visible(q).contains { item in
+            item.text.hasSuffix("\u{2026}") || item.options.contains { $0.detail.hasSuffix("\u{2026}") || $0.label.hasSuffix("\u{2026}") }
+        }
+        if cut {
+            return "Cut short to fit the card, so it can't be answered here: pick in the agent's terminal."
+        }
+        return "The agent's choices, to read: this card can't send one. Pick in the agent's terminal."
+    }
+
     private static func isMoreQuestionsLine(_ t: String) -> Bool {
         guard t.hasPrefix("+"), t.hasSuffix(" more questions") else { return false }
         let digits = t.dropFirst().dropLast(" more questions".count)
