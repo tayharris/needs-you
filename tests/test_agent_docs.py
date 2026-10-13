@@ -37,15 +37,22 @@ def commands(text):
         rest = QUOTED_RE.sub(" ", m.group(3))
         rest = rest.split(" -- ", 1)[0]  # `needs-you run ... -- CMD ARGS`: CMD's own flags
         rest = rest.split("#", 1)[0].split("|", 1)[0].split(">", 1)[0]
-        yield m.group(2), FLAG_RE.findall(m.group(1)), FLAG_RE.findall(rest)
+        sub = m.group(2)
+        # A two-word command (`notes add`, `status set`): its own flags are under both words.
+        second = re.match(r"[ \t]+([a-z][a-z-]*)\b", rest)
+        if second and second.group(1) in SUBCOMMANDS.get(sub, ()):
+            sub = "%s %s" % (sub, second.group(1))
+        yield sub, FLAG_RE.findall(m.group(1)), FLAG_RE.findall(rest)
 
 
+# Commands with subcommands of their own, whose flags belong to the subcommand.
+SUBCOMMANDS = {"notes": ("add",), "status": ("set", "clear")}
 _HELP = {}
 
 
 def options(sub):
     if sub not in _HELP:
-        r = subprocess.run([sys.executable, CLI, sub, "--help"], capture_output=True, text=True, timeout=30)
+        r = subprocess.run([sys.executable, CLI] + sub.split() + ["--help"], capture_output=True, text=True, timeout=30)
         _HELP[sub] = set(re.findall(r"(?<![\w-])(--?[a-z][a-z-]*)", r.stdout)) if r.returncode == 0 else None
     return _HELP[sub]
 
