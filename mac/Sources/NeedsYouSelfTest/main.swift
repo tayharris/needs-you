@@ -66,6 +66,7 @@ let entries =
     + testEntries(SettingsLayoutTests.self, SettingsLayoutTests.allTests)
     + testEntries(StatusRecordTests.self, StatusRecordTests.allTests, async: StatusRecordTests.asyncTests)
     + testEntries(UsageMetersTests.self, UsageMetersTests.allTests)
+    + testEntries(NotesTests.self, NotesTests.allTests, async: NotesTests.asyncTests)
     + testEntries(PillMeterLayoutTests.self, PillMeterLayoutTests.allTests)
     + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)

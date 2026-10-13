@@ -10,6 +10,10 @@ public actor DemoFeed: ItemFeed {
     private var serial = 0
     /// Usage meters for the demo and the screenshots (statusFixture).
     private var statuses: [StatusRecord]
+    private var notes = NotesDocument(
+        text: "## Today\n- [ ] Review the **release notes**\n- [ ] Reply on [ACME-123](https://linear.app/acme/issue/ACME-123)\n- [x] Rotate the staging token\n\n## Inbox\n- [ ] Check the nightly import\n- Call back about the venue\n",
+        rev: "demo-1")
+    private var notesWrites = 1
 
     public init(items: [Item]? = nil, statuses: [StatusRecord]? = nil, now: Date = Date()) {
         for item in items ?? DemoFeed.fixture(now: now) { self.items[item.id] = item }
@@ -261,6 +265,21 @@ public actor DemoFeed: ItemFeed {
                 createdAt: ago(400), expiresAt: now.addingTimeInterval(86_400)
             ),
         ]
+    }
+}
+
+// MARK: - Notes
+
+extension DemoFeed: NotesFeed {
+    public func fetchNotes(etag: String?) async throws -> NotesFetch {
+        etag == notes.rev ? .unchanged : .fresh(notes, etag: notes.rev)
+    }
+
+    public func saveNotes(text: String, baseRev: String) async throws -> NotesSave {
+        guard baseRev == notes.rev else { return .conflict }
+        notesWrites += 1
+        notes = NotesDocument(text: text, rev: "demo-\(notesWrites)", updatedAt: Date())
+        return .saved(notes)
     }
 }
 

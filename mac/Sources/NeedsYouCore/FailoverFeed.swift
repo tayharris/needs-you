@@ -29,6 +29,8 @@ public actor FailoverFeed: ItemFeed {
     private var failedUntil: [Int: Date] = [:]
     /// The hub the last status fetch went to (its ETag means nothing to another hub).
     private var statusHub: Int?
+    /// The same for notes.
+    private var notesHub: Int?
 
     public init(hubs: [Hub], cooldown: TimeInterval = 120, clock: @escaping @Sendable () -> Date = { Date() }) {
         self.hubs = hubs
@@ -137,6 +139,26 @@ extension FailoverFeed: StatusFeed {
         let same = index == statusHub
         statusHub = index
         return try await feed.fetchStatuses(etag: same ? etag : nil)
+    }
+}
+
+// MARK: - Notes
+
+extension FailoverFeed: NotesFeed {
+    /// The notes of the hub that answered the last items poll. Hubs replicate them; a save
+    /// goes to that same hub, so its rev check is against the copy that was read.
+    public func fetchNotes(etag: String?) async throws -> NotesFetch {
+        guard let index = current, let feed = hubs[index].feed as? NotesFeed else { return .unsupported }
+        let same = index == notesHub
+        notesHub = index
+        return try await feed.fetchNotes(etag: same ? etag : nil)
+    }
+
+    public func saveNotes(text: String, baseRev: String) async throws -> NotesSave {
+        guard let index = notesHub ?? current, let feed = hubs[index].feed as? NotesFeed else {
+            throw HubError.notConfigured
+        }
+        return try await feed.saveNotes(text: text, baseRev: baseRev)
     }
 }
 
