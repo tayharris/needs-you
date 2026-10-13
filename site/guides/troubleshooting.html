@@ -52,6 +52,7 @@
         <li><a href="#invite-links">Invite links</a></li>
         <li><a href="#setup-sendersh-manual-setup">setup-sender.sh (manual setup)</a></li>
         <li><a href="#items-post-but-nothing-shows-on-the-mac">Items post, but nothing shows on the Mac</a></li>
+        <li><a href="#cards-arrive-but-dont-pop-up">Cards arrive but don't pop up</a></li>
         <li><a href="#duplicate-or-stale-cards">Duplicate or stale cards</a></li>
         <li><a href="#claude-code-hooks">Claude Code hooks</a></li>
         <li><a href="#codex-hooks">Codex hooks</a></li>
@@ -132,6 +133,13 @@ tailscale status | head                          # is this machine on the tailne
 <li><strong>Hubs out of sync:</strong> if the Mac polls <code>hub-a</code> and the sender wrote to <code>hub-b</code>, replication should copy it within seconds. If it doesn't, check the peer list and the replication outbox on <code>hub-b</code> (<a href="hub.html">Server hubs</a>).</li>
 <li><strong>The pill is there but hard to see</strong> over bright or busy windows: <strong>Settings → Appearance → Theme → Background → Solid</strong> draws it opaque, or raise <strong>Settings → Appearance → Panel and cards → Background darkness</strong> for the glass (<a href="mac-app.html#themes">Mac app → Themes</a>).</li>
 </ol>
+<h2 id="cards-arrive-but-dont-pop-up">Cards arrive but don't pop up <a class="anchor" href="#cards-arrive-but-dont-pop-up" aria-label="Link to this section">#</a></h2>
+<ul>
+<li><strong>A line at the top of the open panel says "Quieted &lt;sender&gt;"</strong>: that sender passed <strong>Settings → Alerts → Delivery → Quiet a busy sender</strong> (default: 30 pop-ups an hour). Its cards still arrive and count; they only brighten the pill until the hour slides. Each agent session (Claude Code, Codex and the other hooks) counts on its own. Raise it, or pick <strong>Never</strong> to have everything pop up.</li>
+<li>A <strong>Focus</strong> or a <strong>snooze</strong> is on (a moon on the pill): cards wait under Later until it ends.</li>
+<li>The card is for the <strong>other side</strong> (work by evening, personal by day): the faint second number on the pill. <strong>Settings → Alerts → Delivery → Items for the other side</strong> changes that.</li>
+<li><strong>Normal items</strong> or <strong>Low items</strong> are set to Ambient in <strong>Settings → Alerts → Delivery</strong>.</li>
+</ul>
 <h2 id="duplicate-or-stale-cards">Duplicate or stale cards <a class="anchor" href="#duplicate-or-stale-cards" aria-label="Link to this section">#</a></h2>
 <ul>
 <li><strong>Duplicates:</strong> the sender changes its key between runs (a timestamp, a run id). Keys must be stable.</li>

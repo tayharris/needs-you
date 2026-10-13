@@ -452,7 +452,8 @@ final class NoisySenderGuardTests: XCTestCase {
     }
 
     func testHoldsAfterThresholdForTheHour() {
-        var g = NoisySenderGuard()
+        XCTAssertEqual(NoisySenderGuard.defaultThreshold, 30)
+        var g = NoisySenderGuard(threshold: 6)
         let loop = item("x", host: "devbox", agent: "cron:sync")
         for i in 0..<6 {
             XCTAssertTrue(g.admit(loop, now: now.addingTimeInterval(Double(i) * 60)), "interrupt \(i + 1) of 6 is allowed")

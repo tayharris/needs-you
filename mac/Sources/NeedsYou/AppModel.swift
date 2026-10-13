@@ -482,7 +482,9 @@ final class AppModel: ObservableObject {
     var laterItems: [Item] { store.laterItems(in: context, now: now) }
     var laterCount: Int { store.laterCount(in: context, now: now) }
     /// Senders the noisy-sender guard is holding to ambient this hour ("devbox · cron").
-    var quietedSenders: [String] { noisyGuard.heldSenders(now: now).map(NoisySenderGuard.displayName) }
+    var quietedSenders: [String] {
+        settings.noisySenderLimit > 0 ? noisyGuard.heldSenders(now: now).map(NoisySenderGuard.displayName) : []
+    }
 
     func deliveryState(at date: Date) -> DeliveryState {
         DeliveryState(context: context, visibility: visibility, focus: settings.focus.effectiveLevel(at: date),
@@ -946,11 +948,14 @@ final class AppModel: ObservableObject {
         guard !arrivals.isEmpty else { return }
 
         let state = deliveryState(at: date)
+        if settings.noisySenderLimit > 0, noisyGuard.threshold != settings.noisySenderLimit {
+            noisyGuard = NoisySenderGuard(threshold: settings.noisySenderLimit)
+        }
         var updated = store
         var decided: [(item: Item, decision: DeliveryDecision)] = []
         for item in arrivals {
             var decision = DeliveryPolicy.decide(item, state: state)
-            if decision.tier == .interrupt && !noisyGuard.admit(item, now: date) {
+            if decision.tier == .interrupt && settings.noisySenderLimit > 0 && !noisyGuard.admit(item, now: date) {
                 decision = DeliveryDecision(tier: .ambient, reason: .noisySender)
             }
             if decision.holdsForLater {

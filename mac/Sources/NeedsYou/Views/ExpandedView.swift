@@ -282,7 +282,7 @@ struct CardList: View {
             }
             ForEach(model.quietedSenders, id: \.self) { sender in
                 // NoisySenderGuard: a looping sender can't keep interrupting.
-                Label("Quieted \(sender): over \(NoisySenderGuard.defaultThreshold) alerts this hour", systemImage: "speaker.slash")
+                Label("Quieted \(sender): over \(model.settings.noisySenderLimit) pop-ups this hour (Settings → Alerts)", systemImage: "speaker.slash")
                     .font(Theme.meta(model.metrics))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(2)

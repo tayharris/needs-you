@@ -6,7 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
-- **A team of agents on one machine no longer goes quiet.** The noisy-sender guard (after 6 pop-ups in an hour from one sender, the rest only brighten the pill) counted every Claude Code, Codex or other hook session on a machine as one sender, so a few busy sessions' permission prompts used up the hour and the next agent's question arrived without a preview. Each agent session is now its own sender; a looping script or poller is still held as before.
+- **Busy agents keep popping up.** The noisy-sender guard quieted a sender after 6 pop-ups in an hour, and counted every Claude Code, Codex or other hook session on a machine as one sender, so a few busy sessions' permission prompts used up the hour and the next agent's question arrived without a preview. Each agent session now counts on its own, the default is 30 an hour, and **Settings → Alerts → Delivery → Quiet a busy sender** sets it (Never turns it off). The panel's "Quieted" line says where ([troubleshooting](docs/guides/troubleshooting.md#cards-arrive-but-dont-pop-up)).
 
 ### Added
 

@@ -37,6 +37,12 @@ struct DeliverySection: View {
                 LabelWithDetail("Urgent items break through Focus",
                                 "On: urgent items still interrupt under Agents and urgent only, and Urgent only. Off, for a presentation: they arrive ambient. Everything later holds them either way, and a Focus turned on by a link always lets them through.")
             }
+            Picker(selection: $settings.noisySenderLimit) {
+                ForEach(NoisySenderGuard.choices, id: \.self) { Text(NoisySenderGuard.choiceTitle($0)).tag($0) }
+            } label: {
+                LabelWithDetail("Quiet a busy sender",
+                                "Past this many pop-ups in an hour, a sender's cards only brighten the count, so a looping script can't keep interrupting. Each agent session counts on its own. Never: everything pops up.")
+            }
             Toggle(isOn: $settings.allowFocusLinks) {
                 LabelWithDetail("Allow focus links from other apps (Shortcuts, scripts)",
                                 "needsyou://focus links turn Focus on without asking. Off: the app asks first, since any web page can open one. A link focus lasts at most 12 h (or until tomorrow), never holds back urgent items, and shows a link badge on the pill.")

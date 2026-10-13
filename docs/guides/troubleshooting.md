@@ -78,6 +78,13 @@ The CLI never fails your job because of the hub. It queues to `~/.local/state/ne
 6. **Hubs out of sync:** if the Mac polls `hub-a` and the sender wrote to `hub-b`, replication should copy it within seconds. If it doesn't, check the peer list and the replication outbox on `hub-b` ([HUB.md](../HUB.md)).
 7. **The pill is there but hard to see** over bright or busy windows: **Settings → Appearance → Theme → Background → Solid** draws it opaque, or raise **Settings → Appearance → Panel and cards → Background darkness** for the glass ([Mac app → Themes](mac-app.md#themes)).
 
+## Cards arrive but don't pop up
+
+- **A line at the top of the open panel says "Quieted <sender>"**: that sender passed **Settings → Alerts → Delivery → Quiet a busy sender** (default: 30 pop-ups an hour). Its cards still arrive and count; they only brighten the pill until the hour slides. Each agent session (Claude Code, Codex and the other hooks) counts on its own. Raise it, or pick **Never** to have everything pop up.
+- A **Focus** or a **snooze** is on (a moon on the pill): cards wait under Later until it ends.
+- The card is for the **other side** (work by evening, personal by day): the faint second number on the pill. **Settings → Alerts → Delivery → Items for the other side** changes that.
+- **Normal items** or **Low items** are set to Ambient in **Settings → Alerts → Delivery**.
+
 ## Duplicate or stale cards
 
 - **Duplicates:** the sender changes its key between runs (a timestamp, a run id). Keys must be stable.

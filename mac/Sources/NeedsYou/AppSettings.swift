@@ -52,6 +52,7 @@ final class AppSettings: ObservableObject {
         static let setupTipsDone = AppPrefKey.setupTipsDone.rawValue
         static let setupTipsDismissed = AppPrefKey.setupTipsDismissed.rawValue
         static let developerMode = AppPrefKey.developerMode.rawValue
+        static let noisySenderLimit = AppPrefKey.noisySenderLimit.rawValue
     }
 
     /// The global shortcut (HotKeyController registers it). Stored as "control+option+space";
@@ -215,6 +216,10 @@ final class AppSettings: ObservableObject {
     @Published var urgentBreaksSnooze: Bool {
         didSet { defaults.set(urgentBreaksSnooze, forKey: Key.urgentBreaksSnooze) }
     }
+    /// Settings → Alerts: pop-ups per sender per hour before it's quieted (0: never).
+    @Published var noisySenderLimit: Int {
+        didSet { defaults.set(noisySenderLimit, forKey: Key.noisySenderLimit) }
+    }
     /// The context currently shown (picked by hand, or by the phase 3 schedule).
     @Published var viewContext: ItemContext {
         didSet { defaults.set(viewContext.rawValue, forKey: Key.viewContext) }
@@ -269,6 +274,7 @@ final class AppSettings: ObservableObject {
         PrefsMigrator.migrate(defaults)
         defaults.register(defaults: [
             Key.urgentBreaksSnooze: true,
+            Key.noisySenderLimit: NoisySenderGuard.defaultThreshold,
             Key.runLocalHub: true,
             Key.showMenuBarIcon: true,
             Key.showMenuBarCount: true,
@@ -286,6 +292,7 @@ final class AppSettings: ObservableObject {
         userName = defaults.string(forKey: Key.userName) ?? ""
         demoMode = defaults.bool(forKey: Key.demoMode)
         urgentBreaksSnooze = defaults.bool(forKey: Key.urgentBreaksSnooze)
+        noisySenderLimit = max(0, defaults.integer(forKey: Key.noisySenderLimit))
         viewContext = ItemContext(rawValue: defaults.string(forKey: Key.viewContext) ?? "") ?? .work
         let visibility = VisibilityRules.normalized(showMenuBarIcon: defaults.bool(forKey: Key.showMenuBarIcon),
                                                     panelHidden: defaults.bool(forKey: Key.panelHidden))

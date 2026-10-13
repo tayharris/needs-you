@@ -124,6 +124,7 @@ public enum SettingsRegistry {
         .behaviour(DeliveryDefaults.Key.otherContext, "delivery.otherContext", on: .alerts),
         .behaviour(DeliveryDefaults.Key.urgentBreaksFocus, "delivery.urgentBreaksFocus", on: .alerts),
         .behaviour(AppPrefKey.allowFocusLinks.rawValue, "allowFocusLinks", on: .alerts),
+        .behaviour(AppPrefKey.noisySenderLimit.rawValue, "noisySenderLimit", on: .alerts),
         .behaviour(AppPrefKey.urgentBreaksSnooze.rawValue, "urgentBreaksSnooze", on: .alerts),
         .behaviour(AppPrefKey.urgentShowsHiddenPanel.rawValue, "urgentShowsHiddenPanel", on: .alerts),
         .behaviour(RuleBook.defaultsKey, "bypassRules", on: .alerts),
@@ -177,7 +178,7 @@ public enum AppPrefKey: String, CaseIterable, Sendable {
     case runLocalHub, showMenuBarIcon, showMenuBarCount, urgentShowsHiddenPanel, panelHidden
     case snapToCorners, openPanelAtLaunch, hotKey, allowFocusLinks, terminalAppleScript
     case pillLastOpenedAt, showSetupTips, showOrcaWorktrees, setupTipsDone, setupTipsDismissed
-    case developerMode, toolSightings
+    case developerMode, toolSightings, noisySenderLimit
     // Phase 3 (Phase3Controller).
     case followSchedule, morningSummary, useStream
     case lastMorningSummary

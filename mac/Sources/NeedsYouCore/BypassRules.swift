@@ -292,7 +292,14 @@ public struct RuleBook: Equatable, Sendable {
 /// agents on one machine is many senders, each asking its own questions, and one busy
 /// session must not quiet the others' prompts.
 public struct NoisySenderGuard: Sendable {
-    public static let defaultThreshold = 6
+    /// Pop-ups per sender (an agent session counts alone) per hour before the rest only
+    /// brighten the count. Settings → Alerts → Delivery picks it; 0 = never quiet a sender.
+    public static let defaultThreshold = 30
+    public static let choices = [0, 10, 30, 60, 120]
+
+    public static func choiceTitle(_ n: Int) -> String {
+        n <= 0 ? "Never" : "After \(n) an hour"
+    }
     public static let defaultWindow: TimeInterval = 3600
     public static let maxSenders = 200
 
