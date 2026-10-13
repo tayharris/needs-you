@@ -10,8 +10,9 @@ that has `gh` logged in. Each run:
      per X-Poll-Interval; a full refresh every 30 minutes so read threads drop off.
   2. One GraphQL query for your open PRs (review decision, mergeable, checks) and the
      open PRs that request your review.
-  3. Posts a card per condition with a stable key, re-posts it while it holds (so its
-     --expires-in keeps moving) and resolves it once the condition clears.
+  3. Posts a card per condition with a stable key, once: again only when the condition
+     changes (another check fails, a new review, a new status), so a card you close stays
+     closed. Resolves it once the condition clears; it expires after 7 days regardless.
   4. When one of your PRs leaves the open list, one GraphQL lookup says whether it
      merged; if so, one `done` card "Merged owner/repo#N: title" (24 h FYI, never counted).
   5. Opt-in: one GraphQL query for the Projects Status of the open issues and PRs assigned
@@ -30,7 +31,7 @@ Config (environment, else ~/.config/needs-you/env; all optional):
                              else work)
   NEEDS_YOU_GITHUB_REASONS   reasons to post, comma list; "-mention,-assign" turns some off.
                              review deploy ci mention assign merge changes conflict checks merged
-  NEEDS_YOU_GITHUB_INTERVAL  minutes between runs (default 5); cards expire after 3x this
+  NEEDS_YOU_GITHUB_INTERVAL  minutes between runs (default 5)
   NEEDS_YOU_GITHUB_PR_DAYS   only your PRs updated in the last N days (default 14)
   NEEDS_YOU_GITHUB_MAX_CARDS at most this many cards open at once (default 20; urgent first)
   NEEDS_YOU_GITHUB_PROJECT_STATUSES  Projects statuses that make a card, with a priority:
@@ -144,14 +145,6 @@ def read_env_file(path: str) -> Dict[str, str]:
 
 def state_base() -> str:
     return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
-
-
-def outbox_has_backlog() -> bool:
-    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
-    try:
-        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
-    except OSError:
-        return False
 
 
 def _csv(value: str) -> List[str]:
@@ -877,6 +870,11 @@ def card_hash(c: Dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(keep, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
+# A card is posted once per condition and never renewed (a re-post of a key the person closed
+# would open it again), so its expiry is only the safety net for a poller that stopped.
+CARD_EXPIRY_H = 7 * 24.0
+
+
 def post(cfg: Config, c: Dict[str, Any], expires_h: Optional[float]) -> bool:
     argv = [cfg.cli, "-q", "add", "--key=" + c["key"], "--title=" + c["title"], "--priority=" + c["priority"],
             "--context=" + c["context"], "--agent=github", "--project=" + c["project"]]
@@ -1071,19 +1069,19 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
                 warn("could not post %s" % c["key"])
     elif "merged" not in cfg.reasons:
         state.pop("mine", None)
-    expires_h = 3 * cfg.interval_min / 60.0
-    backlog = outbox_has_backlog()
     for key, c in sorted(desired.items()):
         h = card_hash(c)
         prev = posted.get(key) or {}
-        changed = prev.get("h") != h
-        if not changed and (backlog or (c["src"] == "health" and prev)):
-            continue  # hub unreachable: don't fill the outbox with renewals
-        if dry_run:
-            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+        # Once per condition: an unchanged card is never re-posted, so one the person closed
+        # stays closed. "once" marks cards posted this way; older state (renewed every run on
+        # a short expiry) gets one more post with the long expiry, then sticks.
+        if prev.get("h") == h and (prev.get("once") or c["src"] == "health"):
             continue
-        if post(cfg, c, None if c["src"] == "health" else expires_h):
-            posted[key] = {"h": h, "t": now, "src": c["src"]}
+        if dry_run:
+            print("%s %s [%s] %s" % ("post" if prev.get("h") != h else "repost", key, c["priority"], c["title"]))
+            continue
+        if post(cfg, c, None if c["src"] == "health" else CARD_EXPIRY_H):
+            posted[key] = {"h": h, "t": now, "src": c["src"], "once": 1}
     for key in sorted(set(posted) - set(desired)):
         if (posted[key] or {}).get("src") in failed:
             continue  # couldn't look: leave it to its expiry

@@ -23,9 +23,9 @@ Each run:
 4. **Opt-in extras** (both off unless configured):
    - **Projects statuses** (`NEEDS_YOU_GITHUB_PROJECT_STATUSES`): one `gh api graphql` call for the open issues and PRs assigned to you and the value of each one's `Status` field in every project it's in. The poller remembers each item's last status, so it can tell a *move*: a card when the status moves to one you named, kept while it stays there. The first run only records, so turning it on doesn't post a burst of everything already blocked; after that, an item newly assigned to you in a watched status counts as a move.
    - **Dependabot alerts** (`NEEDS_YOU_GITHUB_SECURITY=1`): for each repo with an unread `security_alert` notification (up to 10 a run), one `gh api /repos/<repo>/dependabot/alerts?state=open&severity=...` call. A card per open alert at the severities you named (critical by default).
-5. **Cards:** one per condition, with a stable key. A card is re-posted on every run while its condition holds, with `--expires-in` of 3x the interval (15 minutes), so a poller that stops (machine off, gh logged out) leaves nothing stale behind. Re-posting identical content doesn't re-animate a card. When the condition clears, it resolves the key.
+5. **Cards:** one per condition, with a stable key, posted **once**: again only when the condition changes (another check fails, a new review, the PR's title). So a card you close on the Mac (Done or Dismiss) stays closed while the condition holds. When the condition clears, it resolves the key; a card also expires 7 days after it was posted, in case the poller stops (machine off, gh logged out).
 
-It posts through the `needs-you` CLI, so the outbox and hub failover apply. While the outbox has a backlog (no hub reachable), unchanged cards aren't renewed, so a sleeping Mac doesn't fill it.
+It posts through the `needs-you` CLI, so the outbox and hub failover apply.
 
 What it posted is in `~/.local/state/needs-you/github.json` (mode 600; no tokens, just keys, content hashes, the last notification list, your open PRs' titles and URLs for the merged check, and, with Projects on, each assigned item's last status).
 
@@ -62,7 +62,7 @@ In `~/.config/needs-you/env` (or the environment). All optional.
 | `NEEDS_YOU_GITHUB_EXCLUDE` | none | Comma list of `owner` or `owner/repo` to ignore; wins over include |
 | `NEEDS_YOU_GITHUB_CONTEXTS` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | Per owner or repo: `acme=work,my-user=personal,acme/side-project=personal`; a repo wins over its owner, `*` is the rest. Also the key prefix |
 | `NEEDS_YOU_GITHUB_REASONS` | all | The reasons above to post, e.g. `review,deploy,checks`; or turn some off: `-mention,-assign`. `-merged` turns off the "Merged" cards |
-| `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |
+| `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs. Match your schedule |
 | `NEEDS_YOU_GITHUB_PR_DAYS` | `14` | Only your PRs updated in the last N days (stale PRs aren't gates) |
 | `NEEDS_YOU_GITHUB_MAX_CARDS` | `20` | Cap on open cards from this poller |
 | `NEEDS_YOU_GITHUB_PROJECT_STATUSES` | none (off) | Projects statuses that make a card, each with an optional priority: `Blocked=urgent,In Review=normal` (no `=`: normal). Names match case-insensitively. Needs `gh auth refresh -s read:project` |

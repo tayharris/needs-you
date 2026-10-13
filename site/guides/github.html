@@ -117,7 +117,7 @@ If a run prints an error, fix what it names, or tell me if it needs me.</code></
 <li>A "need gh's ... scope" card: run the <code>gh auth refresh -s ...</code> command it names. The poller checks again within the hour, and the card goes.</li>
 <li><code>gh</code> errors (logged out, token expired): fix with <code>gh auth login</code>. After 3 failed runs in a row it posts one low card, "GitHub alerts stopped on devbox", which clears on the next good run.</li>
 <li>Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see <a href="troubleshooting.html#a-sender-cant-reach-the-hub">troubleshooting</a>.</li>
-<li>To start over, delete <code>~/.local/state/needs-you/github.json</code>. Cards it posted expire within 15 minutes on their own (a merged-PR card after a day); a "GitHub alerts stopped" or "... cards need gh's ... scope" card has no expiry, so dismiss it on the Mac.</li>
+<li>To start over, delete <code>~/.local/state/needs-you/github.json</code>. Cards it posted expire within 7 days on their own (a merged-PR card after a day); dismiss the ones you don't want now; a "GitHub alerts stopped" or "... cards need gh's ... scope" card has no expiry, so dismiss it on the Mac.</li>
 </ul>
     <nav class="pager" aria-label="Previous and next guide">
       <a class="pager-prev" href="tailscale.html" rel="prev"><span>Previous</span> Tailscale</a>

@@ -93,4 +93,4 @@ The full list of cards, keys and settings is in [integrations/github/README.md](
 - A "need gh's ... scope" card: run the `gh auth refresh -s ...` command it names. The poller checks again within the hour, and the card goes.
 - `gh` errors (logged out, token expired): fix with `gh auth login`. After 3 failed runs in a row it posts one low card, "GitHub alerts stopped on devbox", which clears on the next good run.
 - Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see [troubleshooting](troubleshooting.md#a-sender-cant-reach-the-hub).
-- To start over, delete `~/.local/state/needs-you/github.json`. Cards it posted expire within 15 minutes on their own (a merged-PR card after a day); a "GitHub alerts stopped" or "... cards need gh's ... scope" card has no expiry, so dismiss it on the Mac.
+- To start over, delete `~/.local/state/needs-you/github.json`. Cards it posted expire within 7 days on their own (a merged-PR card after a day); dismiss the ones you don't want now; a "GitHub alerts stopped" or "... cards need gh's ... scope" card has no expiry, so dismiss it on the Mac.

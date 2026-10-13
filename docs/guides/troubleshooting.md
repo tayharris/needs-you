@@ -205,7 +205,8 @@ Grok-specific causes:
 - `needs-you-github -v` prints what it saw (notifications, PRs) and any `gh` error. It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "GitHub alerts stopped on <host>".
 - `gh: Bad credentials` or `gh auth login` errors: log in again as the user cron runs as. cron and systemd have a short `PATH`; set `NEEDS_YOU_GITHUB_GH` to the full path of `gh` if it isn't in `/usr/bin`.
 - Too many cards: narrow it with `NEEDS_YOU_GITHUB_EXCLUDE`, `NEEDS_YOU_GITHUB_REASONS` or `NEEDS_YOU_GITHUB_PR_DAYS` ([integrations/github](../../integrations/github/README.md#config)).
-- A card that doesn't clear: it clears on the run after the condition goes away, or 15 minutes after the poller stops. Notification cards clear when you read the thread on GitHub.
+- A card that doesn't clear: it clears on the run after the condition goes away, or 7 days after it was posted if the poller stops. Notification cards clear when you read the thread on GitHub.
+- A card you closed came back: only when its condition changed (another check failed, a new review, a new title). An unchanged condition is never posted again.
 - No Projects or Dependabot cards, and one low card saying `gh` needs a scope: run `gh auth refresh -s read:project` (Projects statuses) or `gh auth refresh -s security_events` (Dependabot alerts) as the user the poller runs as ([GitHub → Projects statuses and Dependabot alerts](github.md#projects-statuses-and-dependabot-alerts-opt-in)).
 
 ## Expiry poller

@@ -204,7 +204,8 @@ class GithubPoller(HubTestCase):
         for item in self.open_items().values():  # GitHub text only ever reaches the title
             self.assertNotIn("instructions", item.get("body") or "")
 
-    def test_dedupe_and_renew(self):
+    def test_dedupe_posts_once_with_a_long_expiry(self):
+        import time
         self.poll()
         first = self.open_items()
         self.poll()
@@ -213,8 +214,52 @@ class GithubPoller(HubTestCase):
         self.assertEqual(len(self.all_items()), len(first))  # no duplicates, nothing resolved
         for k in first:
             self.assertEqual(first[k]["id"], second[k]["id"])
-            self.assertEqual(first[k]["content_updated_at"], second[k]["content_updated_at"])
-            self.assertGreaterEqual(second[k]["expires_at"], first[k]["expires_at"])  # re-posted while true
+            self.assertEqual(first[k]["updated_at"], second[k]["updated_at"], "not re-posted while unchanged")
+        # The expiry is only a safety net for a poller that stopped: days, not minutes.
+        exp = second["work:gh:acme/app#22:conflict"]["expires_at"]
+        left = time.mktime(time.strptime(exp[:19], "%Y-%m-%dT%H:%M:%S")) - time.mktime(time.gmtime())
+        self.assertGreater(left, 6 * 86400)
+
+    def test_a_card_you_close_stays_closed_until_it_changes(self):
+        self.poll()
+        key = "work:gh:acme/app#22:conflict"
+        item = self.open_items()[key]
+        self.assertEqual(request("PATCH", self.hub.url + "/v1/items/" + item["id"], self.reader,
+                                 {"status": "resolved"})[0], 200)
+        for _ in range(3):
+            self.poll()
+            self.assertNotIn(key, self.open_items())
+        checks = "work:gh:acme/app#23:checks"
+        closed = self.open_items()[checks]
+        request("PATCH", self.hub.url + "/v1/items/" + closed["id"], self.reader, {"status": "dismissed"})
+        self.poll()
+        self.assertNotIn(checks, self.open_items())
+
+        # Something new about it (the PR's title changed, so the card's text does): it's back.
+        def retitle(d):
+            for n in d["data"]["mine"]["nodes"]:
+                if n["number"] == 22:
+                    n["title"] = n["title"] + " (rebased)"
+        self.edit("prs.json", retitle)
+        self.poll()
+        self.assertIn(key, self.open_items())
+
+    def test_state_from_before_posts_each_card_once_more(self):
+        self.poll()
+        with open(self.state) as fh:
+            st = json.load(fh)
+        for v in st["posted"].values():
+            v.pop("once", None)  # what 0.6.0 and earlier saved
+        with open(self.state, "w") as fh:
+            json.dump(st, fh)
+        before = {k: v["updated_at"] for k, v in self.open_items().items()}
+        self.poll()
+        after = self.open_items()
+        renewed = [k for k in before if after[k]["updated_at"] != before[k]]
+        self.assertTrue(renewed, "re-posted once with the long expiry")
+        again = {k: v["updated_at"] for k, v in after.items()}
+        self.poll()
+        self.assertEqual({k: v["updated_at"] for k, v in self.open_items().items()}, again)
 
     def test_conditional_request_and_304_keeps_cards(self):
         self.poll()

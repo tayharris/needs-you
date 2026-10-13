@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **A GitHub card you close stays closed.** The GitHub poller re-posted every card on every run (every 5 minutes) to keep a 15-minute expiry moving, so a "Resolve conflicts" or "Fix failing checks" card you dismissed came back within minutes while the PR still had the problem. A card is now posted once per condition, again only when it changes (another check fails, a new review), and expires after 7 days as a safety net. Right after the update, each open GitHub card is posted once more; after that it sticks ([guide](docs/guides/github.md)).
+
 ## [0.6.0] - 2026-10-13
 
 A pre-release. **Notes** beside the alerts: a short list of your own todos in the panel (the checklist button), ticked with a click and edited in their own window; agents can add a line when you ask them to, but can't read it. Settings gets a **Setup** group at the top, and **Integrations → Your tools** shows what's already sending cards, with work or personal for each team, project or GitHub owner. Say "this is critical" to Claude (or `/needs-you critical`) and that session's cards come in urgent. Fixes from a day of real use: busy agents keep popping up (the noisy-sender guard counts each agent session on its own, defaults to 30 an hour, and is a setting), Linear and Jira cards you close stay closed, more of Claude's questions can be answered from the card (and one that can't says why), and "Claude finished" cards from sessions you left expire after 3 hours. Upgrade server hubs first (notes need the hub's new schema, and long questions its new limits; they update themselves on the pre-release channel), then run `needs-you update` on sender machines for the new hooks and pollers, `notes add`, `session priority` and `context`.

@@ -111,7 +111,7 @@ Claude Code's status line helper (`needs-you-usage`) and Codex's hooks. [Claude 
 | `NEEDS_YOU_GITHUB_EXCLUDE` | none | The same; wins over include |
 | `NEEDS_YOU_GITHUB_CONTEXTS` | `NEEDS_YOU_DEFAULT_CONTEXT` | `owner=work`, `owner/repo=personal` or `*=work`, comma-separated; a repo wins over its owner. `needs-you context github acme/side personal` sets one entry |
 | `NEEDS_YOU_GITHUB_REASONS` | all | Reasons to post (`review`, `deploy`, `ci`, `mention`, `assign`, `merge`, `changes`, `conflict`, `checks`, `merged`), or only `-reason` items to turn some off |
-| `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs, at least 1; cards expire after 3 times this |
+| `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs, at least 1 |
 | `NEEDS_YOU_GITHUB_PR_DAYS` | `14` | Only your PRs updated in this many days, a whole number of at least 1 |
 | `NEEDS_YOU_GITHUB_MAX_CARDS` | `20` | Cards open at once, a whole number of at least 1 |
 | `NEEDS_YOU_GITHUB_PROJECT_STATUSES` | off | `Name` or `Name=priority`, comma-separated (no priority: `normal`) |
