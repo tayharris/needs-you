@@ -270,6 +270,7 @@ SETTINGS: Dict[str, Tuple[str, Any]] = {
     "NEEDS_YOU_AGENT_LINK": ("both", ("re", r"^(?i:none)$|=", "none, or Label=url-template")),
     "NEEDS_YOU_AGENT_EXPIRY_HOURS": ("both", ("num", None, None)),
     "NEEDS_YOU_AIDER_EXPIRY_HOURS": ("both", ("num", None, None)),
+    "NEEDS_YOU_FINISHED_EXPIRY_HOURS": ("both", ("num", None, None)),
     "NEEDS_YOU_AGENT_TURN_CARDS": ("both", "onoff"),
     "NEEDS_YOU_AGENT_QUESTIONS": ("both", "onoff"),
     "NEEDS_YOU_TURN_TEXT": ("both", "onoff"),
