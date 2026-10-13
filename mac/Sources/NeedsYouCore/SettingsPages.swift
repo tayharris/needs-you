@@ -7,10 +7,12 @@ import Foundation
 /// One Settings page. (The name is from when these were tabs; menu items and links open
 /// one with `SettingsWindowController.show(tab:)`.)
 ///
-/// The hubs group uses the product's three part names (docs/guides/concepts.md): Built-in
-/// hub (the hub inside this app), Connect a machine (an invite link for a sender or another
-/// Mac), Machines (who's connected) and Other hubs (advanced: server hubs, another hub,
-/// adding one by hand).
+/// The Setup group, right under General, is where alerts come from: Connect a machine (an
+/// invite link for a sender or another Mac; its first section is the Setup overview), Built-in
+/// hub (the hub inside this app, and adding an always-on server hub), Machines (who's
+/// connected), Integrations (the tools that send cards, and which are work or personal) and
+/// Other hubs (advanced: another hub, adding one by hand). The hub pages use the product's
+/// part names (docs/guides/concepts.md).
 ///
 /// Look and behaviour are kept apart: every setting that only changes how something looks
 /// is under Appearance (Theme, Pill, Panel and cards, Alert style, Usage meters); Panel and
@@ -18,12 +20,12 @@ import Foundation
 /// and the pages' sections, are in SettingsLayout.swift (SettingsRegistry, SettingsSection).
 public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     case general
-    // Hubs and machines
-    case inbox, connect, machines, otherHubs
+    // Setup: where alerts come from
+    case connect, inbox, machines, integrations, otherHubs
     // Appearance
     case theme, pill, cards, alertStyle, usageMeters
     // The app
-    case panel, alerts, integrations, updates, advanced
+    case panel, alerts, updates, advanced
 
     public var title: String {
         switch self {
@@ -94,7 +96,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
         case .alerts:
             return "What can interrupt you, and when: delivery, focus, snoozes, rules and reminders."
         case .integrations:
-            return "Cards from Linear, Jira, GitHub and expiry dates, the Terminal button, and sending usage meters."
+            return "Tools already sending cards, work or personal for each, and setting up Linear, Jira, GitHub, expiry and usage meters."
         case .updates:
             return "This app's version, automatic updates, and which machines and hubs are out of date, with Request update for each."
         case .advanced:
@@ -105,9 +107,9 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
     public var group: SettingsSidebarGroup {
         switch self {
         case .general: return .start
-        case .inbox, .connect, .machines, .otherHubs: return .hubs
+        case .connect, .inbox, .machines, .integrations, .otherHubs: return .setup
         case .theme, .pill, .cards, .alertStyle, .usageMeters: return .appearance
-        case .panel, .alerts, .integrations, .updates, .advanced: return .app
+        case .panel, .alerts, .updates, .advanced: return .app
         }
     }
 
@@ -162,7 +164,7 @@ public enum SettingsTab: String, CaseIterable, Hashable, Sendable {
 
 /// The sidebar's groups, in order.
 public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
-    case start, hubs, appearance, app
+    case start, setup, appearance, app
 
     public var id: String { rawValue }
 
@@ -170,7 +172,7 @@ public enum SettingsSidebarGroup: String, CaseIterable, Identifiable, Sendable {
     public var title: String? {
         switch self {
         case .start: return nil
-        case .hubs: return "Hubs and machines"
+        case .setup: return "Setup"
         case .appearance: return "Appearance"
         case .app: return "Needs You"
         }

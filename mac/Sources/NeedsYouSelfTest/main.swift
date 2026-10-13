@@ -70,6 +70,7 @@ let entries =
     + testEntries(ConnectLinkClipboardTests.self, ConnectLinkClipboardTests.allTests)
     + testEntries(SetupChecklistTests.self, SetupChecklistTests.allTests)
     + testEntries(IntegrationCatalogTests.self, IntegrationCatalogTests.allTests)
+    + testEntries(ToolSightingsTests.self, ToolSightingsTests.allTests)
     + testEntries(PanelThemeTests.self, PanelThemeTests.allTests)
     + testEntries(PanelColourTests.self, PanelColourTests.allTests)
     + testEntries(ArrivalMotionTests.self, ArrivalMotionTests.allTests)

@@ -237,6 +237,11 @@ final class SettingsLayoutTests: XCTestCase {
         XCTAssertEqual(SettingsRegistry.placement(forKey: UsagePrefs.Key.onPill)?.tab, .panel)
         XCTAssertEqual(SettingsRegistry.placement(forKey: UsagePrefs.Key.pillStyle)?.tab, .usageMeters)
         XCTAssertEqual(SettingsSection.usageSetup.tab, .integrations)
+        // Setup first: the overview opens Connect a machine (the old Senders section at the
+        // bottom of Integrations), and Integrations opens with the tools already sending.
+        XCTAssertEqual(SettingsSection.sections(on: .connect).first, .setupOverview)
+        XCTAssertEqual(SettingsSection.sections(on: .integrations).first, .yourTools)
+        XCTAssertEqual(SettingsSection.sections(on: .integrations), [.yourTools, .toolCards, .terminalButton, .usageSetup])
         XCTAssertEqual(SettingsRegistry.placement(forKey: AppPrefKey.useStream.rawValue)?.tab, .advanced)
         XCTAssertEqual(SettingsSection.liveUpdates.tab, .advanced)
         XCTAssertEqual(SettingsTab(name: "usage"), .usageMeters)

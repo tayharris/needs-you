@@ -24,12 +24,13 @@ final class SettingsPagesTests: XCTestCase {
     func testSidebarOrderAndGroups() {
         XCTAssertEqual(SettingsSidebarGroup.allCases.map { $0.pages(canInvite: true) }, [
             [.general],
-            [.inbox, .connect, .machines, .otherHubs],
+            [.connect, .inbox, .machines, .integrations, .otherHubs],
             [.theme, .pill, .cards, .alertStyle, .usageMeters],
-            [.panel, .alerts, .integrations, .updates, .advanced],
+            [.panel, .alerts, .updates, .advanced],
         ])
         XCTAssertNil(SettingsSidebarGroup.start.title)
-        XCTAssertEqual(SettingsSidebarGroup.hubs.title, "Hubs and machines")
+        // Setup (where alerts come from) is right under General: senders, hubs, machines, tools.
+        XCTAssertEqual(SettingsSidebarGroup.setup.title, "Setup")
         XCTAssertEqual(SettingsSidebarGroup.appearance.title, "Appearance")
         // Every page is in exactly one group.
         let listed = SettingsSidebarGroup.allCases.flatMap { $0.pages(canInvite: true) }
@@ -38,7 +39,7 @@ final class SettingsPagesTests: XCTestCase {
     }
 
     func testAccessOnlyWithAnOwnerToken() {
-        XCTAssertEqual(SettingsSidebarGroup.hubs.pages(canInvite: false), [.inbox, .connect, .otherHubs])
+        XCTAssertEqual(SettingsSidebarGroup.setup.pages(canInvite: false), [.connect, .inbox, .integrations, .otherHubs])
         XCTAssertEqual(SettingsTab.machines.resolved(canInvite: false), .connect)
         XCTAssertEqual(SettingsTab.machines.resolved(canInvite: true), .machines)
         // Deep links: Connect a Machine… and connect links always land on a visible page.
@@ -48,8 +49,8 @@ final class SettingsPagesTests: XCTestCase {
     }
 
     func testTaskBasedNames() {
-        XCTAssertEqual(SettingsSidebarGroup.hubs.pages(canInvite: true).map(\.title),
-                       ["Built-in hub", "Connect a machine", "Machines", "Other hubs (advanced)"])
+        XCTAssertEqual(SettingsSidebarGroup.setup.pages(canInvite: true).map(\.title),
+                       ["Connect a machine", "Built-in hub", "Machines", "Integrations", "Other hubs (advanced)"])
         // None of the old, confusing names is left in the sidebar.
         let titles = Set(SettingsTab.allCases.map(\.title))
         for old in ["This Mac", "Your inbox", "Join a hub", "Invite a machine", "Access", "Hubs (manual)", "Hubs"] {
@@ -78,10 +79,13 @@ final class SettingsPagesTests: XCTestCase {
     func testAppearanceHoldsTheLookPages() {
         XCTAssertEqual(SettingsSidebarGroup.appearance.pages(canInvite: false).map(\.title),
                        ["Theme", "Pill", "Panel and cards", "Alert style", "Usage meters"])
-        for tab in [SettingsTab.panel, .alerts, .integrations, .updates, .advanced] {
+        for tab in [SettingsTab.panel, .alerts, .updates, .advanced] {
             XCTAssertEqual(tab.group, .app, tab.rawValue)
             XCTAssertEqual(tab.resolved(canInvite: false), tab)
         }
+        // Integrations moved to Setup with the senders and hubs, and keeps its deep link.
+        XCTAssertEqual(SettingsTab.integrations.group, .setup)
+        XCTAssertEqual(SettingsTab.integrations.resolved(canInvite: false), .integrations)
         // No page is called just "Appearance" or "Usage": those are a group and a subpage.
         let titles = Set(SettingsTab.allCases.map(\.title))
         XCTAssertFalse(titles.contains("Appearance"))

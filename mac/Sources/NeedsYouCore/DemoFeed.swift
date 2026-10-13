@@ -311,6 +311,29 @@ extension DemoFeed: StatusFeed {
         ]
     }
 
+    /// Settings → Integrations → Your tools in demo mode (and the snapshot tour): Linear,
+    /// Jira, GitHub and expiry pollers on an example machine, one team personal. Example names only.
+    public static func toolSightingsFixture(now: Date = Date()) -> ToolSightings {
+        let ago = { (m: Double) in now.addingTimeInterval(-m * 60) }
+        func card(_ agent: String, _ project: String, _ ctx: ItemContext = .work, link: String? = nil,
+                  event: String? = nil, minutes: Double) -> Item {
+            Item(id: "demo-tool-\(agent)-\(project)", key: "\(ctx.rawValue):\(agent):\(project)", context: ctx, title: "t",
+                 links: link.map { [ItemLink(label: event == "status" ? "Project" : "Open", url: $0)] } ?? [],
+                 source: ItemSource(host: "devbox", agent: agent, project: project, event: event), createdAt: ago(minutes))
+        }
+        var s = ToolSightings()
+        s.record([
+            card("linear", "ACME", link: "https://linear.app/acme/issue/ACME-123/fix-the-importer", minutes: 12),
+            card("linear", "HOME", .personal, link: "https://linear.app/acme/issue/HOME-7/paint-the-shed", minutes: 300),
+            card("jira", "ACME", link: "https://acme.atlassian.net/browse/ACME-4170", minutes: 40),
+            card("github", "acme/acme-api", minutes: 5),
+            card("github", "acme/acme-web", link: "https://github.com/orgs/acme/projects/1", event: "status", minutes: 90),
+            card("github", "example-user/dotfiles", .personal, minutes: 600),
+            card("expiry", "expiry", .personal, minutes: 900),
+        ], now: now)
+        return s
+    }
+
     /// Claude and Codex usage as the producers report it: Claude's session past the warning
     /// line, Codex calm. Example hosts only.
     public static func statusFixture(now: Date = Date()) -> [StatusRecord] {
