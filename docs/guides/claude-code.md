@@ -65,7 +65,7 @@ Every entry runs `needs-you-hook.sh` with one argument, `"async": true` and a 30
 | `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure` | `resolve` | Resolves the session's card, if it posted one (also one still being posted when you replied). |
 | `Stop` | `stop` | Resolves the session's card (except an API-error card), keeps the question the turn ended on (from `last_assistant_message`) for the "Claude asks" card, then checks how full the context is and posts, updates or resolves the context card. |
 | `PostCompact` | `compact` | Resolves the context card as soon as compaction finishes. |
-| `SessionStart` | `start` | Remembers the model. After `/clear`, compaction or `/resume`, resolves the earlier cards of this Claude process and its context card. |
+| `SessionStart` | `start` | Remembers the model. After `/clear`, compaction or `/resume`, resolves the earlier cards of this Claude process and its context card. In an Orca pane, a new session resolves the card an earlier Claude left in that pane. |
 | `SessionEnd` | `end` | Resolves the session's card and its context card. |
 
 ### What you'll see
@@ -98,9 +98,10 @@ The body holds Claude's notification text, the directory and host, and where the
 ### One card per session, cleared on its own
 
 - **Keys:** `agent:<host>:<session>` for the session's card, `agent:<host>:<session>:context` for the context card. `<session>` is the Orca terminal handle in Orca, otherwise Claude's session id. Re-posting updates the card, so a session that asks five times shows one card.
-- **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, or the end of the session. A usage-limit card also clears when Claude resumes on its own after the limit, and a sign-in card when the sign-in completes. The context card clears once the context is back under the threshold, or when compaction finishes.
+- **Cleared** on your next prompt, the next tool call, the end of the turn (an API-error card waits for your next prompt), `/clear`, `/compact`, `/resume`, a new session in the same Orca pane, or the end of the session. A usage-limit card also clears when Claude resumes on its own after the limit, and a sign-in card when the sign-in completes. The context card clears once the context is back under the threshold, or when compaction finishes.
 - **Other agents that run these hooks.** Cursor, Grok Build and Continue's CLI (`cn`) also read the hooks in `~/.claude/settings.json`. The hook knows each of them and doesn't post "Claude" cards for their sessions or clear a Claude card from them: Cursor and Grok get cards from their own integrations, and in `cn` the hooks do nothing (needs-you has no Continue integration yet).
 - **Killed sessions** never send `SessionEnd`. The hook records the Claude process id in `~/.local/state/needs-you/claude-hooks/`; the 5-minute `needs-you flush` the installer schedules resolves the card once that process is gone. As a backstop, every card expires 48 hours after its last post ([details](claude-code-everywhere.md#when-a-session-dies)).
+- **Idle sessions** you moved on from (a session left at its prompt in a terminal you don't go back to) send nothing either, and their process is still there. So a finished turn's card (**Claude finished: …**, and every other agent's "finished its turn" card) expires 3 hours after its last post (`NEEDS_YOU_FINISHED_EXPIRY_HOURS`), and the next finished turn posts it again. Permission prompts, questions, plans and errors really are waiting: they keep the 48 hours.
 
 ### One card for one wait
 
@@ -141,6 +142,7 @@ NEEDS_YOU_SSH_ALIAS=devbox            # this host's name in the Mac's ~/.ssh/con
 NEEDS_YOU_CONTEXT_ALERT_PCT=80        # context card threshold in percent; 0 = off
 NEEDS_YOU_CONTEXT_WINDOW=200000       # default 200000, 1000000 for a [1m] model
 NEEDS_YOU_AGENT_EXPIRY_HOURS=48       # a card expires this long after its last post; 0 = never
+NEEDS_YOU_FINISHED_EXPIRY_HOURS=3     # a finished turn's card, sooner (never later than the above); 0 = the above
 NEEDS_YOU_ORCA_ENVIRONMENT='My Devbox'                # paired Orca server: its name in the Mac's Orca
 ```
 

@@ -139,7 +139,7 @@ tailscale status | head                          # is this machine on the tailne
 <li><strong>A sender that went away</strong> (a killed agent session, a machine that's gone, an automation that crashed) can't resolve its cards. Safety nets, in the order they kick in:
 <ul>
 <li>Agent hooks record the agent's process. The 5-minute <code>needs-you flush</code> on that machine resolves the card once the process is gone (<a href="claude-code.html">Claude Code</a>).</li>
-<li>Agent cards expire 48 hours after their last post (<code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code>; Aider's after an hour). Each new post pushes it out.</li>
+<li>Agent cards expire 48 hours after their last post (<code>NEEDS_YOU_AGENT_EXPIRY_HOURS</code>; Aider's after an hour; a finished turn's card after 3, <code>NEEDS_YOU_FINISHED_EXPIRY_HOURS</code>). Each new post pushes it out.</li>
 <li>Scheduled automations post with <code>--expires-in</code> of about twice their interval, so a blocker they stop reporting drops off by itself (<a href="orca.html">Orca</a>).</li>
 <li>On the Mac, a card waiting 4 hours or more shows its age, and its <strong>…</strong> menu has <strong>Dismiss All from &lt;host&gt;</strong> for a machine that went away (<a href="mac-app.html">Mac app</a>).</li>
 </ul></li>

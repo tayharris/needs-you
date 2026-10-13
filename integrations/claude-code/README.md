@@ -122,7 +122,8 @@ The resolve side keeps a marker file per session in `~/.local/state/needs-you/cl
 A killed session (closed terminal, `kill`, reboot, OOM) never sends `SessionEnd`, so two things clean up after it:
 
 - **Lease:** the marker records the key, the Claude process id and its start time. `needs-you flush`, which the installer schedules every 5 minutes, resolves the card once that process is gone or its pid belongs to a newer process. Markers written by older hooks have no lease and are left alone.
-- **Expiry:** each card expires 48 hours after its last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`), for a machine that never comes back to run the flush. A gated-off event costs about 5 ms of bash and never starts Python.
+- **Expiry:** each card expires 48 hours after its last post (`NEEDS_YOU_AGENT_EXPIRY_HOURS`), for a machine that never comes back to run the flush. A finished turn's card (`source.event` `finished`: "Claude finished: …", and every other agent's turn card except Aider's, which keeps `NEEDS_YOU_AIDER_EXPIRY_HOURS`) expires after `NEEDS_YOU_FINISHED_EXPIRY_HOURS` (3) instead, never later than the general expiry: a session left idle at its prompt is still running and sends no resolve, and a many-hours-old "finished" reads as noise. A gated-off event costs about 5 ms of bash and never starts Python.
+- **Same Orca pane:** in Orca every session in a pane shares the key (`agent:<host>:term_<uuid>`), so a `SessionStart` from a new agent process there resolves the card an earlier process left in the pane (killed or suspended, so no `SessionEnd`); a card of the same process stays.
 
 ### Settings
 
@@ -139,6 +140,7 @@ Set these in the environment or as lines in `~/.config/needs-you/env` (the envir
 | `NEEDS_YOU_CONTEXT_ALERT_PCT` | `80` | Context card threshold in percent; `0` turns it off |
 | `NEEDS_YOU_CONTEXT_WINDOW` | `200000` (`1000000` for `[1m]` models) | Context window in tokens |
 | `NEEDS_YOU_AGENT_EXPIRY_HOURS` | `48` | A card expires this many hours after its last post; `0` never expires |
+| `NEEDS_YOU_FINISHED_EXPIRY_HOURS` | `3` | A finished turn's card expires this many hours after its last post, never later than `NEEDS_YOU_AGENT_EXPIRY_HOURS`; `0` uses that one |
 | `NEEDS_YOU_ORCA_ENVIRONMENT` | unset | On a paired Orca server: the name the Mac's Orca gives it (`orca environment list`), so the jump command finds the terminal. Without it, the Mac app's Orca button tries each paired environment in turn. |
 | `NEEDS_YOU_BIN` | `needs-you` on `PATH`, else `~/.local/bin/needs-you` | CLI path |
 | `NEEDS_YOU_HOOK_LOG` | unset | Append one debug line per call to this file. Environment only: a line in the env file does nothing |

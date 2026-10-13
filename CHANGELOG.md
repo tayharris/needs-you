@@ -4,6 +4,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Claude finished" cards no longer pile up from sessions you left.** A session you leave at its prompt (you went on in another terminal or Orca pane, and never typed there again) is still running, so nothing resolved its "Claude finished: …" card, and it stayed for 48 hours. A finished turn's card (`source.event` `finished`, the same for Codex, Gemini CLI, opencode, Copilot CLI, Grok, Kimi Code, Cursor and Cline) now expires 3 hours after its last post; the next finished turn posts it again. `NEEDS_YOU_FINISHED_EXPIRY_HOURS` changes it (`0`: the general `NEEDS_YOU_AGENT_EXPIRY_HOURS`). Permission prompts, questions, plans and errors keep the 48 hours, and Aider's card its hour ([guide](docs/guides/claude-code.md#one-card-per-session-cleared-on-its-own)).
+- **A new session in the same Orca pane clears the card the last one left there.** Sessions in one Orca terminal share its card, so when the earlier agent was killed or suspended (no `SessionEnd`), its card stayed until your first prompt in the new session or the 5-minute flush; now the new session's start resolves it.
+
 ## [0.5.3] - 2026-10-12
 
 A pre-release: easier to set up and to keep current. **Settings → Updates → Machines and hubs** lists every sender machine and server hub with its version, with **Request update** and **Update all**, and a server hub can now be asked to update at once (with every check its timer makes). Every install command also comes as plain lines that a browser console can't break, the installers and `needs-you doctor` say what comes next, every setting is on one [Configuration](docs/guides/configuration.md) page and a bad one is named instead of ignored, Settings pages say what each choice does, and Claude Code's error cards say which error. On the Mac, Settings → Updates → **Releases and pre-releases** picks it up; stable stays on 0.5.1 until it's promoted. 0.5.2 was tagged but never released (its build's tests timed out on a busy machine), so this is the first release with these changes. Upgrade server hubs (they update themselves on the pre-release channel; on stable they wait for the promotion), then run `needs-you update` on sender machines for the new hooks.
