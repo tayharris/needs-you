@@ -215,7 +215,7 @@ Grok-specific causes:
 - "refusing the key file": group or others can read it, it isn't owned by the user the poller runs as, or it's a symlink. `chmod 600` it as that user, and use the real path.
 - "Authentication required" (HTTP 400 or 401): the key was revoked or pasted wrong. Make a new one in Linear and write it to the key file again. `RATELIMITED`: something else on the same key is using Linear's 1,500 requests an hour; the poller uses 12.
 - It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Linear alerts stopped on <host>".
-- A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.
+- A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours. Or close it on the Mac: it stays closed until something new happens on the issue.
 - Too many cards: narrow it with `NEEDS_YOU_LINEAR_TEAMS`, `NEEDS_YOU_LINEAR_CATEGORIES` or `Backlog=off` in `NEEDS_YOU_LINEAR_STATUSES` ([integrations/linear](../../integrations/linear/README.md#config)).
 
 ## Jira poller

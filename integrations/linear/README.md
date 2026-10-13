@@ -22,11 +22,11 @@ Each run makes one GraphQL request to `https://api.linear.app/graphql` (Linear a
 1. **New notifications:** `notifications` updated since the last run (5 minutes of overlap; the first run looks back 24 hours), archived ones included, up to 5 pages of 50. Only issue notifications in the categories `assignments`, `commentsAndReplies`, `mentions` and `statusChanges` count; reactions, subscriptions and the rest are ignored.
 2. **The notifications behind open cards**, looked up by id, so reading one in Linear clears its card even when the feed doesn't show the change.
 3. **Your assigned issues:** `viewer.assignedIssues`, not done or canceled. An issue that was in this list and leaves it (done, canceled, or unassigned from you) clears its card. If you have more than 250, nothing is cleared that way.
-4. **Cards:** one per issue with at least one open notification (not read, archived or snoozed) from the last 24 hours. The title says the latest event, the body counts them ("2 new comments, 1 mention, status In Review"). A card is re-posted on every run while it holds, with `--expires-in` of 3x the interval (15 minutes), so a poller that stops leaves nothing stale behind. Re-posting identical content doesn't re-animate a card; a new event changes the title and body of the same card. When nothing holds it up, it resolves the key.
+4. **Cards:** one per issue with at least one open notification (not read, archived or snoozed) from the last 24 hours. The title says the latest event, the body counts them ("2 new comments, 1 mention, status In Review"). A card is posted when a notification arrives that it hasn't been posted for, and only then. It's never posted again for the same notifications, so a card you resolve (**Done**) or dismiss on the Mac stays closed while Linear still lists them unread. A new comment, mention, assignment or status change is a new notification: it updates the card if it's open, or brings it back if you closed it. The card expires when the newest notification behind it is 24 hours old (`NEEDS_YOU_LINEAR_MAX_AGE_H`), when the poller would clear it anyway; when nothing holds it up sooner, it resolves the key. Its text is from its last post: reading one of two notifications in Linear doesn't change it.
 
-It posts through the `needs-you` CLI, so the outbox and hub failover apply. While the outbox has a backlog (no hub reachable), unchanged cards aren't renewed, so a sleeping Mac doesn't fill it.
+It posts through the `needs-you` CLI, so the outbox and hub failover apply.
 
-What it posted is in `~/.local/state/needs-you/linear.json` (mode 600; no key, just keys, content hashes, the time of the last run, and the notifications behind open cards with their issue's cleaned title, status and link).
+What it posted is in `~/.local/state/needs-you/linear.json` (mode 600; no key, just keys, content hashes, the notification ids each card was posted for, the time of the last run, and the notifications behind open cards with their issue's cleaned title, status and link).
 
 ## Cards
 
@@ -59,7 +59,7 @@ In `~/.config/needs-you/env` (or the environment).
 | `NEEDS_YOU_LINEAR_CATEGORIES` | all | Events to post: `assigned,status,comment,mention` or Linear's names (`assignments,statusChanges,commentsAndReplies,mentions`); or turn some off: `-mention` |
 | `NEEDS_YOU_LINEAR_STATUSES` | `*=low` | Priority by the issue's current status: `Blocked=urgent,In Review=normal,*=low`. `Backlog=off` posts no status-change card for that status (comments and mentions still do) |
 | `NEEDS_YOU_LINEAR_TEAMS` | every team, `NEEDS_YOU_DEFAULT_CONTEXT` (else `work`), base `low` | Per team key: context and base priority, `ACME=work:normal,OPS=work:urgent`. When set, only these teams are watched |
-| `NEEDS_YOU_LINEAR_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |
+| `NEEDS_YOU_LINEAR_INTERVAL` | `5` | Minutes between runs. Match your schedule |
 | `NEEDS_YOU_LINEAR_MAX_CARDS` | `20` | Cap on open cards from this poller |
 | `NEEDS_YOU_LINEAR_MAX_AGE_H` | `24` | A card with nothing new for this many hours resolves |
 | `NEEDS_YOU_LINEAR_API` | `https://api.linear.app/graphql` | The GraphQL URL: `https`, or `http` to a loopback address (tests) |
