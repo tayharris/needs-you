@@ -161,6 +161,17 @@ class HookTests(SessionPriorityCase):
         argv = self.permission(sid="019a-codex", agent=["codex"])
         self.assertEqual(opt(argv, "--priority"), "urgent")
 
+    def test_by_agent_process_with_its_start_time(self):
+        # Gemini CLI and Kimi: the CLI names the agent process (pid-<pid>, start=). Here the
+        # hook's lease is this test process, its first ancestor that isn't a shell.
+        start = " ".join(subprocess.run(["ps", "-o", "lstart=", "-p", str(os.getpid())], capture_output=True,
+                                        text=True, env=dict(os.environ, LC_ALL="C")).stdout.split())
+        self.write("pid-%d" % os.getpid(), "urgent", time.time() + 3600, start="Mon Jan  1 00:00:00 2001")
+        self.assertEqual(opt(self.permission(), "--priority"), "normal")  # a reused pid
+        os.remove(self.log)
+        self.write("pid-%d" % os.getpid(), "urgent", time.time() + 3600, start=start)
+        self.assertEqual(opt(self.permission(), "--priority"), "urgent")
+
     def test_session_end_removes_it(self):
         self.write(SID, "urgent", time.time() + 3600)
         self.run_hook(["end"], {"session_id": SID, "cwd": self.cwd, "hook_event_name": "SessionEnd"})
