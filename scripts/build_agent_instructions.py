@@ -42,10 +42,18 @@ REWRITES = [
      "the hooks skip their generic \"finished\" card"),
     # Answering from the card through the hooks is Claude Code's (opencode's plugin answers
     # its own question tool without the agent's doing).
-    (" A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card "
-     "in Claude Code, including \"Other\" (the person's own words, typed on the Mac, reach you as the "
-     "answer like a typed \"Other\" in the terminal), so prefer it over asking in plain text when there "
-     "are a few clear choices.", ""),
+    (" Ask a choice the person has to make with your own question tool (`AskUserQuestion`), never as a "
+     "list of options in plain text at the end of your turn: in Claude Code its card is answered with a "
+     "click, including \"Other\" (the person's own words, typed on the Mac, reach you as the answer like "
+     "a typed \"Other\" in the terminal), while a question in your final message only gets a read-only "
+     "\"Claude asks:\" card, answered in the terminal (nothing can type into your session from outside). "
+     "The card answers only what it shows whole, so keep each question under 1,000 characters and 24 "
+     "lines, each option's description to one or two sentences (under 500 characters), labels under 80, "
+     "and at most 4 questions of 8 options; past that, or with a token-shaped string in it, the card is "
+     "read-only. Put long context in your reply, not in the question.",
+     " Ask a choice the person has to make with your agent's own question tool when it has one, not as a "
+     "list of options in plain text at the end of your turn: the hooks put that tool's question and "
+     "choices on the card."),
 ]
 
 

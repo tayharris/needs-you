@@ -4,6 +4,12 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **More of Claude's questions can be answered from the card.** A card answers only a question it shows whole, and the hub cut a question at 500 characters and a choice's description at 200: about a quarter of Claude Code's `AskUserQuestion` cards ran past that and came out read-only, their choices drawn like buttons that did nothing. The hub now takes 1,000-character questions (24 lines on the card) and 500-character descriptions, so those cards answer with a click. Upgrade hubs first: a sender's card that an older hub refuses is posted again cut to the old limits, read-only as before.
+- **A card that can't answer says so.** A read-only question's choices are a plain bulleted list instead of button-like rows, with a line saying why (the agent doesn't wait for the card, the question was cut to fit, or the agent stopped waiting) and to pick in the agent's terminal.
+- **The needs-you skill tells Claude to ask choices with `AskUserQuestion`**, kept short enough for the card, and never as options in plain text at the end of a turn: that only gets a read-only "Claude asks:" card, since nothing can type into a running session from outside.
+
 ## [0.5.3] - 2026-10-12
 
 A pre-release: easier to set up and to keep current. **Settings → Updates → Machines and hubs** lists every sender machine and server hub with its version, with **Request update** and **Update all**, and a server hub can now be asked to update at once (with every check its timer makes). Every install command also comes as plain lines that a browser console can't break, the installers and `needs-you doctor` say what comes next, every setting is on one [Configuration](docs/guides/configuration.md) page and a bad one is named instead of ignored, Settings pages say what each choice does, and Claude Code's error cards say which error. On the Mac, Settings → Updates → **Releases and pre-releases** picks it up; stable stays on 0.5.1 until it's promoted. 0.5.2 was tagged but never released (its build's tests timed out on a busy machine), so this is the first release with these changes. Upgrade server hubs (they update themselves on the pre-release channel; on stable they wait for the promotion), then run `needs-you update` on sender machines for the new hooks.
