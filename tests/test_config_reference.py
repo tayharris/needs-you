@@ -266,6 +266,52 @@ def load_script(rel, name):
     return mod
 
 
+class PollerContexts(unittest.TestCase):
+    """Work or personal per team, project, owner or repo (the Mac's Settings → Integrations
+    pickers write these lines): only the context, never what's watched."""
+
+    def config(self, rel, env):
+        return PollerWarnings.config(self, rel, env)
+
+    def test_linear_contexts_per_team_and_star(self):
+        cfg, err = self.config(POLLERS[1], {"NEEDS_YOU_DEFAULT_CONTEXT": "work",
+                                            "NEEDS_YOU_LINEAR_CONTEXTS": "acme=personal,*=personal,OPS=work,bad"})
+        self.assertIn("NEEDS_YOU_LINEAR_CONTEXTS: 1 item isn't KEY=work|personal", err)
+        self.assertEqual(cfg.team_of("ACME"), ("personal", "low"))
+        self.assertEqual(cfg.team_of("OPS"), ("work", "low"))
+        self.assertEqual(cfg.team_of("HOME"), ("personal", "low"))   # "*"
+        # With NEEDS_YOU_LINEAR_TEAMS: still only those teams; CONTEXTS wins for a listed team.
+        cfg, _ = self.config(POLLERS[1], {"NEEDS_YOU_LINEAR_TEAMS": "ACME=work:normal,OPS=work:urgent",
+                                          "NEEDS_YOU_LINEAR_CONTEXTS": "ACME=personal,*=personal"})
+        self.assertEqual(cfg.team_of("ACME"), ("personal", "normal"))
+        self.assertEqual(cfg.team_of("OPS"), ("work", "urgent"))    # its TEAMS context beats "*"
+        self.assertIsNone(cfg.team_of("HOME"))                       # still not watched
+        cfg, _ = self.config(POLLERS[1], {})
+        self.assertEqual(cfg.team_of("ACME"), ("work", "low"))
+
+    def test_jira_contexts_per_project_and_star(self):
+        cfg, _ = self.config(POLLERS[2], {"NEEDS_YOU_JIRA_CONTEXTS": "ACME=personal,*=personal,OPS=work"})
+        self.assertEqual(cfg.errors, [])
+        self.assertEqual(cfg.project_rule("ACME"), ("personal", "low"))
+        self.assertEqual(cfg.project_rule("OPS"), ("work", "low"))
+        self.assertEqual(cfg.project_rule("HOME"), ("personal", "low"))
+        cfg, _ = self.config(POLLERS[2], {"NEEDS_YOU_JIRA_PROJECTS": "ACME=work:normal,OPS=work:urgent",
+                                          "NEEDS_YOU_JIRA_CONTEXTS": "ACME=personal,*=personal"})
+        self.assertEqual(cfg.project_rule("ACME"), ("personal", "normal"))
+        self.assertEqual(cfg.project_rule("OPS"), ("work", "urgent"))
+        self.assertEqual(sorted(cfg.projects), ["ACME", "OPS"])      # CONTEXTS never widens the watch list
+        cfg, _ = self.config(POLLERS[2], {"NEEDS_YOU_JIRA_CONTEXTS": "acme-1=work"})
+        self.assertTrue(any("NEEDS_YOU_JIRA_CONTEXTS" in e for e in cfg.errors))
+
+    def test_github_contexts_per_repo_owner_and_star(self):
+        cfg, _ = self.config(POLLERS[0], {"NEEDS_YOU_GITHUB_CONTEXTS": "acme=work,acme/side=personal,*=personal"})
+        self.assertEqual(cfg.context("acme/api"), "work")
+        self.assertEqual(cfg.context("Acme/Side"), "personal")       # the repo wins over its owner
+        self.assertEqual(cfg.context("example-user/dotfiles"), "personal")
+        cfg, _ = self.config(POLLERS[0], {"NEEDS_YOU_DEFAULT_CONTEXT": "personal"})
+        self.assertEqual(cfg.context("acme/api"), "personal")
+
+
 class PollerWarnings(unittest.TestCase):
     def config(self, rel, env):
         mod = load_script(rel, "poller_" + os.path.basename(rel).replace("-", "_"))
@@ -297,7 +343,7 @@ class PollerWarnings(unittest.TestCase):
                      "NEEDS_YOU_GITHUB_MAX_CARDS takes a whole number of at least 1; using 1",
                      "NEEDS_YOU_GITHUB_SECURITY_PRIORITY takes one of urgent, normal, low; using low",
                      "NEEDS_YOU_GITHUB_REASONS: 1 item isn't a reason",
-                     "NEEDS_YOU_GITHUB_CONTEXTS: 1 item isn't owner=work or owner=personal"):
+                     "NEEDS_YOU_GITHUB_CONTEXTS: 1 item isn't owner=work, owner/repo=personal or *=work"):
             self.assertIn(says, err)
         self.assertNotIn(SECRET, err)
         self.assertNotIn("mentoin", err)

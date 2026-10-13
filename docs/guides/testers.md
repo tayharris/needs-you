@@ -64,7 +64,7 @@ It's an accessory app: it lives in that pill (and, optionally, a menu bar icon),
 
 The hub starts by itself (**Run hub on this Mac** is on by default). Check it:
 
-1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Hubs and machines**: **Built-in hub**, **Connect a machine**, **Machines**, **Other hubs (advanced)**; under **Appearance**: **Theme**, **Pill**, **Panel and cards**, **Alert style**, **Usage meters** (everything about the look); then **Panel**, **Alerts**, **Integrations**, **Updates**, **Advanced**.
+1. Right-click the pill → **Settings…**. Settings is a sidebar of pages: **General**; under **Setup**: **Connect a machine**, **Built-in hub**, **Machines**, **Integrations**, **Other hubs (advanced)**; under **Appearance**: **Theme**, **Pill**, **Panel and cards**, **Alert style**, **Usage meters** (everything about the look); then **Panel**, **Alerts**, **Updates**, **Advanced**.
 2. Open **Built-in hub**. It starts with how it works: senders post alerts, a hub stores them (this app has one built in), the pill shows them. **Run hub on this Mac** is on and says **Running**. Below it are two addresses: **On this Mac** (`http://127.0.0.1:8765`, for agents on this Mac) and, if Tailscale is up, **From your other machines (Tailscale)** (`http://<your-mac>.<tailnet>.ts.net:8765`).
 3. Optional: **General → Open at login**.
 
@@ -97,7 +97,7 @@ The first time another machine connects, macOS may ask whether **`python3`** may
 
 Do this for the Mac itself first (so Claude Code on the Mac can post), then for each other machine.
 
-1. Right-click the pill → **Settings…** → **Connect a machine** (under **Hubs and machines**).
+1. Right-click the pill → **Settings…** → **Connect a machine** (under **Setup**).
 2. **What is it?** *A server or agent that sends alerts*. **Machine name:** anything, e.g. `laptop` or `devbox`. **Uses:** how many machines this link should set up. **Expires after:** keep the default.
 
    <img src="../../site/img/settings-connect.png" width="560" alt="Settings, Connect a machine page: the New invite form with What is it (A server or agent that sends alerts selected), Machine name, Uses 1, Expires after 24 hours, and Create invite.">

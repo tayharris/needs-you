@@ -56,6 +56,7 @@ Settings go in `~/.config/needs-you/env`:
 
 ```bash
 NEEDS_YOU_LINEAR_TEAMS=ACME=work:normal,OPS=work:urgent      # which teams to watch, their context and base priority
+NEEDS_YOU_LINEAR_CONTEXTS=ACME=work,*=personal                # only work or personal, per team (never which are watched)
 NEEDS_YOU_LINEAR_STATUSES=Blocked=urgent,In Review=normal,Backlog=off,*=low   # priority by status; off = no status-change card
 NEEDS_YOU_LINEAR_CATEGORIES=-mention                         # turn events off (or list the ones you want)
 ```

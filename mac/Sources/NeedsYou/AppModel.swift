@@ -230,6 +230,12 @@ final class AppModel: ObservableObject {
     /// A line under a setup card after its button ran ("Agent prompt copied…"). Never holds
     /// the invite link or code.
     @Published var setupNotice: SetupNotice?
+    /// Settings → Integrations → Your tools: the tool pollers seen at work, from their
+    /// cards (ToolSightings). Recorded from every poll except in demo mode; saved when it
+    /// changes in a way worth keeping.
+    @Published private(set) var toolSightings: ToolSightings
+    /// What Your tools shows: the example tools in demo mode (and the snapshot tour).
+    var shownToolSightings: ToolSightings { isDemo || showcase ? DemoFeed.toolSightingsFixture() : toolSightings }
     private let localHost: String
     /// The panel's colours: Settings → Appearance → Theme (theme and accent) for macOS's current
     /// light or dark appearance. Also copied to `Theme.palette`, which the views read.
@@ -238,6 +244,7 @@ final class AppModel: ObservableObject {
 
     init(settings: AppSettings) {
         self.settings = settings
+        toolSightings = ToolSightings.load(from: settings.defaults, key: AppPrefKey.toolSightings.rawValue)
         localHost = LocalHubController.localHostName()
         visibility = settings.panelHidden ? .hidden : .shown
         notesMode = settings.defaults.bool(forKey: AppModel.notesModeKey)
@@ -687,6 +694,7 @@ final class AppModel: ObservableObject {
             pollNext = page.next
             store = updated
             endPreview(ifGone: result.removed)
+            recordToolSightings(page.items)
             if !stepTicks.isEmpty {
                 var ticks = stepTicks
                 ticks.retain(itemIDs: Set(updated.items.keys))
@@ -726,6 +734,15 @@ final class AppModel: ObservableObject {
             activeHub = nil
             planner.forceFull()
         }
+    }
+
+    /// The poll's items, open and closed, into Your tools (never demo items).
+    private func recordToolSightings(_ items: [Item]) {
+        guard !isDemo, !items.isEmpty else { return }
+        var sightings = toolSightings
+        guard sightings.record(items) else { return }
+        toolSightings = sightings
+        sightings.save(to: settings.defaults, key: AppPrefKey.toolSightings.rawValue)
     }
 
     private var statusRefreshing = false

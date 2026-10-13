@@ -34,7 +34,7 @@ Within 5 minutes the cards from the dry run appear on your Mac. Each one has a l
 Settings go in `~/.config/needs-you/env`:
 
 ```bash
-NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's cards are work or personal
+NEEDS_YOU_GITHUB_CONTEXTS=acme=work,my-user=personal   # which owner's (or owner/repo's) cards are work or personal
 NEEDS_YOU_GITHUB_EXCLUDE=acme/huge-monorepo            # owners or repos to ignore
 NEEDS_YOU_GITHUB_REASONS=-mention,-assign              # turn reasons off (or list the ones you want); -merged: no "Merged" FYIs
 ```

@@ -35,6 +35,9 @@ Config (environment, else ~/.config/needs-you/env):
                               "Backlog=off" posts no status-change card for that status
   NEEDS_YOU_LINEAR_TEAMS      team key=context:priority, "ACME=work:normal,OPS=work:urgent". When set,
                               also the list of teams to watch (default: every team, default context)
+  NEEDS_YOU_LINEAR_CONTEXTS   team key=work|personal, "ACME=work,HOME=personal,*=personal": only the
+                              context, never which teams are watched; wins over NEEDS_YOU_LINEAR_TEAMS.
+                              "*" is every other team (default NEEDS_YOU_DEFAULT_CONTEXT, else work)
   NEEDS_YOU_LINEAR_INTERVAL   minutes between runs (default 5); cards expire after 3x this
   NEEDS_YOU_LINEAR_MAX_CARDS  at most this many cards open at once (default 20; urgent first)
   NEEDS_YOU_LINEAR_MAX_AGE_H  a card with nothing new for this many hours resolves (default 24)
@@ -258,6 +261,17 @@ class Config:
                 self.teams[team.strip().upper()] = (c, p)
         setting_items("NEEDS_YOU_LINEAR_TEAMS", bad, "KEY=work|personal:urgent|normal|low")
 
+        # Context only, per team ("*": the rest). Never narrows what's watched.
+        self.contexts: Dict[str, str] = {}
+        bad = 0
+        for pair in _csv(get("NEEDS_YOU_LINEAR_CONTEXTS")):
+            team, _, c = pair.partition("=")
+            if team.strip() and c.strip().lower() in ("work", "personal"):
+                self.contexts[team.strip().upper()] = c.strip().lower()
+            else:
+                bad += 1
+        setting_items("NEEDS_YOU_LINEAR_CONTEXTS", bad, "KEY=work|personal (or *=work|personal)")
+
         self.interval_min = setting_num(get, "NEEDS_YOU_LINEAR_INTERVAL", 5.0, 1)
         self.max_cards = setting_num(get, "NEEDS_YOU_LINEAR_MAX_CARDS", 20, 1, whole=True)
         self.max_age_s = setting_num(get, "NEEDS_YOU_LINEAR_MAX_AGE_H", 24.0, 1) * 3600
@@ -273,8 +287,19 @@ class Config:
     def team_of(self, team: str) -> Optional[Tuple[str, str]]:
         """(context, base priority), or None for a team that isn't watched."""
         if not self.teams:
-            return self.default_context, "low"
-        return self.teams.get(team.upper())
+            rule: Optional[Tuple[str, str]] = (self.default_context, "low")
+        else:
+            rule = self.teams.get(team.upper())
+        if rule is None:
+            return None
+        # NEEDS_YOU_LINEAR_CONTEXTS for this team, else its NEEDS_YOU_LINEAR_TEAMS context,
+        # else NEEDS_YOU_LINEAR_CONTEXTS's "*", else the default.
+        key = team.upper()
+        if key in self.contexts:
+            return self.contexts[key], rule[1]
+        if key in self.teams:
+            return rule
+        return self.contexts.get("*", rule[0]), rule[1]
 
     def status_rule(self, name: str) -> str:
         return self.statuses.get(name.lower()) or self.statuses.get("*") or "low"

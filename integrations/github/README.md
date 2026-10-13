@@ -60,7 +60,7 @@ In `~/.config/needs-you/env` (or the environment). All optional.
 |---|---|---|
 | `NEEDS_YOU_GITHUB_INCLUDE` | all | Comma list of `owner` or `owner/repo` to watch |
 | `NEEDS_YOU_GITHUB_EXCLUDE` | none | Comma list of `owner` or `owner/repo` to ignore; wins over include |
-| `NEEDS_YOU_GITHUB_CONTEXTS` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | Per owner: `acme=work,my-user=personal`. Also the key prefix |
+| `NEEDS_YOU_GITHUB_CONTEXTS` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | Per owner or repo: `acme=work,my-user=personal,acme/side-project=personal`; a repo wins over its owner, `*` is the rest. Also the key prefix |
 | `NEEDS_YOU_GITHUB_REASONS` | all | The reasons above to post, e.g. `review,deploy,checks`; or turn some off: `-mention,-assign`. `-merged` turns off the "Merged" cards |
 | `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |
 | `NEEDS_YOU_GITHUB_PR_DAYS` | `14` | Only your PRs updated in the last N days (stale PRs aren't gates) |

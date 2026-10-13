@@ -70,6 +70,7 @@ Settings go in `~/.config/needs-you/env`:
 ```bash
 NEEDS_YOU_JIRA_STATUSES=Blocked=urgent,In Review=normal,QA Failed=urgent,*=low   # which statuses matter, and how much
 NEEDS_YOU_JIRA_PROJECTS=ACME=work:normal,OPS=work:urgent                         # only these projects; context and base priority
+NEEDS_YOU_JIRA_CONTEXTS=ACME=work,*=personal                                     # only work or personal, per project (never which are watched)
 NEEDS_YOU_JIRA_EVENTS=-assigned                                                  # turn events off (status, comment, assigned, mention)
 NEEDS_YOU_JIRA_JQL_EXTRA='labels != noise'                                       # narrow it further with JQL
 NEEDS_YOU_JIRA_WATCHING=1                                                        # issues you watch count too

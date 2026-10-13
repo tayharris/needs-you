@@ -4,10 +4,10 @@ import ServiceManagement
 import SwiftUI
 
 /// The Settings window: a sidebar of short pages, like System Settings. General; the
-/// "Hubs and machines" group (Built-in hub, Connect a machine, Machines, Other hubs
-/// (advanced)); the "Appearance" group (Theme, Pill, Panel and cards, Alert style, Usage
-/// meters: everything that only changes how things look); then Panel, Alerts,
-/// Integrations, Updates and Advanced. The page list is `SettingsTab` in Core
+/// "Setup" group (Connect a machine, Built-in hub, Machines, Integrations, Other hubs
+/// (advanced): where alerts come from); the "Appearance" group (Theme, Pill, Panel and
+/// cards, Alert style, Usage meters: everything that only changes how things look); then
+/// Panel, Alerts, Updates and Advanced. The page list is `SettingsTab` in Core
 /// (SettingsPages.swift), and each page's sections, and which page shows each setting, are
 /// `SettingsSection` and `SettingsRegistry` (SettingsLayout.swift). Each page is a grouped
 /// form that scrolls.
@@ -315,6 +315,7 @@ struct SettingsView: View {
                 AlwaysOnHubSection(settings: settings, reach: reach, hubID: localHub.plan?.hubID)
             }
         // Connect a machine
+        case .setupOverview: setupOverviewSection
         case .inviteWarning: if canInvite, let warning = inviteReachWarning { inviteWarningSection(warning) }
         case .invite: if canInvite { inviteSection }
         case .inviteUnavailable: if !canInvite { inviteUnavailableSection }
@@ -349,13 +350,13 @@ struct SettingsView: View {
         case .bypassRules: BypassRulesSection(settings: settings)
         case .workScreen: WorkScreenSection(settings: settings)
         case .schedule: extra[.schedule]
+        case .yourTools: YourToolsSection(model: model, openFirst: showcase != nil)
         case .toolCards:
             // The snapshot tour opens the first row, to show what's inside one.
-            IntegrationsSettingsSection(initiallyOpen: showcase == nil ? [] : [IntegrationCatalog.all[0].id])
+            IntegrationsSettingsSection(model: model, initiallyOpen: showcase == nil ? [] : [IntegrationCatalog.all[0].id])
         case .terminalButton: terminalJumpSection
         case .liveUpdates: extra[.liveUpdates]
         case .usageSetup: UsageSetupSection()
-        case .senders: sendersSection
         case .updates:
             // Filled by the app delegate (UpdatesSettingsView).
             if let updates = extra[.updates] {
@@ -659,6 +660,39 @@ struct SettingsView: View {
     }
 
     // MARK: Connect a machine
+
+    // settings-section: setupOverview
+    /// The Setup overview at the top of Connect a machine: the four things that make alerts
+    /// reach you, each a click away.
+    private var setupOverviewSection: some View {
+        Section {
+            SetupOverviewRow(symbol: "paperplane", title: "Add a sender",
+                             detail: "Claude Code and other agents' hooks, Orca, CI jobs and scripts on any machine post your alerts. Make a link for that machine under New invite, below.")
+            SetupOverviewRow(symbol: "server.rack", title: "Add an always-on hub",
+                             detail: "Optional: a server hub keeps alerts while this Mac sleeps and copies them to this one.") {
+                Button("Built-in hub…") { navigation.tab = .inbox }
+            }
+            if canInvite {
+                SetupOverviewRow(symbol: "desktopcomputer", title: "Machines",
+                                 detail: "Every sender and Mac on your hub: update or revoke them.") {
+                    Button("Machines…") { navigation.tab = .machines }
+                }
+            }
+            SetupOverviewRow(symbol: "puzzlepiece.extension", title: "Cards from your tools",
+                             detail: integrationsDetail) {
+                Button("Integrations…") { navigation.tab = .integrations }
+            }
+        } header: {
+            Text("Setup")
+        }
+    }
+
+    /// What the tools row says: the pollers already sending, or what can.
+    private var integrationsDetail: String {
+        let seen = model.shownToolSightings.all.map { ConfiguredTools.name($0.id) }
+        if seen.isEmpty { return "Linear, Jira, GitHub and expiry dates, polled from a sender machine. Work or personal for each." }
+        return "Sending: \(seen.joined(separator: ", ")). Set work or personal for each, or add another."
+    }
 
     // settings-section: invite
     private var inviteSection: some View {
@@ -1011,22 +1045,6 @@ struct SettingsView: View {
     private func checkAutomation() {
         automationStatus = nil
         TerminalJumpRunner.requestAutomation { automationStatus = $0 }
-    }
-
-    // settings-section: senders
-    private var sendersSection: some View {
-        Section {
-            Text("Claude Code hooks, Orca automations, the pollers above, CI jobs and scripts are senders: they post alerts to your hub. To set up a machine, make a link for it in Connect a machine. Their cards' links (Terminal, VS Code, pull requests) open from the panel.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if canInvite {
-                HStack {
-                    Spacer()
-                    Button("Connect a machine…") { navigation.tab = .connect }
-                }
-            }
-        } header: {
-            Text("Senders")
-        }
     }
 
     // MARK: Advanced
@@ -1402,6 +1420,36 @@ private struct SettingsPageHeader: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// One line of the Setup overview: an icon, what it is, and a button to its page.
+private struct SetupOverviewRow<Trailing: View>: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let trailing: Trailing
+
+    init(symbol: String, title: String, detail: String, @ViewBuilder trailing: () -> Trailing) {
+        self.symbol = symbol
+        self.title = title
+        self.detail = detail
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 20)
+            LabelWithDetail(title, detail)
+            Spacer()
+            trailing
+        }
+    }
+}
+
+extension SetupOverviewRow where Trailing == EmptyView {
+    init(symbol: String, title: String, detail: String) {
+        self.init(symbol: symbol, title: title, detail: detail) { EmptyView() }
     }
 }
 

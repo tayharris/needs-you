@@ -32,7 +32,7 @@ What it remembers is in `~/.local/state/needs-you/jira.json` (mode 600): your ac
 
 ## Cards
 
-`<ctx>` is `work` or `personal` (see `NEEDS_YOU_JIRA_PROJECTS`). `<site>` is the part before `.atlassian.net` (`acme`), or the whole Data Center host name (`jira.acme.example`).
+`<ctx>` is `work` or `personal` (see `NEEDS_YOU_JIRA_CONTEXTS` and `NEEDS_YOU_JIRA_PROJECTS`). `<site>` is the part before `.atlassian.net` (`acme`), or the whole Data Center host name (`jira.acme.example`).
 
 | Event (`source.event`) | When | Title | Priority floor |
 |---|---|---|---|
@@ -66,6 +66,7 @@ In `~/.config/needs-you/env` (or the environment).
 | `NEEDS_YOU_JIRA_EVENTS` | `status,comment,assigned,mention` | The events to post; or turn some off: `-comment,-assigned` |
 | `NEEDS_YOU_JIRA_STATUSES` | every status, low | `Blocked=urgent,In Review=normal,Backlog=off,*=low`: the priority for an issue in that status (names aren't case-sensitive), `off` for no status card. A status not listed takes the `*` rule; with no `*`, a move to an unlisted status posts no card. The rule also raises the priority of comments on an issue in that status. An entry that doesn't parse is a config error: nothing runs until it's fixed (after 3 runs, the "Jira alerts stopped" card) |
 | `NEEDS_YOU_JIRA_PROJECTS` | every project, default context, low | `ACME=work:normal,OPS=work:urgent`: only these projects, each one's context (and key prefix) and base priority. An entry that doesn't parse is a config error, as above |
+| `NEEDS_YOU_JIRA_CONTEXTS` | the project's `NEEDS_YOU_JIRA_PROJECTS` context, else the default | Only the context, per project key: `ACME=work,HOME=personal`, `*` for the rest. Never changes which projects are watched; wins over `NEEDS_YOU_JIRA_PROJECTS`. Settings → Integrations on the Mac makes this line for you. An entry that doesn't parse is a config error |
 | `NEEDS_YOU_JIRA_JQL_EXTRA` | none | More JQL to narrow the searches, such as `labels != noise` (see below) |
 | `NEEDS_YOU_JIRA_WATCHING` | `0` | `1`: issues you watch count too (status, comment and mention cards; no `assigned`) |
 | `NEEDS_YOU_JIRA_INTERVAL` | `5` | Minutes between runs; cards expire after 3x this. Match your schedule |

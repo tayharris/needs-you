@@ -149,6 +149,7 @@ public enum SettingsRegistry {
         AppPrefKey.pillLastOpenedAt.rawValue: "when the panel was last opened (the pill's new badge)",
         AppPrefKey.setupTipsDone.rawValue: "setup tips done for good",
         AppPrefKey.lastMorningSummary.rawValue: "when the start-of-day summary last showed",
+        AppPrefKey.toolSightings.rawValue: "which tool pollers have sent cards, for what (Integrations → Your tools)",
         UpdatePrefs.Key.skipped: "versions skipped from the update banner",
         UpdatePrefs.Key.lastCheck: "when updates were last checked",
         UpdatePrefs.Key.feedURL: "testing only: a local update feed",
@@ -176,7 +177,7 @@ public enum AppPrefKey: String, CaseIterable, Sendable {
     case runLocalHub, showMenuBarIcon, showMenuBarCount, urgentShowsHiddenPanel, panelHidden
     case snapToCorners, openPanelAtLaunch, hotKey, allowFocusLinks, terminalAppleScript
     case pillLastOpenedAt, showSetupTips, showOrcaWorktrees, setupTipsDone, setupTipsDismissed
-    case developerMode
+    case developerMode, toolSightings
     // Phase 3 (Phase3Controller).
     case followSchedule, morningSummary, useStream
     case lastMorningSummary
@@ -189,12 +190,14 @@ public enum AppPrefKey: String, CaseIterable, Sendable {
 public enum SettingsSection: String, CaseIterable, Sendable {
     // General
     case moveToApplications, welcome, you, startup, demo
+    // Connect a machine: the Setup overview first
+    case setupOverview, inviteWarning, invite, inviteUnavailable
     // Built-in hub
     case howItWorks, builtInHub, hubAddresses, alwaysOnHubs
-    // Connect a machine
-    case inviteWarning, invite, inviteUnavailable
     // Machines
     case machines, openInvites
+    // Integrations: what's already sending first
+    case yourTools, toolCards, terminalButton, usageSetup
     // Other hubs
     case otherHubsIntro, joinWithLink, linkSources, serverHubs, hubList
     // Appearance → Theme
@@ -211,8 +214,6 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     case panelAndMenuBar, openPanel, usageMeterContent, setupTips, orca, keyboard
     // Alerts
     case newItems, workScreen, delivery, snoozedOrHidden, bypassRules, schedule
-    // Integrations
-    case toolCards, terminalButton, usageSetup, senders
     // Updates
     case updates
     // Advanced
@@ -222,8 +223,8 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     public var tab: SettingsTab {
         switch self {
         case .moveToApplications, .welcome, .you, .startup, .demo: return .general
+        case .setupOverview, .inviteWarning, .invite, .inviteUnavailable: return .connect
         case .howItWorks, .builtInHub, .hubAddresses, .alwaysOnHubs: return .inbox
-        case .inviteWarning, .invite, .inviteUnavailable: return .connect
         case .machines, .openInvites: return .machines
         case .otherHubsIntro, .joinWithLink, .linkSources, .serverHubs, .hubList: return .otherHubs
         case .theme: return .theme
@@ -233,7 +234,7 @@ public enum SettingsSection: String, CaseIterable, Sendable {
         case .usageMeterLook: return .usageMeters
         case .panelAndMenuBar, .openPanel, .usageMeterContent, .setupTips, .orca, .keyboard: return .panel
         case .newItems, .workScreen, .delivery, .snoozedOrHidden, .bypassRules, .schedule: return .alerts
-        case .toolCards, .terminalButton, .usageSetup, .senders: return .integrations
+        case .yourTools, .toolCards, .terminalButton, .usageSetup: return .integrations
         case .updates: return .updates
         case .liveUpdates, .advanced: return .advanced
         }

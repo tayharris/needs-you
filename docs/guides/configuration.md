@@ -108,7 +108,7 @@ Claude Code's status line helper (`needs-you-usage`) and Codex's hooks. [Claude 
 |---|---|---|
 | `NEEDS_YOU_GITHUB_INCLUDE` | every repo | `owner` or `owner/repo`, comma-separated |
 | `NEEDS_YOU_GITHUB_EXCLUDE` | none | The same; wins over include |
-| `NEEDS_YOU_GITHUB_CONTEXTS` | `NEEDS_YOU_DEFAULT_CONTEXT` | `owner=work` or `owner=personal`, comma-separated |
+| `NEEDS_YOU_GITHUB_CONTEXTS` | `NEEDS_YOU_DEFAULT_CONTEXT` | `owner=work`, `owner/repo=personal` or `*=work`, comma-separated; a repo wins over its owner. `needs-you context github acme/side personal` sets one entry |
 | `NEEDS_YOU_GITHUB_REASONS` | all | Reasons to post (`review`, `deploy`, `ci`, `mention`, `assign`, `merge`, `changes`, `conflict`, `checks`, `merged`), or only `-reason` items to turn some off |
 | `NEEDS_YOU_GITHUB_INTERVAL` | `5` | Minutes between runs, at least 1; cards expire after 3 times this |
 | `NEEDS_YOU_GITHUB_PR_DAYS` | `14` | Only your PRs updated in this many days, a whole number of at least 1 |
@@ -131,6 +131,7 @@ Claude Code's status line helper (`needs-you-usage`) and Codex's hooks. [Claude 
 | `NEEDS_YOU_LINEAR_CATEGORIES` | all | `assigned`, `status`, `comment`, `mention`, comma-separated, or only `-category` items |
 | `NEEDS_YOU_LINEAR_STATUSES` | `*=low` | `Name=priority` or `Name=off`, comma-separated; `*` is every other status |
 | `NEEDS_YOU_LINEAR_TEAMS` | every team, default context, `low` | `KEY=context:priority`, comma-separated |
+| `NEEDS_YOU_LINEAR_CONTEXTS` | the team's `NEEDS_YOU_LINEAR_TEAMS` context, else default context | `KEY=work\|personal` or `*=work\|personal`, comma-separated; only the context, never which teams are watched. `needs-you context linear ACME personal` sets one entry |
 | `NEEDS_YOU_LINEAR_INTERVAL` | `5` | Minutes between runs, at least 1 |
 | `NEEDS_YOU_LINEAR_MAX_CARDS` | `20` | Cards open at once, a whole number of at least 1 |
 | `NEEDS_YOU_LINEAR_MAX_AGE_H` | `24` | Notifications older than this many hours are skipped, at least 1 |
@@ -150,6 +151,7 @@ Claude Code's status line helper (`needs-you-usage`) and Codex's hooks. [Claude 
 | `NEEDS_YOU_JIRA_EVENTS` | all | `status`, `comment`, `assigned`, `mention`, comma-separated, or only `-event` items |
 | `NEEDS_YOU_JIRA_STATUSES` | every status, `low` | `Name=priority` or `Name=off`, comma-separated; `*` is every other status |
 | `NEEDS_YOU_JIRA_PROJECTS` | every project, default context, `low` | `KEY=context[:priority]`, comma-separated |
+| `NEEDS_YOU_JIRA_CONTEXTS` | the project's `NEEDS_YOU_JIRA_PROJECTS` context, else default context | `KEY=work\|personal` or `*=work\|personal`, comma-separated; only the context, never which projects are watched. `needs-you context jira ACME personal` sets one entry |
 | `NEEDS_YOU_JIRA_JQL_EXTRA` | none | A JQL clause ANDed on, up to 500 characters, no `ORDER BY` |
 | `NEEDS_YOU_JIRA_WATCHING` | off | *on/off*: issues you watch too |
 | `NEEDS_YOU_JIRA_INTERVAL` | `5` | Minutes between runs, at least 1 |
@@ -163,7 +165,7 @@ Claude Code's status line helper (`needs-you-usage`) and Codex's hooks. [Claude 
 |---|---|---|
 | `NEEDS_YOU_EXPIRY_CONFIG` | `expiry.conf` next to the env file | The list of certificates, domains and keys |
 | `NEEDS_YOU_EXPIRY_DAYS` | `30=low,7=normal,1=urgent` | `days=priority`, comma-separated |
-| `NEEDS_YOU_EXPIRY_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | A context |
+| `NEEDS_YOU_EXPIRY_CONTEXT` | `NEEDS_YOU_DEFAULT_CONTEXT`, else `work` | A context. `needs-you context expiry "*" personal` sets it |
 | `NEEDS_YOU_EXPIRY_FAILS` | `2` | Failed runs in a row before a "checks failing" card, a whole number of at least 1 |
 | `NEEDS_YOU_EXPIRY_INTERVAL` | `24` | **Hours** between runs, at least 1 |
 | `NEEDS_YOU_EXPIRY_MAX_CARDS` | `20` | Cards open at once, a whole number of at least 1 |

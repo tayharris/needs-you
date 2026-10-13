@@ -25,7 +25,9 @@ check names reach a card; bodies and comments never do. It always exits 0.
 Config (environment, else ~/.config/needs-you/env; all optional):
   NEEDS_YOU_GITHUB_INCLUDE   comma list of owner or owner/repo to watch (default: all)
   NEEDS_YOU_GITHUB_EXCLUDE   comma list of owner or owner/repo to ignore (wins over include)
-  NEEDS_YOU_GITHUB_CONTEXTS  owner=work|personal,... (default NEEDS_YOU_DEFAULT_CONTEXT, else work)
+  NEEDS_YOU_GITHUB_CONTEXTS  owner=work|personal or owner/repo=work|personal, comma list; a repo
+                             wins over its owner, "*" is the rest (default NEEDS_YOU_DEFAULT_CONTEXT,
+                             else work)
   NEEDS_YOU_GITHUB_REASONS   reasons to post, comma list; "-mention,-assign" turns some off.
                              review deploy ci mention assign merge changes conflict checks merged
   NEEDS_YOU_GITHUB_INTERVAL  minutes between runs (default 5); cards expire after 3x this
@@ -220,7 +222,7 @@ class Config:
                 self.contexts[owner.strip().lower()] = c.strip().lower()
             else:
                 bad += 1
-        setting_items("NEEDS_YOU_GITHUB_CONTEXTS", bad, "owner=work or owner=personal")
+        setting_items("NEEDS_YOU_GITHUB_CONTEXTS", bad, "owner=work, owner/repo=personal or *=work")
         raw = _csv(get("NEEDS_YOU_GITHUB_REASONS"))
         if raw and all(r.startswith("-") for r in raw):
             off = {r[1:].lower() for r in raw}
@@ -268,7 +270,12 @@ class Config:
         return not self.include or repo in self.include or owner in self.include
 
     def context(self, repo: str) -> str:
-        return self.contexts.get(repo.split("/", 1)[0].lower(), self.default_context)
+        """The repo's own entry, else its owner's, else "*", else the default."""
+        repo = repo.lower()
+        for k in (repo, repo.split("/", 1)[0], "*"):
+            if k in self.contexts:
+                return self.contexts[k]
+        return self.default_context
 
 
 _STRIP = re.compile("[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]")
