@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+A pre-release. **Notes** beside the alerts: a short list of your own todos in the panel (the checklist button), ticked with a click and edited in their own window; agents can add a line when you ask them to, but can't read it. Settings gets a **Setup** group at the top, and **Integrations → Your tools** shows what's already sending cards, with work or personal for each team, project or GitHub owner. Say "this is critical" to Claude (or `/needs-you critical`) and that session's cards come in urgent. Busy agents keep popping up: the noisy-sender guard now counts each agent session on its own, defaults to 30 an hour, and is a setting. Upgrade server hubs first (notes need the hub's new schema; they update themselves on the pre-release channel), then run `needs-you update` on sender machines for `notes add`, `session priority` and `context`.
+
 ### Fixed
 
 - **Busy agents keep popping up.** The noisy-sender guard quieted a sender after 6 pop-ups in an hour, and counted every Claude Code, Codex or other hook session on a machine as one sender, so a few busy sessions' permission prompts used up the hour and the next agent's question arrived without a preview. Each agent session now counts on its own, the default is 30 an hour, and **Settings → Alerts → Delivery → Quiet a busy sender** sets it (Never turns it off). The panel's "Quieted" line says where ([troubleshooting](docs/guides/troubleshooting.md#cards-arrive-but-dont-pop-up)).
@@ -12,6 +16,11 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 - **Notes beside the alerts.** The open panel has a second view, **Notes**: a short list of your own todos and reminders as markdown checkboxes, with links. Switch with the checklist button in the header (or **Notes** in the menu bar), tick a box with a click, and **Edit…** opens the notes in their own window with a live preview. They never count, animate or notify. Agents can add a line when you ask them to (`needs-you notes add "…" [--section Today]`) but can't read the list. The notes sync between your hubs; a hub needs this version for them ([guide](docs/guides/mac-app.md#notes), [API](docs/API.md#notes), [ADR 0014](docs/adr/0014-notes.md)).
 - **Mark a session critical.** Say "this is critical" to Claude (or `/needs-you critical` with the skill) and it runs `needs-you session priority urgent`: that session's hook cards (permission prompts, questions, "finished", errors) then come in `urgent`, breaking through snooze, for 12 hours or until the session ends; `needs-you session priority normal` or `clear` undoes it. A local file the hooks read, keyed by the session; nothing new on the wire. Codex, opencode, Gemini CLI and Kimi sessions use the same command ([guide](docs/guides/claude-code.md#marking-a-session-critical)).
+
+### Changed
+
+- **Settings starts with Setup.** Connect a machine, Built-in hub, Machines, Integrations and Other hubs sit together at the top, and Connect a machine opens with an overview: add a sender, add an always-on hub, the tools already sending ([guide](docs/guides/mac-app.md#settings)).
+- **Integrations → Your tools.** Each tool already sending cards (Linear, Jira, GitHub, expiry) shows what it watches (workspace and teams, site and projects, owners and repos), which machine runs it and its last card, learned from the cards themselves. Add another Linear workspace or Jira site from there, and pick work or personal per team, project or GitHub owner: the app shows the one line to run on that machine (`needs-you context linear ACME personal`; new `NEEDS_YOU_LINEAR_CONTEXTS` and `NEEDS_YOU_JIRA_CONTEXTS`, and `NEEDS_YOU_GITHUB_CONTEXTS` takes single repos) ([configuration](docs/guides/configuration.md)).
 
 ## [0.5.3] - 2026-10-12
 
