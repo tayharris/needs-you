@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Linear or Jira card you close on the Mac stays closed.** The pollers re-posted every card on every run (every 5 minutes) to keep its 15-minute expiry moving, and a re-post of a key you'd resolved or dismissed opens a new card, so **Done** and **Dismiss** lasted until the next run while the notification was still unread in Linear. Now a card is posted only for something it hasn't been posted for: a Linear notification it hasn't seen (a new comment, mention, assignment or status change), or a new Jira event. The same notifications never bring it back. A card expires a day after its newest notification or event, when the poller would clear it anyway, and still resolves as soon as you read it in Linear or the issue is done or no longer yours. Its text is from its last post, so reading one of two notifications in Linear no longer rewrites it. After updating, each open Linear or Jira card is posted once more, then never again for the same notifications ([Linear](docs/guides/linear.md), [Jira](docs/guides/jira.md)).
+
 ## [0.6.0] - 2026-10-13
 
 A pre-release. **Notes** beside the alerts: a short list of your own todos in the panel (the checklist button), ticked with a click and edited in their own window; agents can add a line when you ask them to, but can't read it. Settings gets a **Setup** group at the top, and **Integrations → Your tools** shows what's already sending cards, with work or personal for each team, project or GitHub owner. Say "this is critical" to Claude (or `/needs-you critical`) and that session's cards come in urgent. Busy agents keep popping up: the noisy-sender guard now counts each agent session on its own, defaults to 30 an hour, and is a setting. Upgrade server hubs first (notes need the hub's new schema; they update themselves on the pre-release channel), then run `needs-you update` on sender machines for `notes add`, `session priority` and `context`.

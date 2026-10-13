@@ -15,9 +15,10 @@ is opt-in: it does nothing until NEEDS_YOU_JIRA_SITE is set. Each run:
      whether one mentions you. Comment bodies are read for that and never copied.
   4. A status change, new comment, mention or new assignment is diffed against the last
      run's saved state and becomes one card per issue, updated in place (the title says
-     the latest event). It is re-posted every run with an expiry of 3x the interval and
-     resolved when the issue reaches Done, is no longer yours, when you made the latest
-     change (you've already acted), or after 24 h with nothing new.
+     the latest event). It is posted when a new event sets it, and only then, so a card you
+     resolve or dismiss stays closed until the issue has something new. It expires 24 h
+     after its latest event, and is resolved sooner when the issue reaches Done, is no longer
+     yours, or when you made the latest change (you've already acted).
 
 The first run (and the first after the scope settings change) only records what's there:
 installing it never posts a burst of old changes.
@@ -51,7 +52,7 @@ Config (environment, else ~/.config/needs-you/env):
                              'labels != noise'. Refused if its quotes or parentheses don't balance
                              or it has ORDER BY.
   NEEDS_YOU_JIRA_WATCHING    1 = also issues you watch (no "assigned" cards for those)
-  NEEDS_YOU_JIRA_INTERVAL    minutes between runs (default 5); cards expire after 3x this
+  NEEDS_YOU_JIRA_INTERVAL    minutes between runs (default 5)
   NEEDS_YOU_JIRA_MAX_CARDS   at most this many cards open at once (default 20; urgent first)
   NEEDS_YOU_BIN              path to the needs-you CLI (default: on PATH, else ~/.local/bin)
 
@@ -135,14 +136,6 @@ def config_base() -> str:
 
 def state_base() -> str:
     return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
-
-
-def outbox_has_backlog() -> bool:
-    d = os.environ.get("NEEDS_YOU_OUTBOX") or os.path.join(state_base(), "needs-you", "outbox")
-    try:
-        return any(n.endswith(".json") and not n.startswith(".") for n in os.listdir(d))
-    except OSError:
-        return False
 
 
 def _csv(value: str) -> List[str]:
@@ -814,7 +807,7 @@ def issue_card(cfg: Config, rec: Dict[str, Any]) -> Dict[str, Any]:
     return {"key": KEY_SAFE.sub("-", "%s:jira:%s:%s" % (ctx, cfg.slug, rec["key"]))[:200],
             "title": event_title(c["event"], rec["key"], rec.get("status") or "", rec.get("summary") or "")[:TITLE_MAX],
             "priority": prio, "context": ctx, "project": rec["project"], "event": c["event"], "src": "jira",
-            "links": [["Open", link]], "body": body_line(rec)}
+            "links": [["Open", link]], "body": body_line(rec), "at": float(c.get("at") or 0)}
 
 
 def card_hash(c: Dict[str, Any]) -> str:
@@ -1069,19 +1062,26 @@ def run_once(cfg: Config, state_path: str, dry_run: bool, verbose: bool) -> None
     if not dry_run and not cfg.cli:
         warn("needs-you CLI not found (set NEEDS_YOU_BIN); nothing posted")
         return
-    expires_h = 3 * cfg.interval_min / 60.0
-    backlog = outbox_has_backlog()
     for key, c in sorted(desired.items()):
         h = card_hash(c)
         prev = posted.get(key) or {}
-        changed = prev.get("h") != h
-        if not changed and (backlog or (c["src"] == "health" and prev)):
-            continue  # hub unreachable: don't fill the outbox with renewals
+        if c["src"] == "health":
+            if prev and prev.get("h") == h:
+                continue  # posted once; it has no expiry
+            expires_h = None
+        else:
+            # Post only for an event this card hasn't been posted for. A re-post of a key the
+            # person closed opens a new item, so the same event is never posted twice: closing
+            # the card sticks. (A sender can't read items, so it can't tell open from closed.)
+            if prev and prev.get("at") == c["at"]:
+                continue
+            # It lives until its latest event is MAX_AGE_H old, when it would resolve anyway.
+            expires_h = max(0.05, (c["at"] + MAX_AGE_H * 3600 - now) / 3600.0)
         if dry_run:
-            print("%s %s [%s] %s" % ("post" if changed else "renew", key, c["priority"], c["title"]))
+            print("post %s [%s] %s" % (key, c["priority"], c["title"]))
             continue
-        if post(cfg, c, None if c["src"] == "health" else expires_h):
-            posted[key] = {"h": h, "t": now, "src": c["src"]}
+        if post(cfg, c, expires_h):
+            posted[key] = {"h": h, "t": now, "src": c["src"], "at": c.get("at")}
     for key in sorted(set(posted) - set(desired)):
         if (posted[key] or {}).get("src") == "jira" and not core_ok:
             continue  # couldn't look: leave it to its expiry

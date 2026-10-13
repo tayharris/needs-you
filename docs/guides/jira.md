@@ -1,6 +1,6 @@
 # Jira
 
-Get a card when something happens on a Jira issue assigned to you: someone moves it to another status, comments on it, mentions you, or assigns it to you. One card per issue, updated in place, with a button that opens the issue (or the comment). It clears itself when the issue is done, when it's no longer yours, when you act on it yourself (comment, move it), or after a day with nothing new. Works with Jira Cloud and Jira Data Center 8.14 or later.
+Get a card when something happens on a Jira issue assigned to you: someone moves it to another status, comments on it, mentions you, or assigns it to you. One card per issue, updated in place, with a button that opens the issue (or the comment). It clears itself when the issue is done, when it's no longer yours, when you act on it yourself (comment, move it), or after a day with nothing new. Close it on the Mac (**Done** or **Dismiss**) and it stays closed until the issue has something new. Works with Jira Cloud and Jira Data Center 8.14 or later.
 
 A small poller, `needs-you-jira`, does this from **one** machine every 5 minutes, with a token you give it. Nothing in Jira changes: no webhook, no Jira app, no public endpoint. It's off until you set it up.
 
@@ -87,4 +87,4 @@ The full list of cards, keys and settings is in [integrations/jira/README.md](..
 - Run `needs-you-jira -v`. It says how many issues changed and how many are open, and any Jira error. It always exits 0, so cron won't tell you.
 - See [troubleshooting](troubleshooting.md#jira-poller) for token, permission and JQL errors. After 3 failed runs in a row it posts one low card, "Jira alerts stopped on devbox", which clears on the next good run.
 - Cards from the dry run but nothing on the Mac: the hub isn't reachable from this machine; see [troubleshooting](troubleshooting.md#a-sender-cant-reach-the-hub).
-- To start over, delete `~/.local/state/needs-you/jira.json`. The next run records your issues again without posting, and cards it posted expire within 15 minutes on their own; a "Jira alerts stopped" card has no expiry, so dismiss it on the Mac.
+- To start over, delete `~/.local/state/needs-you/jira.json`. The next run records your issues again without posting, and cards it posted expire on their own a day after their latest event; a "Jira alerts stopped" card has no expiry, so dismiss it on the Mac.

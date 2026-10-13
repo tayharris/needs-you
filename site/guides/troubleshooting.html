@@ -255,7 +255,7 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li>"refusing the key file": group or others can read it, it isn't owned by the user the poller runs as, or it's a symlink. <code>chmod 600</code> it as that user, and use the real path.</li>
 <li>"Authentication required" (HTTP 400 or 401): the key was revoked or pasted wrong. Make a new one in Linear and write it to the key file again. <code>RATELIMITED</code>: something else on the same key is using Linear's 1,500 requests an hour; the poller uses 12.</li>
 <li>It always exits 0, so a broken cron job is silent; after 3 failed runs in a row it posts one low card, "Linear alerts stopped on &lt;host&gt;".</li>
-<li>A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours.</li>
+<li>A card that doesn't clear: read, archive or snooze the notification in Linear, or finish the issue; it clears on the next run. A mention on an issue that isn't yours clears when you read it, or after 24 hours. Or close it on the Mac: it stays closed until something new happens on the issue.</li>
 <li>Too many cards: narrow it with <code>NEEDS_YOU_LINEAR_TEAMS</code>, <code>NEEDS_YOU_LINEAR_CATEGORIES</code> or <code>Backlog=off</code> in <code>NEEDS_YOU_LINEAR_STATUSES</code> (<a data-repo="/blob/main/integrations/linear/README.md#config" href="https://github.com/tayharris/needs-you/blob/main/integrations/linear/README.md#config">integrations/linear</a>).</li>
 </ul>
 <h2 id="jira-poller">Jira poller <a class="anchor" href="#jira-poller" aria-label="Link to this section">#</a></h2>
@@ -267,7 +267,7 @@ sleep 2; cat /tmp/ny-hook.log</code></pre></div>
 <li><strong>"Jira redirected":</strong> the site URL is wrong (<code>http</code> vs <code>https</code>, a missing context path), or your Jira sends API calls to a browser login. The poller never follows a redirect, so the token isn't sent anywhere else.</li>
 <li><strong>"must be an https:// URL":</strong> <code>NEEDS_YOU_JIRA_SITE</code> must start with <code>https://</code>. A Data Center site on plain <code>http</code> isn't supported.</li>
 <li><strong>"NEEDS_YOU_JIRA_JQL_EXTRA …":</strong> your extra JQL has unbalanced quotes or parentheses, <code>ORDER BY</code>, or a line break; the poller does nothing until it's fixed. A JQL error from Jira itself ("HTTP 400 … ") quotes Jira's message.</li>
-<li><strong>A card that doesn't clear:</strong> it clears when the issue is Done, no longer yours, when you comment or move it yourself, after 24 hours with nothing new, or 15 minutes after the poller stops.</li>
+<li><strong>A card that doesn't clear:</strong> it clears when the issue is Done, no longer yours, when you comment or move it yourself, or after 24 hours with nothing new (also when the poller has stopped). Or close it on the Mac: it stays closed until the issue has something new.</li>
 <li><strong>Too many cards:</strong> narrow it with <code>NEEDS_YOU_JIRA_PROJECTS</code>, <code>NEEDS_YOU_JIRA_STATUSES</code> (<code>Backlog=off</code>), <code>NEEDS_YOU_JIRA_EVENTS</code> or <code>NEEDS_YOU_JIRA_JQL_EXTRA</code> (<a data-repo="/blob/main/integrations/jira/README.md#config" href="https://github.com/tayharris/needs-you/blob/main/integrations/jira/README.md#config">integrations/jira</a>).</li>
 </ul>
 <h2 id="orca-automations">Orca automations <a class="anchor" href="#orca-automations" aria-label="Link to this section">#</a></h2>

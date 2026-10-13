@@ -5,6 +5,7 @@ Center shape (/rest/api/2/search, startAt/total, Bearer PAT, wiki-markup bodies)
 from __future__ import annotations
 
 import base64
+import calendar
 import copy
 import importlib.machinery
 import importlib.util
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -320,11 +322,31 @@ class CloudPoller(JiraBase):
         self.assertEqual(c["links"], [{"label": "Open", "url": self.site + "/browse/ACME-1"}])
         self.assertEqual(c["body"], "Status In Review")
         self.assertIsNotNone(c["expires_at"])
-        # Re-run with nothing new: same card, renewed, not re-created.
+        # Re-run with nothing new: same card, not re-posted.
         self.poll()
         again = self.open_items()[self.key("ACME-1")]
-        self.assertEqual((again["id"], again["content_updated_at"]), (c["id"], c["content_updated_at"]))
+        self.assertEqual((again["id"], again["updated_at"]), (c["id"], c["updated_at"]))
         self.assertEqual(len(self.all_items()), 1)
+
+    def test_closed_on_the_mac_stays_closed(self):
+        self.baseline()
+        self.world.comment("ACME-2", 10005, minute=6)
+        self.poll()
+        c = self.open_items()[self.key("ACME-2")]
+        code = request("PATCH", self.hub.url + "/v1/items/" + c["id"], self.reader, {"status": "dismissed"})[0]
+        self.assertEqual(code, 200)
+        for _ in range(3):
+            self.poll()
+        self.assertNotIn(self.key("ACME-2"), self.open_items())
+        self.assertEqual(len(self.all_items()), 1)
+        # Something new on the issue: a card again.
+        self.world.comment("ACME-2", 10009, minute=9)
+        self.poll()
+        c2 = self.open_items()[self.key("ACME-2")]
+        self.assertNotEqual(c2["id"], c["id"])
+        self.assertEqual(c2["body"], "2 new comments, status In Progress")
+        exp = calendar.timegm(time.strptime(c2["expires_at"][:19], "%Y-%m-%dT%H:%M:%S"))
+        self.assertAlmostEqual(exp, time.time() + 24 * 3600, delta=120)  # a day after its latest event
 
     def test_status_rules_and_project_priority(self):
         cfg = {"NEEDS_YOU_JIRA_STATUSES": "Blocked=urgent,In Review=normal,Backlog=off",
@@ -531,7 +553,7 @@ class CloudPoller(JiraBase):
         outbox = os.path.join(self.home, ".local", "state", "needs-you", "outbox")
         n = len([f for f in os.listdir(outbox) if f.endswith(".json")])
         self.assertEqual(n, 2)
-        self.poll()  # unchanged cards aren't renewed while the outbox has a backlog
+        self.poll()  # nothing new: nothing more queued
         self.assertEqual(len([f for f in os.listdir(outbox) if f.endswith(".json")]), n)
 
     def test_token_file_others_can_read_is_refused(self):
