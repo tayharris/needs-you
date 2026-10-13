@@ -420,6 +420,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.refreshOrca(force: true)
                 model.scrollTarget = nil
             }),
+            // The open panel's Notes (ADR 0014), from DemoFeed's example notes.
+            ("18-notes-panel", { model in
+                model.showOrca = false
+                model.settings.showOrcaWorktrees = false
+                model.expand()
+                model.notesMode = true
+                model.pollNow()
+                model.scrollTarget = nil
+            }),
         ]
         // Settings pages, drawn as a running hub on this Mac at example addresses.
         let showcase = LocalHubReach(magicDNSName: "hub-a.example.ts.net", tailnetIP: "100.64.0.1",
@@ -443,6 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             // The pages show the out-of-the-box look and alerts settings.
+            model.notesMode = false
             model.snapshotSetupTips = nil
             model.collapse()
             settings.ui = UIPrefs()
