@@ -87,6 +87,10 @@ When the blocker clears (they answered, the ticket moved, the job passed): `need
 
 If the needs-you hooks are installed, they post and resolve permission prompts, plan approvals, your questions, "waiting for input" and API-error stops (key `agent:<host>:<session>`); don't duplicate those. A question you ask with your own question tool (`AskUserQuestion`) can be answered from the card in Claude Code, including "Other" (the person's own words, typed on the Mac, reach you as the answer like a typed "Other" in the terminal), so prefer it over asking in plain text when there are a few clear choices. While a `needs` card you posted from this session is open, the hooks skip their generic "Claude finished" card, so the person sees one card for the wait: yours. Until you resolve it, this session gets no "waiting" card.
 
+## Notes: when they ask you to put something on their list
+
+"Remind me to…", "add it to my list": `needs-you notes add "<one line>" [--section Today]` adds a checkbox to the person's own notes (the Mac panel's Notes view). Never instead of a card for a blocker, at most a line or two per session, no secrets. You can't read the notes, and that's by design.
+
 ## Rules
 
 1. **No secrets:** no credentials, tokens, customer or personal data, or code beyond a short identifier (a ticket key, a sha, a file name). Never print the token.

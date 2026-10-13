@@ -49,6 +49,7 @@
         <li><a href="#install">Install</a></li>
         <li><a href="#its-built-in-hub">Its built-in hub</a></li>
         <li><a href="#using-it">Using it</a></li>
+        <li><a href="#notes">Notes</a></li>
         <li><a href="#focus-heads-down-except-what-you-choose">Focus: heads-down, except what you choose</a></li>
         <li><a href="#make-it-yours">Make it yours</a></li>
         <li><a href="#terminal-button">Terminal button</a></li>
@@ -150,6 +151,23 @@
 </table></div>
 <p>Meters stay plain until the warning line, then amber, red at 100 %, on an empty track you can see in light and dark themes. The Minimal dot pill shows no meters. The idle pill rests faint (35 % opacity); while it shows meters it rests at 60 %, so they can be read. A style chosen in an earlier build keeps its size (medium), so thin bars stay as they were.</p>
 <p>Meters are quiet: they never count as waiting, animate, notify or make a card, and they are plain text with nothing to click. The numbers are what the agent hands its own hooks; nothing reads a login, token or cookie, and accounts are labelled by a local name (<code>NEEDS_YOU_USAGE_ACCOUNT</code>) or, for Orca's accounts, <code>orca-</code> and a short hash of Orca's account id, never an email. <strong>Settings → Panel → Usage meters</strong> turns the panel section and the pill's meters on or off, picks the providers, session, weekly or both, and hides a bar under a percentage (default: always shown); <strong>Settings → Appearance → Usage meters</strong> sets the warning colour's percentage and the pill's style (with a preview of both pills). <strong>Settings → Integrations → Usage meters</strong> says how to start sending the numbers. A hub that predates usage meters simply shows none.</p>
+<h2 id="notes">Notes <a class="anchor" href="#notes" aria-label="Link to this section">#</a></h2>
+<p>Beside the alerts, the panel keeps a short list of your own: a few todos and reminders, as
+checkboxes with links. Click the <strong>checklist</strong> button in the open panel's header to switch to
+<strong>Notes</strong> (the bell switches back); the menu bar's <strong>Notes</strong> opens the panel there. Notes
+never count in the pill, never animate and never notify.</p>
+<ul>
+<li><strong>Tick a box</strong> with a click. It saves at once; nothing takes focus.</li>
+<li><strong>Edit…</strong> (under the list) opens the notes in their own window: markdown on the left,
+a preview on the right. <code>## Heading</code>, <code>- [ ] todo</code>, <code>- [x] done</code>, <code>- bullet</code>, <code>**bold**</code>,
+<code>[label](https://…)</code>. Save with <strong>⌘S</strong>. If something changed the notes while you typed (an
+agent, another Mac), the window says so: <strong>Reload</strong> takes theirs, <strong>Save Mine</strong> keeps yours.</li>
+<li><strong>Agents can add</strong> a line (<code>needs-you notes add "…"</code>, under <code>## Inbox</code> unless they name a
+section) when you ask them to put something on your list. They can't read your notes.</li>
+</ul>
+<p>The notes live on your hubs and sync between them like cards, up to 12,000 characters. Don't
+put passwords or tokens in them: the hub refuses anything that looks like one. A hub older
+than 0.6.0 has no notes; update it.</p>
 <h2 id="focus-heads-down-except-what-you-choose">Focus: heads-down, except what you choose <a class="anchor" href="#focus-heads-down-except-what-you-choose" aria-label="Link to this section">#</a></h2>
 <p>Every new item arrives one of three ways:</p>
 <div class="table-wrap"><table class="doc-table">

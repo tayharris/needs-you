@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added
+
+- **Notes beside the alerts.** The open panel has a second view, **Notes**: a short list of your own todos and reminders as markdown checkboxes, with links. Switch with the checklist button in the header (or **Notes** in the menu bar), tick a box with a click, and **Edit…** opens the notes in their own window with a live preview. They never count, animate or notify. Agents can add a line when you ask them to (`needs-you notes add "…" [--section Today]`) but can't read the list. The notes sync between your hubs; a hub needs this version for them ([guide](docs/guides/mac-app.md#notes), [API](docs/API.md#notes), [ADR 0014](docs/adr/0014-notes.md)).
+
 ## [0.5.3] - 2026-10-12
 
 A pre-release: easier to set up and to keep current. **Settings → Updates → Machines and hubs** lists every sender machine and server hub with its version, with **Request update** and **Update all**, and a server hub can now be asked to update at once (with every check its timer makes). Every install command also comes as plain lines that a browser console can't break, the installers and `needs-you doctor` say what comes next, every setting is on one [Configuration](docs/guides/configuration.md) page and a bad one is named instead of ignored, Settings pages say what each choice does, and Claude Code's error cards say which error. On the Mac, Settings → Updates → **Releases and pre-releases** picks it up; stable stays on 0.5.1 until it's promoted. 0.5.2 was tagged but never released (its build's tests timed out on a busy machine), so this is the first release with these changes. Upgrade server hubs (they update themselves on the pre-release channel; on stable they wait for the promotion), then run `needs-you update` on sender machines for the new hooks.

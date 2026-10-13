@@ -50,6 +50,7 @@
         <li><a href="#the-item">The item</a></li>
         <li><a href="#endpoints">Endpoints</a></li>
         <li><a href="#status-records-usage-meters">Status records (usage meters)</a></li>
+        <li><a href="#notes">Notes</a></li>
         <li><a href="#invites">Invites</a></li>
         <li><a href="#tokens">Tokens</a></li>
         <li><a href="#peers">Peers</a></li>
@@ -84,8 +85,8 @@ Timestamps must fall between 1970-01-01 and 9999-12-31 (UTC); anything else is a
 <div class="table-wrap"><table class="doc-table">
 <thead><tr><th>Role</th><th>Can call</th></tr></thead>
 <tbody>
-<tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>GET /v1/items/answer</code>, <code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code></td></tr>
-<tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>POST /v1/items/{id}/answer</code>, <code>GET /v1/stream</code>, <code>GET /v1/status</code></td></tr>
+<tr><td><code>sender</code></td><td><code>POST /v1/items</code>, <code>POST /v1/items/resolve</code>, <code>GET /v1/items/answer</code>, <code>PUT</code>/<code>DELETE /v1/status/&lt;key&gt;</code>, <code>POST /v1/notes/append</code></td></tr>
+<tr><td><code>reader</code></td><td><code>GET /v1/items</code>, <code>GET /v1/items/{id}</code>, <code>PATCH /v1/items/{id}</code>, <code>POST /v1/items/{id}/answer</code>, <code>GET /v1/stream</code>, <code>GET /v1/status</code>, <code>GET</code>/<code>PUT /v1/notes</code>, <code>POST /v1/notes/append</code></td></tr>
 <tr><td><code>owner</code></td><td>everything <code>reader</code> can, plus invites (<code>/v1/invites</code>), tokens (<code>/v1/tokens</code>) and peers (<code>/v1/peers</code>): list, create, revoke, remove and request updates (the Mac app); and asking a server hub to update itself (<code>/v1/hub/update</code>)</td></tr>
 </tbody>
 </table></div>
@@ -118,7 +119,7 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>403</td><td><code>forbidden</code></td><td>Valid token, wrong role for the endpoint, or typed answer <code>text</code> from a reader token (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
 <tr><td>404</td><td><code>not_found</code></td><td>Unknown endpoint, unknown id (<code>GET</code>/<code>PATCH /v1/items/{id}</code>, <code>POST /v1/items/{id}/answer</code>), no item for this token on <code>GET /v1/items/answer</code>, unknown invite code, nothing to revoke, withdraw or remove (<code>/v1/invites/…</code>, <code>/v1/tokens/…</code>, <code>/v1/peers/…</code>), a file not on the <code>/dl</code> list, or replication on a hub with no peer secret</td></tr>
 <tr><td>409</td><td><code>self</code></td><td>A hub tried to replicate to itself, or to redeem its own peer invite</td></tr>
-<tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite</td></tr>
+<tr><td>409</td><td><code>conflict</code></td><td>A peer invite redeemed for a URL that is already a config peer, or for a URL or hub id already paired by an earlier peer invite; a <code>PUT /v1/notes</code> whose <code>base_rev</code> is stale (<a href="#notes">notes</a>)</td></tr>
 <tr><td>409</td><td><code>peer_outdated</code></td><td>A hub redeeming a peer invite has an older schema than the inviting hub (<a href="#peer-invites">peer invites</a>)</td></tr>
 <tr><td>409</td><td><code>unavailable</code></td><td><code>POST /v1/hub/update</code> on a hub that can't update itself (<a href="#hub-updates">hub updates</a>)</td></tr>
 <tr><td>409</td><td><code>not_open</code>, <code>not_answerable</code>, <code>question_expired</code>, <code>question_changed</code>, <code>already_answered</code></td><td>An answer that can't be taken (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
@@ -126,7 +127,8 @@ validation errors, for example <code>title</code>, <code>links[2].url</code>, <c
 <tr><td>413</td><td><code>too_large</code></td><td>Body over 64 KiB (8 MiB for <code>/v1/replicate</code>)</td></tr>
 <tr><td>429</td><td><code>too_many_open</code></td><td>The token already has 60 open items (the volume guard)</td></tr>
 <tr><td>429</td><td><code>rate_limited</code></td><td>Too many failed invite redeems from this client IP (10 per 10 min by default), too many answers from one token (30 a minute by default), too many answer reads (<code>GET /v1/items/answer</code>, 120 a minute by default, or more than 4 long polls open at once), or too many <code>POST /v1/items</code> from one token (120 a minute by default; with <code>Retry-After</code> in seconds), or a second <code>POST /v1/hub/update</code> within 15 minutes (with <code>Retry-After</code>)</td></tr>
-<tr><td>400</td><td><code>secret_in_text</code></td><td>A status key, label, detail, account or source field looks like a token or key (<a href="#status-records-usage-meters">status records</a>), or an answer's typed <code>text</code> holds a needs-you token, invite code or peer secret (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
+<tr><td>400</td><td><code>secret_in_text</code></td><td>A status key, label, detail, account or source field, or notes text, looks like a token or key (<a href="#status-records-usage-meters">status records</a>, <a href="#notes">notes</a>), or an answer's typed <code>text</code> holds a needs-you token, invite code or peer secret (<a href="#post-v1itemsidanswer-reader">answers</a>)</td></tr>
+<tr><td>400</td><td><code>notes_full</code></td><td>A <code>POST /v1/notes/append</code> would take the notes past 12,000 characters (<a href="#notes">notes</a>)</td></tr>
 <tr><td>429</td><td><code>too_many_status</code>, <code>too_fast</code></td><td>A status write over the live-status limits, or a second write to one status key within 10 s (with <code>Retry-After</code>)</td></tr>
 <tr><td>429</td><td><code>rate_limited</code></td><td>Too many status sets and clears from one token (120 a minute by default, apart from posts; with <code>Retry-After</code>)</td></tr>
 <tr><td>500</td><td><code>internal</code></td><td>Bug; details are in the hub's log</td></tr>
@@ -635,6 +637,45 @@ the status write rate (<code>429 rate_limited</code>).</p>
 changed. A hub that predates statuses answers <code>404</code>; clients treat that as "no statuses".</p>
 <p>Expiry is computed, never written, as for items. Housekeeping deletes a status an hour after
 its <code>expires_at</code>; nothing is kept for history.</p>
+<h2 id="notes">Notes <a class="anchor" href="#notes" aria-label="Link to this section">#</a></h2>
+<p>The <strong>notes</strong> are one markdown document the person keeps beside the alerts: a short todo list
+and reminders (<a data-repo="/blob/main/docs/adr/0014-notes.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0014-notes.md">ADR 0014</a>). They are not items: they never count, notify or
+make a card, and are never purged. Every hub holds the same document; it replicates (below).</p>
+<div class="code"><pre><code class="language-json">{"id": "nt_main", "text": "## Today\n- [ ] review [ACME-123](https://linear.app/acme/issue/ACME-123)\n",
+ "rev": "r1af93f33f02dd2ad", "created_at": "2026-10-13T09:00:00.000Z", "updated_at": "2026-10-13T09:41:10.000Z"}</code></pre></div>
+<p><code>text</code> is at most 12,000 characters of markdown. It may hold line breaks (<code>\r\n</code> is stored as
+<code>\n</code>) and tabs, nothing else from the control range, no bidi controls and no U+2028/U+2029;
+token-shaped text is refused (<code>400 secret_in_text</code>, the patterns of a status's text). Clients
+render it as they render a card body, plus <code>- [ ]</code> / <code>- [x]</code> checkboxes: links only from the
+allow-list, no HTML, no images. <code>rev</code> changes with every write and is the same on every hub
+for the same version.</p>
+<h3 id="get-v1notes-reader"><code>GET /v1/notes</code> (reader) <a class="anchor" href="#get-v1notes-reader" aria-label="Link to this section">#</a></h3>
+<p>The document. Before anything was written: <code>{"id": "nt_main", "text": "", "rev": "", "created_at": null, "updated_at": null}</code>. The response carries an <code>ETag</code> (<code>"&lt;rev&gt;"</code>, or
+<code>"none"</code>); <code>If-None-Match</code> with it gets <code>304</code> while nothing changed. A hub that predates notes
+answers <code>404</code>; clients treat that as "no notes here".</p>
+<h3 id="put-v1notes-reader"><code>PUT /v1/notes</code> (reader) <a class="anchor" href="#put-v1notes-reader" aria-label="Link to this section">#</a></h3>
+<p><code>{"text": "...", "base_rev": "&lt;the rev you read&gt;"}</code> replaces the document. <code>base_rev</code> is
+required (<code>""</code> when there were no notes). If the document changed since, <code>409 conflict</code>: read
+it again and reapply the edit. Unchanged text is not a write (the <code>rev</code> stays). Response <code>200</code>
+with the stored document. Writes count toward the token's post rate (<code>429 rate_limited</code>).</p>
+<h3 id="post-v1notesappend-sender-or-reader"><code>POST /v1/notes/append</code> (sender or reader) <a class="anchor" href="#post-v1notesappend-sender-or-reader" aria-label="Link to this section">#</a></h3>
+<p><code>{"text": "one line", "section": "Inbox", "check": true}</code> adds one line to the document:
+<code>- [ ] &lt;text&gt;</code> (or <code>- &lt;text&gt;</code> with <code>"check": false</code>) as the last entry under the first heading
+named <code>section</code> (any level, case ignored, not inside a code fence), or under a new
+<code>## &lt;section&gt;</code> at the end when there is none.</p>
+<div class="table-wrap"><table class="doc-table">
+<thead><tr><th>Field</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td><code>text</code></td><td>required, one line, &lt;= 300 chars, trimmed; markdown links are fine</td></tr>
+<tr><td><code>section</code></td><td>optional, default <code>Inbox</code>: 1-40 letters, digits, spaces and <code>' &amp; / . _ -</code></td></tr>
+<tr><td><code>check</code></td><td>optional boolean, default <code>true</code></td></tr>
+</tbody>
+</table></div>
+<p>Response <code>200 {"ok": true, "rev": "..."}</code>: the new <code>rev</code> only, never the text, so a sender can
+add to the notes but never read them. When the result would pass 12,000 characters,
+<code>400 notes_full</code> and nothing changes. Appends count toward the token's post rate
+(<code>429 rate_limited</code>, <a data-repo="/blob/main/docs/adr/0010-input-tightening-and-post-rate.md" href="https://github.com/tayharris/needs-you/blob/main/docs/adr/0010-input-tightening-and-post-rate.md">ADR 0010</a>). The CLI queues
+an append in its outbox like a post (<code>needs-you notes add</code>).</p>
 <h2 id="invites">Invites <a class="anchor" href="#invites" aria-label="Link to this section">#</a></h2>
 <p>An invite is a link that sets up one or more machines. Redeeming it mints a **new token per
 machine**, so one link with <code>uses: 5</code> can set up five servers, each with its own revocable
@@ -1010,11 +1051,17 @@ day past the future limits for clock skew) and that its <code>id</code> is the o
 item. One it can't read is listed in <code>skipped</code> with <code>"kind": "status"</code> and dropped (statuses
 are short-lived: no quarantine). A hub that already holds 256 live statuses skips new ones.
 Hubs that predate statuses ignore the array, so a mixed mesh keeps working and their own
-clients just see no meters. Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
+clients just see no meters.</p>
+<p><strong>Notes</strong> travel the same way in a <code>notes</code> array: the public document plus <code>updated_by</code>. The
+receiver checks the text as a <code>PUT</code> body would be, accepts only the <code>id</code> <code>nt_main</code> (a later
+hub's second list is skipped, <code>"kind": "note"</code>), and applies it by last writer wins on
+<code>(updated_at, updated_by)</code>. The <code>base_rev</code> check is per hub: two hubs written before they sync
+keep the later write. Hubs that predate notes ignore the array. Token records carry <code>id</code>, <code>name</code>, <code>role</code>, <code>hash</code> (sha256 hex, never the
 token), <code>created_at</code>, <code>updated_at</code>, <code>revoked_at</code> and <code>updated_by</code>.</p>
 <h3 id="push-post-v1replicate">Push: <code>POST /v1/replicate</code> <a class="anchor" href="#push-post-v1replicate" aria-label="Link to this section">#</a></h3>
 <div class="code"><pre><code class="language-json">{"from_hub": "hub-a", "items": [ ...item records... ], "tokens": [ ...token records... ],
- "invites": [ ...invite records... ], "statuses": [ ...status records... ]}</code></pre></div>
+ "invites": [ ...invite records... ], "statuses": [ ...status records... ],
+ "notes": [ ...the notes document, when it changed... ]}</code></pre></div>
 <p>Response <code>{"ok": true, "applied": &lt;n&gt;, "hub_id": "hub-b", "skipped": [...]}</code>; <code>409 self</code> if
 <code>from_hub</code> is the receiving hub's own id (the sender then stops using that peer).</p>
 <p><strong>Unreadable items are skipped, not the batch.</strong> An item record the receiver can't read (a
@@ -1049,7 +1096,7 @@ Outbox rows survive restarts. The admin tool writes to the same outbox, so
 <h3 id="pull-anti-entropy-get-v1replicatechangesafterseqlimitn">Pull (anti-entropy): <code>GET /v1/replicate/changes?after=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> <a class="anchor" href="#pull-anti-entropy-get-v1replicatechangesafterseqlimitn" aria-label="Link to this section">#</a></h3>
 <p>Every stored version gets a per-hub sequence number. The response is</p>
 <div class="code"><pre><code class="language-json">{"hub_id": "hub-b", "epoch": "01M...", "max_seq": 812, "next_after": 500, "more": true,
- "items": [ ... ], "tokens": [ ... ], "invites": [ ... ], "statuses": [ ... ]}</code></pre></div>
+ "items": [ ... ], "tokens": [ ... ], "invites": [ ... ], "statuses": [ ... ], "notes": [ ... ]}</code></pre></div>
 <p>Each hub pulls from each peer at start-up and then every 60 s, keeping a cursor per peer and
 paging while <code>more</code> is true. An item record in a page that the puller can't read is skipped
 (logged, counted and quarantined, like a skipped push) and the cursor still moves past it; a

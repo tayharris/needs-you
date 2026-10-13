@@ -104,6 +104,25 @@ Meters stay plain until the warning line, then amber, red at 100 %, on an empty 
 
 Meters are quiet: they never count as waiting, animate, notify or make a card, and they are plain text with nothing to click. The numbers are what the agent hands its own hooks; nothing reads a login, token or cookie, and accounts are labelled by a local name (`NEEDS_YOU_USAGE_ACCOUNT`) or, for Orca's accounts, `orca-` and a short hash of Orca's account id, never an email. **Settings → Panel → Usage meters** turns the panel section and the pill's meters on or off, picks the providers, session, weekly or both, and hides a bar under a percentage (default: always shown); **Settings → Appearance → Usage meters** sets the warning colour's percentage and the pill's style (with a preview of both pills). **Settings → Integrations → Usage meters** says how to start sending the numbers. A hub that predates usage meters simply shows none.
 
+## Notes
+
+Beside the alerts, the panel keeps a short list of your own: a few todos and reminders, as
+checkboxes with links. Click the **checklist** button in the open panel's header to switch to
+**Notes** (the bell switches back); the menu bar's **Notes** opens the panel there. Notes
+never count in the pill, never animate and never notify.
+
+- **Tick a box** with a click. It saves at once; nothing takes focus.
+- **Edit…** (under the list) opens the notes in their own window: markdown on the left,
+  a preview on the right. `## Heading`, `- [ ] todo`, `- [x] done`, `- bullet`, `**bold**`,
+  `[label](https://…)`. Save with **⌘S**. If something changed the notes while you typed (an
+  agent, another Mac), the window says so: **Reload** takes theirs, **Save Mine** keeps yours.
+- **Agents can add** a line (`needs-you notes add "…"`, under `## Inbox` unless they name a
+  section) when you ask them to put something on your list. They can't read your notes.
+
+The notes live on your hubs and sync between them like cards, up to 12,000 characters. Don't
+put passwords or tokens in them: the hub refuses anything that looks like one. A hub older
+than 0.6.0 has no notes; update it.
+
 ## Focus: heads-down, except what you choose
 
 Every new item arrives one of three ways:
