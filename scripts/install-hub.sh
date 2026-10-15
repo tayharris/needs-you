@@ -58,7 +58,7 @@ UPDATE_CHANNEL=""
 UPDATE_SOAK=""
 UPDATE_GH=""
 # The release this installer belongs to: piped, it installs exactly this version from GitHub.
-INSTALLER_VERSION=0.6.0  # needs-you-version: 0.6.0
+INSTALLER_VERSION=0.6.1  # needs-you-version: 0.6.1
 
 usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "install-hub: $*" >&2; exit 1; }

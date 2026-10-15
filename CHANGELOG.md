@@ -4,6 +4,10 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-15
+
+A pre-release with two poller fixes: a GitHub card you close stays closed, and updating the Linear, Jira or GitHub poller never re-posts the cards it already posted. Run `needs-you update` on the machines that run the pollers.
+
 ### Fixed
 
 - **A GitHub card you close stays closed.** The GitHub poller re-posted every card on every run (every 5 minutes) to keep a 15-minute expiry moving, so a "Resolve conflicts" or "Fix failing checks" card you dismissed came back within minutes while the PR still had the problem. A card is now posted once per condition, again only when it changes (another check fails, a new review), and expires after 7 days as a safety net. Updating posts nothing again: a card the old version already posted counts as posted ([guide](docs/guides/github.md)).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# needs-you-version: 0.6.0
+# needs-you-version: 0.6.1
 # needs-you-hook.sh: Claude Code hook that mirrors "the agent is waiting on
 # you" to needs-you.
 #

@@ -3,7 +3,7 @@ name: needs-you
 description: Tell the user, through their needs-you inbox, when you are blocked on a decision, approval or access only they can give, when a long job they're waiting on finishes, or when something broke that they need to know about today. Use the `needs-you` CLI (or curl) to post, and resolve what you posted once it's handled. Don't use it for progress updates. When the user says this session or task is critical, mark it so the hooks' cards come in urgent.
 argument-hint: "[critical | normal]"
 ---
-<!-- needs-you-version: 0.6.0 -->
+<!-- needs-you-version: 0.6.1 -->
 
 # needs-you: telling a person you need them
 
