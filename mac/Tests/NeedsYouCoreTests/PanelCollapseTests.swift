@@ -18,6 +18,9 @@ final class PanelCollapseTests: XCTestCase {
         ("testOpeningAtACardShowsTheCards", testOpeningAtACardShowsTheCards),
         ("testAutomaticOpenShowsTheCards", testAutomaticOpenShowsTheCards),
         ("testAutomaticExpandNeverLeavesOpenNotes", testAutomaticExpandNeverLeavesOpenNotes),
+        ("testEscapeElsewhereLeavesNotesOpen", testEscapeElsewhereLeavesNotesOpen),
+        ("testEscapeHotkeyOnlyOverTheNotes", testEscapeHotkeyOnlyOverTheNotes),
+        ("testEscapeWithTheCardsIsUnchanged", testEscapeWithTheCardsIsUnchanged),
     ]
 
     private func collapses(_ t: CollapseTrigger, notes: Bool, setting: Bool = true, launch: Bool = false) -> Bool {
@@ -86,5 +89,32 @@ final class PanelCollapseTests: XCTestCase {
                                                byUser: true, focusingCard: false))
         XCTAssertFalse(PanelCollapse.showsNotes(current: false, remembered: true, alreadyExpanded: true,
                                                 byUser: false, focusingCard: false))
+    }
+
+    func testEscapeElsewhereLeavesNotesOpen() {
+        // Typing in Claude Code (pointer away from the panel): Escape is Claude's.
+        XCTAssertFalse(PanelCollapse.escapeCollapses(notesMode: true, hovering: false))
+        XCTAssertTrue(PanelCollapse.escapeCollapses(notesMode: true, hovering: true))
+    }
+
+    func testEscapeHotkeyOnlyOverTheNotes() {
+        for released in [true, false] {
+            XCTAssertFalse(PanelCollapse.swallowsEscape(expandedByUser: true, notesMode: true,
+                                                        hovering: false, released: released))
+            XCTAssertTrue(PanelCollapse.swallowsEscape(expandedByUser: true, notesMode: true,
+                                                       hovering: true, released: released))
+            XCTAssertFalse(PanelCollapse.swallowsEscape(expandedByUser: false, notesMode: true,
+                                                        hovering: true, released: released))
+        }
+    }
+
+    func testEscapeWithTheCardsIsUnchanged() {
+        XCTAssertTrue(PanelCollapse.escapeCollapses(notesMode: false, hovering: false))
+        XCTAssertTrue(PanelCollapse.swallowsEscape(expandedByUser: true, notesMode: false,
+                                                   hovering: false, released: false))
+        XCTAssertFalse(PanelCollapse.swallowsEscape(expandedByUser: true, notesMode: false,
+                                                    hovering: false, released: true))
+        XCTAssertFalse(PanelCollapse.swallowsEscape(expandedByUser: false, notesMode: false,
+                                                    hovering: true, released: false))
     }
 }

@@ -6,7 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
-- **The notes stay open while you read them.** Clicking in another app collapsed the panel back to the pill even on the Notes view, and Escape in the notes window collapsed the panel instead of cancelling. Now the Notes view stays open until you close it (the chevron, Escape, the shortcut), the morning summary doesn't switch it back to the alerts, and opening the panel again returns to the notes ([guide](docs/guides/mac-app.md#notes)).
+- **The notes stay open while you read them.** Clicking in another app collapsed the panel back to the pill even on the Notes view, and Escape in the notes window collapsed the panel instead of cancelling. Now the Notes view stays open until you close it (the chevron, Escape, the shortcut), the morning summary doesn't switch it back to the alerts, Escape typed in another app (Claude Code's interrupt, say) no longer closes the notes, only Escape with the pointer over the panel, and opening the panel again returns to the notes ([guide](docs/guides/mac-app.md#notes)).
 
 ## [0.6.1] - 2026-10-15
 

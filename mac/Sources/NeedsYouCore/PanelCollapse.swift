@@ -36,6 +36,23 @@ public enum PanelCollapse {
         }
     }
 
+    /// Does Escape typed in another app collapse the open panel (seen with Accessibility)?
+    /// With the cards, yes. With the notes, only while the pointer is over the panel: they're
+    /// read next to work you type in, and Escape there (Claude Code's interrupt, a dialog's
+    /// Cancel, vim) belongs to that app.
+    public static func escapeCollapses(notesMode: Bool, hovering: Bool) -> Bool {
+        notesMode ? hovering : true
+    }
+
+    /// Is the Escape hotkey armed? While armed it takes Escape from every app, so only when
+    /// the person opened the panel: with the cards until a click elsewhere `released` it
+    /// (the pointer back over the panel takes it again), with the notes only while the
+    /// pointer is over the panel.
+    public static func swallowsEscape(expandedByUser: Bool, notesMode: Bool, hovering: Bool,
+                                      released: Bool) -> Bool {
+        expandedByUser && (notesMode ? hovering : !released)
+    }
+
     /// Does the panel show the notes after an expand? `current` is what it shows now,
     /// `remembered` the view the person last chose with the Notes button (kept across
     /// launches). Opening at a card shows the cards. Already open: nothing else leaves the

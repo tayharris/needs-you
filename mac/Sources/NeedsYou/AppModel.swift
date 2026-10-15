@@ -1149,6 +1149,7 @@ final class AppModel: ObservableObject {
 
     /// Clicking the pill. Never makes the panel key or activates the app.
     func toggleExpanded() {
+        if isExpanded { NSLog("NeedsYou panel: collapsed by the pill, the shortcut or a menu") }
         isExpanded ? collapse() : expand(byUser: true)
     }
 
@@ -1597,7 +1598,10 @@ final class AppModel: ObservableObject {
     }
 
     private func collapseAfterOpening() {
-        if collapses(.openedLink) { collapse() }
+        if collapses(.openedLink) {
+            NSLog("NeedsYou panel: collapsed after opening a link")
+            collapse()
+        }
     }
 
     /// Should the open panel close by itself for `trigger`? Never while it shows the notes.

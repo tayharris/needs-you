@@ -232,7 +232,9 @@ final class PanelController {
                     MainActor.assumeIsolated { self?.clickedElsewhere() }
                 }
             }
-            installEscape(swallow: model.expandedByUser && !escapeReleased)
+            installEscape(swallow: PanelCollapse.swallowsEscape(
+                expandedByUser: model.expandedByUser, notesMode: model.notesMode,
+                hovering: model.hovering, released: escapeReleased))
         } else {
             if let monitor = clickOutsideMonitor {
                 NSEvent.removeMonitor(monitor)
@@ -252,6 +254,7 @@ final class PanelController {
     /// notes, it never does: they're read next to the work (PanelCollapse).
     private func clickedElsewhere() {
         if model.collapses(.clickElsewhere) {
+            NSLog("NeedsYou panel: collapsed by a click in another app")
             model.collapse()
         } else {
             escapeReleased = true
@@ -272,15 +275,19 @@ final class PanelController {
             if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
                 guard event.keyCode == 53 else { return event }
                 if event.window is AnswerWindow || event.window is NotesWindow { return event }  // their Cancel
-                MainActor.assumeIsolated { self?.model.collapse() }
+                MainActor.assumeIsolated {
+                    NSLog("NeedsYou panel: collapsed by Escape (this app)")
+                    self?.model.collapse()
+                }
                 return nil
             }) { escapeMonitors.append(local) }
             if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
                 guard event.keyCode == 53 else { return }
                 MainActor.assumeIsolated {
-                    // The notes stayed open at a click elsewhere: Escape there is that app's,
-                    // until the pointer comes back over the panel.
-                    guard let self, !(self.escapeReleased && self.model.notesMode) else { return }
+                    // Escape in another app: that app's, unless PanelCollapse says it's ours.
+                    guard let self, PanelCollapse.escapeCollapses(
+                        notesMode: self.model.notesMode, hovering: self.model.hovering) else { return }
+                    NSLog("NeedsYou panel: collapsed by Escape (global)")
                     self.model.collapse()
                 }
             }) { escapeMonitors.append(global) }
@@ -291,7 +298,10 @@ final class PanelController {
                     // Typing in the answer or notes window: Escape cancels it, as its Cancel button says.
                     if let answer = NSApp.keyWindow as? AnswerWindow { answer.performClose(nil) }
                     else if let notes = NSApp.keyWindow as? NotesWindow { notes.performClose(nil) }
-                    else { self?.model.collapse() }
+                    else {
+                        NSLog("NeedsYou panel: collapsed by Escape (hotkey)")
+                        self?.model.collapse()
+                    }
                 }
             }
         } else if !swallow {
