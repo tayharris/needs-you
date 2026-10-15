@@ -111,6 +111,12 @@ checkboxes with links. Click the **checklist** button in the open panel's header
 **Notes** (the bell switches back); the menu bar's **Notes** opens the panel there. Notes
 never count in the pill, never animate and never notify.
 
+While the panel shows your notes it stays open until you close it (the chevron, Escape, the
+shortcut or a double-click on the header), so you can read them next to your work: clicking
+in another app, opening a link and new arrivals leave it open on the notes. Opening the panel
+again from the pill, the shortcut or the menu goes back to the notes; clicking a card's preview
+opens the alerts.
+
 - **Tick a box** with a click. It saves at once; nothing takes focus.
 - **Edit…** (under the list) opens the notes in their own window: markdown on the left,
   a preview on the right. `## Heading`, `- [ ] todo`, `- [x] done`, `- bullet`, `**bold**`,

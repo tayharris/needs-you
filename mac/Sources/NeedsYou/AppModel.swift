@@ -89,10 +89,15 @@ final class AppModel: ObservableObject {
     /// Why the last checkbox save didn't stick, shown above the notes until the next one.
     @Published private(set) var notesProblem: String?
     /// The open panel shows the notes instead of the cards (the header's checklist button).
-    @Published var notesMode = false {
-        didSet { if notesMode != oldValue { settings.defaults.set(notesMode, forKey: AppModel.notesModeKey) } }
-    }
+    /// While it does, only the person closes the panel (PanelCollapse).
+    @Published var notesMode = false
     static let notesModeKey = "notesMode"
+    /// The view the person last chose with the Notes button or the menu's Notes, kept across
+    /// launches: opening the panel from the pill, the shortcut or the menu goes back to it.
+    private var rememberedNotesMode: Bool {
+        get { settings.defaults.bool(forKey: AppModel.notesModeKey) }
+        set { settings.defaults.set(newValue, forKey: AppModel.notesModeKey) }
+    }
     /// Set by the app delegate: opens the notes window. Only `openNotesWindow` calls it, from
     /// an explicit click on the Notes view's Edit button.
     var openNotesWindowHandler: (() -> Void)?
@@ -809,13 +814,17 @@ final class AppModel: ObservableObject {
     /// The open panel switches between the cards and the notes (a click: nothing activates).
     func toggleNotesMode() {
         notesMode.toggle()
+        rememberedNotesMode = notesMode
+        // The panel the launch opened is the person's now: no timer closes it.
+        endLaunchOpen()
         if notesMode { pollNow() }
     }
 
     /// The menu bar's Notes: open the panel on the notes.
     func showNotes() {
         notesMode = true
-        if !isExpanded { showExpanded() }
+        rememberedNotesMode = true
+        if isExpanded { endLaunchOpen() } else { showExpanded() }
         pollNow()
     }
 
@@ -1148,8 +1157,11 @@ final class AppModel: ObservableObject {
     func expand(byUser: Bool = false, focusing clicked: String? = nil) {
         // Automatic expansions (NEEDS_YOU_EXPAND, the morning summary) never undo a hide.
         if visibility == .hidden && !byUser && !peeking { return }
-        // Opened at a card (a preview, the menu) or by the morning summary: the cards, not the notes.
-        if clicked != nil || !byUser { notesMode = false }
+        // Opened at a card (a preview, the menu) or by the morning summary: the cards. From the
+        // pill, the shortcut or the menu: the view last chosen. Already open on the notes: they stay.
+        notesMode = PanelCollapse.showsNotes(current: notesMode, remembered: rememberedNotesMode,
+                                             alreadyExpanded: isExpanded, byUser: byUser,
+                                             focusingCard: clicked != nil)
         if byUser, let target = ExpandFocus.target(clicked: clicked, items: needsItems,
                                                    lastOpenedAt: settings.pillLastOpenedAt, freshAt: store.freshAt) {
             focus(on: target)
@@ -1188,6 +1200,7 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 guard !Task.isCancelled, let self, self.openedAtLaunch, self.isExpanded else { return }
                 if countdown.advance(by: 0.25, hovering: self.hovering) {
+                    guard self.collapses(.launchTimer) else { self.endLaunchOpen(); return }
                     NSLog("NeedsYou: the panel opened at launch closed by itself")
                     self.collapse()
                     return
@@ -1584,7 +1597,14 @@ final class AppModel: ObservableObject {
     }
 
     private func collapseAfterOpening() {
-        if settings.ui.collapseOnClickOutside { collapse() }
+        if collapses(.openedLink) { collapse() }
+    }
+
+    /// Should the open panel close by itself for `trigger`? Never while it shows the notes.
+    func collapses(_ trigger: CollapseTrigger) -> Bool {
+        PanelCollapse.collapses(trigger, notesMode: notesMode,
+                                collapseOnClickOutside: settings.ui.collapseOnClickOutside,
+                                openedAtLaunch: openedAtLaunch)
     }
 
     @discardableResult

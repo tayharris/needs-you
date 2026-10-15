@@ -248,9 +248,10 @@ final class PanelController {
     /// (the default), the panel collapses. Off it stays open, so a card can still be read
     /// next to the link it opened, and stops swallowing Escape, which belongs to the app
     /// that was clicked. Escape, the chevron and the shortcut still close it. The panel the
-    /// launch opened (not the person) always closes: the person is busy elsewhere.
+    /// launch opened (not the person) closes too: the person is busy elsewhere. Showing the
+    /// notes, it never does: they're read next to the work (PanelCollapse).
     private func clickedElsewhere() {
-        if model.settings.ui.collapseOnClickOutside || model.openedAtLaunch {
+        if model.collapses(.clickElsewhere) {
             model.collapse()
         } else {
             escapeReleased = true
@@ -270,20 +271,27 @@ final class PanelController {
         if escapeMonitors.isEmpty {
             if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
                 guard event.keyCode == 53 else { return event }
-                if event.window is AnswerWindow { return event }  // its Cancel
+                if event.window is AnswerWindow || event.window is NotesWindow { return event }  // their Cancel
                 MainActor.assumeIsolated { self?.model.collapse() }
                 return nil
             }) { escapeMonitors.append(local) }
             if let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
                 guard event.keyCode == 53 else { return }
-                MainActor.assumeIsolated { self?.model.collapse() }
+                MainActor.assumeIsolated {
+                    // The notes stayed open at a click elsewhere: Escape there is that app's,
+                    // until the pointer comes back over the panel.
+                    guard let self, !(self.escapeReleased && self.model.notesMode) else { return }
+                    self.model.collapse()
+                }
             }) { escapeMonitors.append(global) }
         }
         if swallow, escapeHotKey == nil {
             escapeHotKey = HotKey(id: 2, keyCode: 53, modifiers: 0) { [weak self] in
                 MainActor.assumeIsolated {
-                    // Typing in the answer window: Escape cancels it, as its Cancel button says.
-                    if let answer = NSApp.keyWindow as? AnswerWindow { answer.performClose(nil) } else { self?.model.collapse() }
+                    // Typing in the answer or notes window: Escape cancels it, as its Cancel button says.
+                    if let answer = NSApp.keyWindow as? AnswerWindow { answer.performClose(nil) }
+                    else if let notes = NSApp.keyWindow as? NotesWindow { notes.performClose(nil) }
+                    else { self?.model.collapse() }
                 }
             }
         } else if !swallow {

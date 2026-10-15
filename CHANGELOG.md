@@ -10,6 +10,7 @@ A pre-release with two poller fixes: a GitHub card you close stays closed, and u
 
 ### Fixed
 
+- **The notes stay open while you read them.** Clicking in another app collapsed the panel back to the pill even on the Notes view, and Escape in the notes window collapsed the panel instead of cancelling. Now the Notes view stays open until you close it (the chevron, Escape, the shortcut), the morning summary doesn't switch it back to the alerts, and opening the panel again returns to the notes ([guide](docs/guides/mac-app.md#notes)).
 - **A GitHub card you close stays closed.** The GitHub poller re-posted every card on every run (every 5 minutes) to keep a 15-minute expiry moving, so a "Resolve conflicts" or "Fix failing checks" card you dismissed came back within minutes while the PR still had the problem. A card is now posted once per condition, again only when it changes (another check fails, a new review), and expires after 7 days as a safety net. Updating posts nothing again: a card the old version already posted counts as posted ([guide](docs/guides/github.md)).
 - **Updating the Linear or Jira poller no longer re-posts its open cards.** 0.6.0 posted each one once more after the update, because the older state didn't record which notifications or events a card was for; now what's behind a card at the update counts as posted ([Linear](docs/guides/linear.md), [Jira](docs/guides/jira.md)).
 
