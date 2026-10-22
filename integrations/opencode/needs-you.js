@@ -22,7 +22,7 @@
 // Answers from the card (ADR 0009 B2): for a question the card can show whole (1-4
 // questions, each with 1-8 options, labels as written, not a plan approval) the card is
 // posted answerable, and the hook's `answer-wait` mode waits for the person's click (up to
-// NEEDS_YOU_ANSWER_TIMEOUT s, default 600). opencode lets the person type their own answer
+// NEEDS_YOU_ANSWER_TIMEOUT s, default 3600). opencode lets the person type their own answer
 // ("Type your own answer") to such a question, so the card offers "Other…" too. A click's
 // labels, or the words typed on the Mac, checked against the question asked, go to
 // opencode's own POST /question/{id}/reply; the TUI shows the question all the

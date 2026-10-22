@@ -119,7 +119,7 @@ class AskMode(unittest.TestCase):
         self.assertIn("expires_at", q)
         self.assertTrue(re.match(r"^claude-[0-9a-f]{16,}$", q["id"]), q["id"])
         self.assertIn("Pick here or answer in Claude.", opt(add, "--body"))
-        self.assertEqual(self.waits(), [["answer-wait", "--key", opt(add, "--key"), "--timeout", "600"]])
+        self.assertEqual(self.waits(), [["answer-wait", "--key", opt(add, "--key"), "--timeout", "3600"]])
         self.assertEqual(self.marker()["kind"], "permission")  # Notification permission_prompt keeps it
 
     def test_other_is_offered_and_the_typed_words_are_claudes_answer(self):

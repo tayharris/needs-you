@@ -62,7 +62,7 @@ The hook every agent shares (`needs-you-hook.sh`: Claude Code, Codex, Gemini, Co
 | `NEEDS_YOU_AGENT_TURN_CARDS` | on | *on/off*: "finished its turn" cards (Codex, Gemini, opencode, Copilot, Grok, Kimi, Cursor, Cline; for Aider, its only card) |
 | `NEEDS_YOU_TURN_TEXT` | on | *on/off*: a turn card names the session and shows the question the turn ended on; off keeps the plain card |
 | `NEEDS_YOU_AGENT_QUESTIONS` | on | *on/off*: questions answerable from the card |
-| `NEEDS_YOU_ANSWER_TIMEOUT` | `600` | Seconds a hook waits for an answer from the Mac, 30 to 3600; `0` or `off`: don't wait |
+| `NEEDS_YOU_ANSWER_TIMEOUT` | `3600` | Seconds a hook waits for an answer from the Mac, 30 to 3600; `0` or `off`: don't wait |
 | `NEEDS_YOU_CONTEXT_ALERT_PCT` | `80` | Percent of the context window that posts a card; `0` or `off`: never |
 | `NEEDS_YOU_CONTEXT_WINDOW` | `200000` (`1000000` for `[1m]` models) | The context window in tokens, a whole number |
 | `NEEDS_YOU_SSH_ALIAS` | unset | This host's name in the Mac's `~/.ssh/config`: letters, digits, `.`, `_`, `@` or `-` |

@@ -6,6 +6,7 @@ All notable user-visible changes. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 
+- **A question card stays clickable for an hour.** The Claude Code hook and the opencode plugin waited 10 minutes for a click on the card, so a question you came back to later showed its choices as a read-only list. They now wait up to an hour by default (`NEEDS_YOU_ANSWER_TIMEOUT`, still 30 to 3600 s); the card clears as soon as you answer either place. Run `needs-you update` on sender machines ([guide](docs/guides/claude-code.md)).
 - **The notes stay open while you read them.** Clicking in another app collapsed the panel back to the pill even on the Notes view, and Escape in the notes window collapsed the panel instead of cancelling. Now the Notes view stays open until you close it (the chevron, Escape, the shortcut), the morning summary doesn't switch it back to the alerts, Escape typed in another app (Claude Code's interrupt, say) no longer closes the notes, only Escape with the pointer over the panel, and opening the panel again returns to the notes ([guide](docs/guides/mac-app.md#notes)).
 
 ## [0.6.1] - 2026-10-15

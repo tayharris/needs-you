@@ -516,10 +516,10 @@ end_post() {
 }
 
 # How long to wait for an answer from the card, in seconds: NEEDS_YOU_ANSWER_TIMEOUT (default
-# 600), within 30..3600 (the python side gives the question the same expiry).
+# 3600), within 30..3600 (the python side gives the question the same expiry).
 answer_timeout() {
-  local t=${NEEDS_YOU_ANSWER_TIMEOUT:-600}
-  case "$t" in ''|*[!0-9]*) t=600 ;; esac
+  local t=${NEEDS_YOU_ANSWER_TIMEOUT:-3600}
+  case "$t" in ''|*[!0-9]*) t=3600 ;; esac
   [ "$t" -lt 30 ] && t=30
   [ "$t" -gt 3600 ] && t=3600
   printf '%s' "$t"
@@ -1397,9 +1397,9 @@ class Asked(object):
 def answer_timeout():
     """NEEDS_YOU_ANSWER_TIMEOUT: how long a sender waits for an answer from the card (s)."""
     try:
-        t = int(os.environ.get("NEEDS_YOU_ANSWER_TIMEOUT") or 600)
+        t = int(os.environ.get("NEEDS_YOU_ANSWER_TIMEOUT") or 3600)
     except ValueError:
-        t = 600
+        t = 3600
     return min(max(t, 30), 3600)
 
 
