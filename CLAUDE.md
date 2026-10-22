@@ -59,7 +59,8 @@ Built on `main` (0.3.0): invites (the `owner` role, `/v1/invites`, `needsyou://c
 
 ## Git
 
-- Branches: `tay/<slug>` (or `tay/ACME-123-slug` when there's a ticket). Use a name you're given byte for byte.
+- Branches: `<your-github-handle>/<slug>` (or `<handle>/ACME-123-slug` when there's a ticket); the maintainer's are `tay/<slug>`. Use a name you're given byte for byte.
 - One worktree per branch. Don't push or open PRs unless asked.
+- Everyone but the maintainer lands changes through a pull request against `main`, never a push to it. Before opening one, run `scripts/check.sh` (what CI runs) and fill in `.github/PULL_REQUEST_TEMPLATE.md`; [CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the CI jobs and what review checks. Don't bump `VERSION` or edit released changelog sections.
 - Commit in small, reviewable chunks. No AI or model attribution in commits or PRs: no `Co-Authored-By` trailers, no "Generated with" lines.
 - License: Apache-2.0 (`LICENSE`). Changing it needs the owner's decision.

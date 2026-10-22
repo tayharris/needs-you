@@ -384,7 +384,7 @@ if sys.argv[1:2] == ["answer-wait"]:
         self.assertTrue(q["expires_at"].endswith("Z"))
         self.assertIn("Pick here or answer in opencode.", opt(add, "--body"))
         wait = [c for c in self.calls() if c[0] == "answer-wait"]
-        self.assertEqual(wait, [["answer-wait", "--key", opt(add, "--key"), "--timeout", "600"]])
+        self.assertEqual(wait, [["answer-wait", "--key", opt(add, "--key"), "--timeout", "3600"]])
 
     def test_typed_words_become_part_of_opencodes_reply(self):
         self.install()
